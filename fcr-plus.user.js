@@ -179,39 +179,16 @@
   var IS_AFTX = window.location.hostname.includes('aftx.amazonoperations.app');
 
 
-    var THEME = GM_getValue('userTheme', 'fcrplus');
-    var TEXT_COLOR = GM_getValue('userTextColor', 'default');
-    var THEMES = { //accent is main color visablity wise
-        fcrplus: { name: 'FCR Plus',       bg: '#040D12', surface: '#0A1A1F', accent: '#183D3D', hover: '#2C5D5D', text: '#E0E0E0' },
-        blue:    { name: 'Midnight Blue',  bg: '#0a0e1a', surface: '#111827', accent: '#1e3a5f', hover: '#2d5a8a', text: '#c8d6e5' },
-        purple:  { name: 'Purple',         bg: '#0a0008', surface: '#120010', accent: '#35063e', hover: '#4a0854', text: '#d4c6f0' },
-        red:     { name: 'Crimson',        bg: '#120808', surface: '#1a0f0f', accent: '#3d1818', hover: '#5d2c2c', text: '#f0c6c6' },
-        amber:   { name: 'Mocha',          bg: '#120e08', surface: '#1a150f', accent: '#3d2a18', hover: '#967969', text: '#f0dfc6' },
-        oled:    { name: 'Black',          bg: '#000000', surface: '#0a0a0a', accent: '#1a1a1a', hover: '#2a2a2a', text: '#cccccc' },
-        light:   { name: 'Light',          bg: '#f5f5f5', surface: '#ffffff', accent: '#e0e0e0', hover: '#d0d0d0', text: '#1a1a1a' }
+    // Single fixed dark theme. The former 7-theme picker, custom-theme editor,
+    // and text-color options were removed in the CSS overhaul.
+    var THEME = 'fcrplus';
+    var TEXT_COLOR = 'default';
+    var THEMES = {
+        fcrplus: { name: 'FCR Plus', bg: '#040D12', surface: '#0A1A1F', accent: '#183D3D', hover: '#2C5D5D', text: '#E0E0E0' }
     };
     var TEXT_COLORS = {
-        'default': { name: 'Theme Default', value: null },
-        'white':   { name: 'White',         value: '#ffffff' },
-        'light':   { name: 'Light Gray',    value: '#E0E0E0' },
-        'cool':    { name: 'Cool Blue',     value: '#c8d6e5' },
-        'warm':    { name: 'Warm Cream',    value: '#f0e6d3' },
-        'green':   { name: 'Soft Green',    value: '#c6f0d4' },
-        'pink':    { name: 'Soft Pink',     value: '#f0c6d4' }
+        'default': { name: 'Theme Default', value: null }
     };
-
-    // --- Custom theme + custom text color (user editable via popup) ---
-    var CUSTOM_THEME_DEFAULTS = { bg: '#040D12', surface: '#0A1A1F', accent: '#183D3D', hover: '#2C5D5D', text: '#E0E0E0' };
-    var savedCustomTheme = GM_getValue('customTheme', null) || {};
-    THEMES.custom = {
-        name: 'Custom',
-        bg:      savedCustomTheme.bg      || CUSTOM_THEME_DEFAULTS.bg,
-        surface: savedCustomTheme.surface || CUSTOM_THEME_DEFAULTS.surface,
-        accent:  savedCustomTheme.accent  || CUSTOM_THEME_DEFAULTS.accent,
-        hover:   savedCustomTheme.hover   || CUSTOM_THEME_DEFAULTS.hover,
-        text:    savedCustomTheme.text    || CUSTOM_THEME_DEFAULTS.text
-    };
-    TEXT_COLORS.custom = { name: 'Custom (color wheel)', value: GM_getValue('customTextColor', '#FFFFFF') };
 
    var CONFIG = {
         printHost: 'http://localhost:5965/printer',
@@ -408,125 +385,6 @@
     // Custom Theme Modal: popup color editor for the 'custom' theme + custom text color
     // Triggered when user selects 'Custom' in theme/text dropdowns, or via Edit button.
     // =========================================================================
-    var CustomThemeModal = (function () {
-        var modal = null;
-
-        function build() {
-            modal = document.createElement('div');
-            modal.id = 'fcrplus-custom-theme-modal';
-            modal.style.cssText = 'display:none;position:fixed;inset:0;'
-                + 'background:rgba(0,0,0,0.7);z-index:99999;'
-                + 'align-items:center;justify-content:center;';
-
-            var fields = [
-                { key: 'bg',      label: 'Background' },
-                { key: 'surface', label: 'Surface' },
-                { key: 'accent',  label: 'Accent (main visibility)' },
-                { key: 'hover',   label: 'Hover' }
-                // 'text' intentionally omitted - controlled by the separate Text Color dropdown
-            ];
-
-            var rowsHTML = fields.map(function (f) {
-                return '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">'
-                    + '<label style="flex:1;font-size:13px">' + f.label + '</label>'
-                    + '<input type="color" data-ct-key="' + f.key + '" value="' + (THEMES.custom[f.key] || '#000000') + '" '
-                    +   'style="width:60px;height:30px;border:1px solid #555;background:#222;cursor:pointer;border-radius:4px">'
-                    + '</div>';
-            }).join('');
-
-            modal.innerHTML = '<div style="background:#1a1a1a;color:#e0e0e0;border-radius:8px;padding:20px;min-width:340px;max-width:420px;'
-                + 'border:1px solid #444;box-shadow:0 8px 32px rgba(0,0,0,0.6);font-family:sans-serif">'
-                + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;'
-                +   'border-bottom:1px solid #333;padding-bottom:10px">'
-                +   '<strong style="font-size:15px">Custom Theme Editor</strong>'
-                +   '<button id="ct-close" style="background:#333;color:#fff;border:none;border-radius:4px;padding:4px 10px;cursor:pointer">Close</button>'
-                + '</div>'
-                + rowsHTML
-                + '<div style="display:flex;justify-content:space-between;align-items:center;margin:14px 0 8px;padding-top:10px;border-top:1px solid #333">'
-                +   '<label style="flex:1;font-size:13px">Text Color <span style="opacity:0.5;font-size:11px">(activates Custom text)</span></label>'
-                +   '<input type="color" id="ct-textcolor" value="' + (TEXT_COLORS.custom.value || '#ffffff') + '" '
-                +     'style="width:60px;height:30px;border:1px solid #555;background:#222;cursor:pointer;border-radius:4px">'
-                + '</div>'
-                + '<button id="ct-reset" style="width:100%;margin-top:8px;background:#3a2014;color:#fff;border:1px solid #6a3a24;border-radius:4px;padding:8px;cursor:pointer;font-size:12px">Reset Custom to FCR Plus Defaults</button>'
-                + '<p style="font-size:11px;opacity:0.6;margin-top:10px;line-height:1.4">Changes apply live.</p>'
-                + '</div>';
-
-            document.body.appendChild(modal);
-
-            modal.addEventListener('click', function (e) { if (e.target === modal) hide(); });
-            modal.querySelector('#ct-close').addEventListener('click', hide);
-
-            modal.querySelectorAll('input[data-ct-key]').forEach(function (inp) {
-                inp.addEventListener('input', function () {
-                    var k = this.getAttribute('data-ct-key');
-                    THEMES.custom[k] = this.value;
-                    GM_setValue('customTheme', {
-                        bg: THEMES.custom.bg, surface: THEMES.custom.surface,
-                        accent: THEMES.custom.accent, hover: THEMES.custom.hover,
-                        text: THEMES.custom.text
-                    });
-                    if (typeof Styles !== 'undefined' && THEME === 'custom') Styles.applyDark();
-                });
-            });
-
-            modal.querySelector('#ct-textcolor').addEventListener('input', function () {
-                TEXT_COLORS.custom.value = this.value;
-                GM_setValue('customTextColor', this.value);
-                // Auto-activate Custom text color (so the picker actually takes effect)
-                TEXT_COLOR = 'custom';
-                GM_setValue('userTextColor', 'custom');
-                // Sync the visible Text Color dropdowns
-                var sIntro = document.getElementById('intro-text-color-selector');
-                if (sIntro) sIntro.value = 'custom';
-                var sSide = document.getElementById('text-color-selector');
-                if (sSide) sSide.value = 'custom';
-                if (typeof Styles !== 'undefined') Styles.applyDark();
-            });
-
-            modal.querySelector('#ct-reset').addEventListener('click', function () {
-                if (!confirm('Reset custom theme + custom text color to FCR Plus defaults?')) return;
-                var d = CUSTOM_THEME_DEFAULTS;
-                THEMES.custom.bg = d.bg; THEMES.custom.surface = d.surface;
-                THEMES.custom.accent = d.accent; THEMES.custom.hover = d.hover;
-                THEMES.custom.text = d.text;
-                GM_setValue('customTheme', { bg: d.bg, surface: d.surface, accent: d.accent, hover: d.hover, text: d.text });
-                TEXT_COLORS.custom.value = '#FFFFFF';
-                GM_setValue('customTextColor', '#FFFFFF');
-                modal.querySelectorAll('input[data-ct-key]').forEach(function (inp) {
-                    inp.value = THEMES.custom[inp.getAttribute('data-ct-key')];
-                });
-                modal.querySelector('#ct-textcolor').value = '#FFFFFF';
-                if (typeof Styles !== 'undefined') Styles.applyDark();
-                if (typeof showToast === 'function') showToast('Custom theme reset to defaults', 'success');
-            });
-        }
-
-        // Seed THEMES.custom from another theme's colors, then save + apply.
-        // Used when user clicks Edit gear from a non-custom theme - so the editor
-        // opens prefilled with the colors they were already looking at.
-        function seedFromTheme(srcKey) {
-            var src = THEMES[srcKey];
-            if (!src) return;
-            THEMES.custom.bg = src.bg;
-            THEMES.custom.surface = src.surface;
-            THEMES.custom.accent = src.accent;
-            THEMES.custom.hover = src.hover;
-            THEMES.custom.text = src.text;
-            GM_setValue('customTheme', {
-                bg: src.bg, surface: src.surface, accent: src.accent, hover: src.hover, text: src.text
-            });
-            // Sync inputs if modal already exists
-            if (modal) {
-                modal.querySelectorAll('input[data-ct-key]').forEach(function (inp) {
-                    inp.value = THEMES.custom[inp.getAttribute('data-ct-key')];
-                });
-            }
-        }
-
-        function show() { if (!modal) build(); modal.style.display = 'flex'; }
-        function hide() { if (modal) modal.style.display = 'none'; }
-        return { show: show, hide: hide, seedFromTheme: seedFromTheme };
-    })();
 
 
 
@@ -3647,12 +3505,6 @@ function routePrintFromMenu(asin) {
         + '<option value="printmon"' + (PRINT_MODE === 'printmon' ? ' selected' : '') + '>Printmon</option>'
         + '<option value="zebra"' + (PRINT_MODE === 'zebra' ? ' selected' : '') + '>Zebra</option>'
         + '</select></div>'
-        + '<div class="fcrp-pref"><label>Theme</label><select id="intro-theme-selector">'
-        + Object.keys(THEMES).map(function (key) { return '<option value="' + key + '"' + (THEME === key ? ' selected' : '') + '>' + THEMES[key].name + '</option>'; }).join('')
-        + '</select><a href="#" id="intro-edit-custom-theme" title="Edit Custom Theme" style="margin-left:6px;font-size:12px;text-decoration:none;color:#f37d15">\u2699 Edit Custom</a></div>'
-        + '<div class="fcrp-pref"><label>Text Color</label><select id="intro-text-color-selector">'
-        + Object.keys(TEXT_COLORS).map(function (key) { return '<option value="' + key + '"' + (TEXT_COLOR === key ? ' selected' : '') + '>' + TEXT_COLORS[key].name + '</option>'; }).join('')
-        + '</select></div>'
         + '</div>'
         + '</div></div>'
 
@@ -3836,31 +3688,6 @@ function routePrintFromMenu(asin) {
         setPrintMode(this.value);
         showToast('Print mode set to ' + this.value, 'success');
     });
-    document.getElementById('intro-theme-selector').addEventListener('change', function () {
-        GM_setValue('userTheme', this.value);
-        THEME = this.value;
-        Styles.applyDark();
-    });
-    document.getElementById('intro-text-color-selector').addEventListener('change', function () {
-        GM_setValue('userTextColor', this.value);
-        TEXT_COLOR = this.value;
-        Styles.applyDark();
-    });
-
-    // Edit-custom gear (intro): if on a non-custom theme, seed Custom from it + switch to Custom, then open modal.
-    var introEditBtn = document.getElementById('intro-edit-custom-theme');
-    if (introEditBtn) introEditBtn.addEventListener('click', function (e) {
-        e.preventDefault();
-        if (THEME !== 'custom') {
-            CustomThemeModal.seedFromTheme(THEME);
-            THEME = 'custom';
-            GM_setValue('userTheme', 'custom');
-            var sel = document.getElementById('intro-theme-selector');
-            if (sel) sel.value = 'custom';
-            Styles.applyDark();
-        }
-        CustomThemeModal.show();
-    });
 
     // --- Event: bulk actions ---
     document.getElementById('fcrp-enable-all').addEventListener('click', function () {
@@ -4008,24 +3835,6 @@ function routePrintFromMenu(asin) {
       + '<option value="zebra"' + (PRINT_MODE === 'zebra' ? ' selected' : '') + '>Zebra</option>' //s15
       + '</select></div>' //s15
 
-      // Theme selector
-      + '<div style="display:flex;align-items:center;margin-bottom:6px;padding-bottom:6px;border-bottom:1px solid rgba(255,255,255,0.2)">'
-      + '<strong style="font-size:11px;margin-right:6px">Theme:</strong>'
-      + '<select id="theme-selector" style="padding:2px 4px;font-size:11px">'
-      + Object.keys(THEMES).map(function (key) {
-          return '<option value="' + key + '"' + (THEME === key ? ' selected' : '') + '>' + THEMES[key].name + '</option>';
-         }).join('')
-      + '</select>'
-      + '<a href="#" id="sidebar-edit-custom-theme" title="Edit Custom Theme" style="margin-left:6px;font-size:13px;text-decoration:none;color:#f37d15">\u2699</a></div>'
-
-      // Text color selector
-      + '<div style="display:flex;align-items:center;margin-bottom:6px;padding-bottom:6px;border-bottom:1px solid rgba(255,255,255,0.2)">'
-      + '<strong style="font-size:11px;margin-right:6px">Text:</strong>'
-      + '<select id="text-color-selector" style="padding:2px 4px;font-size:11px">'
-      + Object.keys(TEXT_COLORS).map(function (key) {
-          return '<option value="' + key + '"' + (TEXT_COLOR === key ? ' selected' : '') + '>' + TEXT_COLORS[key].name + '</option>';
-       }).join('')
-      + '</select></div>'
 
 
       + mainSettingsHTML
@@ -4137,32 +3946,6 @@ function routePrintFromMenu(asin) {
         if (confirm('Reset all links to defaults?')) { resetQuickLinks(); renderQuickLinks(); renderEditList(); }
       });
 
-         document.getElementById('theme-selector').addEventListener('change', function () {
-        GM_setValue('userTheme', this.value);
-        THEME = this.value;
-        Styles.applyDark();
-        });
-
-    document.getElementById('text-color-selector').addEventListener('change', function () {
-        GM_setValue('userTextColor', this.value);
-        TEXT_COLOR = this.value;
-        Styles.applyDark();
-    });
-
-    // Sidebar Edit-custom gear: seed-from-current-then-switch if not already on Custom.
-    var sidebarEditBtn = document.getElementById('sidebar-edit-custom-theme');
-    if (sidebarEditBtn) sidebarEditBtn.addEventListener('click', function (e) {
-        e.preventDefault();
-        if (THEME !== 'custom') {
-            CustomThemeModal.seedFromTheme(THEME);
-            THEME = 'custom';
-            GM_setValue('userTheme', 'custom');
-            var sel = document.getElementById('theme-selector');
-            if (sel) sel.value = 'custom';
-            Styles.applyDark();
-        }
-        CustomThemeModal.show();
-    });
 
 
      document.getElementById('print-mode-selector').addEventListener('change', function () {  //s15
