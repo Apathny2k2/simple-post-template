@@ -1313,12 +1313,16 @@ document.body.innerHTML = [
   function buildSidebarBarcodeZPL(data, lw, y, autoEnter) {
     var size=sbBCSize;
     switch(sbBarcodeType) {
+      /* Code 39 auto-enter relies on the scanner's Full ASCII mode to read the CR;
+         Code 128 (below) is the reliable symbology for scan-to-submit. */
       case 'code39':    { var bx=Math.max(10,Math.round((lw-(data.length*16+30))/2)); return {zpl:'^BY2,3\n^FO'+bx+','+y+'\n^B3N,N,'+size+',Y,N\n'+aeFieldData(data,autoEnter)+'\n',h:size+30}; }
       case 'qr':        { var mag=Math.max(2,Math.min(10,size)),qpx=mag*25,qx=Math.max(10,Math.round((lw-qpx)/2)); return {zpl:'^FO'+qx+','+y+'\n^BQN,2,'+mag+'\n^FDMM,A'+data+'^FS\n',h:qpx+10}; }
       case 'datamatrix':{ var ds=Math.max(4,Math.min(20,size)),dpx=ds*10,dx=Math.max(10,Math.round((lw-dpx)/2)); return {zpl:'^FO'+dx+','+y+'\n^BXN,'+ds+',200\n^FD'+data+'^FS\n',h:dpx+10}; }
       case 'ean13':     { var ex=Math.max(10,Math.round((lw-300)/2)); return {zpl:'^BY2,3\n^FO'+ex+','+y+'\n^BEN,'+size+',Y,N\n^FD'+data.substring(0,12)+'^FS\n',h:size+30}; }
       case 'upca':      { var ux=Math.max(10,Math.round((lw-300)/2)); return {zpl:'^BY2,3\n^FO'+ux+','+y+'\n^BUN,'+size+',Y,N\n^FD'+data.substring(0,11)+'^FS\n',h:size+30}; }
-      default: { var bm=3,bw=(11+((data.length+1)*11)+11+13)*bm,bx2=Math.max(10,Math.round((lw-bw)/2)); return {zpl:'^BY'+bm+',3\n^FO'+bx2+','+y+'\n^BCN,'+size+',N,N,N\n'+aeFieldData(data,autoEnter)+'\n',h:size+20}; }
+      /* Auto-enter uses Code 128 automatic mode (,A) so the printer switches to the
+         subset that can encode the CR control character (hex 0D). */
+      default: { var bm=3,bw=(11+((data.length+1)*11)+11+13)*bm,bx2=Math.max(10,Math.round((lw-bw)/2)),mode=autoEnter?',A':''; return {zpl:'^BY'+bm+',3\n^FO'+bx2+','+y+'\n^BCN,'+size+',N,N,N'+mode+'\n'+aeFieldData(data,autoEnter)+'\n',h:size+20}; }
     }
   }
 
@@ -1796,7 +1800,8 @@ document.body.innerHTML = [
     var approxChars=String(data).length+1; /* +1 for the CR */
     var bw=(11+(approxChars*11)+11+13)*mod;
     var bx=Math.max(10,Math.round((lw-bw)/2));
-    zpl+='^BY'+mod+',3\n^FO'+bx+','+y+'\n^BCN,'+bcH+',N,N,N\n'+aeFieldData(data,true)+'\n';
+    /* ,A = Code 128 automatic mode so the CR (hex 0D) encodes via Subset A */
+    zpl+='^BY'+mod+',3\n^FO'+bx+','+y+'\n^BCN,'+bcH+',N,N,N,A\n'+aeFieldData(data,true)+'\n';
     y+=bcH+24;
     var cap=caption||(data||'ENTER');
     var capFs=52;
