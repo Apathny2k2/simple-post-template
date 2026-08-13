@@ -3459,8 +3459,6 @@ function routePrintFromMenu(asin) {
         '.fcrp-credit { font-size: 11px; color: #555; margin-top: 12px; }'
     ].join('\n'));
 
-    // --- Space/particle background removed (kept as a no-op flag) ---
-    var galaxyEnabled = false;
 
     // --- Feature definitions for toggles ---
     var featureDescriptions = {
@@ -3536,9 +3534,9 @@ function routePrintFromMenu(asin) {
     // --- Assemble intro page ---
     var html = '<div id="fcrp-intro">'
 
-        // Hero: particle text title
+        // Hero title
         + '<div class="fcrp-hero">'
-        + (galaxyEnabled ? '<canvas id="fcrp-title-canvas" width="700" height="160" style="display:block;margin:0 auto 8px;cursor:crosshair"></canvas>' : '<h1>FCR <span class="hl">Plus</span></h1>')
+        + '<h1>FCR <span class="hl">Plus</span></h1>'
         + '<p class="sub">All-in-one FC Research Enhancement</p>'
         + '<span class="ver">v' + VERSION + '</span>'
         + '<span class="ver-status" id="fcrp-ver-status"></span>'
@@ -3602,130 +3600,6 @@ function routePrintFromMenu(asin) {
 
     $('body').append(html);
 
-    // --- Particle text title: "FCR Plus" with Amazon smile ---
-    if (galaxyEnabled) (function () {
-        var tCanvas = document.getElementById('fcrp-title-canvas');
-        if (!tCanvas) return;
-        var tCtx = tCanvas.getContext('2d');
-        var tW = tCanvas.width;
-        var tH = tCanvas.height;
-        var titleParticles = [];
-        var tMouse = { x: -9999, y: -9999, active: false };
-
-        // Sample text pixels to get particle home positions
-        function sampleText() {
-            var off = document.createElement('canvas');
-            off.width = tW; off.height = tH;
-            var oc = off.getContext('2d');
-            oc.fillStyle = '#fff';
-            oc.font = 'bold 72px "Amazon Ember", Arial, sans-serif';
-            oc.textAlign = 'center';
-            oc.textBaseline = 'middle';
-            oc.fillText('FCR Plus', tW / 2, tH / 2 - 18);
-            // Amazon smile: smooth arc from under 'C' to under 's', arrow at right end
-            oc.fillStyle = '#fff';
-            oc.strokeStyle = '#fff';
-            oc.lineWidth = 6;
-            oc.lineCap = 'round';
-            oc.beginPath();
-            // Arc starts left of center, curves down, ends right with arrow
-            var smileY = tH / 2 + 38;
-            var smileStartX = tW / 2 - 120;
-            var smileEndX = tW / 2 + 130;
-            var smileCurve = 28;
-            oc.moveTo(smileStartX, smileY - 8);
-            oc.quadraticCurveTo(tW / 2, smileY + smileCurve, smileEndX, smileY - 12);
-            oc.stroke();
-            // Arrow at end (pointing up-right)
-            oc.beginPath();
-            oc.moveTo(smileEndX - 2, smileY - 12);
-            oc.lineTo(smileEndX + 10, smileY - 20);
-            oc.lineTo(smileEndX + 4, smileY - 6);
-            oc.closePath();
-            oc.fill();
-            var data = oc.getImageData(0, 0, tW, tH);
-            var pts = [];
-            var gap = 2;
-            for (var y = 0; y < tH; y += gap) {
-                for (var x = 0; x < tW; x += gap) {
-                    if (data.data[(y * tW + x) * 4 + 3] > 128) {
-                        pts.push({ hx: x, hy: y });
-                    }
-                }
-            }
-            return pts;
-        }
-
-        var points = sampleText();
-        var thHov = THEMES[THEME].hover;
-        var acRgb = [parseInt(thHov.slice(1,3),16), parseInt(thHov.slice(3,5),16), parseInt(thHov.slice(5,7),16)];
-        var brRgb = [Math.min(255, acRgb[0] * 2), Math.min(255, acRgb[1] * 2), Math.min(255, acRgb[2] * 2)];
-        for (var i = 0; i < points.length; i++) {
-            titleParticles.push({
-                x: points[i].hx + (Math.random() - 0.5) * 200,
-                y: points[i].hy + (Math.random() - 0.5) * 200,
-                hx: points[i].hx, hy: points[i].hy,
-                vx: 0, vy: 0,
-                r: 1.4 + Math.random() * 1.2,
-                color: Math.random() < 0.6
-                    ? 'rgba(243,125,21,' + (0.7 + Math.random() * 0.3).toFixed(2) + ')'
-                    : 'rgba(' + brRgb[0] + ',' + brRgb[1] + ',' + brRgb[2] + ',' + (0.6 + Math.random() * 0.4).toFixed(2) + ')'
-            });
-        }
-
-        tCanvas.addEventListener('mousemove', function (e) {
-            var r = tCanvas.getBoundingClientRect();
-            tMouse.x = e.clientX - r.left;
-            tMouse.y = e.clientY - r.top;
-        });
-        tCanvas.addEventListener('mousedown', function () { tMouse.active = true; });
-        tCanvas.addEventListener('mouseup', function () { tMouse.active = false; });
-        tCanvas.addEventListener('mouseleave', function () { tMouse.x = -9999; tMouse.active = false; });
-
-        function titleFrame() {
-            tCtx.clearRect(0, 0, tW, tH);
-            for (var i = 0; i < titleParticles.length; i++) {
-                var p = titleParticles[i];
-                if (tMouse.active && tMouse.x > 0) {
-                    // Pull hard toward mouse
-                    var dx = tMouse.x - p.x;
-                    var dy = tMouse.y - p.y;
-                    var dist = Math.sqrt(dx * dx + dy * dy) || 1;
-                    var force = 2.5 / (dist / 60 + 0.4);
-                    p.vx += (dx / dist) * force;
-                    p.vy += (dy / dist) * force;
-                } else if (tMouse.x > 0) {
-                    // Hover: gentle push away
-                    var hx = p.x - tMouse.x;
-                    var hy = p.y - tMouse.y;
-                    var hd = Math.sqrt(hx * hx + hy * hy) || 1;
-                    if (hd < 60) {
-                        var push = (1 - hd / 60) * 1.5;
-                        p.vx += (hx / hd) * push;
-                        p.vy += (hy / hd) * push;
-                    }
-                }
-                // Spring back home
-                var thx = p.hx - p.x;
-                var thy = p.hy - p.y;
-                var springK = tMouse.active ? 0.008 : 0.07;
-                p.vx += thx * springK;
-                p.vy += thy * springK;
-                // Damping
-                p.vx *= tMouse.active ? 0.96 : 0.85;
-                p.vy *= tMouse.active ? 0.96 : 0.85;
-                p.x += p.vx;
-                p.y += p.vy;
-                // Draw
-                tCtx.beginPath();
-                tCtx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
-                tCtx.fillStyle = p.color;
-                tCtx.fill();
-            }
-            requestAnimationFrame(titleFrame);
-        }
-        titleFrame();
-    })();
 
 
     // --- Event: toggle switches ---
