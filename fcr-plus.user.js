@@ -537,9 +537,7 @@ var FEATURES = {
     asinPrinting: { default: true, label: 'ASIN Printing', category: 'product' },
     prepFunctionality: { default: true, label: 'Prep Functionality', category: 'product' },
     rnoProfiler: { default: true, label: 'RNO ASIN Profiler', category: 'product' },
-    maxUnits: { default: false, label: 'Max Units (Pallet/Cage)', category: 'product' },
     // Inventory Tools
-    manualAsinProfiler: { default: true, label: 'Manual ASIN Profiler', category: 'tool' },
     rnoSizeProfiler: { default: true, label: 'RNO Size Profiler', category: 'tool' },
     hazmatLevels: { default: true, label: 'Hazmat Levels', category: 'tool' },
     weightCalculator: { default: true, label: 'Weight Calculator', category: 'tool' },
@@ -2183,52 +2181,6 @@ function routePrintFromMenu(asin) {
             }).catch(function () { return null; });
         }
 
-        function processManual(resultsEl) {
-            resultsEl.textContent = 'Processing...';
-            resultsEl.style.color = '';
-            var fc = getFC();
-            if (!fc) { resultsEl.textContent = 'Error: No FC'; resultsEl.style.color = 'red'; return; }
-
-            loadAllTableRows().then(function () {
-                var tbody = document.querySelector('#table-inventory tbody');
-                var rows = Array.from(tbody.querySelectorAll('tr:not(.asin-profile-row)'));
-                document.querySelectorAll('.asin-profile-row').forEach(function (r) { r.remove(); });
-                Pills.clear('manual');
-
-                var items = collectInventoryAsins(tbody).filter(function (item) {
-                    return !item.row.classList.contains('asin-profile-row');
-                });
-
-                var done = 0;
-                (function nextBatch(i) {
-                    if (i >= items.length) {
-                        resultsEl.textContent = 'Manual Profile done (' + done + ')';
-                        expandDataTable('#table-inventory');
-                        return;
-                    }
-                    var batch = items.slice(i, i + 5);
-                    var promises = batch.map(function (item) {
-                        return fetchDims(item.asin, fc).then(function (info) {
-                            if (!info) return;
-                            var group = classify(info.max, info.mid, info.min, info.weight);
-                            Pills.add(item.row, {
-                                kind: 'manual',
-                                label: 'Manual',
-                                text: group,
-                                full: 'Manual ASIN Profile (' + item.asin + '): ' + group,
-                                bg: '#1B5E20', // green (hardcoded, theme-independent)
-                                fg: '#ffffff'
-                            });
-                            done++;
-                            resultsEl.textContent = 'Processing... (' + done + '/' + items.length + ')';
-                        });
-                    });
-                    Promise.all(promises).then(function () {
-                        setTimeout(function () { nextBatch(i + 5); }, 500);
-                    });
-                })(0);
-            });
-        }
 
         // --- RNO profiler (official tool) ---
         function getRNOToken(fc) {
@@ -2546,7 +2498,6 @@ function routePrintFromMenu(asin) {
         }
 
         return {
-            processManual: processManual,
             processRNOBatch: processRNOBatch,
             autoRNO: autoRNO,
             cleanup: cleanup
@@ -3071,62 +3022,6 @@ function routePrintFromMenu(asin) {
         });
     }
 
-    /** Add pallet/cage capacity rows to product page - this code is old prob can deprecate */
-    function addCapacityRows() {
-      var productTable = document.querySelector('[data-section-type="product"] table.a-keyvalue');
-      if (!productTable) return;
-
-      var weightRow = Array.from(productTable.rows).find(function (r) {
-        return r.cells[0].textContent.trim() === 'Weight';
-      });
-      if (!weightRow) return;
-
-      var weightText = weightRow.cells[1].textContent.trim();
-      var weightMatch = weightText.match(/[\d.]+/);
-      if (!weightMatch) return;
-
-      var itemWeight = parseFloat(weightMatch[0]);
-      if (isNaN(itemWeight) || itemWeight <= 0) return;
-
-      var tbody = productTable.querySelector('tbody');
-      if (!tbody) return;
-
-      if (!palletAdded) {
-        var palletRow = document.createElement('tr');
-        var palletTh = document.createElement('th');
-        var palletTd = document.createElement('td');
-        palletTh.textContent = 'Max units on pallet (1500lbs)';
-        palletTd.textContent = Math.floor(CONFIG.palletMaxWeight / itemWeight);
-        palletRow.appendChild(palletTh);
-        palletRow.appendChild(palletTd);
-        tbody.appendChild(palletRow);
-        palletAdded = true;
-      }
-
-      if (!cageAdded) {
-        var cageRow = document.createElement('tr');
-        var cageTh = document.createElement('th');
-        var cageTd = document.createElement('td');
-        cageTh.textContent = 'Max units for tsCage (500lbs)';
-        cageTd.textContent = Math.floor(CONFIG.cageMaxWeight / itemWeight);
-        cageRow.appendChild(cageTh);
-        cageRow.appendChild(cageTd);
-        tbody.appendChild(cageRow);
-        cageAdded = true;
-      }
-    }
-
-    function initCapacityPolling() {
-      var interval = setInterval(function () {
-        var table = document.querySelector('[data-section-type="product"] table.a-keyvalue');
-        if (table) {
-          addCapacityRows();
-          if (palletAdded && cageAdded) clearInterval(interval);
-        }
-      }, 1000);
-      setTimeout(function () { clearInterval(interval); }, 10000);
-    }
-
     function resetFlags() {
       palletAdded = false;
       cageAdded = false;
@@ -3136,7 +3031,6 @@ function routePrintFromMenu(asin) {
       calcWeight: calcWeight,
       getAsinWeightPills: getAsinWeightPills,
       calcUtilization: calcUtilization,
-      initCapacityPolling: initCapacityPolling,
       resetFlags: resetFlags
     };
   })();
@@ -4425,7 +4319,6 @@ function routePrintFromMenu(asin) {
         darkMode: 'Dark theme with color options',
         prepFunctionality: 'Auto prep instructions on product pages',
         rnoProfiler: 'RNO ASIN profiler on product pages',
-        manualAsinProfiler: 'Manual profiler in inventory tools',
         rnoSizeProfiler: 'RNO size profiler in inventory tools',
         hazmatLevels: 'Hazmat level lookup via PanDash',
         weightCalculator: 'Pallet/cage weight calculator',
@@ -4433,8 +4326,7 @@ function routePrintFromMenu(asin) {
         csvExport: 'Export inventory/PO tables to CSV',
         asinLevelPrep: 'ASIN-level prep in tools dropdown',
         researchPrep: 'Research prep (requires shipment)',
-        expirationDate: 'Expiration date check for FCSKUs in inventory',
-        maxUnits: 'Max units per pallet/cage on product page'
+        expirationDate: 'Expiration date check for FCSKUs in inventory'
     };
 
     var myScripts = [
@@ -4450,8 +4342,8 @@ function routePrintFromMenu(asin) {
 
     var featureCards = [
         { icon: '', title: 'Printing', items: ['Printmon + Zebra ZPL support', 'Alt+Click to print any text', 'Print shortcut bar', 'Right-click print menu'] },
-        { icon: '', title: 'ASIN Profiling', items: ['Auto RNO profiler', 'Manual profiler (inventory)', 'RNO size profiler', 'Bin type detection'] },
-        { icon: '', title: 'Inventory Tools', items: ['Hazmat level checker', 'Weight calculator', 'Expiration date check', 'CSV export', 'Pallet/cage capacity', 'Container utilization %'] },
+        { icon: '', title: 'ASIN Profiling', items: ['Auto RNO profiler', 'RNO size profiler', 'Bin type detection'] },
+        { icon: '', title: 'Inventory Tools', items: ['Hazmat level checker', 'Weight calculator', 'Expiration date check', 'CSV export', 'Container utilization %'] },
         { icon: '', title: 'Prep', items: ['Auto ASIN-level prep', 'Research prep (PO-based)', 'Prep responsibility shown'] },
         { icon: '', title: 'UI Enhancements', items: ['Dark mode + 7 themes', 'Custom text colors', 'Right-click context menu', 'Badge photos on hover'] },
         { icon: '', title: 'Other', items: ['Auto-sort tables', 'SSCC quick glance', 'Product attribute highlights', 'Custom quick links'] }
@@ -5474,7 +5366,6 @@ function buildMenu(event, value, type) {
 
             createToolsDropdown('inventory', [
                 { label: 'RNO Asin Profiler', enabled: function () { return featureOn('rnoSizeProfiler'); }, action: function (r) { Profiler.processRNOBatch(r, '#table-inventory'); } },
-                { label: 'Manual ASIN Profile', enabled: function () { return featureOn('manualAsinProfiler'); }, action: function (r) { Profiler.processManual(r); } },
                 { separator: true, enabled: function () { return true; } },
                 { label: 'ASIN Level Prep', enabled: function () { return featureOn('asinLevelPrep'); }, action: function (r) {
                     var tbody = document.querySelector('#table-inventory tbody');
@@ -7062,8 +6953,6 @@ window.addEventListener('message', function (e) {
     document.addEventListener('DOMContentLoaded', Printing.addButtons);
     setTimeout(Printing.addButtons, 2000);
 
-    // Pallet/cage capacity on product pages
-    if (featureOn('maxUnits')) Weight.initCapacityPolling();
 
     // Table sort (newest first)
     waitForKeyElements('#purchase-order-placed', function () { $('#purchase-order-placed').click().click(); }, true);
@@ -7100,7 +6989,6 @@ window.addEventListener('message', function (e) {
                 setTimeout(function () {
                     Prep.autoAdd();
                     Profiler.autoRNO();
-                    if (featureOn('maxUnits')) Weight.initCapacityPolling();
                 }, 2000);
             }
 
