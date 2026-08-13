@@ -16,7 +16,6 @@
 // @match        *://qifcr.eu.aftx.amazonoperations.app/*
 // @match        *://qifcr.fe.aftx.amazonoperations.app/*
 // @match        *://qifcr.jp.aftx.amazonoperations.app/*
-// @match        https://na.diagnostics.arnold.pars.amazon.dev/*
 
 // @icon          https://drive-render.corp.amazon.com/view/kyleldri@/Untitled.png
 // @updateURL     https://tamarin.aces.amazon.dev/scripts/fcr-plus/install.user.js
@@ -133,7 +132,6 @@
 
 (function () {
   'use strict';
-  if (window.location.hostname === 'na.diagnostics.arnold.pars.amazon.dev') return;
 
 
   /*
@@ -143,22 +141,19 @@
    *
    *  [S1]  CONFIG & CONSTANTS
    *  [S2]  UTILITIES
-   *  [S3]  STYLES
+   *  [S3]  STYLES (single dark theme + tw-* Tailwind utility layer + tokens)
    *  [S4]  PRINTING powered by Printmon
    *  [S5]  PREP
-   *  [S6]  PROFILER (Manual + RNO)
+   *  [S6]  PROFILER (RNO)
    *  [S7]  HAZMAT
    *  [S8]  WEIGHT & UTILIZATION
    *  [S8b] EXPIRATION DATE CHECK (tools: inventory)
    *  [S8c] PRICE LOOKUP (tools: inventory)
    *  [S9]  CSV EXPORT
-   *  [S10] FRX LABELS
-   *  [S11] UI (Sidebar, Context Menu, Images, Badges)
-   *  [S12] TIME CONVERTER
+   *  [S11] UI (Sidebar, Context Menu)
    *  [S13] PRINTMON 3
-   *  [S14] Appointment finder
    *  [S15] Printing powered by Zebra ZPL
-   *  [S16] ARNOLD (product safety/recall status)
+   *  [S17] OPEN CONTAINER
    *  [SBOOT] INIT (boot)
    *
    *  Ctrl+F any [S#] tag to jump to that section.
@@ -210,14 +205,6 @@
         NA_AFTX: 'https://qifcr.na.aftx.amazonoperations.app',
         EU_AFTX: 'https://qifcr.eu.aftx.amazonoperations.app',
         FE_AFTX: 'https://qifcr.fe.aftx.amazonoperations.app'
-    },
-    frxLabelPrinter: {
-        NA:      'https://aftfreightlabelprinterapp-na.aka.amazon.com',
-        EU:      'https://aftfreightlabelprinterapp-eu.aka.amazon.com',
-        FE:      'https://aftfreightlabelprinterapp-fe.aka.amazon.com',
-        NA_AFTX: 'https://frxprinter.na.aftx.amazonoperations.app',
-        EU_AFTX: 'https://frxprinter.eu.aftx.amazonoperations.app',
-        FE_AFTX: 'https://frxprinter.fe.aftx.amazonoperations.app'
     },
     prepmanager: {
         NA: 'https://prepmanager-iad.amazon.com',
@@ -380,13 +367,6 @@
 
         return { add: add, clear: clear };
     })();
-
-    // =========================================================================
-    // Custom Theme Modal: popup color editor for the 'custom' theme + custom text color
-    // Triggered when user selects 'Custom' in theme/text dropdowns, or via Edit button.
-    // =========================================================================
-
-
 
 var FEATURES = {
     // Global
@@ -2058,48 +2038,6 @@ function routePrintFromMenu(asin) {
         var fcCode = null;
         var rnoChecked = false;
 
-        // --- Bin type math ---
-        function isBarrel(h, l, w, lb) {
-            return l >= 48 && l < 99 && h < 4 && w < 4 && lb < 49.99;
-        }
-
-        function classify(max, mid, min, wt) {
-            if (max < 18 && mid < 14 && min < 8 && wt <= 19.99) {
-                return (max * mid * min < 600) ? 'Sortable' : 'Large Sortable';
-            }
-            if (max >= 18 && max < 28 && mid < 14 && min < 8 && wt < 15) return 'Drawer';
-            if (max < 18 && mid < 14 && min < 8 && wt > 19.9 && wt < 49.99) return 'Library';
-            if (max < 28 && mid < 24 && min < 20 && wt <= 49.99) return 'Library Deep';
-            if (max >= 18 && max < 28 && mid < 14 && min < 8 && wt > 15 && wt < 49.99) return 'Library Deep Drawer';
-            if (max >= 28 && max < 48 && mid < 4 && min < 4 && wt < 49.99) return 'Bat Bin';
-            if (isBarrel(min, max, mid, wt)) return 'Barrel';
-            if (max < 50 && mid < 16 && min < 16 && wt < 49.99) return 'Half Vert';
-            if (max < 50 && mid < 42 && min < 28 && wt < 49.99) return 'RAINBOW';
-            if (max < 99 && mid < 24 && min < 20 && wt < 49.99) return 'Passthrough';
-            if (max >= 43 && max <= 99) {
-                if (!isBarrel(min, max, mid, wt)) return 'Passthrough-Bulk';
-                if ((min >= 20 && mid >= 24 && max >= 50) || (mid >= 24 && max >= 50) || (min >= 20 && max >= 50) || (min >= 27 && mid >= 42)) {
-                    return 'Passthrough-Bulk';
-                }
-            }
-            if (max < 99 && wt > 49.99) return 'Passthrough Bulk';
-            if (max >= 99) return 'Ladder';
-            if (max >= 70 && max < 96 && mid < 10 && min < 10 && wt < 49.99) return 'Cantilever';
-            return (max < 28 && mid < 24 && min < 20) || (max < 50 && mid < 16 && min < 16) ? 'Misc VNA' : 'Misc Rainbow';
-        }
-
-        // --- Manual profiler (dimension based) ---
-        function fetchDims(asin, fc) {
-            return fetchProductPage(asin, fc).then(function (doc) {
-                var weightText = readProductField(doc, 'Weight');
-                var dimText = readProductField(doc, 'Dimensions') || readProductField(doc, 'Dimensiones');
-                if (!weightText || !dimText) return null;
-                var weight = parseFloat(weightText.split(' ')[0]);
-                var dims = parseDimensions(dimText);
-                if (!dims || isNaN(weight)) return null;
-                return { asin: asin, weight: weight, max: dims.max, mid: dims.mid, min: dims.min };
-            }).catch(function () { return null; });
-        }
 
 
         // --- RNO profiler (official tool) ---
@@ -3492,7 +3430,7 @@ function routePrintFromMenu(asin) {
         { icon: '', title: 'ASIN Profiling', items: ['Auto RNO profiler', 'RNO size profiler', 'Bin type detection'] },
         { icon: '', title: 'Inventory Tools', items: ['Hazmat level checker', 'Weight calculator', 'Expiration date check', 'CSV export', 'Container utilization %'] },
         { icon: '', title: 'Prep', items: ['Auto ASIN-level prep', 'Research prep (PO-based)', 'Prep responsibility shown'] },
-        { icon: '', title: 'UI Enhancements', items: ['Dark mode + 7 themes', 'Custom text colors', 'Right-click context menu', 'Badge photos on hover'] },
+        { icon: '', title: 'UI Enhancements', items: ['Dark mode', 'Right-click context menu', 'Tailwind-styled UI'] },
         { icon: '', title: 'Other', items: ['Auto-sort tables', 'SSCC quick glance', 'Product attribute highlights', 'Custom quick links'] }
     ];
 
