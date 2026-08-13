@@ -5743,6 +5743,118 @@ window.addEventListener('message', function (e) {
 
 
 
+  // ======= [S17] OPEN CONTAINER =======
+  //
+  // Register / "open" a container without switching to another app. Adds an
+  // "Open Container" button to the sidebar that opens a small panel (built from
+  // the tw-* utility layer) with a container-ID field.
+  //
+  // The real sideline/overage request is NOT wired yet. To activate it, fill in
+  // CONTAINER_API below with the request the current app makes (URL, method,
+  // body) and set `configured: true` — submit() already routes through it.
+  var OpenContainer = (function () {
+
+    var CONTAINER_API = {
+      configured: false,                 // flip to true once url/buildBody are filled in
+      method: 'POST',
+      url: '',                           // e.g. getURL('dockExecution') + '/containers/open'
+      headers: { 'Content-Type': 'application/json' },
+      buildBody: function (id) { return JSON.stringify({ containerId: id }); },
+      // Optional: map a raw XHR response to a boolean success (default: 2xx).
+      isSuccess: function (r) { return r.status >= 200 && r.status < 300; }
+    };
+
+    var panel = null;
+
+    function setStatus(msg, kind) {
+      var s = document.getElementById('oc-status');
+      if (!s) return;
+      s.textContent = msg || '';
+      s.className = 'tw-text-xs tw-mt-2 ' +
+        (kind === 'err' ? 'tw-text-danger' : kind === 'ok' ? 'tw-text-success' : 'tw-text-dim');
+    }
+
+    function submit() {
+      var input = document.getElementById('oc-input');
+      var id = (input && input.value || '').trim();
+      if (!id) { setStatus('Enter a container ID.', 'err'); return; }
+
+      if (!CONTAINER_API.configured || !CONTAINER_API.url) {
+        // Scaffold mode — no endpoint captured yet.
+        setStatus('Ready to open "' + id + '". API not wired yet — paste the request into CONTAINER_API.', 'err');
+        return;
+      }
+
+      setStatus('Opening container ' + id + '…', 'info');
+      GM_xmlhttpRequest({
+        method: CONTAINER_API.method,
+        url: CONTAINER_API.url,
+        headers: CONTAINER_API.headers,
+        data: CONTAINER_API.buildBody(id),
+        onload: function (r) {
+          if (CONTAINER_API.isSuccess(r)) setStatus('Container ' + id + ' opened ✓', 'ok');
+          else setStatus('Open failed (HTTP ' + r.status + ').', 'err');
+        },
+        onerror: function () { setStatus('Network error opening container.', 'err'); }
+      });
+    }
+
+    function buildPanel() {
+      if (panel) return panel;
+      panel = document.createElement('div');
+      panel.id = 'oc-panel';
+      panel.className = 'tw-card tw-fixed tw-shadow';
+      panel.style.cssText = 'display:none;top:64px;left:12px;z-index:99999;width:264px;padding:14px';
+      panel.innerHTML =
+          '<div class="tw-flex tw-items-center tw-justify-between tw-mb-2">'
+        +   '<strong class="tw-text tw-text-sm tw-uppercase tw-tracking-wide">Open Container</strong>'
+        +   '<span id="oc-close" class="tw-cursor-pointer tw-text-mute" title="Close" style="font-size:18px;line-height:1">×</span>'
+        + '</div>'
+        + '<div class="tw-text-xs tw-text-dim tw-mb-2">Register a container via sideline overage — no separate app needed.</div>'
+        + '<input id="oc-input" class="tw-input tw-mb-2" type="text" placeholder="Container ID (e.g. tscage…)" autocomplete="off">'
+        + '<button id="oc-submit" class="tw-btn tw-btn-accent tw-w-full">Open Container</button>'
+        + '<div id="oc-status" class="tw-text-xs tw-mt-2 tw-text-dim"></div>';
+      document.body.appendChild(panel);
+
+      panel.querySelector('#oc-close').addEventListener('click', hide);
+      panel.querySelector('#oc-submit').addEventListener('click', submit);
+      panel.querySelector('#oc-input').addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') { e.preventDefault(); submit(); }
+      });
+      return panel;
+    }
+
+    function show() {
+      buildPanel();
+      panel.style.display = 'block';
+      var input = document.getElementById('oc-input');
+      // Prefill from a container page URL (tscage… / tscart…) when present.
+      var v = (window.location.href.split('=')[1] || '');
+      if (input && !input.value && (v.indexOf('tscage') === 0 || v.indexOf('tscart') === 0)) input.value = v;
+      if (input) input.focus();
+      setStatus('', '');
+    }
+    function hide() { if (panel) panel.style.display = 'none'; }
+    function toggle() { if (panel && panel.style.display === 'block') hide(); else show(); }
+
+    function init() {
+      waitForKeyElements('.fcr-menu-container', function () {
+        var bar = document.querySelector('.fcr-menu-container');
+        if (!bar || document.getElementById('open-container-button')) return;
+        var btn = document.createElement('button');
+        btn.id = 'open-container-button';
+        btn.className = 'fcr-sidebar-button';
+        btn.setAttribute('role', 'button');
+        btn.innerHTML = '<span class="text">Open Container</span>';
+        btn.addEventListener('click', toggle);
+        bar.appendChild(btn);
+      }, true);
+    }
+
+    return { init: init, submit: submit, CONTAINER_API: CONTAINER_API };
+  })();
+
+
   // ======= [SBOOT] INIT =======
   //
   // Single boot sequence. Nothing above runs anything.
@@ -5760,6 +5872,7 @@ window.addEventListener('message', function (e) {
     UI.tabIcon();
     UI.introPage();
     UI.sidebar();
+    OpenContainer.init();
    // TabView.init();
     UI.contextMenu();
     UI.headerEnhance();
