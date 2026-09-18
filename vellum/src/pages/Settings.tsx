@@ -3,6 +3,7 @@ import { Card } from '../components/Card'
 import { Icon } from '../lib/icons'
 import type { IconName } from '../lib/icons'
 import { navigate } from '../lib/router'
+import { Support } from './Support'
 import './Settings.css'
 
 type SectionId =
@@ -252,22 +253,7 @@ function Body({ section }: { section: Section }) {
       )
 
     case 'support':
-      return (
-        <>
-          <PaidGate label="Support" />
-          <Card title="Priority support" note="Paid tiers skip the community queue." dividedHead>
-            <div className="kv">
-              <div className="kv__row"><span className="kv__k">Queue</span><span className="kv__v">Community</span></div>
-              <div className="kv__row"><span className="kv__k">Response target</span><span className="kv__v">Best effort</span></div>
-            </div>
-            <div className="row-actions" style={{ marginTop: 'var(--sp-4)' }}>
-              <button className="btn">
-                <Icon name="external" size={14} /> Open community board
-              </button>
-            </div>
-          </Card>
-        </>
-      )
+      return <Support />
   }
 }
 

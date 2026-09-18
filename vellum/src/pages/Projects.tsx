@@ -205,8 +205,8 @@ function Library({ sceneId, kind }: { sceneId: string; kind: AssetKind }) {
 }
 
 /** The first scene: pick a project, then a shelf. */
-function Gateway({ sceneId, onScene }: { sceneId: string; onScene: (id: string) => void }) {
-  const scene = scenes.find((s) => s.id === sceneId) ?? scenes[0]
+function Gateway() {
+  const scene = scenes[0]
 
   const tiles: Array<{ kind: AssetKind; icon: 'cube' | 'anim'; desc: string; count: number; palette: [string, string, string] }> = [
     {
@@ -236,21 +236,6 @@ function Gateway({ sceneId, onScene }: { sceneId: string; onScene: (id: string) 
             heading changes.
           </p>
         </div>
-      </div>
-
-      <div className="scene-row">
-        {scenes.map((s) => (
-          <button
-            key={s.id}
-            className="scene-chip"
-            aria-pressed={s.id === scene.id}
-            onClick={() => onScene(s.id)}
-          >
-            <Icon name="scene" size={14} />
-            {s.name}
-            <span className="scene-chip__n">{s.counts.items + s.counts.mobs}</span>
-          </button>
-        ))}
       </div>
 
       <div className="gateway">
@@ -290,7 +275,6 @@ function Gateway({ sceneId, onScene }: { sceneId: string; onScene: (id: string) 
 
 export function Projects({ segments }: { segments: string[] }) {
   // #/projects | #/projects/:sceneId/:kind
-  const [pickedScene, setPickedScene] = useState(scenes[0].id)
   const routeScene = segments[1]
   const routeKind = segments[2]
 
@@ -299,5 +283,5 @@ export function Projects({ segments }: { segments: string[] }) {
     return <Library key={`${known}-${routeKind}`} sceneId={known} kind={routeKind} />
   }
 
-  return <Gateway sceneId={pickedScene} onScene={setPickedScene} />
+  return <Gateway />
 }
