@@ -1,0 +1,188 @@
+/* ---------------------------------------------------------------
+   Vellum design tokens.
+
+   Two surfaces, one palette:
+     - Midnight navy  : the editor, and the app in dark mode
+     - Parchment light: the dashboard / library / settings chrome
+   Everything else is derived from those two families so the app
+   reads as one system whichever surface you are on.
+   --------------------------------------------------------------- */
+
+:root {
+  /* --- raw palette ------------------------------------------- */
+  --navy-950: #070c16;
+  --navy-900: #0b1220;
+  --navy-850: #0e1728;
+  --navy-800: #101a2e;
+  --navy-750: #131f37;
+  --navy-700: #16223c;
+  --navy-600: #1d2c4b;
+  --navy-500: #26395f;
+  --navy-400: #3a5180;
+  --navy-300: #5c74a3;
+  --navy-200: #8fa2c4;
+  --navy-100: #c3cee1;
+
+  --parch-50: #fdfaf3;
+  --parch-100: #f8f2e6;
+  --parch-200: #f1e8d6;
+  --parch-300: #e5d9c1;
+  --parch-400: #d3c3a5;
+  --parch-500: #b9a684;
+
+  --brass-600: #96742f;
+  --brass-500: #b08d3f;
+  --brass-400: #c8a96a;
+  --brass-300: #dec89a;
+
+  --clay-500: #a8563f;
+  --sage-500: #5b7a63;
+
+  /* --- type -------------------------------------------------- */
+  --font-sans: 'Vellum Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'Vellum Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+
+  --fs-2xs: 0.6875rem;
+  --fs-xs: 0.75rem;
+  --fs-sm: 0.8125rem;
+  --fs-base: 0.875rem;
+  --fs-md: 1rem;
+  --fs-lg: 1.125rem;
+  --fs-xl: 1.375rem;
+  --fs-2xl: 1.75rem;
+  --fs-3xl: 2.25rem;
+
+  --tracking-wide: 0.08em;
+  --tracking-caps: 0.14em;
+
+  /* --- geometry ---------------------------------------------- */
+  --r-xs: 2px;
+  --r-sm: 4px;
+  --r-md: 6px;
+  --r-lg: 10px;
+  --r-xl: 14px;
+  --r-pill: 999px;
+
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+  --sp-6: 24px;
+  --sp-8: 32px;
+  --sp-10: 40px;
+  --sp-12: 48px;
+
+  /* fluid rhythm - the layout breathes with the viewport */
+  --gutter: clamp(16px, 3.2vw, 44px);
+  --shell-max: 1680px;
+  --topbar-h: 56px;
+
+  --dur-fast: 120ms;
+  --dur: 200ms;
+  --dur-slow: 340ms;
+  --ease: cubic-bezier(0.22, 0.61, 0.36, 1);
+  --ease-bounce: cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* ---------------- light (parchment) - default ---------------- */
+:root,
+[data-theme='light'] {
+  --bg: var(--parch-100);
+  --bg-sunken: var(--parch-200);
+  --surface: var(--parch-50);
+  --surface-2: var(--parch-100);
+  --surface-raised: #ffffff;
+
+  --ink: var(--navy-900);
+  --ink-muted: #4a5a77;
+  --ink-faint: #7f8da7;
+  --ink-invert: var(--parch-50);
+
+  --line: var(--parch-300);
+  --line-strong: var(--parch-400);
+  --line-dashed: var(--parch-400);
+
+  --accent: var(--navy-700);
+  --accent-ink: var(--parch-50);
+  --accent-soft: rgba(22, 34, 60, 0.07);
+  --highlight: var(--brass-500);
+  --highlight-soft: rgba(176, 141, 63, 0.14);
+
+  --ok: var(--sage-500);
+  --warn: var(--brass-600);
+  --danger: var(--clay-500);
+
+  --shadow-sm: 0 1px 2px rgba(11, 18, 32, 0.06);
+  --shadow: 0 2px 6px rgba(11, 18, 32, 0.08), 0 1px 2px rgba(11, 18, 32, 0.05);
+  --shadow-lg: 0 18px 40px -18px rgba(11, 18, 32, 0.34), 0 2px 8px rgba(11, 18, 32, 0.08);
+  --shadow-pop: 0 26px 60px -22px rgba(11, 18, 32, 0.45);
+
+  --grid-line: rgba(22, 34, 60, 0.07);
+}
+
+/* ---------------- dark (midnight navy) ----------------------- */
+[data-theme='dark'] {
+  --bg: var(--navy-900);
+  --bg-sunken: var(--navy-950);
+  --surface: var(--navy-800);
+  --surface-2: var(--navy-750);
+  --surface-raised: var(--navy-700);
+
+  --ink: var(--parch-100);
+  --ink-muted: var(--navy-200);
+  --ink-faint: var(--navy-300);
+  --ink-invert: var(--navy-900);
+
+  --line: var(--navy-600);
+  --line-strong: var(--navy-500);
+  --line-dashed: var(--navy-500);
+
+  --accent: var(--parch-200);
+  --accent-ink: var(--navy-900);
+  --accent-soft: rgba(241, 232, 214, 0.08);
+  --highlight: var(--brass-400);
+  --highlight-soft: rgba(200, 169, 106, 0.16);
+
+  --ok: #7da887;
+  --warn: var(--brass-400);
+  --danger: #cd7c63;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
+  --shadow-lg: 0 20px 44px -18px rgba(0, 0, 0, 0.75), 0 2px 8px rgba(0, 0, 0, 0.4);
+  --shadow-pop: 0 28px 64px -22px rgba(0, 0, 0, 0.8);
+
+  --grid-line: rgba(195, 206, 225, 0.07);
+}
+
+/* The editor is always midnight, regardless of the app theme:
+   you cannot judge a texture against parchment. */
+.editor-root {
+  --bg: var(--navy-900);
+  --bg-sunken: var(--navy-950);
+  --surface: var(--navy-850);
+  --surface-2: var(--navy-800);
+  --surface-raised: var(--navy-700);
+
+  --ink: var(--parch-100);
+  --ink-muted: var(--navy-200);
+  --ink-faint: var(--navy-300);
+  --ink-invert: var(--navy-900);
+
+  --line: var(--navy-700);
+  --line-strong: var(--navy-600);
+
+  --accent: var(--brass-400);
+  --accent-ink: var(--navy-950);
+  --accent-soft: rgba(200, 169, 106, 0.14);
+  --highlight: var(--brass-400);
+  --highlight-soft: rgba(200, 169, 106, 0.16);
+
+  --ok: #7da887;
+  --warn: var(--brass-400);
+  --danger: #cd7c63;
+
+  --grid-line: rgba(195, 206, 225, 0.06);
+  color-scheme: dark;
+}

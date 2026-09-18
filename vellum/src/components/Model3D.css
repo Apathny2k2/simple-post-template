@@ -1,0 +1,97 @@
+/* A CSS-transform stand-in for a renderer. Six divs to a box, no WebGL,
+   no meshes - enough to read as a model in a viewport. */
+
+.scene3d {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  perspective: 900px;
+  perspective-origin: 50% 46%;
+  touch-action: none;
+}
+
+.scene3d__stage {
+  position: absolute;
+  inset: 0;
+  transform-style: preserve-3d;
+  will-change: transform;
+  /* base pose: also what a spinning scene falls back to when the viewer
+     has asked for reduced motion and the animation never runs */
+  transform: translateZ(var(--zoom, 0px)) rotateX(var(--pitch, -22deg))
+    rotateY(var(--yaw, -34deg));
+}
+
+.scene3d--spin .scene3d__stage {
+  animation: scene-spin 9s linear infinite;
+}
+
+@keyframes scene-spin {
+  from { transform: translateZ(var(--zoom, 0px)) rotateX(var(--pitch, -22deg)) rotateY(0deg); }
+  to { transform: translateZ(var(--zoom, 0px)) rotateX(var(--pitch, -22deg)) rotateY(360deg); }
+}
+
+.scene3d__origin {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 0;
+  height: 0;
+  transform-style: preserve-3d;
+}
+
+.scene3d__grid {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform-style: preserve-3d;
+  pointer-events: none;
+}
+
+.scene3d__grid-plane {
+  position: absolute;
+  transform: translate(-50%, -50%) rotateX(90deg);
+  background-image:
+    linear-gradient(to right, var(--grid-line) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--grid-line) 1px, transparent 1px);
+  background-size: var(--cell, 24px) var(--cell, 24px);
+  border: 1px solid color-mix(in srgb, var(--ink-faint) 40%, transparent);
+}
+
+.scene3d__axis {
+  position: absolute;
+  height: 1px;
+  transform-origin: 0 50%;
+}
+
+.box3d {
+  position: absolute;
+  transform-style: preserve-3d;
+}
+
+.box3d__face {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  outline: 1px solid rgba(0, 0, 0, 0.16);
+  outline-offset: -1px;
+  background-repeat: no-repeat;
+}
+
+.box3d--selected .box3d__face {
+  outline: 1px solid var(--highlight);
+  outline-offset: -1px;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--highlight) 45%, transparent);
+}
+
+/* pixel-ish surface so the placeholder reads as a texture, not a gradient */
+.box3d__face::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.055) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 0, 0, 0.055) 1px, transparent 1px);
+  background-size: 8px 8px;
+  opacity: 0.9;
+}

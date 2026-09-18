@@ -1,0 +1,383 @@
+/* ---------- scene chooser (the "first scene") ---------- */
+
+.scene-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  margin-bottom: clamp(18px, 2.4vw, 28px);
+}
+
+.scene-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 13px;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--line-strong);
+  background: var(--surface);
+  color: var(--ink-muted);
+  font-size: var(--fs-sm);
+  transition: all var(--dur-fast) var(--ease);
+}
+
+.scene-chip:hover { color: var(--ink); border-color: var(--ink-faint); }
+
+.scene-chip[aria-pressed='true'] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+}
+
+.scene-chip__n {
+  font-family: var(--font-mono);
+  font-size: var(--fs-2xs);
+  opacity: 0.7;
+}
+
+.gateway {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr));
+  gap: clamp(12px, 1.6vw, 20px);
+}
+
+.gateway__tile {
+  position: relative;
+  display: grid;
+  grid-template-rows: 1fr auto;
+  min-height: clamp(210px, 26vh, 290px);
+  padding: var(--sp-5);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  text-align: left;
+  overflow: hidden;
+  transition: border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease),
+    transform var(--dur) var(--ease);
+}
+
+.gateway__tile:hover {
+  border-color: var(--ink-faint);
+  box-shadow: var(--shadow-lg);
+  transform: translateY(-3px);
+}
+
+.gateway__art {
+  position: absolute;
+  inset: 0;
+  opacity: 0.5;
+  pointer-events: none;
+  transition: opacity var(--dur-slow) var(--ease);
+}
+
+.gateway__tile:hover .gateway__art { opacity: 0.85; }
+
+.gateway__top {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--sp-3);
+}
+
+.gateway__icon {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--line-strong);
+  background: var(--surface-2);
+  color: var(--highlight);
+}
+
+.gateway__bottom { position: relative; }
+
+.gateway__name {
+  font-size: var(--fs-xl);
+  font-weight: 300;
+  letter-spacing: -0.02em;
+}
+
+.gateway__desc {
+  font-size: var(--fs-sm);
+  color: var(--ink-muted);
+  margin-top: 4px;
+  max-width: 34ch;
+}
+
+.gateway__go {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: var(--sp-3);
+  font-size: var(--fs-xs);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.gateway__tile:hover .gateway__go { color: var(--highlight); }
+
+/* ---------- shared library UI ---------- */
+
+.library {
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+  overflow: visible;
+}
+
+.library__bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+  border-bottom: 1px solid var(--line);
+}
+
+.library__back {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 10px 5px 6px;
+  border-radius: var(--r-md);
+  color: var(--ink-muted);
+  font-size: var(--fs-sm);
+  transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+}
+
+.library__back:hover { background: var(--accent-soft); color: var(--ink); }
+
+.library__tabs {
+  display: inline-flex;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  padding: 2px;
+  background: var(--surface-2);
+}
+
+.library__tab {
+  padding: 5px 14px;
+  border-radius: var(--r-sm);
+  font-size: var(--fs-sm);
+  color: var(--ink-muted);
+  transition: all var(--dur-fast) var(--ease);
+}
+
+.library__tab[aria-selected='true'] {
+  background: var(--surface-raised);
+  color: var(--ink);
+  box-shadow: var(--shadow-sm);
+}
+
+.library__search {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex: 1;
+  min-width: 150px;
+  max-width: 300px;
+  margin-left: auto;
+  padding: 5px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+  color: var(--ink-faint);
+}
+
+.library__search input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: none;
+  outline: none;
+  font-size: var(--fs-sm);
+  color: var(--ink);
+}
+
+.library__count {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  color: var(--ink-faint);
+  white-space: nowrap;
+}
+
+.library__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(196px, 100%), 1fr));
+  gap: clamp(14px, 1.8vw, 22px);
+  padding: clamp(18px, 2.4vw, 28px);
+}
+
+/* the 1.2x pop needs room either side of it; on a phone there is none,
+   and there is no hover to trigger it anyway */
+@media (max-width: 640px) {
+  .library__grid {
+    grid-template-columns: repeat(auto-fill, minmax(min(148px, 100%), 1fr));
+  }
+
+  .asset:hover,
+  .asset:focus-within,
+  .asset[data-open='true'] {
+    transform: scale(1.04);
+  }
+}
+
+.library__empty {
+  padding: clamp(40px, 8vw, 90px) var(--sp-6);
+  text-align: center;
+  color: var(--ink-faint);
+  font-size: var(--fs-sm);
+}
+
+/* ---------- asset card ---------- */
+
+.asset {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+  text-align: left;
+  /* bounce to 1.2x on hover, per the sketch */
+  transition: transform var(--dur-slow) var(--ease-bounce),
+    box-shadow var(--dur) var(--ease), border-color var(--dur) var(--ease);
+  will-change: transform;
+}
+
+.asset:hover,
+.asset:focus-within,
+.asset[data-open='true'] {
+  transform: scale(1.2);
+  z-index: 20;
+  border-color: var(--ink-faint);
+  box-shadow: var(--shadow-pop);
+  background: var(--surface-raised);
+}
+
+.asset__head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: 8px 8px 8px 10px;
+  border-bottom: 1px solid var(--line);
+}
+
+.asset__name {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.asset__badge { color: var(--ink-faint); }
+.asset:hover .asset__badge { color: var(--highlight); }
+
+.asset__stage {
+  position: relative;
+  aspect-ratio: 4 / 3;
+  overflow: hidden;
+  background:
+    radial-gradient(120% 90% at 50% 8%, color-mix(in srgb, var(--surface-raised) 70%, transparent), transparent 70%),
+    var(--bg-sunken);
+}
+
+/* the flat "2D render" placeholder that sits there until you hover */
+.asset__flat {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  transition: opacity var(--dur) var(--ease), transform var(--dur-slow) var(--ease);
+}
+
+.asset:hover .asset__flat,
+.asset:focus-within .asset__flat {
+  opacity: 0;
+  transform: scale(0.94);
+}
+
+.asset__live {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  transition: opacity var(--dur-slow) var(--ease);
+}
+
+.asset:hover .asset__live,
+.asset:focus-within .asset__live { opacity: 1; }
+
+.asset__renderlabel {
+  position: absolute;
+  left: 8px;
+  bottom: 6px;
+  font-family: var(--font-mono);
+  font-size: var(--fs-2xs);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  opacity: 0.8;
+}
+
+.asset:hover .asset__renderlabel { color: var(--highlight); }
+
+.asset__meta {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 2px var(--sp-2);
+  padding: 8px 10px 9px;
+  border-top: 1px solid var(--line);
+  font-family: var(--font-mono);
+  font-size: var(--fs-2xs);
+  color: var(--ink-faint);
+}
+
+/* the grid narrows a long way; clip rather than wrap to two lines */
+.asset__meta span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.asset__meta span:nth-child(even) { text-align: right; }
+
+/* ---------- pagination ---------- */
+
+.pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-1);
+  padding: var(--sp-3) var(--sp-4) var(--sp-4);
+  border-top: 1px solid var(--line);
+}
+
+.pager__btn {
+  min-width: 30px;
+  height: 30px;
+  padding-inline: 8px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: var(--r-sm);
+  border: 1px solid transparent;
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  color: var(--ink-muted);
+  transition: all var(--dur-fast) var(--ease);
+}
+
+.pager__btn:hover:not(:disabled) { background: var(--accent-soft); color: var(--ink); }
+.pager__btn:disabled { opacity: 0.35; cursor: default; }
+
+.pager__btn[aria-current='page'] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+}
