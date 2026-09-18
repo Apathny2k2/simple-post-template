@@ -5,9 +5,22 @@ no UI framework, no component library, no WebGL.
 
 ```bash
 pnpm install
-pnpm dev      # http://localhost:5173
-pnpm build
+pnpm dev             # http://localhost:5173
+pnpm build           # dist/
+pnpm build:single    # dist/vellum.html - one self-contained file
 ```
+
+`build:single` folds the build into a single HTML file: every stylesheet and
+module chunk inlined, the woff2 faces embedded as data URIs, the favicon along
+with them. Nothing is fetched at runtime, so the result opens by double-click,
+attaches to an email, or drops onto any static host. Pass `--fragment` for page
+content without the `<html>/<head>/<body>` wrapper, for hosts that supply their
+own document skeleton, and `--out <path>` to write somewhere other than `dist/`.
+
+Two details it handles, both of which bite otherwise: non-ASCII is escaped to
+`\uXXXX` so the page is correct even where a host serves it without a charset
+declaration, and any absolute reference left un-inlined fails the build rather
+than shipping a page that silently 404s its own assets.
 
 ## Screens
 
