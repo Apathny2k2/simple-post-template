@@ -8,9 +8,10 @@
   gap: var(--sp-4);
   height: var(--topbar-h);
   padding-inline: var(--gutter);
-  background: color-mix(in srgb, var(--bg) 88%, transparent);
-  backdrop-filter: blur(12px) saturate(1.1);
-  border-bottom: 1px solid var(--line);
+  background: linear-gradient(to bottom, rgba(7, 12, 25, 0.72), rgba(7, 12, 25, 0.28));
+  backdrop-filter: blur(20px) saturate(1.5);
+  -webkit-backdrop-filter: blur(20px) saturate(1.5);
+  border-bottom: 1px solid var(--glass-rim);
 }
 
 .topbar__brand {
@@ -23,52 +24,65 @@
   text-transform: uppercase;
   color: var(--ink);
   white-space: nowrap;
+  transition: transform var(--dur) var(--spring);
 }
+
+.topbar__brand:hover { transform: scale(1.03); }
+.topbar__brand:active { transform: scale(0.97); }
 
 .topbar__brand svg {
-  color: var(--highlight);
+  color: var(--wax-400);
+  filter: drop-shadow(0 0 8px rgba(205, 89, 78, 0.5));
 }
 
-/* the ringed nav from the sketch */
+/* the ringed nav from the sketch, cast in glass */
 .nav-pill {
   display: inline-flex;
   align-items: stretch;
-  border: 1px solid var(--line-strong);
   border-radius: var(--r-pill);
-  background: var(--surface);
-  padding: 3px;
-  box-shadow: var(--shadow-sm);
+  padding: 4px;
 }
 
 .nav-pill__link {
+  position: relative;
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 6px clamp(10px, 1.6vw, 20px);
+  padding: 6px clamp(12px, 1.6vw, 22px);
   border-radius: var(--r-pill);
+  border: 1px solid transparent;
   font-size: var(--fs-sm);
   color: var(--ink-muted);
   white-space: nowrap;
-  transition: color var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease);
+  transition: color var(--dur-fast) var(--ease), border-color var(--dur) var(--ease),
+    background var(--dur) var(--ease), box-shadow var(--dur) var(--ease),
+    transform var(--dur) var(--spring);
 }
 
-.nav-pill__link + .nav-pill__link {
-  box-shadow: inset 1px 0 0 var(--line);
-}
+.nav-pill__link + .nav-pill__link { box-shadow: inset 1px 0 0 var(--glass-rim); }
+.nav-pill__link:hover { color: var(--ink); transform: translateY(-1px); }
+.nav-pill__link:active { transform: scale(0.95); }
 
-.nav-pill__link:hover {
-  color: var(--ink);
-}
-
+/* active: a wax-outlined lozenge that springs into place */
 .nav-pill__link[aria-current='page'] {
-  background: var(--accent);
-  color: var(--accent-ink);
-  box-shadow: none;
+  color: var(--ink);
+  background: linear-gradient(
+      160deg,
+      rgba(205, 89, 78, 0.26),
+      rgba(148, 47, 46, 0.14) 60%,
+      rgba(148, 47, 46, 0.06)
+    );
+  border-color: var(--wax-400);
+  box-shadow: var(--glow-wax), var(--bevel-soft);
+  animation: pill-pop var(--dur-slow) var(--spring-lg);
 }
 
 .nav-pill__link[aria-current='page'] + .nav-pill__link,
-.nav-pill__link:has(+ [aria-current='page']) {
-  box-shadow: none;
+.nav-pill__link:has(+ [aria-current='page']) { box-shadow: none; }
+
+@keyframes pill-pop {
+  0% { transform: scale(0.84); }
+  100% { transform: scale(1); }
 }
 
 .topbar__right {
@@ -87,27 +101,59 @@
   white-space: nowrap;
 }
 
+.topbar__who {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 12px 5px 9px;
+  border-radius: var(--r-pill);
+  font-size: var(--fs-xs);
+  color: var(--ink-muted);
+  white-space: nowrap;
+}
+
+.topbar__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--wax-400);
+  box-shadow: 0 0 10px 1px rgba(205, 89, 78, 0.8);
+  animation: ember 3.2s var(--ease) infinite alternate;
+}
+
+@keyframes ember {
+  from { opacity: 0.55; }
+  to { opacity: 1; }
+}
+
+/* a wax-outlined icon button - the app's default affordance */
 .icon-btn {
   display: inline-grid;
   place-items: center;
-  width: 30px;
-  height: 30px;
+  width: 32px;
+  height: 32px;
   border-radius: var(--r-md);
   color: var(--ink-muted);
   border: 1px solid transparent;
   transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease),
-    border-color var(--dur-fast) var(--ease);
+    border-color var(--dur-fast) var(--ease), box-shadow var(--dur) var(--ease),
+    transform var(--dur) var(--spring);
 }
 
 .icon-btn:hover {
   background: var(--accent-soft);
   color: var(--ink);
-  border-color: var(--line);
+  border-color: var(--glass-rim-wax);
+  transform: translateY(-1px) scale(1.06);
 }
 
+.icon-btn:active { transform: scale(0.9); }
+
 .icon-btn[aria-pressed='true'] {
-  background: var(--accent);
-  color: var(--accent-ink);
+  background: var(--accent-soft);
+  border-color: var(--wax-400);
+  color: var(--wax-300);
+  box-shadow: var(--glow-wax);
 }
 
 @media (max-width: 720px) {

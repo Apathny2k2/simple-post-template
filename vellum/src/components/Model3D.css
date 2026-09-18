@@ -2,9 +2,11 @@
    no meshes - enough to read as a model in a viewport. */
 
 .scene3d {
-  position: relative;
-  width: 100%;
-  height: 100%;
+  /* Fills its (positioned) parent by inset rather than height:100%, which
+     collapses to zero whenever the parent's height comes from min-height
+     or flex sizing instead of a definite height. */
+  position: absolute;
+  inset: 0;
   overflow: hidden;
   perspective: 900px;
   perspective-origin: 50% 46%;

@@ -1,6 +1,6 @@
 # Vellum
 
-A minimal 3D model editor UI, built from the pencil sketches. React + Vite + TypeScript,
+A 3D model editor UI, built from the pencil sketches. React + Vite + TypeScript,
 no UI framework, no component library, no WebGL.
 
 ```bash
@@ -19,35 +19,69 @@ pnpm build
 | `#/settings/:section` | sheet 1 | Search + section list, free sections above the `Paid tiers` divider. |
 | `#/editor/:assetId` | - | The Blockbench-shaped editor, reached from a card's `...` → Open in Editor. |
 
-## Notes on the build
+## The material
 
-**Palette.** Two families - midnight navy and parchment - defined once in
-`src/styles/tokens.css` and re-pointed per theme. Light (parchment) is the default;
-the toggle in the top bar flips the app to midnight. The editor is always midnight,
-whichever theme the app is on, because you cannot judge a texture against parchment.
+One surface: **midnight velvet navy**. There is no light theme and no theme
+toggle - the whole app lives on a single deep navy field, defined once in
+`src/styles/tokens.css`.
 
-**Type.** Inter and JetBrains Mono, self-hosted as `woff2` under `public/fonts` with
-latin + latin-ext subsets and `unicode-range` splits. No request leaves the origin.
+**Liquid glass.** Every surface above the background is the same three-part
+recipe: a translucent tint, a `backdrop-filter` blur that saturates what it
+samples, and a rim lit along the top edge with a specular sheen laid over it
+(`.glass` in `base.css`, repeated inline where a component needs its own
+geometry). Glass over a flat fill reads as a grey box, so `body::before`
+carries a slow-drifting field of navy and wax light for the blurs to pick up,
+and `body::after` lays a fine grain over it for the velvet.
 
-**Layout.** Fluid throughout - `clamp()` gutters, `auto-fit` / `auto-fill` grids, and
-`dvh` in the editor. The editor's side columns are drag-resizable; below 900px the
-three columns stack.
+**Candle wax red** carries every affordance. Buttons, the active nav lozenge,
+selected outliner rows, tool toggles, switches, focus rings and the dashed
+reserved regions are all outlined in wax (`--wax-400`), lit with a matching
+glow. It is the only saturated colour in the app, so anything you can press is
+the thing that glows.
 
-**The card.** `src/components/Card.tsx` is the one section container, as the sketch
-asks. Solid on the dashboard, dashed wherever a region is reserved but unfilled.
+**Bouncy.** Motion runs on overshooting springs rather than ease curves:
+`--spring` for most transitions, `--spring-lg` where the overshoot should
+read. Buttons and tools compress on press and spring back, the nav lozenge and
+pagination pips pop into place, library cards bounce to 1.2x on hover, menus
+scale in from their anchor corner, panel chevrons swing, and the settings
+switch knob stretches as it throws.
 
-**The renderer is a stand-in, not an engine.** `src/components/Model3D.tsx` builds each
-box out of six transformed `div`s inside a `preserve-3d` scene: flat three-tone shading,
-a CSS grid floor, drag-to-orbit, and a keyframed spin for the library cards. There is no
-mesh, no camera and no raster pipeline - it is there so the viewport reads as a viewport.
+Two notes on `backdrop-filter`, both of which bit during the build:
+
+- An ancestor with `backdrop-filter` becomes the *backdrop root*, so a popover
+  inside the menu bar or the library panel samples nothing and a thin tint
+  renders see-through. Menus are therefore near-opaque by design.
+- `height: 100%` collapses to zero when the parent's height comes from
+  `min-height` or flex sizing rather than a definite height, so `.scene3d`
+  fills its parent by `inset` instead.
+
+**Type.** Inter and JetBrains Mono, self-hosted as `woff2` under `public/fonts`
+with latin + latin-ext subsets and `unicode-range` splits. No request leaves
+the origin.
+
+**Layout.** Fluid throughout - `clamp()` gutters, `auto-fit` / `auto-fill`
+grids, and `dvh` in the editor. In the editor the viewport runs full-bleed and
+the two tool columns float over it as glass rails, so what you see through them
+is the model itself; the rails are drag-resizable, and below 900px the whole
+thing stacks.
+
+**The card.** `src/components/Card.tsx` is the one section container, as the
+sketch asks. Solid where a region is filled, dashed where it is reserved.
+
+**The renderer is a stand-in, not an engine.** `src/components/Model3D.tsx`
+builds each box out of six transformed `div`s inside a `preserve-3d` scene:
+flat three-tone shading, a CSS grid floor, drag-to-orbit, and a keyframed spin
+for the library cards. There is no mesh, no camera and no raster pipeline - it
+is there so the viewport reads as a viewport.
 
 ## What works, and what does not
 
-Interactive: routing, theme, scene/shelf selection, library search + pagination, card
-hover (spin, 1.2x bounce) and its actions menu, settings search and sections, and in the
-editor - menus, mode and tool switching, panel collapse and resize, outliner selection
-with per-node hide/lock, the colour picker, UV face selection, numeric fields
-(type or drag the axis chip to scrub), quad view, grid toggle, and timeline playback.
+Interactive: routing, scene/shelf selection, library search + pagination, card
+hover (spin, 1.2x bounce) and its actions menu, settings search and sections,
+and in the editor - menus, mode and tool switching, panel collapse and resize,
+outliner selection with per-node hide/lock, the colour picker, UV face
+selection, numeric fields (type or drag the axis chip to scrub), quad view,
+grid toggle, and timeline playback.
 
-Not wired, by design: the dashboard entirely, plus saving, exporting, real geometry
-editing and anything that would need a backend.
+Not wired, by design: the dashboard entirely, plus saving, exporting, real
+geometry editing and anything that would need a backend.

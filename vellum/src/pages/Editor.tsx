@@ -820,85 +820,87 @@ export function Editor({ segments }: { segments: string[] }) {
       />
 
       <div className="ed-body">
-        {/* ---- left column ---- */}
-        <div className="ed-col ed-col--left">
-          <Panel title="Element" count={selectedNode?.name}>
-            <div className="nf-grid">
-              <NumRow label="Position" value={position} onChange={setPosition} />
-              <NumRow label="Size" value={size} onChange={setSize} />
-              <NumRow label="Pivot" value={pivot} onChange={setPivot} />
-              <NumRow label="Rotation" value={rotation} onChange={setRotation} step={2.5} />
-              <div className="nf-row">
-                <span className="nf-row__label">Inflate</span>
-                <NumField axis="n" value={0} onChange={() => {}} />
-                <span className="nf-row__label" style={{ textAlign: 'right' }}>
-                  Stretch
-                </span>
-                <NumField axis="n" value={1} onChange={() => {}} />
-              </div>
-            </div>
-            <div className="chip-row">
-              <button className="chip" aria-pressed>
-                <Icon name="check" size={11} /> Visible
-              </button>
-              <button className="chip">
-                <Icon name="lock" size={11} /> Locked
-              </button>
-              <button className="chip">
-                <Icon name="sun" size={11} /> Shade
-              </button>
-            </div>
-          </Panel>
-
-          <Panel title="UV" count={asset.texture}>
-            <UVPanel />
-          </Panel>
-
-          <Panel title="Variant placement" defaultOpen={false}>
-            <p style={{ fontSize: 'var(--fs-xs)', color: 'var(--ink-faint)' }}>
-              Display slots and per-variant overrides land here.
-            </p>
-          </Panel>
-        </div>
-
-        <Splitter onDrag={onLeft} />
-
-        {/* ---- viewport ---- */}
+        {/* the viewport runs full-bleed; the panels float over it as glass */}
         <Viewport grid={grid} quad={quad} boxes={boxes} format={asset.format} />
 
-        <Splitter onDrag={onRight} />
+        <div className="ed-rails">
+          {/* ---- left rail ---- */}
+          <div className="ed-col ed-col--left">
+            <Panel title="Element" count={selectedNode?.name}>
+              <div className="nf-grid">
+                <NumRow label="Position" value={position} onChange={setPosition} />
+                <NumRow label="Size" value={size} onChange={setSize} />
+                <NumRow label="Pivot" value={pivot} onChange={setPivot} />
+                <NumRow label="Rotation" value={rotation} onChange={setRotation} step={2.5} />
+                <div className="nf-row">
+                  <span className="nf-row__label">Inflate</span>
+                  <NumField axis="n" value={0} onChange={() => {}} />
+                  <span className="nf-row__label" style={{ textAlign: 'right' }}>
+                    Stretch
+                  </span>
+                  <NumField axis="n" value={1} onChange={() => {}} />
+                </div>
+              </div>
+              <div className="chip-row">
+                <button className="chip" aria-pressed>
+                  <Icon name="check" size={11} /> Visible
+                </button>
+                <button className="chip">
+                  <Icon name="lock" size={11} /> Locked
+                </button>
+                <button className="chip">
+                  <Icon name="sun" size={11} /> Shade
+                </button>
+              </div>
+            </Panel>
 
-        {/* ---- right column ---- */}
-        <div className="ed-col ed-col--right">
-          <Panel title="Colour">
-            <ColorPanel />
-          </Panel>
+            <Panel title="UV" count={asset.texture}>
+              <UVPanel />
+            </Panel>
 
-          <Panel title="Outliner" count={outliner.length} grow>
-            <Outliner selected={selected} onSelect={setSelected} />
-          </Panel>
+            <Panel title="Variant placement" defaultOpen={false}>
+              <p style={{ fontSize: 'var(--fs-xs)', color: 'var(--ink-faint)' }}>
+                Display slots and per-variant overrides land here.
+              </p>
+            </Panel>
+          </div>
 
-          <Panel title="Textures" count={editorTextures.length}>
-            {editorTextures.map((t) => (
-              <button
-                key={t.id}
-                className="tex-row"
-                aria-selected={t.id === texture}
-                onClick={() => setTexture(t.id)}
-              >
-                <span
-                  className="tex-thumb"
-                  style={{
-                    backgroundColor: t.swatch,
-                    backgroundImage:
-                      'linear-gradient(45deg, rgba(0,0,0,.2) 25%, transparent 25%, transparent 75%, rgba(0,0,0,.2) 75%), linear-gradient(45deg, rgba(0,0,0,.2) 25%, transparent 25%, transparent 75%, rgba(0,0,0,.2) 75%)',
-                  }}
-                />
-                <span style={{ flex: 1, textAlign: 'left', minWidth: 0 }}>{t.name}</span>
-                <span className="tex-row__meta">{t.size}</span>
-              </button>
-            ))}
-          </Panel>
+          <Splitter onDrag={onLeft} />
+          <div className="ed-rails__gap" />
+          <Splitter onDrag={onRight} />
+
+          {/* ---- right rail ---- */}
+          <div className="ed-col ed-col--right">
+            <Panel title="Colour">
+              <ColorPanel />
+            </Panel>
+
+            <Panel title="Outliner" count={outliner.length} grow>
+              <Outliner selected={selected} onSelect={setSelected} />
+            </Panel>
+
+            <Panel title="Textures" count={editorTextures.length}>
+              {editorTextures.map((t) => (
+                <button
+                  key={t.id}
+                  className="tex-row"
+                  aria-selected={t.id === texture}
+                  onClick={() => setTexture(t.id)}
+                >
+                  <span
+                    className="tex-thumb"
+                    style={{
+                      backgroundColor: t.swatch,
+                      backgroundImage:
+                        'linear-gradient(45deg, rgba(0,0,0,.2) 25%, transparent 25%, transparent 75%, rgba(0,0,0,.2) 75%), linear-gradient(45deg, rgba(0,0,0,.2) 25%, transparent 25%, transparent 75%, rgba(0,0,0,.2) 75%)',
+                    }}
+                  />
+                  <span style={{ flex: 1, textAlign: 'left', minWidth: 0 }}>{t.name}</span>
+                  <span className="tex-row__meta">{t.size}</span>
+                </button>
+              ))}
+            </Panel>
+          </div>
         </div>
       </div>
 
