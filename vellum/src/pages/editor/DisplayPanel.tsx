@@ -1,0 +1,113 @@
+import type { Vec3 } from '../../lib/bbmodel'
+import { Icon } from '../../lib/icons'
+
+/* The eight slots a Java item model can be posed in. A pack owns these
+   numbers, not the model: `.vellum` deliberately carries no display
+   transforms, so what this panel edits is a preview, and the editor says
+   so rather than implying the values are saved with the geometry. */
+export const DISPLAY_SLOTS = [
+  { id: 'thirdperson_righthand', label: 'Third person, right hand' },
+  { id: 'thirdperson_lefthand', label: 'Third person, left hand' },
+  { id: 'firstperson_righthand', label: 'First person, right hand' },
+  { id: 'firstperson_lefthand', label: 'First person, left hand' },
+  { id: 'head', label: 'Head' },
+  { id: 'gui', label: 'Inventory (GUI)' },
+  { id: 'ground', label: 'Dropped' },
+  { id: 'fixed', label: 'Item frame' },
+] as const
+
+export type SlotId = (typeof DISPLAY_SLOTS)[number]['id']
+
+export type SlotTransform = { rotation: Vec3; translation: Vec3; scale: Vec3 }
+
+export type DisplayState = Record<SlotId, SlotTransform>
+
+const rest: SlotTransform = { rotation: [0, 0, 0], translation: [0, 0, 0], scale: [1, 1, 1] }
+
+/** Minecraft's own defaults, which is what a modeller expects to start from. */
+export const DEFAULT_DISPLAY: DisplayState = {
+  thirdperson_righthand: { rotation: [0, -90, 55], translation: [0, 4, 0.5], scale: [0.85, 0.85, 0.85] },
+  thirdperson_lefthand: { rotation: [0, 90, -55], translation: [0, 4, 0.5], scale: [0.85, 0.85, 0.85] },
+  firstperson_righthand: { rotation: [0, -90, 25], translation: [1.13, 3.2, 1.13], scale: [0.68, 0.68, 0.68] },
+  firstperson_lefthand: { rotation: [0, 90, -25], translation: [1.13, 3.2, 1.13], scale: [0.68, 0.68, 0.68] },
+  head: { rotation: [0, 180, 0], translation: [0, 13, 7], scale: [1, 1, 1] },
+  gui: { rotation: [30, 225, 0], translation: [0, 0, 0], scale: [0.625, 0.625, 0.625] },
+  ground: { rotation: [0, 0, 0], translation: [0, 3, 0], scale: [0.25, 0.25, 0.25] },
+  fixed: { ...rest },
+}
+
+export function DisplayPanel({
+  slot,
+  onSlot,
+  transform,
+  onTransform,
+  onReset,
+  children,
+}: {
+  slot: SlotId
+  onSlot: (s: SlotId) => void
+  transform: SlotTransform
+  onTransform: (t: SlotTransform) => void
+  onReset: () => void
+  /** the numeric row component, passed in so it stays one implementation */
+  children: (rows: {
+    label: string
+    value: Vec3
+    onChange: (v: Vec3) => void
+    step?: number
+  }[]) => React.ReactNode
+}) {
+  return (
+    <>
+      <label className="field" style={{ marginBottom: 10 }}>
+        <span className="field__label">Slot</span>
+        <select
+          className="ed-select"
+          style={{ width: '100%', height: 'auto', padding: '6px 10px' }}
+          value={slot}
+          onChange={(e) => onSlot(e.target.value as SlotId)}
+        >
+          {DISPLAY_SLOTS.map((s) => (
+            <option key={s.id} value={s.id}>
+              {s.label}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      <div className="nf-grid">
+        {children([
+          {
+            label: 'Rotation',
+            value: transform.rotation,
+            step: 7.5,
+            onChange: (rotation) => onTransform({ ...transform, rotation }),
+          },
+          {
+            label: 'Translate',
+            value: transform.translation,
+            onChange: (translation) => onTransform({ ...transform, translation }),
+          },
+          {
+            label: 'Scale',
+            value: transform.scale,
+            step: 0.05,
+            onChange: (scale) => onTransform({ ...transform, scale }),
+          },
+        ])}
+      </div>
+
+      <div className="chip-row">
+        <button className="chip" onClick={onReset}>
+          <Icon name="refresh" size={11} /> Reset slot
+        </button>
+      </div>
+
+      <p className="ed-hint" style={{ marginTop: 10 }}>
+        <Icon name="info" size={11} />
+        Display transforms belong to the resource pack, not the model, so these are a preview and
+        are not written into the .vellum.
+      </p>
+    </>
+  )
+}

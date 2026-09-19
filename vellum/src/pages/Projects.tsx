@@ -253,14 +253,14 @@ function Gateway() {
       kind: 'items',
       icon: 'cube',
       desc: 'Hand-held and placed models. Block/item formats, static geometry.',
-      count: scene.counts.items,
+      count: assetsFor(scene.id, 'items').length,
       palette: ['#c8a96a', '#a8854a', '#7d6234'],
     },
     {
       kind: 'mobs',
       icon: 'anim',
       desc: 'Rigged entities with their animation controllers and keyframes.',
-      count: scene.counts.mobs,
+      count: assetsFor(scene.id, 'mobs').length,
       palette: ['#5c7d9c', '#43607a', '#2f455a'],
     },
   ]

@@ -34,19 +34,19 @@ export const scenes: Scene[] = [
     id: 'aurelian',
     name: 'Aurelian Keep',
     blurb: 'Survival flagship - stone, brass and lantern light.',
-    counts: { items: 34, mobs: 18 },
+    counts: { items: 0, mobs: 0 },
   },
   {
     id: 'tidewrack',
     name: 'Tidewrack',
     blurb: 'Drowned ruins pack. Heavy on emissive trims.',
-    counts: { items: 26, mobs: 14 },
+    counts: { items: 0, mobs: 0 },
   },
   {
     id: 'emberfall',
     name: 'Emberfall',
     blurb: 'Seasonal event set, shipped to the PvP realm.',
-    counts: { items: 41, mobs: 21 },
+    counts: { items: 0, mobs: 0 },
   },
 ]
 
@@ -134,9 +134,11 @@ const realAssets: Asset[] = samples.map((s, i) => ({
   sampleId: s.id,
 }))
 
+/* Only real models are shelved. The fixture list below still backs the
+   dashboard's "recent files" copy, but nothing fabricated is offered as
+   something you can open. */
 export function assetsFor(sceneId: string, kind: AssetKind) {
-  const real = realAssets.filter((a) => a.sceneId === sceneId && a.kind === kind)
-  return [...real, ...assets.filter((a) => a.sceneId === sceneId && a.kind === kind)]
+  return realAssets.filter((a) => a.sceneId === sceneId && a.kind === kind)
 }
 
 /* ---------------- dashboard fixtures (static + stale on purpose) -------- */

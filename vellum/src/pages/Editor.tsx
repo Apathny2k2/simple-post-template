@@ -27,6 +27,24 @@ import type {
 import { isVellum, readVellum, vellumFileName, writeVellum } from '../lib/vellum'
 import type { ProjectKind } from '../lib/bbmodel'
 import { sampleById, samples } from '../lib/samples'
+import { addBone, addCube, createModel, deleteElement, duplicateElement } from '../lib/new-model'
+import type { NewModelKind } from '../lib/new-model'
+import {
+  bucket,
+  faceBounds,
+  hexToRgba,
+  loadSurface,
+  paint as paintTexels,
+  pick,
+  rgbaToHex,
+  strokeBetween,
+  texelOfFace,
+  toDataUrl,
+} from '../lib/texture'
+import type { PixelSurface } from '../lib/texture'
+import { DEFAULT_DISPLAY, DisplayPanel } from './editor/DisplayPanel'
+import type { DisplayState, SlotId } from './editor/DisplayPanel'
+import { NewModelDialog } from './editor/NewModelDialog'
 import { navigate } from '../lib/router'
 import './Editor.css'
 
@@ -35,15 +53,22 @@ type Mode = 'edit' | 'paint' | 'animate' | 'display'
 /* ================= menu bar ================= */
 
 function buildMenus(actions: {
+  onNew: () => void
   onOpen: () => void
   onSave: () => void
   onExport: () => void
   onSample: (id: string) => void
+  onAddCube: () => void
+  onAddBone: () => void
+  onDuplicate: () => void
+  onDelete: () => void
 }): Array<{ label: string; entries: MenuEntry[] }> {
   return [
     {
       label: 'File',
       entries: [
+        { label: 'New model\u2026', icon: 'plus', shortcut: 'Ctrl N', onSelect: actions.onNew },
+        { kind: 'separator' },
         { kind: 'label', label: 'Sample models' },
         ...samples.map((s) => ({
           label: s.label,
@@ -59,11 +84,11 @@ function buildMenus(actions: {
     {
       label: 'Edit',
       entries: [
-        { label: 'Undo', icon: 'undo', shortcut: 'Ctrl Z' },
-        { label: 'Redo', icon: 'redo', shortcut: 'Ctrl Y' },
+        { label: 'Add Cube', icon: 'cube', onSelect: actions.onAddCube },
+        { label: 'Add Bone', icon: 'folder', onSelect: actions.onAddBone },
         { kind: 'separator' },
-        { label: 'Duplicate', icon: 'copy', shortcut: 'Ctrl D' },
-        { label: 'Delete', icon: 'trash', shortcut: 'Del', danger: true },
+        { label: 'Duplicate', icon: 'copy', shortcut: 'Ctrl D', onSelect: actions.onDuplicate },
+        { label: 'Delete', icon: 'trash', shortcut: 'Del', danger: true, onSelect: actions.onDelete },
       ],
     },
     {
@@ -185,6 +210,10 @@ function Toolbar({
   quad,
   onQuad,
   hasAnimations,
+  onAddCube,
+  onAddBone,
+  brush,
+  onBrush,
 }: {
   mode: Mode
   onMode: (m: Mode) => void
@@ -195,6 +224,10 @@ function Toolbar({
   quad: boolean
   onQuad: () => void
   hasAnimations: boolean
+  onAddCube: () => void
+  onAddBone: () => void
+  brush: number
+  onBrush: (n: number) => void
 }) {
   return (
     <div className="ed-toolbar">
@@ -234,24 +267,36 @@ function Toolbar({
       <span className="ed-sep" />
 
       <div className="ed-tools">
-        <button className="ed-tool" title="Add Cube" aria-label="Add Cube">
+        <button className="ed-tool" title="Add Cube" aria-label="Add Cube" onClick={onAddCube}>
           <Icon name="cube" size={15} />
         </button>
-        <button className="ed-tool" title="Add Group" aria-label="Add Group">
+        <button className="ed-tool" title="Add Bone" aria-label="Add Bone" onClick={onAddBone}>
           <Icon name="folder" size={15} />
-        </button>
-        <button className="ed-tool" title="Add Mesh" aria-label="Add Mesh">
-          <Icon name="vertex" size={15} />
         </button>
       </div>
 
       <span className="ed-sep" />
 
-      <select className="ed-select" defaultValue="global" aria-label="Transform space">
-        <option value="global">Global</option>
-        <option value="bone">Bone</option>
-        <option value="local">Local</option>
-      </select>
+      {mode === 'paint' ? (
+        <label className="ed-brush">
+          <span>Brush</span>
+          <input
+            type="range"
+            min={1}
+            max={8}
+            value={brush}
+            onChange={(e) => onBrush(Number(e.target.value))}
+            aria-label="Brush size"
+          />
+          <span className="mono">{brush}px</span>
+        </label>
+      ) : (
+        <select className="ed-select" defaultValue="global" aria-label="Transform space">
+          <option value="global">Global</option>
+          <option value="bone">Bone</option>
+          <option value="local">Local</option>
+        </select>
+      )}
 
       <div className="ed-toolbar__right">
         <button className="ed-tool" title="Toggle grid" aria-pressed={grid} onClick={onGrid}>
@@ -502,12 +547,15 @@ function UVPanel({
   face,
   onFace,
   onChange,
+  onPaint,
 }: {
   model: Model
   element: BBElement | null
   face: FaceKey
   onFace: (f: FaceKey) => void
   onChange: (fn: (e: BBElement) => BBElement) => void
+  /** texel coordinates straight off the sheet, when paint mode is active */
+  onPaint?: (x: number, y: number, phase: 'down' | 'move') => void
 }) {
   const texture = model.textures[0]
   const { width, height } = model.resolution
@@ -520,7 +568,33 @@ function UVPanel({
   return (
     <>
       <div
-        className="uv"
+        className={`uv${onPaint ? ' uv--paint' : ''}`}
+        onPointerDown={
+          onPaint
+            ? (e) => {
+                ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
+                const r = e.currentTarget.getBoundingClientRect()
+                onPaint(
+                  Math.floor(((e.clientX - r.left) / r.width) * width),
+                  Math.floor(((e.clientY - r.top) / r.height) * height),
+                  'down',
+                )
+              }
+            : undefined
+        }
+        onPointerMove={
+          onPaint
+            ? (e) => {
+                if (e.buttons !== 1) return
+                const r = e.currentTarget.getBoundingClientRect()
+                onPaint(
+                  Math.floor(((e.clientX - r.left) / r.width) * width),
+                  Math.floor(((e.clientY - r.top) / r.height) * height),
+                  'move',
+                )
+              }
+            : undefined
+        }
         style={
           texture?.source
             ? {
@@ -547,6 +621,7 @@ function UVPanel({
                 top: pct(top, height),
                 width: pct(w, width),
                 height: pct(h, height),
+                pointerEvents: onPaint ? 'none' : undefined,
               }}
               onClick={() => onFace(key)}
               title={`${key} · ${x1},${y1} → ${x2},${y2}`}
@@ -629,17 +704,52 @@ function hsvToHex(h: number, s: number, v: number) {
   return `#${f(5)}${f(3)}${f(1)}`
 }
 
-function ColorPanel() {
-  const [hue, setHue] = useState(348)
-  const [sat, setSat] = useState(0.6)
-  const [val, setVal] = useState(0.8)
-  const hex = hsvToHex(hue, sat, val)
+function hexToHsv(hex: string): [number, number, number] {
+  const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255)
+  const max = Math.max(r, g, b)
+  const min = Math.min(r, g, b)
+  const d = max - min
+  let h = 0
+  if (d) {
+    if (max === r) h = ((g - b) / d) % 6
+    else if (max === g) h = (b - r) / d + 2
+    else h = (r - g) / d + 4
+    h *= 60
+    if (h < 0) h += 360
+  }
+  return [h, max ? d / max : 0, max]
+}
+
+function ColorPanel({ colour, onColour }: { colour: string; onColour: (hex: string) => void }) {
+  const [hue, setHue] = useState(() => hexToHsv(colour)[0])
+  const [sat, setSat] = useState(() => hexToHsv(colour)[1])
+  const [val, setVal] = useState(() => hexToHsv(colour)[2])
+
+  // the eyedropper writes the parent's colour; the picker follows it
+  const external = useRef(colour)
+  useEffect(() => {
+    if (colour === external.current) return
+    external.current = colour
+    const [h, s2, v] = hexToHsv(colour)
+    setHue(h)
+    setSat(s2)
+    setVal(v)
+  }, [colour])
+
+  const emit = (h: number, s2: number, v: number) => {
+    const hex = hsvToHex(h, s2, v)
+    external.current = hex
+    onColour(hex)
+  }
 
   const pickSV = (e: React.PointerEvent<HTMLDivElement>) => {
     if (e.buttons !== 1 && e.type !== 'pointerdown') return
     const r = e.currentTarget.getBoundingClientRect()
-    setSat(Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)))
-    setVal(1 - Math.min(1, Math.max(0, (e.clientY - r.top) / r.height)))
+    const s2 = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width))
+    const v = 1 - Math.min(1, Math.max(0, (e.clientY - r.top) / r.height))
+    setSat(s2)
+    setVal(v)
+    emit(hue, s2, v)
   }
 
   return (
@@ -659,21 +769,36 @@ function ColorPanel() {
         className="color-hue"
         onPointerDown={(e) => {
           const r = e.currentTarget.getBoundingClientRect()
-          setHue(Math.round(((e.clientX - r.left) / r.width) * 360))
+          const h = Math.round(((e.clientX - r.left) / r.width) * 360)
+          setHue(h)
+          emit(h, sat, val)
         }}
       >
         <span className="color-hue__knob" style={{ left: `${(hue / 360) * 100}%` }} />
       </div>
 
       <div className="color-foot">
-        <span className="color-swatch" style={{ background: hex }} />
-        <input className="color-hex" value={hex} readOnly />
+        <span className="color-swatch" style={{ background: colour }} />
+        <input className="color-hex" value={colour.toUpperCase()} readOnly />
       </div>
 
       <div className="palette">
         {['#cd594e', '#b4403a', '#952f2e', '#eda99a', '#92a5ca', '#3d5287', '#2b3d69', '#0a1022',
           '#e3a96f', '#6fae84', '#6f7684', '#f1e8d6'].map((c) => (
-          <button key={c} className="palette__dot" style={{ background: c }} title={c} />
+          <button
+            key={c}
+            className="palette__dot"
+            style={{ background: c }}
+            title={c}
+            onClick={() => {
+              const [h, s2, v] = hexToHsv(c)
+              setHue(h)
+              setSat(s2)
+              setVal(v)
+              external.current = c
+              onColour(c)
+            }}
+          />
         ))}
       </div>
     </>
@@ -793,6 +918,8 @@ function Viewport({
   time,
   selected,
   onSelect,
+  onPaint,
+  display,
 }: {
   model: Model
   format: string
@@ -803,6 +930,8 @@ function Viewport({
   time: number
   selected: string | null
   onSelect: (uuid: string) => void
+  onPaint?: (elementUuid: string, face: FaceKey, u: number, v: number, phase: 'down' | 'move') => void
+  display?: { rotation: Vec3; translation: Vec3; scale: Vec3 } | null
 }) {
   const [shading, setShading] = useState<'solid' | 'wire'>('solid')
 
@@ -825,6 +954,8 @@ function Viewport({
                   time={time}
                   selected={selected}
                   onSelect={onSelect}
+                  onPaint={onPaint}
+                  display={display}
                 />
               </div>
             ))}
@@ -839,6 +970,8 @@ function Viewport({
             time={time}
             selected={selected}
             onSelect={onSelect}
+            onPaint={onPaint}
+            display={display}
           />
         )}
 
@@ -859,7 +992,9 @@ function Viewport({
           ))}
         </div>
 
-        <div className="ed-view__corner ed-view__corner--bl">drag to orbit · click a cube</div>
+        <div className="ed-view__corner ed-view__corner--bl">
+          {onPaint ? 'paint straight onto the model' : 'drag to orbit · click a cube'}
+        </div>
 
         <svg className="ed-axis-gizmo" viewBox="0 0 60 60" aria-hidden="true">
           <g strokeWidth="1.8" strokeLinecap="round">
@@ -1084,7 +1219,22 @@ export function Editor({ segments }: { segments: string[] }) {
   const [playing, setPlaying] = useState(false)
   const fileInput = useRef<HTMLInputElement>(null)
 
+  // paint
+  const [colour, setColour] = useState('#cd594e')
+  const [brush, setBrush] = useState(1)
+  const surfaces = useRef(new Map<string, PixelSurface>())
+  const lastTexel = useRef<[number, number] | null>(null)
+  const commitTimer = useRef(0)
+  const [modelKey, setModelKey] = useState(0)
+
+  // display
+  const [slot, setSlot] = useState<SlotId>('thirdperson_righthand')
+  const [displayState, setDisplayState] = useState<DisplayState>(DEFAULT_DISPLAY)
+
+  const [newDialog, setNewDialog] = useState(false)
+
   const loadModel = useCallback((next: Model, name: string, nextKind: ProjectKind = 'items') => {
+    setModelKey((k) => k + 1)
     setModel(next)
     setFileName(vellumFileName(name))
     setKind(nextKind)
@@ -1106,6 +1256,45 @@ export function Editor({ segments }: { segments: string[] }) {
     if (mode === 'animate' && model.animations.length) setPlaying(true)
     if (mode !== 'animate') setPlaying(false)
   }, [mode, model])
+
+  /* Decode every texture into a canvas once per loaded model. Painting
+     writes into that canvas and the data URI is re-encoded from it, so
+     the effect must not re-run on its own output - hence keying on the
+     model identity rather than on `model.textures`. */
+  useEffect(() => {
+    let cancelled = false
+    const map = new Map<string, PixelSurface>()
+    Promise.all(
+      model.textures.map(async (t) => {
+        try {
+          map.set(t.uuid, await loadSurface(t))
+        } catch {
+          /* an undecodable texture simply cannot be painted */
+        }
+      }),
+    ).then(() => {
+      if (!cancelled) surfaces.current = map
+    })
+    return () => {
+      cancelled = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [modelKey])
+
+  /** Re-encode a painted canvas back into the model, batched to a frame. */
+  const commitTexture = useCallback((uuid: string) => {
+    if (commitTimer.current) return
+    commitTimer.current = requestAnimationFrame(() => {
+      commitTimer.current = 0
+      const surface = surfaces.current.get(uuid)
+      if (!surface) return
+      const source = toDataUrl(surface)
+      setModel((m) => ({
+        ...m,
+        textures: m.textures.map((t) => (t.uuid === uuid ? { ...t, source } : t)),
+      }))
+    })
+  }, [])
 
   const animation = useMemo(
     () => model.animations.find((a) => a.uuid === animUuid) ?? model.animations[0] ?? null,
@@ -1136,6 +1325,87 @@ export function Editor({ segments }: { segments: string[] }) {
     })
   }, [])
 
+  /* One texel, one tool. Everything upstream - the 2D sheet and the 3D
+     back-projection - resolves to a call here. */
+  const applyTool = useCallback(
+    (textureIndex: number, x: number, y: number, bounds: UVRect | null, phase: 'down' | 'move') => {
+      const tex = model.textures[textureIndex]
+      const surface = tex && surfaces.current.get(tex.uuid)
+      if (!surface) return
+
+      if (tool === 'pipette') {
+        const sampled = pick(surface, x, y)
+        if (sampled && sampled[3] > 0) setColour(rgbaToHex(sampled))
+        return
+      }
+
+      if (tool === 'bucket') {
+        if (phase === 'down') {
+          bucket(surface, x, y, hexToRgba(colour), bounds ?? [0, 0, surface.width, surface.height])
+          commitTexture(tex.uuid)
+        }
+        return
+      }
+
+      const rgba = tool === 'eraser' ? ([0, 0, 0, 0] as [number, number, number, number]) : hexToRgba(colour)
+      const stamp = (px: number, py: number) => paintTexels(surface, px, py, rgba, brush)
+
+      // a fast drag would otherwise dot rather than draw
+      if (phase === 'move' && lastTexel.current) strokeBetween(lastTexel.current, [x, y], stamp)
+      else stamp(x, y)
+
+      lastTexel.current = [x, y]
+      commitTexture(tex.uuid)
+    },
+    [model.textures, tool, colour, brush, commitTexture],
+  )
+
+  useEffect(() => {
+    const clear = () => {
+      lastTexel.current = null
+    }
+    window.addEventListener('pointerup', clear)
+    return () => window.removeEventListener('pointerup', clear)
+  }, [])
+
+  /** A click on the model, back-projected through that face's UV rectangle. */
+  const paintOnModel = useCallback(
+    (elementUuid: string, face: FaceKey, u: number, v: number, phase: 'down' | 'move') => {
+      const el = model.elements.find((e) => e.uuid === elementUuid)
+      if (!el) return
+      if (phase === 'down') setSelected(elementUuid)
+      const f = el.faces[face]
+      if (f.texture === null) return
+      const texel = texelOfFace(f.uv, u, v)
+      // a zero-area UV has no texel under the click, so there is nothing to paint
+      if (!texel) return
+      applyTool(f.texture, texel[0], texel[1], faceBounds(f.uv), phase)
+    },
+    [model.elements, applyTool],
+  )
+
+  /* On the sheet, a fill is bounded by the UV island the click landed in -
+     the face you clicked, not the face that happens to be selected. A
+     click on bare sheet has no island, so the fill is bounded only by
+     colour similarity. */
+  const paintOnSheet = useCallback(
+    (x: number, y: number, phase: 'down' | 'move') => {
+      let bounds: UVRect | null = null
+      for (const el of model.elements) {
+        for (const key of FACES) {
+          const [bx1, by1, bx2, by2] = faceBounds(el.faces[key].uv)
+          if (x >= bx1 && x < bx2 && y >= by1 && y < by2) {
+            bounds = [bx1, by1, bx2, by2]
+            break
+          }
+        }
+        if (bounds) break
+      }
+      applyTool(0, x, y, bounds, phase)
+    },
+    [applyTool, model.elements],
+  )
+
   const actions = useMemo(
     () => ({
       onOpen: () => fileInput.current?.click(),
@@ -1146,8 +1416,32 @@ export function Editor({ segments }: { segments: string[] }) {
         const s = sampleById(id)
         loadModel(s.model, s.file, s.kind)
       },
+      onNew: () => setNewDialog(true),
+      onAddCube: () => {
+        const next = addCube(model, null)
+        setModel(next.model)
+        setSelected(next.uuid)
+      },
+      onAddBone: () => {
+        const next = addBone(model, null)
+        setModel(next.model)
+        setSelected(next.uuid)
+      },
+      onDuplicate: () => {
+        if (!selected) return
+        const next = duplicateElement(model, selected)
+        if (!next) return
+        setModel(next.model)
+        setSelected(next.uuid)
+      },
+      onDelete: () => {
+        if (!selected) return
+        const next = deleteElement(model, selected)
+        setModel(next)
+        setSelected(next.elements[0]?.uuid ?? null)
+      },
     }),
-    [model, fileName, loadModel, runSave],
+    [model, fileName, loadModel, runSave, selected],
   )
 
 
@@ -1210,6 +1504,10 @@ export function Editor({ segments }: { segments: string[] }) {
         quad={quad}
         onQuad={() => setQuad((q) => !q)}
         hasAnimations={model.animations.length > 0}
+        onAddCube={actions.onAddCube}
+        onAddBone={actions.onAddBone}
+        brush={brush}
+        onBrush={setBrush}
       />
 
       <div className="ed-body">
@@ -1223,13 +1521,41 @@ export function Editor({ segments }: { segments: string[] }) {
           time={time}
           selected={selected}
           onSelect={setSelected}
+          onPaint={mode === 'paint' ? paintOnModel : undefined}
+          display={mode === 'display' ? displayState[slot] : null}
         />
 
         <div className="ed-rails">
           <div className="ed-col ed-col--left">
-            <Panel title="Element" count={element?.name ?? 'none'}>
-              <ElementPanel element={element} format={model.format} onChange={updateElement} />
-            </Panel>
+            {mode === 'display' ? (
+              <Panel title="Display" count={slot.replace(/_/g, ' ')}>
+                <DisplayPanel
+                  slot={slot}
+                  onSlot={setSlot}
+                  transform={displayState[slot]}
+                  onTransform={(t) => setDisplayState((d) => ({ ...d, [slot]: t }))}
+                  onReset={() =>
+                    setDisplayState((d) => ({ ...d, [slot]: DEFAULT_DISPLAY[slot] }))
+                  }
+                >
+                  {(rows) =>
+                    rows.map((r) => (
+                      <NumRow
+                        key={r.label}
+                        label={r.label}
+                        value={r.value}
+                        step={r.step}
+                        onChange={r.onChange}
+                      />
+                    ))
+                  }
+                </DisplayPanel>
+              </Panel>
+            ) : (
+              <Panel title="Element" count={element?.name ?? 'none'}>
+                <ElementPanel element={element} format={model.format} onChange={updateElement} />
+              </Panel>
+            )}
 
             <Panel title="UV" count={`${model.resolution.width} × ${model.resolution.height}`}>
               <UVPanel
@@ -1238,6 +1564,7 @@ export function Editor({ segments }: { segments: string[] }) {
                 face={face}
                 onFace={setFace}
                 onChange={updateElement}
+                onPaint={mode === 'paint' ? paintOnSheet : undefined}
               />
             </Panel>
 
@@ -1273,8 +1600,8 @@ export function Editor({ segments }: { segments: string[] }) {
           <Splitter onDrag={onRight} />
 
           <div className="ed-col ed-col--right">
-            <Panel title="Colour">
-              <ColorPanel />
+            <Panel title="Colour" count={mode === 'paint' ? tool : undefined}>
+              <ColorPanel colour={colour} onColour={setColour} />
             </Panel>
 
             <Panel title="Outliner" count={`${model.elements.length} cubes`} grow>
@@ -1317,6 +1644,16 @@ export function Editor({ segments }: { segments: string[] }) {
           </div>
         </div>
       </div>
+
+      {newDialog ? (
+        <NewModelDialog
+          onClose={() => setNewDialog(false)}
+          onCreate={(k: NewModelKind, name: string) => {
+            setNewDialog(false)
+            loadModel(createModel(k, name), `${name}.vellum`, k)
+          }}
+        />
+      ) : null}
 
       {mode === 'animate' && model.animations.length ? (
         <Timeline

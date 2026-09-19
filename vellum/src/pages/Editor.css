@@ -994,3 +994,77 @@
   background-color: transparent !important;
   outline-color: var(--wax-300);
 }
+
+/* ---------------- paint ---------------- */
+
+.ed-brush {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+  padding: 3px 11px 3px 12px;
+  border: 1px solid var(--wax-500);
+  border-radius: var(--r-pill);
+  background: rgba(205, 89, 78, 0.1);
+  font-size: var(--fs-2xs);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--wax-200);
+  box-shadow: var(--bevel-soft);
+}
+
+.ed-brush input[type='range'] {
+  width: 84px;
+  accent-color: var(--wax-400);
+}
+
+.ed-brush .mono { text-transform: none; letter-spacing: 0; color: var(--ink-muted); }
+
+/* the sheet becomes the canvas, so the face rectangles stop intercepting */
+.uv--paint { cursor: crosshair; }
+
+/* ---------------- new model dialog ---------------- */
+
+.newmodel__kinds {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(210px, 100%), 1fr));
+  gap: var(--sp-3);
+}
+
+.newmodel__kind {
+  display: grid;
+  gap: 5px;
+  padding: var(--sp-4);
+  border-radius: var(--r-lg);
+  border: 1px solid var(--glass-rim);
+  background: var(--glass-thin);
+  text-align: left;
+  box-shadow: var(--bevel-soft);
+  transition: border-color var(--dur) var(--ease), background var(--dur) var(--ease),
+    box-shadow var(--dur) var(--ease), transform var(--dur-slow) var(--spring-lg);
+}
+
+.newmodel__kind:hover { border-color: var(--glass-rim-wax); transform: translateY(-2px); }
+.newmodel__kind:active { transform: scale(0.98); }
+
+.newmodel__kind[aria-checked='true'] {
+  border-color: var(--wax-400);
+  background: linear-gradient(160deg, rgba(205, 89, 78, 0.2), rgba(148, 47, 46, 0.07));
+  box-shadow: var(--glow-wax), var(--bevel-soft);
+}
+
+.newmodel__icon {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--wax-500);
+  background: rgba(205, 89, 78, 0.12);
+  color: var(--wax-300);
+  margin-bottom: 4px;
+}
+
+.newmodel__label { font-size: var(--fs-md); font-weight: 500; letter-spacing: -0.01em; }
+.newmodel__blurb { font-size: var(--fs-xs); color: var(--ink-muted); }
+.newmodel__detail { font-size: var(--fs-2xs); color: var(--ink-faint); line-height: 1.45; }

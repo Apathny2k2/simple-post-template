@@ -40,6 +40,7 @@ function Face({
   transform,
   model,
   scale,
+  onPaint,
 }: {
   face: { uv: [number, number, number, number]; texture: number | null }
   name: FaceKey
@@ -48,6 +49,8 @@ function Face({
   transform: string
   model: Model
   scale: number
+  /** u,v are 0..1 from the face's top-left; the caller back-projects to a texel */
+  onPaint?: (face: FaceKey, u: number, v: number, phase: 'down' | 'move') => void
 }) {
   const px = { w: w * scale, h: h * scale }
   const texture = face.texture !== null ? model.textures[face.texture] : null
@@ -85,7 +88,34 @@ function Face({
     style.background = 'rgba(146, 165, 202, 0.25)'
   }
 
-  return <div className="bbface" data-face={name} style={style} />
+  /* offsetX/offsetY are already in the element's own coordinate system -
+     the browser inverse-transforms the hit point for us - so a click on a
+     rotated face in the viewport gives face-local pixels directly. */
+  const report = (e: React.PointerEvent<HTMLDivElement>, phase: 'down' | 'move') => {
+    if (!onPaint) return
+    const u = e.nativeEvent.offsetX / px.w
+    const v = e.nativeEvent.offsetY / px.h
+    if (u < 0 || v < 0 || u > 1 || v > 1) return
+    onPaint(name, u, v, phase)
+  }
+
+  return (
+    <div
+      className="bbface"
+      data-face={name}
+      style={style}
+      onPointerDown={
+        onPaint
+          ? (e) => {
+              e.stopPropagation()
+              ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
+              report(e, 'down')
+            }
+          : undefined
+      }
+      onPointerMove={onPaint ? (e) => e.buttons === 1 && report(e, 'move') : undefined}
+    />
+  )
 }
 
 function ElementBox({
@@ -95,6 +125,7 @@ function ElementBox({
   scale,
   selected,
   onSelect,
+  onPaint,
 }: {
   element: Element
   parentOrigin: Vec3
@@ -102,6 +133,7 @@ function ElementBox({
   scale: number
   selected: boolean
   onSelect?: (uuid: string) => void
+  onPaint?: (elementUuid: string, face: FaceKey, u: number, v: number, phase: 'down' | 'move') => void
 }) {
   if (!element.visibility) return null
 
@@ -148,6 +180,11 @@ function ElementBox({
               transform={place.transform}
               model={model}
               scale={scale}
+              onPaint={
+                onPaint
+                  ? (face, u, v, phase) => onPaint(element.uuid, face, u, v, phase)
+                  : undefined
+              }
             />
           )
         })}
@@ -164,6 +201,7 @@ function BoneGroup({
   pose,
   selected,
   onSelect,
+  onPaint,
 }: {
   group: Group
   parentOrigin: Vec3
@@ -172,6 +210,7 @@ function BoneGroup({
   pose: Pose
   selected: string | null
   onSelect?: (uuid: string) => void
+  onPaint?: (elementUuid: string, face: FaceKey, u: number, v: number, phase: 'down' | 'move') => void
 }) {
   if (!group.visibility) return null
 
@@ -204,6 +243,7 @@ function BoneGroup({
             pose={pose}
             selected={selected}
             onSelect={onSelect}
+            onPaint={onPaint}
           />
         ) : (
           (() => {
@@ -218,6 +258,7 @@ function BoneGroup({
                 scale={scale}
                 selected={selected === el.uuid}
                 onSelect={onSelect}
+                onPaint={onPaint}
               />
             )
           })()
@@ -242,6 +283,10 @@ type Props = {
   time?: number
   selected?: string | null
   onSelect?: (uuid: string) => void
+  /** when set, faces become paint targets and orbiting is suspended */
+  onPaint?: (elementUuid: string, face: FaceKey, u: number, v: number, phase: 'down' | 'move') => void
+  /** a display-slot transform applied to the whole model, as a pack would */
+  display?: { rotation: Vec3; translation: Vec3; scale: Vec3 } | null
   className?: string
 }
 
@@ -264,6 +309,8 @@ export function BBModelView({
   time = 0,
   selected = null,
   onSelect,
+  onPaint,
+  display = null,
   className = '',
 }: Props) {
   const [yaw, setYaw] = useState(initialYaw)
@@ -274,11 +321,11 @@ export function BBModelView({
 
   const onPointerDown = useCallback(
     (e: React.PointerEvent) => {
-      if (!orbit) return
+      if (!orbit || onPaint) return
       drag.current = { x: e.clientX, y: e.clientY, yaw, pitch }
       ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
     },
-    [orbit, yaw, pitch],
+    [orbit, onPaint, yaw, pitch],
   )
 
   const onPointerMove = useCallback((e: React.PointerEvent) => {
@@ -292,8 +339,9 @@ export function BBModelView({
     drag.current = null
   }, [])
 
-  // centre the model on its own bounds rather than on the origin
-  const centre = useMemo(() => {
+  /* Centred left-to-right and front-to-back, but stood ON the grid rather
+     than through it: the model's lowest point is what meets the floor. */
+  const anchor = useMemo(() => {
     if (!model.elements.length) return [0, 0, 0] as Vec3
     const lo: Vec3 = [Infinity, Infinity, Infinity]
     const hi: Vec3 = [-Infinity, -Infinity, -Infinity]
@@ -303,7 +351,7 @@ export function BBModelView({
         hi[i] = Math.max(hi[i], el.to[i])
       }
     }
-    return [(lo[0] + hi[0]) / 2, (lo[1] + hi[1]) / 2, (lo[2] + hi[2]) / 2] as Vec3
+    return [(lo[0] + hi[0]) / 2, lo[1], (lo[2] + hi[2]) / 2] as Vec3
   }, [model])
 
   const stage = spin
@@ -318,7 +366,7 @@ export function BBModelView({
           '--pitch': `${pitch}deg`,
           '--yaw': `${yaw}deg`,
           '--zoom': `${zoom}px`,
-          cursor: orbit ? 'grab' : undefined,
+          cursor: onPaint ? 'crosshair' : orbit ? 'grab' : undefined,
         } as React.CSSProperties
       }
       onPointerDown={onPointerDown}
@@ -343,7 +391,13 @@ export function BBModelView({
           <div
             className="bbroot"
             style={{
-              transform: `translate3d(${-centre[0] * scale}px, ${centre[1] * scale}px, ${-centre[2] * scale}px)`,
+              transform:
+                `translate3d(${-anchor[0] * scale}px, ${anchor[1] * scale}px, ${-anchor[2] * scale}px)` +
+                (display
+                  ? ` translate3d(${display.translation[0] * scale}px, ${-display.translation[1] * scale}px, ${display.translation[2] * scale}px)` +
+                    ` rotateX(${-display.rotation[0]}deg) rotateY(${display.rotation[1]}deg) rotateZ(${-display.rotation[2]}deg)` +
+                    ` scale3d(${display.scale[0]}, ${display.scale[1]}, ${display.scale[2]})`
+                  : ''),
             }}
           >
             {model.outliner.map((g) => (
@@ -356,6 +410,7 @@ export function BBModelView({
                 pose={pose}
                 selected={selected}
                 onSelect={onSelect}
+                onPaint={onPaint}
               />
             ))}
           </div>
