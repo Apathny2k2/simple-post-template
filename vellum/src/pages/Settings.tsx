@@ -300,7 +300,7 @@ const VERSION_TONE: Record<VersionReport['state'], { icon: IconName; tone: strin
   'plugin-behind': { icon: 'warning', tone: 'warn', label: 'Plugin is behind' },
   'studio-behind': { icon: 'warning', tone: 'warn', label: 'Studio is behind' },
   unreachable: { icon: 'warning', tone: 'warn', label: 'No answer' },
-  unlinked: { icon: 'info', tone: 'idle', label: 'Not linked' },
+  unlinked: { icon: 'info', tone: 'idle', label: 'Standalone' },
 }
 
 function About() {
@@ -320,6 +320,45 @@ function About() {
 
   return (
     <>
+      <Card
+        title="How Vellum ships"
+        note="One download. The studio is baked into the plugin."
+        dividedHead
+      >
+        <ul className="ships">
+          <li className="ships__row">
+            <Icon name="download" size={15} />
+            <div className="ships__text">
+              <div className="ships__t">One download, not two</div>
+              <div className="ships__d">
+                The studio is built into the plugin and versioned with it, so the editor you open is
+                always the one that server shipped.
+              </div>
+            </div>
+          </li>
+          <li className="ships__row">
+            <Icon name="cube" size={15} />
+            <div className="ships__text">
+              <div className="ships__t">Free tier &mdash; standalone</div>
+              <div className="ships__d">
+                Modelling, texturing, animation and .vellum export run entirely here, with nothing
+                linked and nothing to sign in to.
+              </div>
+            </div>
+          </li>
+          <li className="ships__row">
+            <Icon name="key" size={15} />
+            <div className="ships__text">
+              <div className="ships__t">Paid tiers &mdash; the same studio, as the gateway</div>
+              <div className="ships__d">
+                Link a plugin and this editor becomes the way in: the shared workspace, sync, seats
+                and the Master Console all open behind it.
+              </div>
+            </div>
+          </li>
+        </ul>
+      </Card>
+
       <Card title="Vellum" note={`Studio ${STUDIO_VERSION} \u00b7 plugin ${PLUGIN_VERSION}`} dividedHead>
         <div className="kv">
           <div className="kv__row"><span className="kv__k">Version</span><span className="kv__v">{STUDIO_VERSION}</span></div>
@@ -333,7 +372,7 @@ function About() {
 
       <Card
         title="Versions"
-        note={`This studio talks to plugin ${PLUGIN_MIN} and newer.`}
+        note={`Shipped inside plugin ${PLUGIN_VERSION}; still talks to ${PLUGIN_MIN} and newer.`}
         dividedHead
         actions={
           <button className="btn btn--sm btn--primary" onClick={() => void check()} disabled={checking}>
@@ -364,8 +403,10 @@ function About() {
           </>
         ) : (
           <p className="ed-hint">
-            <Icon name="info" size={11} /> Vellum ships in two halves that move at different speeds, so a
-            version gap looks exactly like a bug. This asks the linked plugin what it is and compares.
+            <Icon name="info" size={11} /> Studio and plugin ship together, so they should never
+            disagree. When they do, it is because this studio was opened against a server running an
+            older build &mdash; which looks exactly like a bug. This asks the linked plugin what it
+            is and compares.
           </p>
         )}
       </Card>

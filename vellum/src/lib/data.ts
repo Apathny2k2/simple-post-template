@@ -12,6 +12,17 @@ export type Scene = {
 
 export type AssetKind = 'items' | 'mobs' | 'consumables'
 
+/**
+ * Which shelf a kind lives on. Consumables are items - they are held,
+ * they are used up, and splitting them onto a tab of their own left a
+ * shelf with two cards on it and a tab row that made the library look
+ * bigger than the work in it. They keep their own heading inside Items
+ * instead, which is what tells them apart.
+ */
+export type Shelf = 'items' | 'mobs'
+
+export const shelfOf = (kind: AssetKind): Shelf => (kind === 'mobs' ? 'mobs' : 'items')
+
 export type Asset = {
   id: string
   name: string
@@ -140,8 +151,12 @@ const realAssets: Asset[] = samples.map((s, i) => ({
 /* Only real models are shelved. The fixture list below still backs the
    dashboard's "recent files" copy, but nothing fabricated is offered as
    something you can open. */
-export function assetsFor(sceneId: string, kind: AssetKind) {
-  return realAssets.filter((a) => a.sceneId === sceneId && a.kind === kind)
+/** Everything on a shelf, its own kinds kept together and in order. */
+export function assetsFor(sceneId: string, shelf: Shelf) {
+  const order: AssetKind[] = ['items', 'consumables', 'mobs']
+  return realAssets
+    .filter((a) => a.sceneId === sceneId && shelfOf(a.kind) === shelf)
+    .sort((a, b) => order.indexOf(a.kind) - order.indexOf(b.kind))
 }
 
 /* ---------------- editor fixtures -------------------------------------- */

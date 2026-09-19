@@ -1,12 +1,16 @@
 /* ---------------------------------------------------------------
-   Who built this, what it is, and whether the half running on the
-   server agrees.
+   Who built this, what it is, and whether the server it is linked
+   to is running the build that shipped with it.
 
-   Vellum ships in two pieces: this studio, and a server plugin that
-   feeds it and consumes what it exports. They move at different
-   speeds, so "it stopped working" is nearly always a version gap -
-   and the only place that could have said so used to read
-   "0.4.1-mock".
+   The studio is baked into the plugin - one download, not two. On
+   the Free tier it opens standalone and never needs a server; on
+   the paid tiers it is also the gateway, and the plugin on the far
+   side is what makes the cloud half answer. So a version gap is
+   never the normal case: it means someone opened this studio
+   against a server running an older plugin than the one it came
+   from. That is worth saying out loud, because it looks exactly
+   like a bug - and the only place that could have said so used to
+   read "0.4.1-mock".
    --------------------------------------------------------------- */
 
 export const STUDIO_VERSION = '0.9.0'
@@ -84,7 +88,8 @@ export async function verifyPlugin(
       plugin: null,
       studio: STUDIO_VERSION,
       studioMin: null,
-      detail: 'No plugin is linked. Link one on the dashboard to check versions.',
+      detail:
+        'Running standalone, which is the whole of the Free tier. Link a plugin on the dashboard to open the paid half and to check versions.',
       checkedAt: now,
     }
 
@@ -124,7 +129,7 @@ export async function verifyPlugin(
       plugin,
       studio: STUDIO_VERSION,
       studioMin,
-      detail: `The plugin reports ${plugin}; this studio needs ${PLUGIN_MIN} or newer. Update the plugin on the server.`,
+      detail: `The plugin reports ${plugin}; this studio needs ${PLUGIN_MIN} or newer. The server is running an older build than the one this studio shipped inside - update the plugin there.`,
       checkedAt: now,
     }
 

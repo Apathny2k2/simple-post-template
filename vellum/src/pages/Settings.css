@@ -363,3 +363,21 @@
 }
 
 .dir-row__tag[data-sync='outdated'] { border-color: var(--wax-500); color: var(--wax-200); }
+
+/* "How Vellum ships" - the three-line shape of the product, on About. */
+.ships { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; }
+
+.ships__row {
+  display: flex;
+  gap: var(--sp-3);
+  align-items: flex-start;
+  padding: 11px 12px;
+  border: 1px solid transparent;
+  border-radius: var(--r-md);
+}
+
+.ships__row:nth-child(odd) { background: rgba(146, 165, 202, 0.04); }
+.ships__row > svg { margin-top: 1px; flex: none; color: var(--wax-300); }
+.ships__text { min-width: 0; }
+.ships__t { font-size: var(--fs-sm); color: var(--ink); }
+.ships__d { margin-top: 3px; font-size: var(--fs-xs); color: var(--ink-faint); line-height: 1.55; }

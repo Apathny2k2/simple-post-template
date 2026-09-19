@@ -1458,3 +1458,31 @@
 .auto:disabled { opacity: 0.45; cursor: not-allowed; }
 .auto__name { font-size: var(--fs-xs); color: var(--ink); }
 .auto__blurb { font-size: var(--fs-2xs); color: var(--ink-faint); line-height: 1.45; }
+
+/* The way out. The editor is reached from the library and had no route
+   back to it, which left the browser's own Back button as the only
+   door - and that one does not know the file is unsaved. */
+.ed-menubar__back {
+  display: inline-grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  margin-right: 2px;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  color: var(--ink-muted);
+  transition:
+    background var(--dur-fast) var(--ease),
+    color var(--dur-fast) var(--ease),
+    border-color var(--dur-fast) var(--ease),
+    transform var(--dur) var(--spring);
+}
+
+.ed-menubar__back:hover {
+  background: var(--accent-soft);
+  color: var(--ink);
+  border-color: var(--glass-rim-wax);
+  transform: translateX(-2px);
+}
+
+.ed-menubar__back:active { transform: scale(0.9); }

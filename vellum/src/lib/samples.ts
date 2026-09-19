@@ -36,7 +36,7 @@ export const samples: Sample[] = [
     'alien_sword',
     'Alien Sword',
     'items',
-    'A swept blade built from stacked per-cube rotations. 22 cubes, no rig.',
+    'Swept chitin prongs around a crystal blade. Four bones, and a core that pulses on the idle.',
     alienSword,
   ),
   of(

@@ -237,8 +237,8 @@ const files = await p.evaluate(async () => {
   })
 
   /* ================= 2. Emberfang ================= */
-  const iron   = { base: '#7d736a', sheen: true }
-  const darkir = { base: '#5a524c' }
+  const iron   = { base: '#97897a', sheen: true }
+  const darkir = { base: '#6f6559' }
   const emberc = { base: '#c2481f', glow: '#ffd08a' }
   const horn   = { base: '#3b2f2b', stripe: '#2d2320' }
   const bone   = { base: '#cfc2a4', sheen: true }
@@ -365,12 +365,69 @@ const files = await p.evaluate(async () => {
     ],
   })
 
-  return { runic, ember, flask, loaf }
+  /* ================= 5. Alien Sword =================
+     The oldest sample in the set, and it looked it: 22 cubes each
+     carrying their own rotation, no rig, and a silhouette that read
+     as a pile of boxes at thumbnail size. Rebuilt on the same spec
+     the others use - a hilt you can name, a guard, a tapering blade,
+     and an emissive core that pulses rather than speckling at random. */
+  const chitin = { base: '#6b4b8f', sheen: true }
+  const chitin2= { base: '#553a73', sheen: true }
+  const voidwr = { base: '#3b2c52', stripe: '#2a1d3d' }
+  const crystal= { base: '#8fdfe6', sheen: true }
+  const crystal2={ base: '#6fb4c6', sheen: true }
+  const core   = { base: '#8d3fd6', glow: '#ecc6ff' }
+
+  const alien = build({
+    name: 'alien_sword', kind: 'items', sheet: 64, scale: 0.5,
+    cubes: [
+      { name: 'pommel',      from: [-2,-2,-2],       to: [2,0,2],        origin: [0,0,0],     look: chitin2 },
+      { name: 'grip',        from: [-1.25,0,-1.25],  to: [1.25,6.5,1.25],origin: [0,0,0],     look: voidwr },
+      { name: 'guard',       from: [-4.5,6.5,-1.5],  to: [4.5,8.5,1.5],  origin: [0,6.5,0],   look: chitin },
+      { name: 'prong_left',  from: [-6.5,8,-1],      to: [-4.5,11.5,1],  origin: [-4.5,8,0],  rotation: [0,0,26],  look: chitin },
+      { name: 'prong_right', from: [4.5,8,-1],       to: [6.5,11.5,1],   origin: [4.5,8,0],   rotation: [0,0,-26], look: chitin },
+      { name: 'blade_base',  from: [-2,8.5,-0.9],    to: [2,17,0.9],     origin: [0,8.5,0],   look: crystal },
+      { name: 'blade_mid',   from: [-1.5,17,-0.8],   to: [1.5,24,0.8],   origin: [0,17,0],    look: crystal },
+      { name: 'blade_tip',   from: [-1,24,-0.6],     to: [1,28,0.6],     origin: [0,24,0],    look: crystal2 },
+      { name: 'point',       from: [-0.5,28,-0.4],   to: [0.5,30,0.4],   origin: [0,28,0],    look: crystal2 },
+      { name: 'core_low',    from: [-0.5,10,-1.1],   to: [0.5,16,1.1],   origin: [0,10,0],    look: core },
+      { name: 'core_high',   from: [-0.5,18,-1],     to: [0.5,23,1],     origin: [0,18,0],    look: core },
+      { name: 'fin_left',    from: [-3.5,11.5,-0.5], to: [-2,16,0.5],    origin: [-2,11.5,0], rotation: [0,0,17],  look: crystal2 },
+      { name: 'fin_right',   from: [2,11.5,-0.5],    to: [3.5,16,0.5],   origin: [2,11.5,0],  rotation: [0,0,-17], look: crystal2 },
+    ],
+    bones: [{
+      name: 'root', origin: [0,0,0], children: [
+        { name: 'hilt',  origin: [0,0,0],   cubes: ['pommel','grip'] },
+        { name: 'guard', origin: [0,7.5,0], cubes: ['guard','prong_left','prong_right'] },
+        { name: 'blade', origin: [0,8.5,0], cubes: ['blade_base','blade_mid','blade_tip','point'], children: [
+          { name: 'core', origin: [0,16,0], cubes: ['core_low','core_high'] },
+          { name: 'fins', origin: [0,14,0], cubes: ['fin_left','fin_right'] },
+        ]},
+      ],
+    }],
+    clips: [
+      { name: 'idle', loop: 'loop', length: 3.6, tracks: [
+        { bone: 'root',  channel: 'position', keys: [[0,[0,0,0]],[0.9,[0,0.8,0]],[1.8,[0,0,0]],[2.7,[0,-0.5,0]],[3.6,[0,0,0]]] },
+        { bone: 'root',  channel: 'rotation', keys: [[0,[0,0,0]],[1.8,[0,0,3]],[3.6,[0,0,0]]] },
+        { bone: 'core',  channel: 'scale',    keys: [[0,[1,1,1]],[1.2,[1.35,1.05,1.35]],[2.4,[1,1,1]],[3.6,[1,1,1]]] },
+        { bone: 'fins',  channel: 'rotation', keys: [[0,[0,0,0]],[1.8,[0,14,0]],[3.6,[0,0,0]]] },
+      ]},
+      { name: 'swing', loop: 'once', length: 0.8, tracks: [
+        { bone: 'root',  channel: 'rotation', keys: [[0,[0,0,0]],[0.16,[-16,0,-48]],[0.4,[20,0,114]],[0.58,[7,0,78]],[0.8,[0,0,0]]] },
+        { bone: 'root',  channel: 'position', keys: [[0,[0,0,0]],[0.4,[1.8,-1.2,2.2]],[0.8,[0,0,0]]] },
+        { bone: 'core',  channel: 'scale',    keys: [[0,[1,1,1]],[0.4,[1.5,1.1,1.5]],[0.8,[1,1,1]]] },
+        { bone: 'fins',  channel: 'rotation', keys: [[0,[0,0,0]],[0.4,[0,-26,0]],[0.8,[0,0,0]]] },
+      ]},
+    ],
+  })
+
+  return { runic, ember, flask, loaf, alien }
 })
 
 const out = {
   runic_blade: files.runic, emberfang: files.ember,
   tide_flask: files.flask, honeyed_loaf: files.loaf,
+  alien_sword: files.alien,
 }
 for (const [name, r] of Object.entries(out)) {
   writeFileSync(new URL(`../src/models/${name}.vellum`, import.meta.url), r.text)

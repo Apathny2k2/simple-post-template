@@ -472,3 +472,35 @@
   .asset:focus-within,
   .asset[data-open='true'] { transform: scale(1.04); }
 }
+
+/* ---------------- shelf groups ----------------
+
+   Consumables are items, so they share the Items shelf and are told
+   apart by a heading rather than by a tab of their own. */
+
+/* The grid carries the panel's inset, so a heading above it has to be
+   given the same one or its rule runs out past the cards. */
+.library__group > .library__grid { padding-top: var(--sp-4); }
+
+.library__groupname {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 0 clamp(18px, 2.4vw, 28px);
+  padding: clamp(16px, 2vw, 22px) 0 7px;
+  border-bottom: 1px solid var(--glass-rim);
+  font-size: var(--fs-2xs);
+  font-weight: 600;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--highlight);
+}
+
+.library__groupn {
+  padding: 1px 7px;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--glass-rim);
+  font-size: 9px;
+  letter-spacing: 0;
+  color: var(--ink-faint);
+}

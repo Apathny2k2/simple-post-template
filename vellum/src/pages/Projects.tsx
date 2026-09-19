@@ -1,11 +1,12 @@
-import { useMemo, useState } from 'react'
+import { useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Menu } from '../components/Menu'
 import { Model3D, blockModel, lanternModel } from '../components/Model3D'
 import { ModelView } from '../components/ModelView'
 import { sampleById } from '../lib/samples'
 import { Icon } from '../lib/icons'
-import { assetsFor, scenes } from '../lib/data'
-import type { Asset, AssetKind } from '../lib/data'
+import { assetsFor, scenes, shelfOf } from '../lib/data'
+import type { Asset, AssetKind, Shelf } from '../lib/data'
+import type { Model } from '../lib/model'
 import { navigate, useTitle } from '../lib/router'
 import { saveDataUrl, saveFile } from '../lib/download'
 import { writeVellum } from '../lib/vellum'
@@ -46,9 +47,17 @@ const kindLabel: Record<AssetKind, string> = {
   consumables: 'Consumables',
 }
 
-/** Scale a model so its longest axis lands near `target` pixels. */
-function fitScale(model: { cubes: Array<{ from: number[]; to: number[] }> }, target: number) {
-  if (!model.cubes.length) return 3
+/** The two shelves, and what the tab on each says. */
+const shelfLabel: Record<Shelf, string> = { items: 'Items', mobs: 'Mobs & Anim.' }
+
+/**
+ * What a turning model needs to stay inside its tile: its height, or
+ * the diagonal it sweeps through as it spins - whichever is larger. A
+ * sword measured on its longest axis alone clips its own tip halfway
+ * round.
+ */
+function extentOf(model: Model) {
+  if (!model.cubes.length) return 24
   const lo = [Infinity, Infinity, Infinity]
   const hi = [-Infinity, -Infinity, -Infinity]
   for (const el of model.cubes) {
@@ -57,8 +66,50 @@ function fitScale(model: { cubes: Array<{ from: number[]; to: number[] }> }, tar
       hi[i] = Math.max(hi[i], el.to[i])
     }
   }
-  const extent = Math.max(hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2], 1)
-  return Math.max(0.8, Math.min(9, target / extent))
+  return Math.max(hi[1] - lo[1], Math.hypot(hi[0] - lo[0], hi[2] - lo[2]), 1)
+}
+
+/**
+ * One model in one tile, framed by measuring the tile rather than by a
+ * constant.
+ *
+ * These were cropped: `ModelView` stands a model on the grid, so its
+ * lowest point sat at the middle of the card and everything above it
+ * ran off the top. Half of every sword on the shelf was missing, which
+ * is why the shelf read as placeholder art.
+ */
+function CardRender({ model, spin }: { model: Model; spin?: boolean }) {
+  const frame = useRef<HTMLDivElement>(null)
+  const [box, setBox] = useState(150)
+
+  useLayoutEffect(() => {
+    const el = frame.current
+    if (!el) return
+    const ro = new ResizeObserver(([entry]) => {
+      const r = entry.contentRect
+      if (r.width > 0 && r.height > 0) setBox(Math.min(r.width, r.height))
+    })
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+
+  const scale = Math.max(0.8, Math.min(12, (box * 0.74) / extentOf(model)))
+
+  return (
+    <div ref={frame} style={{ position: 'absolute', inset: 0 }}>
+      <ModelView
+        model={model}
+        scale={scale}
+        grid={false}
+        orbit={false}
+        zoomable={false}
+        spin={spin}
+        initialYaw={-30}
+        initialPitch={-16}
+        anchorAt="centre"
+      />
+    </div>
+  )
 }
 
 /** The flat "2D Render" that sits in the card until you hover it. */
@@ -132,18 +183,10 @@ function AssetCard({
         {real ? (
           <>
             <div className="asset__flat">
-              <ModelView
-                model={real}
-                scale={fitScale(real, 120)}
-                grid={false}
-                orbit={false}
-                zoomable={false}
-                initialYaw={-30}
-                initialPitch={-16}
-              />
+              <CardRender model={real} />
             </div>
             <div className="asset__live">
-              <ModelView model={real} scale={fitScale(real, 132)} grid={false} orbit={false} zoomable={false} spin />
+              <CardRender model={real} spin />
             </div>
             <span className="asset__renderlabel">.vellum</span>
           </>
@@ -203,27 +246,32 @@ function Pager({
 }
 
 /** The shared library panel - identical for Items and for Mobs & Anim. */
-function Library({ sceneId, kind }: { sceneId: string; kind: AssetKind }) {
-  useTitle(kindLabel[kind])
+function Library({ sceneId, shelf }: { sceneId: string; shelf: Shelf }) {
+  useTitle(shelfLabel[shelf])
   const actions = useAssetActions()
   const [page, setPage] = useState(1)
   const [query, setQuery] = useState('')
   const scene = scenes.find((s) => s.id === sceneId) ?? scenes[0]
 
   const rows = useMemo(() => {
-    const all = assetsFor(scene.id, kind)
+    const all = assetsFor(scene.id, shelf)
     const q = query.trim().toLowerCase()
     return q ? all.filter((a) => a.name.toLowerCase().includes(q)) : all
-  }, [scene.id, kind, query])
+  }, [scene.id, shelf, query])
 
   const pages = Math.max(1, Math.ceil(rows.length / PER_PAGE))
   const current = Math.min(page, pages)
   const slice = rows.slice((current - 1) * PER_PAGE, current * PER_PAGE)
 
-  const switchKind = (next: AssetKind) => {
+  const switchShelf = (next: Shelf) => {
     setPage(1)
     navigate(`/projects/${scene.id}/${next}`)
   }
+
+  /* The shelf is sorted by kind, so a heading goes wherever the kind
+     changes - and only when more than one kind is on it, because a
+     single heading over a whole shelf says nothing the tab did not. */
+  const kinds = [...new Set(slice.map((a) => a.kind))]
 
   return (
     <main className="page">
@@ -231,7 +279,7 @@ function Library({ sceneId, kind }: { sceneId: string; kind: AssetKind }) {
         <div>
           <div className="eyebrow">{scene.name}</div>
           {/* title follows whichever tile opened the library */}
-          <h1 className="page-title">{kindLabel[kind]}</h1>
+          <h1 className="page-title">{shelfLabel[shelf]}</h1>
           <p className="page-sub">{scene.blurb}</p>
         </div>
       </div>
@@ -243,15 +291,15 @@ function Library({ sceneId, kind }: { sceneId: string; kind: AssetKind }) {
           </button>
 
           <div className="library__tabs" role="tablist" aria-label="Library category">
-            {(['items', 'mobs', 'consumables'] as AssetKind[]).map((k) => (
+            {(['items', 'mobs'] as Shelf[]).map((k) => (
               <button
                 key={k}
                 role="tab"
                 className="library__tab"
-                aria-selected={k === kind}
-                onClick={() => switchKind(k)}
+                aria-selected={k === shelf}
+                onClick={() => switchShelf(k)}
               >
-                {kindLabel[k]}
+                {shelfLabel[k]}
               </button>
             ))}
           </div>
@@ -275,11 +323,25 @@ function Library({ sceneId, kind }: { sceneId: string; kind: AssetKind }) {
         </div>
 
         {slice.length ? (
-          <div className="library__grid">
-            {slice.map((a) => (
-              <AssetCard key={a.id} asset={a} onDownload={actions.onDownload} onTexture={actions.onTexture} />
-            ))}
-          </div>
+          kinds.map((k) => (
+            <section className="library__group" key={k}>
+              {kinds.length > 1 ? (
+                <h2 className="library__groupname">
+                  {kindLabel[k]}
+                  <span className="library__groupn mono">
+                    {slice.filter((a) => a.kind === k).length}
+                  </span>
+                </h2>
+              ) : null}
+              <div className="library__grid">
+                {slice
+                  .filter((a) => a.kind === k)
+                  .map((a) => (
+                    <AssetCard key={a.id} asset={a} onDownload={actions.onDownload} onTexture={actions.onTexture} />
+                  ))}
+              </div>
+            </section>
+          ))
         ) : (
           <div className="library__empty">Nothing on this shelf matches &ldquo;{query}&rdquo;.</div>
         )}
@@ -295,7 +357,7 @@ function Gateway() {
   useTitle('Projects')
   const scene = scenes[0]
 
-  const tiles: Array<{ kind: AssetKind; icon: 'cube' | 'anim'; desc: string; count: number; palette: [string, string, string] }> = [
+  const tiles: Array<{ kind: Shelf; icon: 'cube' | 'anim'; desc: string; count: number; palette: [string, string, string] }> = [
     {
       kind: 'items',
       icon: 'cube',
@@ -347,7 +409,7 @@ function Gateway() {
               <span className="scene-chip__n mono">x{t.count}</span>
             </div>
             <div className="gateway__bottom">
-              <div className="gateway__name">{kindLabel[t.kind]}</div>
+              <div className="gateway__name">{shelfLabel[t.kind]}</div>
               <p className="gateway__desc">{t.desc}</p>
               <span className="gateway__go">
                 Open library <Icon name="arrowRight" size={13} />
@@ -365,9 +427,11 @@ export function Projects({ segments }: { segments: string[] }) {
   const routeScene = segments[1]
   const routeKind = segments[2]
 
-  if (routeScene && (routeKind === 'items' || routeKind === 'mobs' || routeKind === 'consumables')) {
+  if (routeKind === 'items' || routeKind === 'mobs' || routeKind === 'consumables') {
     const known = scenes.some((s) => s.id === routeScene) ? routeScene : scenes[0].id
-    return <Library key={`${known}-${routeKind}`} sceneId={known} kind={routeKind} />
+    // consumables moved onto the Items shelf; links to the old tab still work
+    const shelf = shelfOf(routeKind)
+    return <Library key={`${known}-${shelf}`} sceneId={known} shelf={shelf} />
   }
 
   return <Gateway />

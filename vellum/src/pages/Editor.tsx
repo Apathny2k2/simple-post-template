@@ -82,6 +82,7 @@ import type { DisplayState, SlotId } from './editor/DisplayPanel'
 import { NewModelDialog } from './editor/NewModelDialog'
 import { ConfirmDialog } from './editor/ConfirmDialog'
 import { blockNavigation, navigate, useTitle } from '../lib/router'
+import { scenes } from '../lib/data'
 import { saveDataUrl, saveFile } from '../lib/download'
 import './Editor.css'
 
@@ -203,6 +204,7 @@ function buildMenus(
 
 function MenuBar({
   fileName,
+  kind,
   actions,
   undoLabel,
   redoLabel,
@@ -210,6 +212,7 @@ function MenuBar({
   dirty,
 }: {
   fileName: string
+  kind: ProjectKind
   actions: Actions
   undoLabel: string | null
   redoLabel: string | null
@@ -222,6 +225,17 @@ function MenuBar({
   )
   return (
     <div className="ed-menubar">
+      {/* The editor was a one-way door: every route into it came from the
+          library and none led back, so the only way out was the browser's
+          own Back button. */}
+      <button
+        className="ed-menubar__back"
+        onClick={() => navigate(`/projects/${scenes[0].id}/${kind === 'mobs' ? 'mobs' : 'items'}`)}
+        title="Back to the library"
+        aria-label="Back to the library"
+      >
+        <Icon name="chevronLeft" size={14} />
+      </button>
       <span className="ed-menubar__mark">
         <VellumMark size={15} />
       </span>
@@ -3012,6 +3026,7 @@ export function Editor({ segments }: { segments: string[] }) {
 
       <MenuBar
         fileName={fileName}
+        kind={kind}
         actions={actions}
         undoLabel={history.undoLabel}
         redoLabel={history.redoLabel}
