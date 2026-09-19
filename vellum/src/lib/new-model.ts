@@ -7,16 +7,16 @@
    mode useful at all.
 
    Everything here returns a new Model rather than mutating one, so the
-   editor's undo story stays a matter of keeping old references.
+   editor's undo stack is a matter of keeping old references.
    --------------------------------------------------------------- */
 
-import { FACES } from './bbmodel'
-import type { Element, FaceKey, Group, Model, Texture, UVRect, Vec3 } from './bbmodel'
+import { FACES } from './model'
+import type { Bone, BoneChild, Cube, Face, FaceKey, Model, Texture, UVRect, Vec3 } from './model'
 
 export type NewModelKind = 'items' | 'mobs'
 
 let counter = 0
-const id = () =>
+export const newId = () =>
   typeof crypto !== 'undefined' && 'randomUUID' in crypto
     ? crypto.randomUUID()
     : `id-${Date.now().toString(36)}-${(counter += 1)}`
@@ -43,8 +43,7 @@ export function starterTexture(size: number, name: string): Texture {
     }
   }
   return {
-    uuid: id(),
-    id: '0',
+    id: newId(),
     name,
     width: size,
     height: size,
@@ -61,11 +60,15 @@ export function starterTexture(size: number, name: string): Texture {
  * newly added cube already has somewhere sensible to paint. Laid out at
  * `at`, one texel per unit.
  */
-function boxUvFaces(size: Vec3, at: [number, number], limit: number): Record<FaceKey, Element['faces'][FaceKey]> {
+function boxUvFaces(
+  size: Vec3,
+  at: [number, number],
+  limit: number,
+  texture: string | null,
+): Record<FaceKey, Face> {
   const [w, h, d] = size.map((v) => Math.max(1, Math.round(v))) as Vec3
   const [ox, oy] = at
-  const clamp = (r: UVRect): UVRect =>
-    r.map((v) => Math.max(0, Math.min(limit, v))) as UVRect
+  const clamp = (r: UVRect): UVRect => r.map((v) => Math.max(0, Math.min(limit, v))) as UVRect
 
   const rects: Record<FaceKey, UVRect> = {
     up: [ox + d, oy, ox + d + w, oy + d],
@@ -76,8 +79,8 @@ function boxUvFaces(size: Vec3, at: [number, number], limit: number): Record<Fac
     south: [ox + d * 2 + w, oy + d, ox + d * 2 + w * 2, oy + d + h],
   }
 
-  const faces = {} as Record<FaceKey, Element['faces'][FaceKey]>
-  for (const key of FACES) faces[key] = { uv: clamp(rects[key]), texture: 0, rotation: 0 }
+  const faces = {} as Record<FaceKey, Face>
+  for (const key of FACES) faces[key] = { uv: clamp(rects[key]), texture, rotation: 0 }
   return faces
 }
 
@@ -85,34 +88,37 @@ export function makeCube(
   name: string,
   from: Vec3,
   to: Vec3,
-  opts: { origin?: Vec3; rotation?: Vec3; uvAt?: [number, number]; uvLimit?: number } = {},
-): Element {
+  opts: {
+    origin?: Vec3
+    rotation?: Vec3
+    uvAt?: [number, number]
+    uvLimit?: number
+    texture?: string | null
+  } = {},
+): Cube {
   const size: Vec3 = [to[0] - from[0], to[1] - from[1], to[2] - from[2]]
   return {
-    uuid: id(),
+    id: newId(),
     name,
     from,
     to,
     origin: opts.origin ?? [(from[0] + to[0]) / 2, from[1], (from[2] + to[2]) / 2],
     rotation: opts.rotation ?? [0, 0, 0],
-    faces: boxUvFaces(size, opts.uvAt ?? [0, 0], opts.uvLimit ?? 64),
+    faces: boxUvFaces(size, opts.uvAt ?? [0, 0], opts.uvLimit ?? 64, opts.texture ?? null),
     inflate: 0,
     boxUv: false,
-    color: 0,
-    visibility: true,
+    visible: true,
     locked: false,
   }
 }
 
-export function makeGroup(name: string, origin: Vec3, children: Group['children'] = []): Group {
+export function makeBone(name: string, origin: Vec3, children: BoneChild[] = []): Bone {
   return {
-    uuid: id(),
+    id: newId(),
     name,
     origin,
     rotation: [0, 0, 0],
-    color: 0,
-    isOpen: true,
-    visibility: true,
+    visible: true,
     locked: false,
     children,
   }
@@ -127,58 +133,57 @@ export function createModel(kind: NewModelKind, name: string): Model {
 function itemStarter(name: string): Model {
   const texture = starterTexture(16, `${name}.png`)
   // a single 16-unit cube: the thing you immediately resize
-  const cube = makeCube('cube', [4, 0, 4], [12, 16, 12], { uvAt: [0, 0], uvLimit: 16 })
-  const root = makeGroup(name, [0, 0, 0], [{ kind: 'element', uuid: cube.uuid }])
+  const cube = makeCube('cube', [4, 0, 4], [12, 16, 12], {
+    uvAt: [0, 0],
+    uvLimit: 16,
+    texture: texture.id,
+  })
+  const root = makeBone(name, [0, 0, 0], [{ kind: 'cube', id: cube.id }])
 
   return {
     name,
-    format: 'vellum',
-    boxUv: false,
     resolution: { width: 16, height: 16 },
-    elements: [cube],
-    outliner: [root],
+    bones: [root],
+    cubes: [cube],
     textures: [texture],
-    animations: [],
+    clips: [],
   }
 }
 
 function mobStarter(name: string): Model {
   const texture = starterTexture(64, `${name}.png`)
   const L = 64
+  const t = texture.id
 
   // pivots sit on the joints, which is what makes the rig animate properly
-  const head = makeCube('head', [-4, 24, -4], [4, 32, 4], { origin: [0, 24, 0], uvAt: [0, 0], uvLimit: L })
-  const torso = makeCube('torso', [-4, 12, -2], [4, 24, 2], { origin: [0, 24, 0], uvAt: [16, 16], uvLimit: L })
-  const armL = makeCube('arm_left', [-8, 12, -2], [-4, 24, 2], { origin: [-4, 23, 0], uvAt: [40, 16], uvLimit: L })
-  const armR = makeCube('arm_right', [4, 12, -2], [8, 24, 2], { origin: [4, 23, 0], uvAt: [40, 32], uvLimit: L })
-  const legL = makeCube('leg_left', [-4, 0, -2], [0, 12, 2], { origin: [-2, 12, 0], uvAt: [0, 32], uvLimit: L })
-  const legR = makeCube('leg_right', [0, 0, -2], [4, 12, 2], { origin: [2, 12, 0], uvAt: [16, 32], uvLimit: L })
+  const head = makeCube('head', [-4, 24, -4], [4, 32, 4], { origin: [0, 24, 0], uvAt: [0, 0], uvLimit: L, texture: t })
+  const torso = makeCube('torso', [-4, 12, -2], [4, 24, 2], { origin: [0, 24, 0], uvAt: [16, 16], uvLimit: L, texture: t })
+  const armL = makeCube('arm_left', [-8, 12, -2], [-4, 24, 2], { origin: [-4, 23, 0], uvAt: [40, 16], uvLimit: L, texture: t })
+  const armR = makeCube('arm_right', [4, 12, -2], [8, 24, 2], { origin: [4, 23, 0], uvAt: [40, 32], uvLimit: L, texture: t })
+  const legL = makeCube('leg_left', [-4, 0, -2], [0, 12, 2], { origin: [-2, 12, 0], uvAt: [0, 32], uvLimit: L, texture: t })
+  const legR = makeCube('leg_right', [0, 0, -2], [4, 12, 2], { origin: [2, 12, 0], uvAt: [16, 32], uvLimit: L, texture: t })
 
-  const elements = [head, torso, armL, armR, legL, legR]
-
-  const root = makeGroup(name, [0, 0, 0], [
+  const root = makeBone(name, [0, 0, 0], [
     {
-      kind: 'group',
-      group: makeGroup('torso', [0, 12, 0], [
-        { kind: 'element', uuid: torso.uuid },
-        { kind: 'group', group: makeGroup('head', [0, 24, 0], [{ kind: 'element', uuid: head.uuid }]) },
-        { kind: 'group', group: makeGroup('arm_left', [-4, 23, 0], [{ kind: 'element', uuid: armL.uuid }]) },
-        { kind: 'group', group: makeGroup('arm_right', [4, 23, 0], [{ kind: 'element', uuid: armR.uuid }]) },
+      kind: 'bone',
+      bone: makeBone('torso', [0, 12, 0], [
+        { kind: 'cube', id: torso.id },
+        { kind: 'bone', bone: makeBone('head', [0, 24, 0], [{ kind: 'cube', id: head.id }]) },
+        { kind: 'bone', bone: makeBone('arm_left', [-4, 23, 0], [{ kind: 'cube', id: armL.id }]) },
+        { kind: 'bone', bone: makeBone('arm_right', [4, 23, 0], [{ kind: 'cube', id: armR.id }]) },
       ]),
     },
-    { kind: 'group', group: makeGroup('leg_left', [-2, 12, 0], [{ kind: 'element', uuid: legL.uuid }]) },
-    { kind: 'group', group: makeGroup('leg_right', [2, 12, 0], [{ kind: 'element', uuid: legR.uuid }]) },
+    { kind: 'bone', bone: makeBone('leg_left', [-2, 12, 0], [{ kind: 'cube', id: legL.id }]) },
+    { kind: 'bone', bone: makeBone('leg_right', [2, 12, 0], [{ kind: 'cube', id: legR.id }]) },
   ])
 
   return {
     name,
-    format: 'vellum',
-    boxUv: false,
     resolution: { width: L, height: L },
-    elements,
-    outliner: [root],
+    bones: [root],
+    cubes: [head, torso, armL, armR, legL, legR],
     textures: [texture],
-    animations: [],
+    clips: [],
   }
 }
 
@@ -186,9 +191,9 @@ function mobStarter(name: string): Model {
 
 /** Where the next cube should go: stacked on top of the model so far. */
 function nextSpot(model: Model): { from: Vec3; to: Vec3 } {
-  if (!model.elements.length) return { from: [-4, 0, -4], to: [4, 8, 4] }
+  if (!model.cubes.length) return { from: [-4, 0, -4], to: [4, 8, 4] }
   let top = -Infinity
-  for (const el of model.elements) top = Math.max(top, el.to[1])
+  for (const c of model.cubes) top = Math.max(top, c.to[1])
   return { from: [-4, top, -4], to: [4, top + 8, 4] }
 }
 
@@ -196,108 +201,139 @@ function nextSpot(model: Model): { from: Vec3; to: Vec3 } {
 function freeUvSpot(model: Model): [number, number] {
   const limit = model.resolution.width
   let lowest = 0
-  for (const el of model.elements) {
+  for (const c of model.cubes) {
     for (const key of FACES) {
-      const [, y1, , y2] = el.faces[key].uv
+      const [, y1, , y2] = c.faces[key].uv
       lowest = Math.max(lowest, Math.max(y1, y2))
     }
   }
   return lowest < limit ? [0, Math.ceil(lowest)] : [0, 0]
 }
 
-function addChild(groups: Group[], parentUuid: string | null, child: Group['children'][number]): Group[] {
-  if (!parentUuid) {
-    if (!groups.length) return groups
-    return [{ ...groups[0], children: [...groups[0].children, child] }, ...groups.slice(1)]
+function addChild(bones: Bone[], parentId: string | null, child: BoneChild): Bone[] {
+  if (!parentId) {
+    if (!bones.length) return bones
+    return [{ ...bones[0], children: [...bones[0].children, child] }, ...bones.slice(1)]
   }
-  return groups.map((g) => {
-    if (g.uuid === parentUuid) return { ...g, children: [...g.children, child] }
+  return bones.map((b) => {
+    if (b.id === parentId) return { ...b, children: [...b.children, child] }
     return {
-      ...g,
-      children: g.children.map((c) =>
-        c.kind === 'group'
-          ? { kind: 'group' as const, group: addChild([c.group], parentUuid, child)[0] }
-          : c,
+      ...b,
+      children: b.children.map((c) =>
+        c.kind === 'bone' ? { kind: 'bone' as const, bone: addChild([c.bone], parentId, child)[0] } : c,
       ),
     }
   })
 }
 
-/** Add a cube, parented to `parentUuid` when given and to the first root otherwise. */
-export function addCube(model: Model, parentUuid: string | null = null): { model: Model; uuid: string } {
+/** Add a cube, parented to `parentId` when given and to the first root otherwise. */
+export function addCube(model: Model, parentId: string | null = null): { model: Model; id: string } {
   const spot = nextSpot(model)
-  const cube = makeCube(`cube_${model.elements.length + 1}`, spot.from, spot.to, {
+  const cube = makeCube(`cube_${model.cubes.length + 1}`, spot.from, spot.to, {
     uvAt: freeUvSpot(model),
     uvLimit: model.resolution.width,
+    texture: model.textures[0]?.id ?? null,
   })
 
-  const outliner = model.outliner.length
-    ? addChild(model.outliner, parentUuid, { kind: 'element', uuid: cube.uuid })
-    : [makeGroup(model.name, [0, 0, 0], [{ kind: 'element', uuid: cube.uuid }])]
+  const bones = model.bones.length
+    ? addChild(model.bones, parentId, { kind: 'cube', id: cube.id })
+    : [makeBone(model.name, [0, 0, 0], [{ kind: 'cube', id: cube.id }])]
 
-  return { model: { ...model, elements: [...model.elements, cube], outliner }, uuid: cube.uuid }
+  return { model: { ...model, cubes: [...model.cubes, cube], bones }, id: cube.id }
 }
 
-export function addBone(model: Model, parentUuid: string | null = null): { model: Model; uuid: string } {
-  const bone = makeGroup(`bone_${countGroups(model.outliner) + 1}`, [0, 0, 0])
-  const outliner = model.outliner.length
-    ? addChild(model.outliner, parentUuid, { kind: 'group', group: bone })
+export function addBone(model: Model, parentId: string | null = null): { model: Model; id: string } {
+  const bone = makeBone(`bone_${countBones(model.bones) + 1}`, [0, 0, 0])
+  const bones = model.bones.length
+    ? addChild(model.bones, parentId, { kind: 'bone', bone })
     : [bone]
-  return { model: { ...model, outliner }, uuid: bone.uuid }
+  return { model: { ...model, bones }, id: bone.id }
 }
 
-function countGroups(groups: Group[]): number {
-  return groups.reduce(
-    (n, g) =>
-      n + 1 + countGroups(g.children.filter((c) => c.kind === 'group').map((c) => (c as { group: Group }).group)),
+function countBones(bones: Bone[]): number {
+  return bones.reduce(
+    (n, b) => n + 1 + countBones(b.children.filter((c) => c.kind === 'bone').map((c) => (c as { bone: Bone }).bone)),
     0,
   )
 }
 
-/** Remove a cube, and the outliner entry that referenced it. */
-export function deleteElement(model: Model, uuid: string): Model {
-  const strip = (groups: Group[]): Group[] =>
-    groups.map((g) => ({
-      ...g,
-      children: g.children
-        .filter((c) => !(c.kind === 'element' && c.uuid === uuid))
-        .map((c) => (c.kind === 'group' ? { kind: 'group' as const, group: strip([c.group])[0] } : c)),
+/** Remove a cube, the bone-tree entry that held it, and any key that drove it. */
+export function deleteCube(model: Model, id: string): Model {
+  const strip = (bones: Bone[]): Bone[] =>
+    bones.map((b) => ({
+      ...b,
+      children: b.children
+        .filter((c) => !(c.kind === 'cube' && c.id === id))
+        .map((c) => (c.kind === 'bone' ? { kind: 'bone' as const, bone: strip([c.bone])[0] } : c)),
     }))
+
+  return { ...model, cubes: model.cubes.filter((c) => c.id !== id), bones: strip(model.bones) }
+}
+
+/** Remove a bone and everything under it, cubes included. */
+export function deleteBone(model: Model, id: string): Model {
+  const doomed = new Set<string>()
+  const collect = (b: Bone) => {
+    for (const c of b.children) {
+      if (c.kind === 'cube') doomed.add(c.id)
+      else collect(c.bone)
+    }
+  }
+  const find = (bones: Bone[]): Bone | null => {
+    for (const b of bones) {
+      if (b.id === id) return b
+      const nested = find(b.children.filter((c) => c.kind === 'bone').map((c) => (c as { bone: Bone }).bone))
+      if (nested) return nested
+    }
+    return null
+  }
+  const target = find(model.bones)
+  if (!target) return model
+  collect(target)
+
+  const strip = (bones: Bone[]): Bone[] =>
+    bones
+      .filter((b) => b.id !== id)
+      .map((b) => ({
+        ...b,
+        children: b.children
+          .filter((c) => !(c.kind === 'bone' && c.bone.id === id))
+          .map((c) => (c.kind === 'bone' ? { kind: 'bone' as const, bone: strip([c.bone])[0] } : c)),
+      }))
 
   return {
     ...model,
-    elements: model.elements.filter((e) => e.uuid !== uuid),
-    outliner: strip(model.outliner),
+    cubes: model.cubes.filter((c) => !doomed.has(c.id)),
+    bones: strip(model.bones),
+    // a clip driving a bone that no longer exists would fail validation
+    clips: model.clips.map((clip) => ({ ...clip, tracks: clip.tracks.filter((t) => t.bone !== id) })),
   }
 }
 
-export function duplicateElement(model: Model, uuid: string): { model: Model; uuid: string } | null {
-  const source = model.elements.find((e) => e.uuid === uuid)
+export function duplicateCube(model: Model, id: string): { model: Model; id: string } | null {
+  const source = model.cubes.find((c) => c.id === id)
   if (!source) return null
-  const copy: Element = {
+  const copy: Cube = {
     ...source,
-    uuid: id(),
+    id: newId(),
     name: `${source.name}_copy`,
     faces: Object.fromEntries(
       FACES.map((k) => [k, { ...source.faces[k], uv: [...source.faces[k].uv] as UVRect }]),
-    ) as Element['faces'],
+    ) as Record<FaceKey, Face>,
   }
 
-  const place = (groups: Group[]): Group[] =>
-    groups.map((g) => {
-      const holds = g.children.some((c) => c.kind === 'element' && c.uuid === uuid)
+  const place = (bones: Bone[]): Bone[] =>
+    bones.map((b) => {
+      const holds = b.children.some((c) => c.kind === 'cube' && c.id === id)
       return {
-        ...g,
+        ...b,
         children: holds
-          ? [...g.children, { kind: 'element' as const, uuid: copy.uuid }]
-          : g.children.map((c) =>
-              c.kind === 'group' ? { kind: 'group' as const, group: place([c.group])[0] } : c,
+          ? [...b.children, { kind: 'cube' as const, id: copy.id }]
+          : b.children.map((c) =>
+              c.kind === 'bone' ? { kind: 'bone' as const, bone: place([c.bone])[0] } : c,
             ),
       }
     })
 
-  return {
-    model: { ...model, elements: [...model.elements, copy], outliner: place(model.outliner) },
-    uuid: copy.uuid,
-  }
+  return { model: { ...model, cubes: [...model.cubes, copy], bones: place(model.bones) }, id: copy.id }
 }

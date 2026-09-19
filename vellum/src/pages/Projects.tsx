@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Menu } from '../components/Menu'
 import { Model3D, blockModel, lanternModel } from '../components/Model3D'
-import { BBModelView } from '../components/BBModelView'
+import { ModelView } from '../components/ModelView'
 import { sampleById } from '../lib/samples'
 import { Icon } from '../lib/icons'
 import { assetsFor, scenes } from '../lib/data'
@@ -17,11 +17,11 @@ const kindLabel: Record<AssetKind, string> = {
 }
 
 /** Scale a model so its longest axis lands near `target` pixels. */
-function fitScale(model: { elements: Array<{ from: number[]; to: number[] }> }, target: number) {
-  if (!model.elements.length) return 3
+function fitScale(model: { cubes: Array<{ from: number[]; to: number[] }> }, target: number) {
+  if (!model.cubes.length) return 3
   const lo = [Infinity, Infinity, Infinity]
   const hi = [-Infinity, -Infinity, -Infinity]
-  for (const el of model.elements) {
+  for (const el of model.cubes) {
     for (let i = 0; i < 3; i++) {
       lo[i] = Math.min(lo[i], el.from[i])
       hi[i] = Math.max(hi[i], el.to[i])
@@ -89,19 +89,20 @@ function AssetCard({ asset }: { asset: Asset }) {
         {real ? (
           <>
             <div className="asset__flat">
-              <BBModelView
+              <ModelView
                 model={real}
                 scale={fitScale(real, 120)}
                 grid={false}
                 orbit={false}
+                zoomable={false}
                 initialYaw={-30}
                 initialPitch={-16}
               />
             </div>
             <div className="asset__live">
-              <BBModelView model={real} scale={fitScale(real, 132)} grid={false} orbit={false} spin />
+              <ModelView model={real} scale={fitScale(real, 132)} grid={false} orbit={false} zoomable={false} spin />
             </div>
-            <span className="asset__renderlabel">.bbmodel</span>
+            <span className="asset__renderlabel">.vellum</span>
           </>
         ) : (
           <>
@@ -119,7 +120,7 @@ function AssetCard({ asset }: { asset: Asset }) {
       <div className="asset__meta">
         <span>{asset.format}</span>
         <span>{asset.texture}</span>
-        <span>{asset.elements} elements</span>
+        <span>{asset.cubes} cubes</span>
         <span>{asset.updated}</span>
       </div>
     </article>

@@ -1,15 +1,14 @@
 /* The models the editor opens with.
 
-   These ship as `.vellum` - the native format. Their `.bbmodel` sources
-   live under docs/blockbench/source and are kept only as the import
-   record: opening a .bbmodel and saving is the migration, and once
-   migrated a model is a .vellum forever. */
+   These ship as `.vellum`, the native format, and are parsed by the same
+   reader an opened file goes through - there is no second path into the
+   editor. */
 
 import { readVellum } from './vellum'
-import type { Model } from './bbmodel'
-import alienSword from '../models/alien_sword.vellum.json'
-import voidling from '../models/voidling.vellum.json'
-import resonatorBlock from '../models/resonator_block.vellum.json'
+import type { Model } from './model'
+import alienSword from '../models/alien_sword.vellum?raw'
+import voidling from '../models/voidling.vellum?raw'
+import resonatorBlock from '../models/resonator_block.vellum?raw'
 
 export type Sample = {
   id: string
@@ -25,15 +24,15 @@ const of = (
   label: string,
   kind: Sample['kind'],
   blurb: string,
-  raw: unknown,
-): Sample => ({ id, file: `${id}.vellum`, label, kind, blurb, model: readVellum(raw as object) })
+  raw: string,
+): Sample => ({ id, file: `${id}.vellum`, label, kind, blurb, model: readVellum(raw) })
 
 export const samples: Sample[] = [
   of(
     'alien_sword',
     'Alien Sword',
     'items',
-    'A swept blade built from stacked per-element rotations. 22 cubes, no rig.',
+    'A swept blade built from stacked per-cube rotations. 22 cubes, no rig.',
     alienSword,
   ),
   of(
@@ -47,7 +46,7 @@ export const samples: Sample[] = [
     'resonator_block',
     'Resonator Block',
     'blocks',
-    'Imported from the Java block format: inside the 16-unit volume, one rotated axis.',
+    'A block-format model: inside the 16-unit volume, one rotated axis.',
     resonatorBlock,
   ),
 ]

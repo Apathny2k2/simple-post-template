@@ -2,33 +2,50 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { Menu } from '../components/Menu'
 import type { MenuEntry } from '../components/Menu'
-import { BBModelView } from '../components/BBModelView'
+import { ModelView } from '../components/ModelView'
 import { Icon, VellumMark } from '../lib/icons'
 import type { IconName } from '../lib/icons'
 import {
   FACES,
-  elementSize,
-  flattenOutliner,
-  parseBBModel,
-  serializeBBModel,
-  setElementPosition,
-  setElementSize,
+  cubeSize,
+  flattenBones,
+  setCubePosition,
+  setCubeSize,
   validateModel,
-} from '../lib/bbmodel'
+} from '../lib/model'
 import type {
-  Animation,
-  Element as BBElement,
+  Bone,
+  Channel,
+  Clip,
+  Cube,
   FaceKey,
-  Group,
+  Key,
   Model,
+  ProjectKind,
+  Track,
   UVRect,
   Vec3,
-} from '../lib/bbmodel'
+} from '../lib/model'
 import { isVellum, readVellum, vellumFileName, writeVellum } from '../lib/vellum'
-import type { ProjectKind } from '../lib/bbmodel'
 import { sampleById, samples } from '../lib/samples'
-import { addBone, addCube, createModel, deleteElement, duplicateElement } from '../lib/new-model'
+import { addBone, addCube, createModel, deleteBone, deleteCube, duplicateCube } from '../lib/new-model'
 import type { NewModelKind } from '../lib/new-model'
+import {
+  CHANNELS,
+  addClip,
+  boneList,
+  closeLoop,
+  deleteClip,
+  deleteKey,
+  deleteTrack,
+  duplicateClip,
+  findTrack,
+  setKey,
+  updateClip,
+  updateKey,
+} from '../lib/animation'
+import type { BoneRef } from '../lib/animation'
+import { useHistory } from '../lib/history'
 import {
   bucket,
   faceBounds,
@@ -52,22 +69,33 @@ type Mode = 'edit' | 'paint' | 'animate' | 'display'
 
 /* ================= menu bar ================= */
 
-function buildMenus(actions: {
+type Actions = {
   onNew: () => void
   onOpen: () => void
   onSave: () => void
-  onExport: () => void
   onSample: (id: string) => void
   onAddCube: () => void
   onAddBone: () => void
   onDuplicate: () => void
   onDelete: () => void
-}): Array<{ label: string; entries: MenuEntry[] }> {
+  onUndo: () => void
+  onRedo: () => void
+  onNewClip: () => void
+  onDuplicateClip: () => void
+  onDeleteClip: () => void
+  onAddKey: () => void
+  onCloseLoop: () => void
+}
+
+function buildMenus(
+  actions: Actions,
+  state: { undoLabel: string | null; redoLabel: string | null; hasClip: boolean },
+): Array<{ label: string; entries: MenuEntry[] }> {
   return [
     {
       label: 'File',
       entries: [
-        { label: 'New model\u2026', icon: 'plus', shortcut: 'Ctrl N', onSelect: actions.onNew },
+        { label: 'New model…', icon: 'plus', shortcut: 'Ctrl N', onSelect: actions.onNew },
         { kind: 'separator' },
         { kind: 'label', label: 'Sample models' },
         ...samples.map((s) => ({
@@ -76,14 +104,26 @@ function buildMenus(actions: {
           onSelect: () => actions.onSample(s.id),
         })),
         { kind: 'separator' },
-        { label: 'Open model\u2026', icon: 'folder', shortcut: 'Ctrl O', onSelect: actions.onOpen },
+        { label: 'Open .vellum…', icon: 'folder', shortcut: 'Ctrl O', onSelect: actions.onOpen },
         { label: 'Save .vellum', icon: 'save', shortcut: 'Ctrl S', onSelect: actions.onSave },
-        { label: 'Export .bbmodel', icon: 'download', shortcut: 'Ctrl E', onSelect: actions.onExport },
       ],
     },
     {
       label: 'Edit',
       entries: [
+        {
+          label: state.undoLabel ? `Undo ${state.undoLabel}` : 'Undo',
+          icon: 'undo',
+          shortcut: 'Ctrl Z',
+          onSelect: actions.onUndo,
+        },
+        {
+          label: state.redoLabel ? `Redo ${state.redoLabel}` : 'Redo',
+          icon: 'redo',
+          shortcut: 'Ctrl ⇧ Z',
+          onSelect: actions.onRedo,
+        },
+        { kind: 'separator' },
         { label: 'Add Cube', icon: 'cube', onSelect: actions.onAddCube },
         { label: 'Add Bone', icon: 'folder', onSelect: actions.onAddBone },
         { kind: 'separator' },
@@ -92,21 +132,26 @@ function buildMenus(actions: {
       ],
     },
     {
-      label: 'Transform',
+      label: 'Animation',
+      // with no clip the rest would be no-ops, so the menu offers only the
+      // one entry that does something
       entries: [
-        { label: 'Move', icon: 'move' },
-        { label: 'Resize', icon: 'resize' },
-        { label: 'Rotate', icon: 'rotate' },
-        { kind: 'separator' },
-        { label: 'Centre Pivot', icon: 'pivot' },
-      ],
-    },
-    {
-      label: 'Filter',
-      entries: [
-        { kind: 'label', label: 'Geometry' },
-        { label: 'Sort Outliner', icon: 'layers' },
-        { label: 'Validate Model', icon: 'check' },
+        { label: 'New animation', icon: 'plus', onSelect: actions.onNewClip },
+        ...(state.hasClip
+          ? ([
+              { label: 'Duplicate animation', icon: 'copy', onSelect: actions.onDuplicateClip },
+              { kind: 'separator' },
+              { label: 'Add keyframe', icon: 'key', shortcut: 'K', onSelect: actions.onAddKey },
+              { label: 'Close the loop', icon: 'refresh', onSelect: actions.onCloseLoop },
+              { kind: 'separator' },
+              {
+                label: 'Delete animation',
+                icon: 'trash',
+                danger: true,
+                onSelect: actions.onDeleteClip,
+              },
+            ] satisfies MenuEntry[])
+          : []),
       ],
     },
     {
@@ -132,11 +177,20 @@ function buildMenus(actions: {
 function MenuBar({
   fileName,
   actions,
+  undoLabel,
+  redoLabel,
+  hasClip,
 }: {
   fileName: string
-  actions: Parameters<typeof buildMenus>[0]
+  actions: Actions
+  undoLabel: string | null
+  redoLabel: string | null
+  hasClip: boolean
 }) {
-  const menus = useMemo(() => buildMenus(actions), [actions])
+  const menus = useMemo(
+    () => buildMenus(actions, { undoLabel, redoLabel, hasClip }),
+    [actions, undoLabel, redoLabel, hasClip],
+  )
   return (
     <div className="ed-menubar">
       <span className="ed-menubar__mark">
@@ -209,11 +263,16 @@ function Toolbar({
   onGrid,
   quad,
   onQuad,
-  hasAnimations,
   onAddCube,
   onAddBone,
   brush,
   onBrush,
+  canUndo,
+  canRedo,
+  onUndo,
+  onRedo,
+  undoLabel,
+  redoLabel,
 }: {
   mode: Mode
   onMode: (m: Mode) => void
@@ -223,28 +282,48 @@ function Toolbar({
   onGrid: () => void
   quad: boolean
   onQuad: () => void
-  hasAnimations: boolean
   onAddCube: () => void
   onAddBone: () => void
   brush: number
   onBrush: (n: number) => void
+  canUndo: boolean
+  canRedo: boolean
+  onUndo: () => void
+  onRedo: () => void
+  undoLabel: string | null
+  redoLabel: string | null
 }) {
   return (
     <div className="ed-toolbar">
       <div className="ed-modes" role="group" aria-label="Editor mode">
         {modes.map((m) => (
-          <button
-            key={m.id}
-            className="ed-mode"
-            aria-pressed={m.id === mode}
-            // Blockbench greys out Animate when the format carries no animations
-            disabled={m.id === 'animate' && !hasAnimations}
-            title={m.id === 'animate' && !hasAnimations ? 'This model has no animations' : undefined}
-            onClick={() => onMode(m.id)}
-          >
+          <button key={m.id} className="ed-mode" aria-pressed={m.id === mode} onClick={() => onMode(m.id)}>
             {m.label}
           </button>
         ))}
+      </div>
+
+      <span className="ed-sep" />
+
+      <div className="ed-tools" role="group" aria-label="History">
+        <button
+          className="ed-tool"
+          title={undoLabel ? `Undo ${undoLabel} (Ctrl Z)` : 'Nothing to undo'}
+          aria-label="Undo"
+          disabled={!canUndo}
+          onClick={onUndo}
+        >
+          <Icon name="undo" size={15} />
+        </button>
+        <button
+          className="ed-tool"
+          title={redoLabel ? `Redo ${redoLabel} (Ctrl ⇧ Z)` : 'Nothing to redo'}
+          aria-label="Redo"
+          disabled={!canRedo}
+          onClick={onRedo}
+        >
+          <Icon name="redo" size={15} />
+        </button>
       </div>
 
       <span className="ed-sep" />
@@ -352,12 +431,15 @@ function NumField({
   onChange,
   step = 1,
   disabled,
+  onCommit,
 }: {
   axis: 'x' | 'y' | 'z' | 'n'
   value: number
   onChange: (v: number) => void
   step?: number
   disabled?: boolean
+  /** fired once a scrub ends, so a drag is one undo step rather than forty */
+  onCommit?: () => void
 }) {
   const drag = useRef<{ x: number; start: number } | null>(null)
   const [draft, setDraft] = useState<string | null>(null)
@@ -378,6 +460,7 @@ function NumField({
           onChange(Number((d.start + Math.round((e.clientX - d.x) / 3) * step).toFixed(2)))
         }}
         onPointerUp={() => {
+          if (drag.current) onCommit?.()
           drag.current = null
         }}
       >
@@ -394,6 +477,7 @@ function NumField({
             const next = Number(draft)
             if (Number.isFinite(next)) onChange(next)
             setDraft(null)
+            onCommit?.()
           }
         }}
         onKeyDown={(e) => {
@@ -411,12 +495,14 @@ function NumRow({
   onChange,
   step,
   disabled,
+  onCommit,
 }: {
   label: string
   value: Vec3
   onChange: (v: Vec3) => void
   step?: number
   disabled?: boolean
+  onCommit?: () => void
 }) {
   const axes: Array<'x' | 'y' | 'z'> = ['x', 'y', 'z']
   return (
@@ -428,6 +514,7 @@ function NumRow({
           axis={a}
           step={step}
           disabled={disabled}
+          onCommit={onCommit}
           value={value[i]}
           onChange={(v) => {
             const next = [...value] as Vec3
@@ -440,94 +527,90 @@ function NumRow({
   )
 }
 
-/* ================= element panel ================= */
+/* ================= cube panel ================= */
 
-function ElementPanel({
-  element,
-  format,
+function CubePanel({
+  cube,
+  kind,
   onChange,
 }: {
-  element: BBElement | null
-  format: string
-  onChange: (fn: (e: BBElement) => BBElement) => void
+  cube: Cube | null
+  kind: ProjectKind
+  onChange: (fn: (c: Cube) => Cube) => void
 }) {
-  if (!element) {
+  if (!cube) {
     return <p className="ed-hint">Select a cube in the outliner to edit it.</p>
   }
 
-  const size = elementSize(element)
-  // Java block models only accept one rotated axis, at fixed angles
-  const javaLocked = format === 'java_block'
+  const size = cubeSize(cube)
+  // block models only accept one rotated axis, at fixed angles
+  const blockLocked = kind === 'blocks'
 
   return (
     <>
       <div className="nf-grid">
         <NumRow
           label="Position"
-          value={element.from}
-          onChange={(from) => onChange((e) => setElementPosition(e, from))}
+          value={cube.from}
+          onChange={(from) => onChange((c) => setCubePosition(c, from))}
         />
-        <NumRow label="Size" value={size} onChange={(s) => onChange((e) => setElementSize(e, s))} />
+        <NumRow label="Size" value={size} onChange={(s) => onChange((c) => setCubeSize(c, s))} />
         <NumRow
           label="Pivot"
-          value={element.origin}
-          onChange={(origin) => onChange((e) => ({ ...e, origin }))}
+          value={cube.origin}
+          onChange={(origin) => onChange((c) => ({ ...c, origin }))}
         />
         <NumRow
           label="Rotation"
-          value={element.rotation}
-          step={javaLocked ? 22.5 : 2.5}
-          onChange={(rotation) => onChange((e) => ({ ...e, rotation }))}
+          value={cube.rotation}
+          step={blockLocked ? 22.5 : 2.5}
+          onChange={(rotation) => onChange((c) => ({ ...c, rotation }))}
         />
         <div className="nf-row">
           <span className="nf-row__label">Inflate</span>
-          <NumField
-            axis="n"
-            value={element.inflate}
-            onChange={(inflate) => onChange((e) => ({ ...e, inflate }))}
-          />
+          <NumField axis="n" value={cube.inflate} onChange={(inflate) => onChange((c) => ({ ...c, inflate }))} />
           <span className="nf-row__label" style={{ textAlign: 'right' }}>
             Faces
           </span>
           <NumField
             axis="n"
-            value={FACES.filter((f) => element.faces[f].texture !== null).length}
+            value={FACES.filter((f) => cube.faces[f].texture !== null).length}
             onChange={() => {}}
             disabled
           />
         </div>
       </div>
 
-      {javaLocked ? (
+      {blockLocked ? (
         <p className="ed-hint ed-hint--warn">
-          <Icon name="warning" size={11} /> Java blocks rotate on one axis only, at ±22.5° or ±45°.
+          <Icon name="warning" size={11} /> Block models rotate on one axis only, at {'\u00b1'}22.5{'\u00b0'} or {'\u00b1'}45{'\u00b0'}.
         </p>
       ) : null}
 
       <div className="chip-row">
         <button
           className="chip"
-          aria-pressed={element.visibility}
-          onClick={() => onChange((e) => ({ ...e, visibility: !e.visibility }))}
+          aria-pressed={cube.visible}
+          onClick={() => onChange((c) => ({ ...c, visible: !c.visible }))}
         >
-          <Icon name={element.visibility ? 'eye' : 'eyeOff'} size={11} /> Visible
+          <Icon name={cube.visible ? 'eye' : 'eyeOff'} size={11} /> Visible
         </button>
         <button
           className="chip"
-          aria-pressed={element.locked}
-          onClick={() => onChange((e) => ({ ...e, locked: !e.locked }))}
+          aria-pressed={cube.locked}
+          onClick={() => onChange((c) => ({ ...c, locked: !c.locked }))}
         >
           <Icon name="lock" size={11} /> Locked
         </button>
         <button
           className="chip"
           onClick={() =>
-            onChange((e) => ({
-              ...e,
+            onChange((c) => ({
+              ...c,
               origin: [
-                (e.from[0] + e.to[0]) / 2,
-                (e.from[1] + e.to[1]) / 2,
-                (e.from[2] + e.to[2]) / 2,
+                (c.from[0] + c.to[0]) / 2,
+                (c.from[1] + c.to[1]) / 2,
+                (c.from[2] + c.to[2]) / 2,
               ] as Vec3,
             }))
           }
@@ -543,27 +626,27 @@ function ElementPanel({
 
 function UVPanel({
   model,
-  element,
+  cube,
   face,
   onFace,
   onChange,
   onPaint,
 }: {
   model: Model
-  element: BBElement | null
+  cube: Cube | null
   face: FaceKey
   onFace: (f: FaceKey) => void
-  onChange: (fn: (e: BBElement) => BBElement) => void
+  onChange: (fn: (c: Cube) => Cube) => void
   /** texel coordinates straight off the sheet, when paint mode is active */
   onPaint?: (x: number, y: number, phase: 'down' | 'move') => void
 }) {
   const texture = model.textures[0]
   const { width, height } = model.resolution
 
-  if (!element) return <p className="ed-hint">No cube selected.</p>
+  if (!cube) return <p className="ed-hint">No cube selected.</p>
 
   const pct = (v: number, total: number) => `${(v / total) * 100}%`
-  const current = element.faces[face]
+  const current = cube.faces[face]
 
   return (
     <>
@@ -606,7 +689,7 @@ function UVPanel({
         }
       >
         {FACES.map((key) => {
-          const [x1, y1, x2, y2] = element.faces[key].uv
+          const [x1, y1, x2, y2] = cube.faces[key].uv
           const left = Math.min(x1, x2)
           const top = Math.min(y1, y2)
           const w = Math.abs(x2 - x1)
@@ -624,7 +707,7 @@ function UVPanel({
                 pointerEvents: onPaint ? 'none' : undefined,
               }}
               onClick={() => onFace(key)}
-              title={`${key} · ${x1},${y1} → ${x2},${y2}`}
+              title={`${key} \u00b7 ${x1},${y1} \u2192 ${x2},${y2}`}
             >
               {key[0].toUpperCase()}
             </button>
@@ -640,12 +723,7 @@ function UVPanel({
 
       <div className="uv-faces">
         {FACES.map((key) => (
-          <button
-            key={key}
-            className="chip"
-            aria-pressed={key === face}
-            onClick={() => onFace(key)}
-          >
+          <button key={key} className="chip" aria-pressed={key === face} onClick={() => onFace(key)}>
             {key}
           </button>
         ))}
@@ -654,30 +732,14 @@ function UVPanel({
       <div className="nf-grid" style={{ marginTop: 9 }}>
         <div className="nf-row">
           <span className="nf-row__label">UV from</span>
-          <NumField
-            axis="x"
-            value={current.uv[0]}
-            onChange={(v) => onChange((e) => patchUV(e, face, 0, v))}
-          />
-          <NumField
-            axis="y"
-            value={current.uv[1]}
-            onChange={(v) => onChange((e) => patchUV(e, face, 1, v))}
-          />
+          <NumField axis="x" value={current.uv[0]} onChange={(v) => onChange((c) => patchUV(c, face, 0, v))} />
+          <NumField axis="y" value={current.uv[1]} onChange={(v) => onChange((c) => patchUV(c, face, 1, v))} />
           <span className="nf-row__label" />
         </div>
         <div className="nf-row">
           <span className="nf-row__label">UV to</span>
-          <NumField
-            axis="x"
-            value={current.uv[2]}
-            onChange={(v) => onChange((e) => patchUV(e, face, 2, v))}
-          />
-          <NumField
-            axis="y"
-            value={current.uv[3]}
-            onChange={(v) => onChange((e) => patchUV(e, face, 3, v))}
-          />
+          <NumField axis="x" value={current.uv[2]} onChange={(v) => onChange((c) => patchUV(c, face, 2, v))} />
+          <NumField axis="y" value={current.uv[3]} onChange={(v) => onChange((c) => patchUV(c, face, 3, v))} />
           <span className="nf-row__label" />
         </div>
       </div>
@@ -685,10 +747,10 @@ function UVPanel({
   )
 }
 
-function patchUV(e: BBElement, face: FaceKey, index: number, value: number): BBElement {
-  const uv = [...e.faces[face].uv] as UVRect
+function patchUV(c: Cube, face: FaceKey, index: number, value: number): Cube {
+  const uv = [...c.faces[face].uv] as UVRect
   uv[index] = value
-  return { ...e, faces: { ...e.faces, [face]: { ...e.faces[face], uv } } }
+  return { ...c, faces: { ...c.faces, [face]: { ...c.faces[face], uv } } }
 }
 
 /* ================= colour ================= */
@@ -812,61 +874,64 @@ function Outliner({
   selected,
   collapsed,
   onSelect,
-  onToggleGroup,
+  onToggleBone,
   onModel,
 }: {
   model: Model
   selected: string | null
   collapsed: Set<string>
-  onSelect: (uuid: string) => void
-  onToggleGroup: (uuid: string) => void
-  onModel: (fn: (m: Model) => Model) => void
+  onSelect: (id: string) => void
+  onToggleBone: (id: string) => void
+  onModel: (label: string, fn: (m: Model) => Model) => void
 }) {
-  const rows = useMemo(() => flattenOutliner(model, collapsed), [model, collapsed])
+  const rows = useMemo(() => flattenBones(model, collapsed), [model, collapsed])
 
-  const setGroup = (uuid: string, patch: Partial<Group>) =>
-    onModel((m) => {
-      const walk = (groups: Group[]): Group[] =>
-        groups.map((g) => ({
-          ...(g.uuid === uuid ? { ...g, ...patch } : g),
-          children: g.children.map((c) =>
-            c.kind === 'group' ? { kind: 'group' as const, group: walk([c.group])[0] } : c,
+  const setBone = (id: string, patch: Partial<Bone>) =>
+    onModel('Bone toggle', (m) => {
+      const walk = (bones: Bone[]): Bone[] =>
+        bones.map((b) => ({
+          ...(b.id === id ? { ...b, ...patch } : b),
+          children: b.children.map((c) =>
+            c.kind === 'bone' ? { kind: 'bone' as const, bone: walk([c.bone])[0] } : c,
           ),
         }))
-      return { ...m, outliner: walk(m.outliner) }
+      return { ...m, bones: walk(m.bones) }
     })
 
-  const setElement = (uuid: string, patch: Partial<BBElement>) =>
-    onModel((m) => ({
+  const setCube = (id: string, patch: Partial<Cube>) =>
+    onModel('Cube toggle', (m) => ({
       ...m,
-      elements: m.elements.map((e) => (e.uuid === uuid ? { ...e, ...patch } : e)),
+      cubes: m.cubes.map((c) => (c.id === id ? { ...c, ...patch } : c)),
     }))
 
   return (
     <div className="tree" role="tree">
       {rows.map((row) => {
-        const isGroup = row.kind === 'group'
-        const node = isGroup ? row.group : row.element
-        const visible = node.visibility
+        const isBone = row.kind === 'bone'
+        const node = isBone ? row.bone : row.cube
+        const visible = node.visible
         const locked = node.locked
         return (
           <div
-            key={node.uuid}
+            key={node.id}
             role="treeitem"
-            aria-selected={!isGroup && node.uuid === selected}
+            aria-selected={node.id === selected}
             data-hidden={!visible || undefined}
             className="tree__row"
             style={{ paddingLeft: 6 + row.depth * 13 }}
-            onClick={() => (isGroup ? onToggleGroup(node.uuid) : onSelect(node.uuid))}
+            onClick={() => {
+              onSelect(node.id)
+              if (isBone) onToggleBone(node.id)
+            }}
           >
-            {isGroup ? (
+            {isBone ? (
               <Icon
-                name={collapsed.has(node.uuid) ? 'chevronRight' : 'chevronDown'}
+                name={collapsed.has(node.id) ? 'chevronRight' : 'chevronDown'}
                 size={10}
                 className="tree__icon"
               />
             ) : null}
-            <Icon name={isGroup ? 'folder' : 'cube'} size={12} className="tree__icon" />
+            <Icon name={isBone ? 'folder' : 'cube'} size={12} className="tree__icon" />
             <span className="tree__name">{node.name}</span>
             <button
               className="tree__toggle"
@@ -874,8 +939,8 @@ function Outliner({
               title="Lock"
               onClick={(e) => {
                 e.stopPropagation()
-                if (isGroup) setGroup(node.uuid, { locked: !locked })
-                else setElement(node.uuid, { locked: !locked })
+                if (isBone) setBone(node.id, { locked: !locked })
+                else setCube(node.id, { locked: !locked })
               }}
             >
               <Icon name={locked ? 'lock' : 'unlock'} size={11} />
@@ -886,8 +951,8 @@ function Outliner({
               title="Visibility"
               onClick={(e) => {
                 e.stopPropagation()
-                if (isGroup) setGroup(node.uuid, { visibility: !visible })
-                else setElement(node.uuid, { visibility: !visible })
+                if (isBone) setBone(node.id, { visible: !visible })
+                else setCube(node.id, { visible: !visible })
               }}
             >
               <Icon name={visible ? 'eye' : 'eyeOff'} size={11} />
@@ -910,11 +975,11 @@ const quadViews = [
 
 function Viewport({
   model,
-  format,
+  label,
   grid,
   quad,
   scale,
-  animation,
+  clip,
   time,
   selected,
   onSelect,
@@ -922,15 +987,15 @@ function Viewport({
   display,
 }: {
   model: Model
-  format: string
+  label: string
   grid: boolean
   quad: boolean
   scale: number
-  animation: Animation | null
+  clip: Clip | null
   time: number
   selected: string | null
-  onSelect: (uuid: string) => void
-  onPaint?: (elementUuid: string, face: FaceKey, u: number, v: number, phase: 'down' | 'move') => void
+  onSelect: (id: string) => void
+  onPaint?: (cubeId: string, face: FaceKey, u: number, v: number, phase: 'down' | 'move') => void
   display?: { rotation: Vec3; translation: Vec3; scale: Vec3 } | null
 }) {
   const [shading, setShading] = useState<'solid' | 'wire'>('solid')
@@ -943,14 +1008,14 @@ function Viewport({
             {quadViews.map((v) => (
               <div className="ed-quad__cell" key={v.tag}>
                 <span className="ed-quad__tag">{v.tag}</span>
-                <BBModelView
+                <ModelView
                   model={model}
                   grid={grid}
                   scale={scale * 0.55}
                   orbit
                   initialYaw={v.yaw}
                   initialPitch={v.pitch}
-                  animation={animation}
+                  clip={clip}
                   time={time}
                   selected={selected}
                   onSelect={onSelect}
@@ -961,12 +1026,12 @@ function Viewport({
             ))}
           </div>
         ) : (
-          <BBModelView
+          <ModelView
             model={model}
             grid={grid}
             scale={scale}
             orbit
-            animation={animation}
+            clip={clip}
             time={time}
             selected={selected}
             onSelect={onSelect}
@@ -976,24 +1041,21 @@ function Viewport({
         )}
 
         <div className="ed-view__corner ed-view__corner--tl">
-          <Icon name="cube" size={11} /> {format}
+          <Icon name="cube" size={11} /> {label}
         </div>
 
         <div className="ed-view__corner ed-view__corner--tr">
           {(['solid', 'wire'] as const).map((s) => (
-            <button
-              key={s}
-              className="ed-view__vbtn"
-              aria-pressed={shading === s}
-              onClick={() => setShading(s)}
-            >
+            <button key={s} className="ed-view__vbtn" aria-pressed={shading === s} onClick={() => setShading(s)}>
               {s === 'solid' ? 'Solid' : 'Wire'}
             </button>
           ))}
         </div>
 
         <div className="ed-view__corner ed-view__corner--bl">
-          {onPaint ? 'paint straight onto the model' : 'drag to orbit · click a cube'}
+          {onPaint
+            ? 'drag a face to paint · drag the backdrop or right-drag to orbit · scroll to zoom'
+            : 'drag to orbit · scroll to zoom · click a cube'}
         </div>
 
         <svg className="ed-axis-gizmo" viewBox="0 0 60 60" aria-hidden="true">
@@ -1013,63 +1075,303 @@ function Viewport({
   )
 }
 
+/* ================= animation ================= */
+
+/** Everything the Animate-mode UI can do, in one place. */
+type AnimApi = {
+  clips: Clip[]
+  clip: Clip | null
+  bones: BoneRef[]
+  bone: string | null
+  setBone: (id: string) => void
+  selectClip: (id: string) => void
+  newClip: () => void
+  duplicateClip: () => void
+  removeClip: () => void
+  patchClip: (patch: Partial<Omit<Clip, 'id' | 'tracks'>>) => void
+  closeLoop: () => void
+  addKey: (bone: string, channel: Channel) => void
+  removeKey: (keyId: string) => void
+  removeTrack: (bone: string, channel: Channel) => void
+  selectedKey: string | null
+  selectKey: (id: string | null) => void
+  /** a key drag is one undo step, so it is bracketed rather than committed per frame */
+  dragKey: (keyId: string, time: number, phase: 'down' | 'move' | 'up') => void
+  patchKey: (keyId: string, patch: Partial<Omit<Key, 'id'>>, transient?: boolean) => void
+}
+
+const LOOPS: Array<Clip['loop']> = ['loop', 'once', 'hold']
+const SNAPS = [0, 12, 24, 30, 60]
+
+function AnimationPanel({ anim }: { anim: AnimApi }) {
+  const { clip } = anim
+
+  if (!clip) {
+    return (
+      <>
+        <p className="ed-hint">
+          This model has no animations yet. An animation is a name, a length and the bones it drives.
+        </p>
+        <div className="chip-row">
+          <button className="chip chip--go" onClick={anim.newClip}>
+            <Icon name="plus" size={11} /> New animation
+          </button>
+        </div>
+      </>
+    )
+  }
+
+  return (
+    <>
+      <label className="ed-field">
+        <span>Name</span>
+        <input
+          className="ed-input"
+          value={clip.name}
+          spellCheck={false}
+          onChange={(e) => anim.patchClip({ name: e.target.value })}
+        />
+      </label>
+
+      <div className="nf-grid" style={{ marginTop: 8 }}>
+        <div className="nf-row">
+          <span className="nf-row__label">Length</span>
+          <NumField
+            axis="n"
+            step={0.1}
+            value={clip.length}
+            onChange={(v) => anim.patchClip({ length: Math.max(0.1, Number(v.toFixed(3))) })}
+          />
+          <span className="nf-row__label" style={{ textAlign: 'right' }}>
+            seconds
+          </span>
+          <span className="nf-row__label" />
+        </div>
+      </div>
+
+      <label className="ed-field">
+        <span>Loop</span>
+        <select
+          className="ed-select"
+          value={clip.loop}
+          onChange={(e) => anim.patchClip({ loop: e.target.value as Clip['loop'] })}
+        >
+          {LOOPS.map((l) => (
+            <option key={l} value={l}>
+              {l}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      <label className="ed-field">
+        <span>Snap</span>
+        <select
+          className="ed-select"
+          value={clip.snapping}
+          onChange={(e) => anim.patchClip({ snapping: Number(e.target.value) })}
+        >
+          {SNAPS.map((s) => (
+            <option key={s} value={s}>
+              {s ? `${s} per second` : 'off'}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      <div className="chip-row" style={{ marginTop: 9 }}>
+        <button className="chip" onClick={anim.newClip} title="Create another animation">
+          <Icon name="plus" size={11} /> New
+        </button>
+        <button className="chip" onClick={anim.duplicateClip}>
+          <Icon name="copy" size={11} /> Duplicate
+        </button>
+        <button className="chip" onClick={anim.closeLoop} title="Copy each track's first key to the end">
+          <Icon name="refresh" size={11} /> Close loop
+        </button>
+        <button className="chip chip--danger" onClick={anim.removeClip}>
+          <Icon name="trash" size={11} /> Delete
+        </button>
+      </div>
+
+      <p className="ed-hint" style={{ marginTop: 10 }}>
+        Animating
+      </p>
+      <div className="tree tree--short" role="listbox" aria-label="Bone to animate">
+        {anim.bones.map((b) => (
+          <div
+            key={b.id}
+            role="option"
+            aria-selected={b.id === anim.bone}
+            className="tree__row"
+            style={{ paddingLeft: 6 + b.depth * 13 }}
+            onClick={() => anim.setBone(b.id)}
+          >
+            <Icon name="folder" size={12} className="tree__icon" />
+            <span className="tree__name">{b.name}</span>
+            {clip.tracks.some((t) => t.bone === b.id) ? <span className="tl-name__ch">keyed</span> : null}
+          </div>
+        ))}
+        {!anim.bones.length ? <p className="ed-hint">This model has no bones to animate.</p> : null}
+      </div>
+    </>
+  )
+}
+
+function KeyframePanel({ anim }: { anim: AnimApi }) {
+  const found = useMemo(() => {
+    const clip = anim.clip
+    const id = anim.selectedKey
+    if (!clip || !id) return null
+    const track = clip.tracks.find((t) => t.keys.some((k) => k.id === id))
+    const key = track?.keys.find((k) => k.id === id)
+    return track && key ? { track, key } : null
+  }, [anim.clip, anim.selectedKey])
+
+  if (!found) {
+    return (
+      <p className="ed-hint">
+        Select a keyframe on the timeline to edit it, or press the <Icon name="key" size={11} /> beside a
+        channel to add one at the playhead.
+      </p>
+    )
+  }
+
+  const { track, key } = found
+  const boneName = anim.bones.find((b) => b.id === track.bone)?.name ?? track.bone
+  const step = track.channel === 'rotation' ? 2.5 : track.channel === 'scale' ? 0.05 : 0.5
+
+  return (
+    <>
+      <p className="ed-hint" style={{ marginBottom: 8 }}>
+        <Icon name="folder" size={11} /> {boneName} <span className="tl-name__ch">{track.channel}</span>
+      </p>
+
+      <div className="nf-grid">
+        <NumRow
+          label={track.channel}
+          value={key.value}
+          step={step}
+          onChange={(value) => anim.patchKey(key.id, { value }, true)}
+          onCommit={() => anim.patchKey(key.id, {})}
+        />
+        <div className="nf-row">
+          <span className="nf-row__label">Time</span>
+          <NumField
+            axis="n"
+            step={0.05}
+            value={key.time}
+            onChange={(time) => anim.patchKey(key.id, { time })}
+          />
+          <span className="nf-row__label" style={{ textAlign: 'right' }}>
+            of {anim.clip?.length}s
+          </span>
+          <span className="nf-row__label" />
+        </div>
+      </div>
+
+      <label className="ed-field">
+        <span>Easing</span>
+        <select
+          className="ed-select"
+          value={key.interp}
+          onChange={(e) => anim.patchKey(key.id, { interp: e.target.value as Key['interp'] })}
+        >
+          <option value="linear">linear</option>
+          <option value="step">step</option>
+          <option value="catmullrom">smooth</option>
+        </select>
+      </label>
+
+      <div className="chip-row" style={{ marginTop: 9 }}>
+        <button className="chip chip--danger" onClick={() => anim.removeKey(key.id)}>
+          <Icon name="trash" size={11} /> Delete keyframe
+        </button>
+        <button className="chip" onClick={() => anim.removeTrack(track.bone, track.channel)}>
+          <Icon name="trash" size={11} /> Clear channel
+        </button>
+      </div>
+    </>
+  )
+}
+
 /* ================= timeline ================= */
 
 const PX_PER_S = 96
 
+type Row = { key: string; bone: string; boneName: string; channel: Channel; track: Track | null }
+
 function Timeline({
-  model,
-  animation,
-  onAnimation,
+  anim,
   time,
   onTime,
   playing,
   onPlaying,
 }: {
-  model: Model
-  animation: Animation | null
-  onAnimation: (uuid: string) => void
+  anim: AnimApi
   time: number
   onTime: (t: number) => void
   playing: boolean
   onPlaying: (p: boolean) => void
 }) {
-  const length = animation?.length ?? 1
+  const { clip } = anim
+  const length = clip?.length ?? 1
   const ticks = Math.max(1, Math.ceil(length))
   const trackW = ticks * PX_PER_S
+  const drag = useRef<{ id: string; x: number; start: number } | null>(null)
 
-  // one row per bone-channel pair, which is how Blockbench stacks the timeline
-  const rows = useMemo(() => {
-    if (!animation) return []
-    return animation.animators.flatMap((an) => {
-      const channels = [...new Set(an.keyframes.map((k) => k.channel))]
-      return channels.map((channel) => ({
-        key: `${an.boneUuid}:${channel}`,
-        bone: an.name,
-        channel,
-        keyframes: an.keyframes.filter((k) => k.channel === channel),
-      }))
-    })
-  }, [animation])
+  const nameOf = useCallback(
+    (id: string) => anim.bones.find((b) => b.id === id)?.name ?? id,
+    [anim.bones],
+  )
+
+  /* One row per bone-channel pair. The bone being animated always shows
+     all three channels even when empty - that empty row is how you key a
+     channel for the first time - and every other keyed bone follows. */
+  const rows = useMemo<Row[]>(() => {
+    if (!clip) return []
+    const out: Row[] = []
+    const seen = new Set<string>()
+    if (anim.bone) {
+      for (const channel of CHANNELS) {
+        const key = `${anim.bone}:${channel}`
+        seen.add(key)
+        out.push({
+          key,
+          bone: anim.bone,
+          boneName: nameOf(anim.bone),
+          channel,
+          track: findTrack(clip, anim.bone, channel),
+        })
+      }
+    }
+    for (const track of clip.tracks) {
+      const key = `${track.bone}:${track.channel}`
+      if (seen.has(key)) continue
+      seen.add(key)
+      out.push({ key, bone: track.bone, boneName: nameOf(track.bone), channel: track.channel, track })
+    }
+    return out
+  }, [clip, anim.bone, nameOf])
 
   useEffect(() => {
-    if (!playing || !animation) return
+    if (!playing || !clip) return
     let raf = 0
     let last = performance.now()
     const tick = (now: number) => {
       const dt = (now - last) / 1000
       last = now
-      onTime((time + dt) % animation.length)
+      onTime((time + dt) % clip.length)
       raf = requestAnimationFrame(tick)
     }
     raf = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(raf)
-  }, [playing, animation, time, onTime])
+  }, [playing, clip, time, onTime])
 
   const scrub = (e: React.PointerEvent<HTMLDivElement>) => {
     if (e.buttons !== 1 && e.type !== 'pointerdown') return
     const r = e.currentTarget.getBoundingClientRect()
-    onTime(Math.max(0, Math.min(length, ((e.clientX - r.left) / PX_PER_S))))
+    onTime(Math.max(0, Math.min(length, (e.clientX - r.left) / PX_PER_S)))
   }
 
   return (
@@ -1083,7 +1385,7 @@ function Timeline({
           aria-pressed={playing}
           title={playing ? 'Pause' : 'Play'}
           onClick={() => onPlaying(!playing)}
-          disabled={!animation}
+          disabled={!clip}
         >
           <Icon name={playing ? 'pause' : 'play'} size={14} filled={!playing} />
         </button>
@@ -1092,79 +1394,154 @@ function Timeline({
         </button>
         <span className="tl-time">{time.toFixed(2)}s</span>
         <span className="ed-sep" />
+
         <select
           className="ed-select"
-          value={animation?.uuid ?? ''}
-          onChange={(e) => onAnimation(e.target.value)}
+          value={clip?.id ?? ''}
+          onChange={(e) => anim.selectClip(e.target.value)}
           aria-label="Animation"
+          disabled={!anim.clips.length}
         >
-          {model.animations.map((a) => (
-            <option key={a.uuid} value={a.uuid}>
-              {a.name.split('.').pop()} · {a.length}s
+          {anim.clips.length ? null : <option value="">no animations</option>}
+          {anim.clips.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.name.split('.').pop()} · {c.length}s
             </option>
           ))}
         </select>
-        <button className="chip" aria-pressed={animation?.loop === 'loop'}>
-          <Icon name="refresh" size={11} /> {animation?.loop ?? 'once'}
+        <button className="ed-tool" title="New animation" aria-label="New animation" onClick={anim.newClip}>
+          <Icon name="plus" size={14} />
         </button>
+        <button
+          className="chip"
+          title="How this animation ends"
+          disabled={!clip}
+          onClick={() =>
+            clip && anim.patchClip({ loop: LOOPS[(LOOPS.indexOf(clip.loop) + 1) % LOOPS.length] })
+          }
+        >
+          <Icon name="refresh" size={11} /> {clip?.loop ?? 'once'}
+        </button>
+
         <div className="ed-toolbar__right">
-          <button className="ed-tool" title="Add keyframe">
+          <button
+            className="ed-tool"
+            title="Add a keyframe to the animated bone's rotation at the playhead"
+            aria-label="Add keyframe"
+            disabled={!clip || !anim.bone}
+            onClick={() => anim.bone && anim.addKey(anim.bone, 'rotation')}
+          >
             <Icon name="key" size={14} />
           </button>
-          <button className="ed-tool" title="Delete keyframe">
+          <button
+            className="ed-tool"
+            title="Delete the selected keyframe"
+            aria-label="Delete keyframe"
+            disabled={!anim.selectedKey}
+            onClick={() => anim.selectedKey && anim.removeKey(anim.selectedKey)}
+          >
             <Icon name="trash" size={14} />
           </button>
         </div>
       </div>
 
-      <div className="tl-main">
-        <div className="tl-names">
-          <div className="tl-name" style={{ height: 22, opacity: 0.6 }}>
-            Channels
-          </div>
-          {rows.map((r) => (
-            <div className="tl-name" key={r.key}>
-              <Icon name="folder" size={11} />
-              {r.bone}
-              <span className="tl-name__ch">{r.channel.slice(0, 3)}</span>
+      {clip ? (
+        <div className="tl-main">
+          <div className="tl-names">
+            <div className="tl-name" style={{ height: 22, opacity: 0.6 }}>
+              Channels
             </div>
-          ))}
-          {!rows.length ? <div className="tl-name">no animators</div> : null}
-        </div>
-
-        <div className="tl-track-wrap">
-          <div
-            className="tl-ruler"
-            style={{ width: trackW }}
-            onPointerDown={scrub}
-            onPointerMove={scrub}
-          >
-            {Array.from({ length: ticks }, (_, i) => (
-              <span className="tl-tick" key={i} style={{ width: PX_PER_S }}>
-                {i}s
-              </span>
-            ))}
-          </div>
-
-          <div style={{ position: 'relative', minWidth: trackW }}>
             {rows.map((r) => (
-              <div className="tl-track" key={r.key} style={{ ['--px-per-s' as string]: `${PX_PER_S}px` }}>
-                {r.keyframes.map((kf) => (
-                  <button
-                    key={kf.uuid}
-                    className="tl-key"
-                    data-interp={kf.interpolation}
-                    style={{ left: kf.time * PX_PER_S }}
-                    title={`${r.bone} · ${r.channel} @ ${kf.time.toFixed(2)}s → ${kf.value.join(', ')} (${kf.interpolation})`}
-                    onClick={() => onTime(kf.time)}
-                  />
-                ))}
+              <div
+                className="tl-name"
+                key={r.key}
+                aria-selected={r.bone === anim.bone}
+                onClick={() => anim.setBone(r.bone)}
+              >
+                <Icon name="folder" size={11} />
+                <span className="tl-name__bone">{r.boneName}</span>
+                <span className="tl-name__ch">{r.channel.slice(0, 3)}</span>
+                <button
+                  className="tl-name__btn"
+                  title={`Key ${r.boneName} ${r.channel} at the playhead`}
+                  aria-label={`Key ${r.boneName} ${r.channel}`}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    anim.addKey(r.bone, r.channel)
+                  }}
+                >
+                  <Icon name="key" size={11} />
+                </button>
               </div>
             ))}
-            <span className="tl-playhead" style={{ left: time * PX_PER_S }} />
+            {!rows.length ? <div className="tl-name">pick a bone to animate</div> : null}
+          </div>
+
+          <div className="tl-track-wrap">
+            <div className="tl-ruler" style={{ width: trackW }} onPointerDown={scrub} onPointerMove={scrub}>
+              {Array.from({ length: ticks }, (_, i) => (
+                <span className="tl-tick" key={i} style={{ width: PX_PER_S }}>
+                  {i}s
+                </span>
+              ))}
+            </div>
+
+            <div style={{ position: 'relative', minWidth: trackW }}>
+              {rows.map((r) => (
+                <div
+                  className="tl-track"
+                  key={r.key}
+                  style={{ ['--px-per-s' as string]: `${PX_PER_S}px` }}
+                  onDoubleClick={(e) => {
+                    // double-click on empty track keys that channel where you clicked
+                    const rect = e.currentTarget.getBoundingClientRect()
+                    onTime(Math.max(0, Math.min(length, (e.clientX - rect.left) / PX_PER_S)))
+                    anim.addKey(r.bone, r.channel)
+                  }}
+                >
+                  {(r.track?.keys ?? []).map((kf) => (
+                    <button
+                      key={kf.id}
+                      className="tl-key"
+                      data-interp={kf.interp}
+                      data-selected={kf.id === anim.selectedKey || undefined}
+                      style={{ left: kf.time * PX_PER_S }}
+                      title={`${r.boneName} · ${r.channel} @ ${kf.time.toFixed(2)}s → ${kf.value.join(', ')} (${kf.interp})`}
+                      onPointerDown={(e) => {
+                        e.stopPropagation()
+                        ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
+                        drag.current = { id: kf.id, x: e.clientX, start: kf.time }
+                        anim.selectKey(kf.id)
+                        anim.setBone(r.bone)
+                        onTime(kf.time)
+                        onPlaying(false)
+                      }}
+                      onPointerMove={(e) => {
+                        const d = drag.current
+                        if (!d || d.id !== kf.id || e.buttons !== 1) return
+                        const next = d.start + (e.clientX - d.x) / PX_PER_S
+                        anim.dragKey(kf.id, next, 'move')
+                      }}
+                      onPointerUp={() => {
+                        if (drag.current?.id === kf.id) anim.dragKey(kf.id, kf.time, 'up')
+                        drag.current = null
+                      }}
+                    />
+                  ))}
+                </div>
+              ))}
+              <span className="tl-playhead" style={{ left: time * PX_PER_S }} />
+            </div>
           </div>
         </div>
-      </div>
+      ) : (
+        <div className="tl-empty">
+          <p>No animation yet.</p>
+          <button className="chip chip--go" onClick={anim.newClip}>
+            <Icon name="plus" size={11} /> New animation
+          </button>
+        </div>
+      )}
     </div>
   )
 }
@@ -1199,25 +1576,45 @@ function Splitter({ onDrag }: { onDrag: (dx: number) => void }) {
 
 /* ================= editor ================= */
 
+/** Which bone holds a given cube, so Animate mode can follow your selection. */
+function ownerBone(bones: Bone[], cubeId: string | null): string | null {
+  if (!cubeId) return null
+  for (const b of bones) {
+    if (b.children.some((c) => c.kind === 'cube' && c.id === cubeId)) return b.id
+    const nested = ownerBone(
+      b.children.filter((c) => c.kind === 'bone').map((c) => (c as { bone: Bone }).bone),
+      cubeId,
+    )
+    if (nested) return nested
+  }
+  return null
+}
+
 export function Editor({ segments }: { segments: string[] }) {
   const initial = useMemo(() => sampleById(segments[1] ?? ''), [segments])
 
-  const [model, setModel] = useState<Model>(initial.model)
+  const history = useHistory<Model>(initial.model)
+  const model = history.present
+
   const [fileName, setFileName] = useState(initial.file)
   const [kind, setKind] = useState<ProjectKind>(initial.kind)
   const [mode, setMode] = useState<Mode>('edit')
   const [tool, setTool] = useState('move')
   const [grid, setGrid] = useState(true)
   const [quad, setQuad] = useState(false)
-  const [selected, setSelected] = useState<string | null>(initial.model.elements[0]?.uuid ?? null)
+  const [selected, setSelected] = useState<string | null>(initial.model.cubes[0]?.id ?? null)
   const [face, setFace] = useState<FaceKey>('north')
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
   const [leftW, setLeftW] = useState(300)
   const [rightW, setRightW] = useState(284)
-  const [animUuid, setAnimUuid] = useState<string | null>(initial.model.animations[0]?.uuid ?? null)
+  const fileInput = useRef<HTMLInputElement>(null)
+
+  // animation
+  const [clipId, setClipId] = useState<string | null>(initial.model.clips[0]?.id ?? null)
   const [time, setTime] = useState(0)
   const [playing, setPlaying] = useState(false)
-  const fileInput = useRef<HTMLInputElement>(null)
+  const [pickedBone, setPickedBone] = useState<string | null>(null)
+  const [selectedKey, setSelectedKey] = useState<string | null>(null)
 
   // paint
   const [colour, setColour] = useState('#cd594e')
@@ -1232,30 +1629,37 @@ export function Editor({ segments }: { segments: string[] }) {
   const [displayState, setDisplayState] = useState<DisplayState>(DEFAULT_DISPLAY)
 
   const [newDialog, setNewDialog] = useState(false)
+  const [openError, setOpenError] = useState<string | null>(null)
+  const [saveNote, setSaveNote] = useState<string | null>(null)
 
-  const loadModel = useCallback((next: Model, name: string, nextKind: ProjectKind = 'items') => {
-    setModelKey((k) => k + 1)
-    setModel(next)
-    setFileName(vellumFileName(name))
-    setKind(nextKind)
-    setSelected(next.elements[0]?.uuid ?? null)
-    setAnimUuid(next.animations[0]?.uuid ?? null)
-    setCollapsed(new Set())
-    setTime(0)
-    setPlaying(false)
-    setMode('edit')
-  }, [])
+  const loadModel = useCallback(
+    (next: Model, name: string, nextKind: ProjectKind = 'items') => {
+      setModelKey((k) => k + 1)
+      history.reset(next)
+      setFileName(vellumFileName(name))
+      setKind(nextKind)
+      setSelected(next.cubes[0]?.id ?? null)
+      setClipId(next.clips[0]?.id ?? null)
+      setPickedBone(null)
+      setSelectedKey(null)
+      setCollapsed(new Set())
+      setTime(0)
+      setPlaying(false)
+      setMode('edit')
+    },
+    [history],
+  )
 
   // the tool palette changes per mode; keep the active tool valid
   useEffect(() => {
     if (!toolsets[mode].some((t) => t.id === tool)) setTool(toolsets[mode][0].id)
   }, [mode, tool])
 
-  // Animate mode opens playing: a still first frame reads as "animation broken"
+  // Animate mode opens playing when there is something to play: a still
+  // first frame reads as "animation broken". Any edit stops it again.
   useEffect(() => {
-    if (mode === 'animate' && model.animations.length) setPlaying(true)
     if (mode !== 'animate') setPlaying(false)
-  }, [mode, model])
+  }, [mode])
 
   /* Decode every texture into a canvas once per loaded model. Painting
      writes into that canvas and the data URI is re-encoded from it, so
@@ -1267,7 +1671,7 @@ export function Editor({ segments }: { segments: string[] }) {
     Promise.all(
       model.textures.map(async (t) => {
         try {
-          map.set(t.uuid, await loadSurface(t))
+          map.set(t.id, await loadSurface(t))
         } catch {
           /* an undecodable texture simply cannot be painted */
         }
@@ -1282,44 +1686,81 @@ export function Editor({ segments }: { segments: string[] }) {
   }, [modelKey])
 
   /** Re-encode a painted canvas back into the model, batched to a frame. */
-  const commitTexture = useCallback((uuid: string) => {
-    if (commitTimer.current) return
-    commitTimer.current = requestAnimationFrame(() => {
-      commitTimer.current = 0
-      const surface = surfaces.current.get(uuid)
+  const writeTexture = useCallback(
+    (id: string) => {
+      const surface = surfaces.current.get(id)
       if (!surface) return
       const source = toDataUrl(surface)
-      setModel((m) => ({
+      history.amend((m) => ({
         ...m,
-        textures: m.textures.map((t) => (t.uuid === uuid ? { ...t, source } : t)),
-      }))
-    })
-  }, [])
-
-  const animation = useMemo(
-    () => model.animations.find((a) => a.uuid === animUuid) ?? model.animations[0] ?? null,
-    [model, animUuid],
-  )
-  const issues = useMemo(() => validateModel(model, kind), [model, kind])
-  const errors = issues.filter((i) => i.level === 'error').length
-  const element = model.elements.find((e) => e.uuid === selected) ?? null
-
-  const updateElement = useCallback(
-    (fn: (e: BBElement) => BBElement) => {
-      if (!selected) return
-      setModel((m) => ({
-        ...m,
-        elements: m.elements.map((e) => (e.uuid === selected ? fn(e) : e)),
+        textures: m.textures.map((t) => (t.id === id ? { ...t, source } : t)),
       }))
     },
-    [selected],
+    [history],
   )
 
-  const [openError, setOpenError] = useState<string | null>(null)
-  const [saveNote, setSaveNote] = useState<string | null>(null)
+  const pendingTexture = useRef<string | null>(null)
+  const commitTexture = useCallback(
+    (id: string) => {
+      pendingTexture.current = id
+      if (commitTimer.current) return
+      commitTimer.current = requestAnimationFrame(() => {
+        commitTimer.current = 0
+        pendingTexture.current = null
+        writeTexture(id)
+      })
+    },
+    [writeTexture],
+  )
 
-  const runSave = useCallback((fileName: string, text: string) => {
-    void saveFile(fileName, text).then((note) => {
+  /** Land the last frame of a stroke before its undo step is closed. */
+  const flushTexture = useCallback(() => {
+    if (!commitTimer.current) return
+    cancelAnimationFrame(commitTimer.current)
+    commitTimer.current = 0
+    const id = pendingTexture.current
+    pendingTexture.current = null
+    if (id) writeTexture(id)
+  }, [writeTexture])
+
+  const clip = useMemo(
+    () => model.clips.find((c) => c.id === clipId) ?? model.clips[0] ?? null,
+    [model.clips, clipId],
+  )
+  const bones = useMemo(() => boneList(model.bones), [model.bones])
+  const animBone = useMemo(() => {
+    if (pickedBone && bones.some((b) => b.id === pickedBone)) return pickedBone
+    return ownerBone(model.bones, selected) ?? bones[0]?.id ?? null
+  }, [pickedBone, bones, model.bones, selected])
+
+  const issues = useMemo(() => validateModel(model, kind), [model, kind])
+  const errors = issues.filter((i) => i.level === 'error').length
+  const cube = model.cubes.find((c) => c.id === selected) ?? null
+
+  /* Selecting a bone in the outliner is also how you choose what Animate
+     mode drives, so the two never disagree. */
+  const selectNode = useCallback(
+    (id: string) => {
+      setSelected(id)
+      if (bones.some((b) => b.id === id)) setPickedBone(id)
+    },
+    [bones],
+  )
+
+  const editCube = useCallback(
+    (fn: (c: Cube) => Cube) => {
+      if (!selected) return
+      history.commit(
+        'cube edit',
+        (m) => ({ ...m, cubes: m.cubes.map((c) => (c.id === selected ? fn(c) : c)) }),
+        true,
+      )
+    },
+    [selected, history],
+  )
+
+  const runSave = useCallback((name: string, text: string) => {
+    void saveFile(name, text).then((note) => {
       setSaveNote(note)
       window.setTimeout(() => setSaveNote(null), 6000)
     })
@@ -1328,9 +1769,8 @@ export function Editor({ segments }: { segments: string[] }) {
   /* One texel, one tool. Everything upstream - the 2D sheet and the 3D
      back-projection - resolves to a call here. */
   const applyTool = useCallback(
-    (textureIndex: number, x: number, y: number, bounds: UVRect | null, phase: 'down' | 'move') => {
-      const tex = model.textures[textureIndex]
-      const surface = tex && surfaces.current.get(tex.uuid)
+    (textureId: string, x: number, y: number, bounds: UVRect | null, phase: 'down' | 'move') => {
+      const surface = surfaces.current.get(textureId)
       if (!surface) return
 
       if (tool === 'pipette') {
@@ -1342,7 +1782,7 @@ export function Editor({ segments }: { segments: string[] }) {
       if (tool === 'bucket') {
         if (phase === 'down') {
           bucket(surface, x, y, hexToRgba(colour), bounds ?? [0, 0, surface.width, surface.height])
-          commitTexture(tex.uuid)
+          commitTexture(textureId)
         }
         return
       }
@@ -1355,33 +1795,46 @@ export function Editor({ segments }: { segments: string[] }) {
       else stamp(x, y)
 
       lastTexel.current = [x, y]
-      commitTexture(tex.uuid)
+      commitTexture(textureId)
     },
-    [model.textures, tool, colour, brush, commitTexture],
+    [tool, colour, brush, commitTexture],
   )
 
+  /* A stroke is one undo step, however many texels it wrote. The last
+     frame is flushed first, or it would land after the step closed. */
   useEffect(() => {
-    const clear = () => {
+    const done = () => {
+      if (!lastTexel.current && !commitTimer.current) return
       lastTexel.current = null
+      flushTexture()
+      history.end()
     }
-    window.addEventListener('pointerup', clear)
-    return () => window.removeEventListener('pointerup', clear)
-  }, [])
+    window.addEventListener('pointerup', done)
+    window.addEventListener('pointercancel', done)
+    return () => {
+      window.removeEventListener('pointerup', done)
+      window.removeEventListener('pointercancel', done)
+    }
+  }, [flushTexture, history])
 
   /** A click on the model, back-projected through that face's UV rectangle. */
   const paintOnModel = useCallback(
-    (elementUuid: string, face: FaceKey, u: number, v: number, phase: 'down' | 'move') => {
-      const el = model.elements.find((e) => e.uuid === elementUuid)
-      if (!el) return
-      if (phase === 'down') setSelected(elementUuid)
-      const f = el.faces[face]
+    (cubeId: string, faceKey: FaceKey, u: number, v: number, phase: 'down' | 'move') => {
+      const target = model.cubes.find((c) => c.id === cubeId)
+      if (!target) return
+      if (phase === 'down') {
+        history.begin('paint')
+        setSelected(cubeId)
+        setFace(faceKey)
+      }
+      const f = target.faces[faceKey]
       if (f.texture === null) return
       const texel = texelOfFace(f.uv, u, v)
       // a zero-area UV has no texel under the click, so there is nothing to paint
       if (!texel) return
       applyTool(f.texture, texel[0], texel[1], faceBounds(f.uv), phase)
     },
-    [model.elements, applyTool],
+    [model.cubes, applyTool, history],
   )
 
   /* On the sheet, a fill is bounded by the UV island the click landed in -
@@ -1390,10 +1843,13 @@ export function Editor({ segments }: { segments: string[] }) {
      colour similarity. */
   const paintOnSheet = useCallback(
     (x: number, y: number, phase: 'down' | 'move') => {
+      const texture = model.textures[0]
+      if (!texture) return
+      if (phase === 'down') history.begin('paint')
       let bounds: UVRect | null = null
-      for (const el of model.elements) {
+      for (const c of model.cubes) {
         for (const key of FACES) {
-          const [bx1, by1, bx2, by2] = faceBounds(el.faces[key].uv)
+          const [bx1, by1, bx2, by2] = faceBounds(c.faces[key].uv)
           if (x >= bx1 && x < bx2 && y >= by1 && y < by2) {
             bounds = [bx1, by1, bx2, by2]
             break
@@ -1401,59 +1857,194 @@ export function Editor({ segments }: { segments: string[] }) {
         }
         if (bounds) break
       }
-      applyTool(0, x, y, bounds, phase)
+      applyTool(texture.id, x, y, bounds, phase)
     },
-    [applyTool, model.elements],
+    [applyTool, model.cubes, model.textures, history],
   )
 
-  const actions = useMemo(
+  /* ---------------- animation ---------------- */
+
+  const anim = useMemo<AnimApi>(() => {
+    const withClip = (label: string, fn: (m: Model, id: string) => Model, coalesce = false) => {
+      if (!clip) return
+      setPlaying(false)
+      history.commit(label, (m) => fn(m, clip.id), coalesce)
+    }
+
+    return {
+      clips: model.clips,
+      clip,
+      bones,
+      bone: animBone,
+      setBone: setPickedBone,
+      selectClip: (id) => {
+        setClipId(id)
+        setSelectedKey(null)
+        setTime(0)
+      },
+      newClip: () => {
+        const next = addClip(model)
+        history.commit('new animation', next.model)
+        setClipId(next.id)
+        setSelectedKey(null)
+        setTime(0)
+        setPlaying(false)
+        setMode('animate')
+      },
+      duplicateClip: () => {
+        if (!clip) return
+        const next = duplicateClip(model, clip.id)
+        if (!next) return
+        history.commit('duplicate animation', next.model)
+        setClipId(next.id)
+      },
+      removeClip: () => {
+        if (!clip) return
+        history.commit('delete animation', deleteClip(model, clip.id))
+        setClipId(model.clips.find((c) => c.id !== clip.id)?.id ?? null)
+        setSelectedKey(null)
+      },
+      patchClip: (patch) => withClip('animation settings', (m, id) => updateClip(m, id, patch), true),
+      closeLoop: () => withClip('close the loop', (m, id) => closeLoop(m, id)),
+      addKey: (bone, channel) =>
+        withClip('add keyframe', (m, id) => setKey(m, id, bone, channel, time)),
+      removeKey: (keyId) => {
+        withClip('delete keyframe', (m, id) => deleteKey(m, id, keyId))
+        setSelectedKey((k) => (k === keyId ? null : k))
+      },
+      removeTrack: (bone, channel) => {
+        withClip('clear channel', (m, id) => deleteTrack(m, id, bone, channel))
+        setSelectedKey(null)
+      },
+      selectedKey,
+      selectKey: setSelectedKey,
+      dragKey: (keyId, t, phase) => {
+        if (phase === 'up') return
+        withClip('move keyframe', (m, id) => updateKey(m, id, keyId, { time: t }), true)
+        if (clip) setTime(Math.max(0, Math.min(clip.length, t)))
+      },
+      patchKey: (keyId, patch, transient) =>
+        withClip('keyframe', (m, id) => updateKey(m, id, keyId, patch), transient !== false),
+    }
+  }, [model, clip, bones, animBone, selectedKey, time, history])
+
+  /* ---------------- file + edit actions ---------------- */
+
+  const actions = useMemo<Actions>(
     () => ({
       onOpen: () => fileInput.current?.click(),
       onSave: () => runSave(vellumFileName(fileName), writeVellum(model)),
-      onExport: () =>
-        runSave(vellumFileName(fileName).replace(/\.vellum$/, '.bbmodel'), serializeBBModel(model)),
       onSample: (id: string) => {
         const s = sampleById(id)
         loadModel(s.model, s.file, s.kind)
       },
       onNew: () => setNewDialog(true),
+      onUndo: history.undo,
+      onRedo: history.redo,
       onAddCube: () => {
         const next = addCube(model, null)
-        setModel(next.model)
-        setSelected(next.uuid)
+        history.commit('add cube', next.model)
+        setSelected(next.id)
       },
       onAddBone: () => {
         const next = addBone(model, null)
-        setModel(next.model)
-        setSelected(next.uuid)
+        history.commit('add bone', next.model)
+        setSelected(next.id)
+        setPickedBone(next.id)
       },
       onDuplicate: () => {
         if (!selected) return
-        const next = duplicateElement(model, selected)
+        const next = duplicateCube(model, selected)
         if (!next) return
-        setModel(next.model)
-        setSelected(next.uuid)
+        history.commit('duplicate cube', next.model)
+        setSelected(next.id)
       },
       onDelete: () => {
         if (!selected) return
-        const next = deleteElement(model, selected)
-        setModel(next)
-        setSelected(next.elements[0]?.uuid ?? null)
+        const isBone = bones.some((b) => b.id === selected)
+        // a bone takes its subtree with it; a cube goes alone
+        const next = isBone ? deleteBone(model, selected) : deleteCube(model, selected)
+        if (next === model) return
+        history.commit(isBone ? 'delete bone' : 'delete cube', next)
+        setSelected(next.cubes[0]?.id ?? null)
       },
+      onNewClip: () => anim.newClip(),
+      onDuplicateClip: () => anim.duplicateClip(),
+      onDeleteClip: () => anim.removeClip(),
+      onAddKey: () => animBone && anim.addKey(animBone, 'rotation'),
+      onCloseLoop: () => anim.closeLoop(),
     }),
-    [model, fileName, loadModel, runSave, selected],
+    [model, fileName, loadModel, runSave, selected, bones, history, anim, animBone],
   )
 
+  /* Keyboard. Anything typed into a field belongs to that field, so the
+     shortcuts stand down while one has focus. */
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null
+      if (target && /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)) return
+      const mod = e.ctrlKey || e.metaKey
 
-  /* A .vellum is read natively. A .bbmodel is an import: opening one and
-     saving it is the migration, which is why the name is restamped on load. */
+      if (mod && e.key.toLowerCase() === 'z') {
+        e.preventDefault()
+        if (e.shiftKey) history.redo()
+        else history.undo()
+        return
+      }
+      if (mod && e.key.toLowerCase() === 'y') {
+        e.preventDefault()
+        history.redo()
+        return
+      }
+      if (mod && e.key.toLowerCase() === 's') {
+        e.preventDefault()
+        actions.onSave()
+        return
+      }
+      if (mod && e.key.toLowerCase() === 'd') {
+        e.preventDefault()
+        actions.onDuplicate()
+        return
+      }
+      if (mod && e.key.toLowerCase() === 'o') {
+        e.preventDefault()
+        actions.onOpen()
+        return
+      }
+      if (mod) return
+
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        e.preventDefault()
+        if (mode === 'animate' && selectedKey) anim.removeKey(selectedKey)
+        else actions.onDelete()
+        return
+      }
+      if (e.key.toLowerCase() === 'k' && mode === 'animate' && animBone) {
+        e.preventDefault()
+        anim.addKey(animBone, 'rotation')
+        return
+      }
+      if (e.key.toLowerCase() === 'g') setGrid((g) => !g)
+      if (e.key === ' ' && mode === 'animate') {
+        e.preventDefault()
+        setPlaying((p) => !p)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [history, actions, anim, mode, selectedKey, animBone])
+
+  /* Only `.vellum` opens here. The format is the editor's own, and a
+     file that is not one is refused by name rather than half-parsed. */
   const onFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
     const text = await file.text()
     try {
-      const next = isVellum(text) ? readVellum(text) : parseBBModel(text)
-      loadModel(next, file.name, kind)
+      if (!isVellum(text)) {
+        throw new Error(`${file.name} is not a .vellum - Vellum opens the models it writes.`)
+      }
+      loadModel(readVellum(text), file.name, kind)
       setOpenError(null)
     } catch (err) {
       setOpenError(err instanceof Error ? err.message : 'That file could not be read as a model.')
@@ -1467,13 +2058,13 @@ export function Editor({ segments }: { segments: string[] }) {
   // fit the model to the viewport from its real extent, not its distance
   // from the origin - a tall sword and a 16-unit block both want to fill it
   const scale = useMemo(() => {
-    if (!model.elements.length) return 6
+    if (!model.cubes.length) return 6
     const lo = [Infinity, Infinity, Infinity]
     const hi = [-Infinity, -Infinity, -Infinity]
-    for (const el of model.elements) {
+    for (const c of model.cubes) {
       for (let i = 0; i < 3; i++) {
-        lo[i] = Math.min(lo[i], el.from[i])
-        hi[i] = Math.max(hi[i], el.to[i])
+        lo[i] = Math.min(lo[i], c.from[i])
+        hi[i] = Math.max(hi[i], c.to[i])
       }
     }
     const extent = Math.max(hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2], 1)
@@ -1485,15 +2076,15 @@ export function Editor({ segments }: { segments: string[] }) {
       className="editor-root"
       style={{ ['--left-w' as string]: `${leftW}px`, ['--right-w' as string]: `${rightW}px` }}
     >
-      <input
-        ref={fileInput}
-        type="file"
-        accept=".vellum,.bbmodel,.json,application/json"
-        hidden
-        onChange={onFile}
-      />
+      <input ref={fileInput} type="file" accept=".vellum,application/json" hidden onChange={onFile} />
 
-      <MenuBar fileName={fileName} actions={actions} />
+      <MenuBar
+        fileName={fileName}
+        actions={actions}
+        undoLabel={history.undoLabel}
+        redoLabel={history.redoLabel}
+        hasClip={!!clip}
+      />
       <Toolbar
         mode={mode}
         onMode={setMode}
@@ -1503,24 +2094,29 @@ export function Editor({ segments }: { segments: string[] }) {
         onGrid={() => setGrid((g) => !g)}
         quad={quad}
         onQuad={() => setQuad((q) => !q)}
-        hasAnimations={model.animations.length > 0}
         onAddCube={actions.onAddCube}
         onAddBone={actions.onAddBone}
         brush={brush}
         onBrush={setBrush}
+        canUndo={history.canUndo}
+        canRedo={history.canRedo}
+        onUndo={history.undo}
+        onRedo={history.redo}
+        undoLabel={history.undoLabel}
+        redoLabel={history.redoLabel}
       />
 
       <div className="ed-body">
         <Viewport
           model={model}
-          format={`${model.format} \u00b7 ${kind}`}
+          label={kind}
           grid={grid}
           quad={quad}
           scale={scale}
-          animation={mode === 'animate' ? animation : null}
+          clip={mode === 'animate' ? clip : null}
           time={time}
           selected={selected}
-          onSelect={setSelected}
+          onSelect={selectNode}
           onPaint={mode === 'paint' ? paintOnModel : undefined}
           display={mode === 'display' ? displayState[slot] : null}
         />
@@ -1534,36 +2130,37 @@ export function Editor({ segments }: { segments: string[] }) {
                   onSlot={setSlot}
                   transform={displayState[slot]}
                   onTransform={(t) => setDisplayState((d) => ({ ...d, [slot]: t }))}
-                  onReset={() =>
-                    setDisplayState((d) => ({ ...d, [slot]: DEFAULT_DISPLAY[slot] }))
-                  }
+                  onReset={() => setDisplayState((d) => ({ ...d, [slot]: DEFAULT_DISPLAY[slot] }))}
                 >
                   {(rows) =>
                     rows.map((r) => (
-                      <NumRow
-                        key={r.label}
-                        label={r.label}
-                        value={r.value}
-                        step={r.step}
-                        onChange={r.onChange}
-                      />
+                      <NumRow key={r.label} label={r.label} value={r.value} step={r.step} onChange={r.onChange} />
                     ))
                   }
                 </DisplayPanel>
               </Panel>
+            ) : mode === 'animate' ? (
+              <>
+                <Panel title="Animation" count={clip ? clip.name.split('.').pop() : 'none'}>
+                  <AnimationPanel anim={anim} />
+                </Panel>
+                <Panel title="Keyframe" count={selectedKey ? 'selected' : undefined}>
+                  <KeyframePanel anim={anim} />
+                </Panel>
+              </>
             ) : (
-              <Panel title="Element" count={element?.name ?? 'none'}>
-                <ElementPanel element={element} format={model.format} onChange={updateElement} />
+              <Panel title="Cube" count={cube?.name ?? 'none'}>
+                <CubePanel cube={cube} kind={kind} onChange={editCube} />
               </Panel>
             )}
 
             <Panel title="UV" count={`${model.resolution.width} × ${model.resolution.height}`}>
               <UVPanel
                 model={model}
-                element={element}
+                cube={cube}
                 face={face}
                 onFace={setFace}
-                onChange={updateElement}
+                onChange={editCube}
                 onPaint={mode === 'paint' ? paintOnSheet : undefined}
               />
             </Panel>
@@ -1589,7 +2186,7 @@ export function Editor({ segments }: { segments: string[] }) {
                 </ul>
               ) : (
                 <p className="ed-hint">
-                  <Icon name="check" size={11} /> Nothing Blockbench would reject.
+                  <Icon name="check" size={11} /> Nothing the writer would refuse.
                 </p>
               )}
             </Panel>
@@ -1604,27 +2201,27 @@ export function Editor({ segments }: { segments: string[] }) {
               <ColorPanel colour={colour} onColour={setColour} />
             </Panel>
 
-            <Panel title="Outliner" count={`${model.elements.length} cubes`} grow>
+            <Panel title="Outliner" count={`${model.cubes.length} cubes`} grow>
               <Outliner
                 model={model}
                 selected={selected}
                 collapsed={collapsed}
-                onSelect={setSelected}
-                onToggleGroup={(uuid) =>
+                onSelect={selectNode}
+                onToggleBone={(id) =>
                   setCollapsed((s) => {
                     const next = new Set(s)
-                    if (next.has(uuid)) next.delete(uuid)
-                    else next.add(uuid)
+                    if (next.has(id)) next.delete(id)
+                    else next.add(id)
                     return next
                   })
                 }
-                onModel={(fn) => setModel(fn)}
+                onModel={(label, fn) => history.commit(label, fn)}
               />
             </Panel>
 
             <Panel title="Textures" count={model.textures.length}>
-              {model.textures.map((t) => (
-                <button key={t.uuid} className="tex-row" aria-selected={t.id === '0'}>
+              {model.textures.map((t, i) => (
+                <button key={t.id} className="tex-row" aria-selected={i === 0}>
                   <span
                     className="tex-thumb"
                     style={{
@@ -1655,34 +2252,26 @@ export function Editor({ segments }: { segments: string[] }) {
         />
       ) : null}
 
-      {mode === 'animate' && model.animations.length ? (
-        <Timeline
-          model={model}
-          animation={animation}
-          onAnimation={setAnimUuid}
-          time={time}
-          onTime={setTime}
-          playing={playing}
-          onPlaying={setPlaying}
-        />
+      {mode === 'animate' ? (
+        <Timeline anim={anim} time={time} onTime={setTime} playing={playing} onPlaying={setPlaying} />
       ) : null}
 
       <div className="ed-status">
         <span>{fileName}</span>
         <span>{kind}</span>
-        <span>{model.elements.length} elements</span>
+        <span>{model.cubes.length} cubes</span>
         <span>
           {model.resolution.width} x {model.resolution.height}
         </span>
         <span className="ed-status__sel">
-          {saveNote ?? `selected: ${element?.name ?? 'none'} · ${tool}`}
+          {saveNote ?? `selected: ${cube?.name ?? 'none'} · ${tool}`}
         </span>
         <div className="ed-status__right">
           <span className={errors ? 'ed-status__bad' : undefined}>
             {errors ? `${errors} errors` : 'valid'}
           </span>
           <span>{mode}</span>
-          <span>vellum 0.5.0</span>
+          <span>vellum 0.6.0</span>
         </div>
       </div>
     </div>
@@ -1721,7 +2310,7 @@ async function saveFile(name: string, text: string): Promise<string> {
       await host.save({ filename, data: text })
       return filename === name
         ? `Saved ${filename}`
-        : `Saved as ${filename} \u2014 this viewer does not allow a .vellum extension`
+        : `Saved as ${filename} — this viewer does not allow a .vellum extension`
     } catch (e) {
       const code = (e as { code?: string })?.code ?? 'failed'
       return code === 'declined' ? 'Save cancelled' : `Could not save (${code})`

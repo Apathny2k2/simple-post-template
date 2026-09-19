@@ -740,7 +740,7 @@
   position: relative;
   z-index: 20;
   flex: none;
-  height: 168px;
+  height: 216px;
   margin: 0 var(--rail-pad) var(--rail-pad);
   display: flex;
   flex-direction: column;
@@ -772,7 +772,7 @@
   text-shadow: 0 0 12px rgba(205, 89, 78, 0.6);
 }
 
-.tl-main { flex: 1; min-height: 0; display: grid; grid-template-columns: 152px minmax(0, 1fr); }
+.tl-main { flex: 1; min-height: 0; display: grid; grid-template-columns: 178px minmax(0, 1fr); }
 .tl-names { border-right: 1px solid var(--glass-rim); overflow-y: auto; }
 
 .tl-name {
@@ -1068,3 +1068,140 @@
 .newmodel__label { font-size: var(--fs-md); font-weight: 500; letter-spacing: -0.01em; }
 .newmodel__blurb { font-size: var(--fs-xs); color: var(--ink-muted); }
 .newmodel__detail { font-size: var(--fs-2xs); color: var(--ink-faint); line-height: 1.45; }
+
+/* ---------------- animation editing ---------------- */
+
+/* A labelled control that is not a number scrubber - a name, a loop mode,
+   an easing. Laid out on the same grid as .nf-row so the left rail reads
+   as one column rather than two. */
+.ed-field {
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr);
+  align-items: center;
+  gap: 6px;
+  margin-top: 7px;
+  font-size: var(--fs-2xs);
+  color: var(--ink-muted);
+}
+
+.ed-input {
+  width: 100%;
+  min-width: 0;
+  padding: 5px 8px;
+  border: 1px solid var(--glass-rim);
+  border-radius: var(--r-sm);
+  background: rgba(10, 16, 34, 0.55);
+  color: var(--ink);
+  font-size: var(--fs-2xs);
+  font-family: var(--font-mono);
+  transition: border-color var(--dur-fast) var(--ease), box-shadow var(--dur) var(--ease);
+}
+
+.ed-input:focus {
+  outline: none;
+  border-color: var(--wax-400);
+  box-shadow: var(--glow-wax);
+}
+
+.ed-field .ed-select { width: 100%; }
+
+.chip--go {
+  background: rgba(205, 89, 78, 0.2);
+  border-color: var(--wax-400);
+  color: var(--wax-200);
+}
+
+.chip--danger:hover {
+  color: var(--wax-200);
+  border-color: var(--wax-400);
+  background: rgba(205, 89, 78, 0.16);
+}
+
+.chip:disabled,
+.ed-tool:disabled {
+  opacity: 0.32;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* the bone picker is a list, not the whole outliner, so it is capped */
+.tree--short {
+  max-height: 148px;
+  overflow-y: auto;
+  margin-top: 4px;
+  border: 1px solid var(--glass-rim);
+  border-radius: var(--r-sm);
+}
+
+.tree--short .tree__row { cursor: pointer; }
+
+/* ---- timeline rows ---- */
+
+.tl-name { cursor: pointer; }
+.tl-name__bone { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.tl-name[aria-selected='true'] {
+  color: var(--ink);
+  background: rgba(205, 89, 78, 0.12);
+  box-shadow: inset 2px 0 0 var(--wax-300);
+}
+
+.tl-name__btn {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 19px;
+  height: 19px;
+  margin-left: 2px;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--ink-faint);
+  cursor: pointer;
+  transition: color var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease),
+    border-color var(--dur-fast) var(--ease), transform var(--dur) var(--spring);
+}
+
+.tl-name__btn:hover {
+  color: var(--wax-200);
+  background: rgba(205, 89, 78, 0.18);
+  border-color: var(--wax-400);
+  transform: scale(1.1);
+}
+
+.tl-key[data-selected] {
+  background: linear-gradient(160deg, var(--parch-100, #f1e8d6), var(--wax-300));
+  border-color: #fff;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.45), 0 0 18px rgba(205, 89, 78, 0.95);
+  z-index: 2;
+}
+
+.tl-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  font-size: var(--fs-2xs);
+  color: var(--ink-muted);
+}
+
+.tl-empty p { margin: 0; }
+
+/* The scene is full-bleed under the two floating rails, so its own HUD has
+   to be inset past them the same way the corner chips are - otherwise the
+   zoom cluster sits underneath the right rail and cannot be clicked.
+   Stacked above the axis gizmo, which owns the bottom-right corner. */
+.ed-view:not([data-quad='true']) .scene3d__zoom {
+  right: calc(var(--right-w) + var(--rail-pad) + 18px);
+  bottom: 84px;
+}
+
+/* four of them would be noise; the wheel still zooms each cell */
+.ed-view[data-quad='true'] .scene3d__zoom { display: none; }
+
+@media (max-width: 1080px) {
+  .ed-view:not([data-quad='true']) .scene3d__zoom { right: 12px; bottom: 12px; }
+}

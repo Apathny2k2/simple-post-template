@@ -1,4 +1,4 @@
-/* Static fixtures for the library shelves, with the real .bbmodel samples
+/* Static fixtures for the library shelves, with the real .vellum samples
    prepended so the first cards on each shelf open an actual model. */
 
 import { samples } from './samples'
@@ -19,13 +19,13 @@ export type Asset = {
   kind: AssetKind
   sceneId: string
   format: string
-  elements: number
+  cubes: number
   texture: string
   updated: string
   author: string
   /** drives the placeholder render + hover cube faces */
   hue: [string, string, string]
-  /** set on the cards backed by a real .bbmodel the editor can open */
+  /** set on the cards backed by a real .vellum the editor can open */
   sampleId?: string
 }
 
@@ -97,7 +97,7 @@ function build(names: string[], kind: AssetKind, sceneId: string, seed: number):
       kind,
       sceneId,
       format: formats[n % formats.length],
-      elements: 3 + ((n * 7) % 42),
+      cubes: 3 + ((n * 7) % 42),
       texture: textures[n % textures.length],
       updated: `0${1 + (n % 9)}/${10 + (n % 18)}/26 ${9 + (n % 12)}:${(n * 7) % 6}${(n * 3) % 10}`,
       author: authors[n % authors.length],
@@ -111,10 +111,12 @@ export const assets: Asset[] = scenes.flatMap((scene, s) => [
   ...build(mobNames.slice(0, scene.counts.mobs), 'mobs', scene.id, s * 5 + 1),
 ])
 
-const FORMAT_LABEL: Record<string, string> = {
-  free: 'Generic Model',
-  java_block: 'Java Block/Item',
-  bedrock: 'Bedrock Entity',
+/* `.vellum` carries no format string - the project kind does that job,
+   which is what keeps one model from claiming two different formats. */
+const KIND_LABEL: Record<string, string> = {
+  items: 'Item Model',
+  mobs: 'Rigged Entity',
+  blocks: 'Block Model',
 }
 
 /* The three models the probes built. These are the only cards whose
@@ -125,8 +127,8 @@ const realAssets: Asset[] = samples.map((s, i) => ({
   file: s.file,
   kind: s.kind === 'mobs' ? 'mobs' : 'items',
   sceneId: scenes[0].id,
-  format: FORMAT_LABEL[s.model.format] ?? s.model.format,
-  elements: s.model.elements.length,
+  format: KIND_LABEL[s.kind] ?? 'Model',
+  cubes: s.model.cubes.length,
   texture: `${s.model.resolution.width} x ${s.model.resolution.height}`,
   updated: '09/19/26 03:18',
   author: 'probe',

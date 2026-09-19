@@ -1,10 +1,14 @@
 /* ---------------------------------------------------------------
-   `.vellum` — the native model format.
+   `.vellum` - the native model format.
 
-   Per docs/architecture §3: not a zip and not a custom binary, but a
-   compact, key-ordered UTF-8 JSON document with a Vellum-owned schema.
-   The extension is ours; the encoding is JSON so `git diff` on a model
-   keeps working.
+   Not a zip and not a custom binary, but a compact, key-ordered UTF-8
+   JSON document with a Vellum-owned schema. The extension is ours; the
+   encoding is JSON so `git diff` on a model keeps working.
+
+   The in-memory model in `./model` mirrors this document one-for-one,
+   so this file is close to a pass-through. The one shape that differs
+   is the bone tree: on disk each bone names its `parent`, in memory the
+   tree is nested. Flatten on write, rebuild on read.
 
    Four properties are load-bearing and are asserted by the round-trip
    test rather than left to good intentions:
@@ -21,24 +25,23 @@
       handed.
 
    Deliberately NOT in the file: no rig (regenerated on save), no pack
-   models or textures, no display transforms, no editor state, and none
-   of Blockbench's `meta` - carrying that would leave the document with
-   two version numbers that can disagree.
+   models or textures, no display transforms, and no editor state.
    --------------------------------------------------------------- */
 
-import { FACES } from './bbmodel'
+import { FACES } from './model'
 import type {
-  Animation,
+  Bone,
   Channel,
-  Element,
+  Clip,
+  Cube,
+  Face,
   FaceKey,
-  Group,
   Interpolation,
   Model,
   Texture,
   UVRect,
   Vec3,
-} from './bbmodel'
+} from './model'
 
 export const FORMAT = 'model'
 export const CURRENT_VERSION = 2
@@ -52,7 +55,7 @@ export const EXTENSION = '.vellum'
 
 type VellumFace = {
   uv: UVRect
-  /** a texture ID, not an index into an array */
+  /** a texture id, not an index into an array */
   texture?: string
   rotation?: number
 }
@@ -66,7 +69,8 @@ type VellumCube = {
   rotation: Vec3
   inflate?: number
   box_uv?: boolean
-  mirror_uv?: boolean
+  hidden?: boolean
+  locked?: boolean
   faces: Record<string, VellumFace>
 }
 
@@ -75,10 +79,11 @@ type VellumBone = {
   name: string
   origin: Vec3
   rotation: Vec3
-  /** said once, as a parent id - unlike Blockbench's duplicated groups + outliner */
+  /** said once, as a parent id - rather than a tree duplicated beside a flat list */
   parent?: string
   cubes: string[]
-  mirror_uv?: boolean
+  hidden?: boolean
+  locked?: boolean
 }
 
 type VellumTexture = {
@@ -106,7 +111,7 @@ type VellumTrack = {
 type VellumClip = {
   id: string
   name: string
-  loop: Animation['loop']
+  loop: Clip['loop']
   length: number
   snapping?: number
   tracks: VellumTrack[]
@@ -141,58 +146,55 @@ function compact<T extends Record<string, unknown>>(obj: T): T {
 }
 
 export function toVellumDocument(model: Model): VellumDocument {
-  const textureIdOf = (index: number | null): string | undefined =>
-    index === null ? undefined : model.textures[index]?.id
-
-  const cubes: VellumCube[] = model.elements.map((el) =>
+  const cubes: VellumCube[] = model.cubes.map((c) =>
     compact({
-      id: el.uuid,
-      name: el.name,
-      from: el.from,
-      to: el.to,
-      origin: el.origin,
-      rotation: el.rotation,
-      inflate: el.inflate || undefined,
-      box_uv: el.boxUv || undefined,
-      mirror_uv: undefined,
+      id: c.id,
+      name: c.name,
+      from: c.from,
+      to: c.to,
+      origin: c.origin,
+      rotation: c.rotation,
+      inflate: c.inflate || undefined,
+      box_uv: c.boxUv || undefined,
+      hidden: c.visible ? undefined : true,
+      locked: c.locked || undefined,
       // faces are emitted in sorted order so a reshuffle cannot churn the diff
       faces: Object.fromEntries(
-        [...FACES]
-          .sort()
-          .map((key): [string, VellumFace] => [
-            key,
-            compact({
-              uv: el.faces[key].uv,
-              texture: textureIdOf(el.faces[key].texture),
-              rotation: el.faces[key].rotation || undefined,
-            }),
-          ]),
+        [...FACES].sort().map((key): [string, VellumFace] => [
+          key,
+          compact({
+            uv: c.faces[key].uv,
+            texture: c.faces[key].texture ?? undefined,
+            rotation: c.faces[key].rotation || undefined,
+          }),
+        ]),
       ),
     }),
   )
 
-  // the group tree flattens to a bone list carrying parent ids
+  // the nested tree flattens to a bone list carrying parent ids
   const bones: VellumBone[] = []
-  const walk = (groups: Group[], parent?: string) => {
-    for (const g of groups) {
+  const walk = (list: Bone[], parent?: string) => {
+    for (const b of list) {
       bones.push(
         compact({
-          id: g.uuid,
-          name: g.name,
-          origin: g.origin,
-          rotation: g.rotation,
+          id: b.id,
+          name: b.name,
+          origin: b.origin,
+          rotation: b.rotation,
           parent,
-          cubes: g.children.filter((c) => c.kind === 'element').map((c) => (c as { uuid: string }).uuid),
-          mirror_uv: undefined,
+          cubes: b.children.filter((c) => c.kind === 'cube').map((c) => (c as { id: string }).id),
+          hidden: b.visible ? undefined : true,
+          locked: b.locked || undefined,
         }),
       )
       walk(
-        g.children.filter((c) => c.kind === 'group').map((c) => (c as { group: Group }).group),
-        g.uuid,
+        b.children.filter((c) => c.kind === 'bone').map((c) => (c as { bone: Bone }).bone),
+        b.id,
       )
     }
   }
-  walk(model.outliner)
+  walk(model.bones)
 
   const textures: VellumTexture[] = model.textures.map((t) =>
     compact({
@@ -207,28 +209,24 @@ export function toVellumDocument(model: Model): VellumDocument {
   )
 
   /* One track per bone-channel pair, which is also how the timeline
-     stacks its rows - Blockbench's animator-with-mixed-keyframes shape
-     makes you re-filter by channel at every read. */
-  const clips: VellumClip[] = model.animations.map((anim) =>
+     stacks its rows - an animator carrying mixed-channel keyframes makes
+     you re-filter by channel at every read. */
+  const clips: VellumClip[] = model.clips.map((clip) =>
     compact({
-      id: anim.uuid,
-      name: anim.name,
-      loop: anim.loop,
-      length: anim.length,
-      snapping: anim.snapping || undefined,
-      tracks: anim.animators.flatMap((an) => {
-        const channels: Channel[] = ['rotation', 'position', 'scale']
-        return channels
-          .map((channel) => ({
-            bone: an.boneUuid,
-            channel,
-            keys: an.keyframes
-              .filter((k) => k.channel === channel)
-              .sort((a, b) => a.time - b.time)
-              .map((k) => ({ time: k.time, value: k.value, interp: k.interpolation })),
-          }))
-          .filter((t) => t.keys.length)
-      }),
+      id: clip.id,
+      name: clip.name,
+      loop: clip.loop,
+      length: clip.length,
+      snapping: clip.snapping || undefined,
+      tracks: clip.tracks
+        .filter((t) => t.keys.length)
+        .map((t) => ({
+          bone: t.bone,
+          channel: t.channel,
+          keys: [...t.keys]
+            .sort((a, b) => a.time - b.time)
+            .map((k) => ({ time: k.time, value: k.value, interp: k.interp })),
+        })),
     }),
   )
 
@@ -273,11 +271,13 @@ function upgrade(doc: VellumDocument): VellumDocument {
   return { ...doc, vellum: { format: doc.vellum.format, version } }
 }
 
+let keyCounter = 0
+const keyId = () => `k${(keyCounter += 1).toString(36)}`
+
 export function fromVellumDocument(doc: VellumDocument): Model {
   const resolution = doc.resolution ?? { width: 16, height: 16 }
 
   const textures: Texture[] = (doc.textures ?? []).map((t, i) => ({
-    uuid: t.id,
     id: t.id ?? String(i),
     name: t.name,
     width: t.width,
@@ -287,24 +287,21 @@ export function fromVellumDocument(doc: VellumDocument): Model {
     source: t.source ?? '',
   }))
 
-  const indexOfTexture = (id: string | undefined) => {
-    if (id === undefined) return null
-    const i = textures.findIndex((t) => t.id === id)
-    return i === -1 ? null : i
-  }
+  const known = new Set(textures.map((t) => t.id))
 
-  const elements: Element[] = (doc.cubes ?? []).map((c) => {
-    const faces = {} as Record<FaceKey, Element['faces'][FaceKey]>
+  const cubes: Cube[] = (doc.cubes ?? []).map((c) => {
+    const faces = {} as Record<FaceKey, Face>
     for (const key of FACES) {
       const f = c.faces?.[key]
       faces[key] = {
         uv: (f?.uv ?? [0, 0, 0, 0]) as UVRect,
-        texture: indexOfTexture(f?.texture),
+        // a face naming a texture the file does not carry is untextured
+        texture: f?.texture !== undefined && known.has(f.texture) ? f.texture : null,
         rotation: (f?.rotation ?? 0) as 0 | 90 | 180 | 270,
       }
     }
     return {
-      uuid: c.id,
+      id: c.id,
       name: c.name,
       from: c.from,
       to: c.to,
@@ -313,80 +310,60 @@ export function fromVellumDocument(doc: VellumDocument): Model {
       faces,
       inflate: c.inflate ?? 0,
       boxUv: c.box_uv ?? false,
-      color: 0,
-      visibility: true,
-      locked: false,
+      visible: !c.hidden,
+      locked: Boolean(c.locked),
     }
   })
 
   // rebuild the nested tree from the parent pointers
-  const boneList = doc.bones ?? []
-  const groups = new Map<string, Group>()
-  for (const b of boneList) {
-    groups.set(b.id, {
-      uuid: b.id,
+  const list = doc.bones ?? []
+  const byId = new Map<string, Bone>()
+  for (const b of list) {
+    byId.set(b.id, {
+      id: b.id,
       name: b.name,
       origin: b.origin ?? [0, 0, 0],
       rotation: b.rotation ?? [0, 0, 0],
-      color: 0,
-      isOpen: true,
-      visibility: true,
-      locked: false,
-      children: (b.cubes ?? []).map((uuid) => ({ kind: 'element' as const, uuid })),
+      visible: !b.hidden,
+      locked: Boolean(b.locked),
+      children: (b.cubes ?? []).map((id) => ({ kind: 'cube' as const, id })),
     })
   }
 
-  const roots: Group[] = []
-  for (const b of boneList) {
-    const self = groups.get(b.id)!
-    const parent = b.parent ? groups.get(b.parent) : undefined
-    if (parent) parent.children.push({ kind: 'group', group: self })
-    else roots.push(self)
+  const bones: Bone[] = []
+  for (const b of list) {
+    const self = byId.get(b.id)!
+    const parent = b.parent ? byId.get(b.parent) : undefined
+    // a parent this file does not carry would orphan the bone, so it roots instead
+    if (parent) parent.children.push({ kind: 'bone', bone: self })
+    else bones.push(self)
   }
 
-  const animations: Animation[] = (doc.clips ?? []).map((clip) => {
-    // tracks are per bone-channel; animators are per bone
-    const byBone = new Map<string, Animation['animators'][number]>()
-    for (const track of clip.tracks ?? []) {
-      let animator = byBone.get(track.bone)
-      if (!animator) {
-        animator = {
-          boneUuid: track.bone,
-          name: groups.get(track.bone)?.name ?? track.bone,
-          keyframes: [],
-        }
-        byBone.set(track.bone, animator)
-      }
-      for (const key of track.keys ?? []) {
-        animator.keyframes.push({
-          uuid: `${clip.id}:${track.bone}:${track.channel}:${key.time}`,
-          channel: track.channel,
-          time: key.time,
-          value: key.value,
-          interpolation: key.interp ?? 'linear',
-        })
-      }
-    }
-    return {
-      uuid: clip.id,
-      name: clip.name,
-      loop: clip.loop ?? 'loop',
-      length: clip.length,
-      snapping: clip.snapping ?? 24,
-      animators: [...byBone.values()],
-    }
-  })
+  const clips: Clip[] = (doc.clips ?? []).map((clip) => ({
+    id: clip.id,
+    name: clip.name,
+    loop: clip.loop ?? 'loop',
+    length: clip.length,
+    snapping: clip.snapping ?? 24,
+    tracks: (clip.tracks ?? []).map((t) => ({
+      bone: t.bone,
+      channel: t.channel,
+      keys: (t.keys ?? []).map((k) => ({
+        id: keyId(),
+        time: k.time,
+        value: k.value,
+        interp: k.interp ?? 'linear',
+      })),
+    })),
+  }))
 
   return {
     name: doc.name ?? 'model',
-    // `.vellum` carries no Blockbench format; the editor treats it as generic
-    format: 'vellum',
-    boxUv: false,
     resolution,
-    elements,
-    outliner: roots,
+    bones,
+    cubes,
     textures,
-    animations,
+    clips,
   }
 }
 
@@ -412,7 +389,7 @@ export function readVellum(raw: string | object): Model {
 
   if (!header || typeof header !== 'object') {
     throw new VellumFormatError(
-      'This file has no "vellum" header, so it was not written by Vellum. Import it as .bbmodel instead.',
+      'This file has no "vellum" header, so it was not written by Vellum and cannot be opened here.',
     )
   }
   if (header.format !== FORMAT) {
@@ -433,12 +410,12 @@ export function readVellum(raw: string | object): Model {
   return fromVellumDocument(upgrade(doc))
 }
 
-/** True when the bytes look like a `.vellum` rather than a `.bbmodel`. */
+/** True when the bytes look like a `.vellum`. */
 export function isVellum(raw: string) {
   return raw.trimStart().startsWith('{"vellum"')
 }
 
-/** Swap any model extension for `.vellum`; opening and saving is the migration. */
+/** Every model Vellum writes is a `.vellum`, whatever it was called before. */
 export function vellumFileName(name: string) {
-  return `${name.replace(/\.(vellum|bbmodel|json)$/i, '')}${EXTENSION}`
+  return `${name.replace(/\.(vellum|json)$/i, '')}${EXTENSION}`
 }

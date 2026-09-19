@@ -1,4 +1,4 @@
-import type { Vec3 } from '../../lib/bbmodel'
+import type { Vec3 } from '../../lib/model'
 import { Icon } from '../../lib/icons'
 
 /* The eight slots a Java item model can be posed in. A pack owns these

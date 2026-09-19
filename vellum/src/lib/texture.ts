@@ -10,7 +10,7 @@
    rectangle in an atlas.
    --------------------------------------------------------------- */
 
-import type { Texture, UVRect } from './bbmodel'
+import type { Texture, UVRect } from './model'
 
 export type PixelSurface = {
   canvas: HTMLCanvasElement

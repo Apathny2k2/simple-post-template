@@ -21,7 +21,7 @@
   /* base pose: also what a spinning scene falls back to when the viewer
      has asked for reduced motion and the animation never runs */
   transform: translateZ(var(--zoom, 0px)) rotateX(var(--pitch, -22deg))
-    rotateY(var(--yaw, -34deg));
+    rotateY(var(--yaw, -34deg)) scale3d(var(--zoom-scale, 1), var(--zoom-scale, 1), var(--zoom-scale, 1));
 }
 
 .scene3d--spin .scene3d__stage {
@@ -29,8 +29,8 @@
 }
 
 @keyframes scene-spin {
-  from { transform: translateZ(var(--zoom, 0px)) rotateX(var(--pitch, -22deg)) rotateY(0deg); }
-  to { transform: translateZ(var(--zoom, 0px)) rotateX(var(--pitch, -22deg)) rotateY(360deg); }
+  from { transform: translateZ(var(--zoom, 0px)) rotateX(var(--pitch, -22deg)) rotateY(0deg) scale3d(var(--zoom-scale, 1), var(--zoom-scale, 1), var(--zoom-scale, 1)); }
+  to { transform: translateZ(var(--zoom, 0px)) rotateX(var(--pitch, -22deg)) rotateY(360deg) scale3d(var(--zoom-scale, 1), var(--zoom-scale, 1), var(--zoom-scale, 1)); }
 }
 
 .scene3d__origin {
