@@ -1,0 +1,171 @@
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: var(--sp-4);
+  height: var(--topbar-h);
+  padding-inline: var(--gutter);
+  background: linear-gradient(to bottom, rgba(7, 12, 25, 0.72), rgba(7, 12, 25, 0.28));
+  backdrop-filter: blur(20px) saturate(1.5);
+  -webkit-backdrop-filter: blur(20px) saturate(1.5);
+  border-bottom: 1px solid var(--glass-rim);
+}
+
+.topbar__brand {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  font-size: var(--fs-md);
+  font-weight: 300;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ink);
+  white-space: nowrap;
+  transition: transform var(--dur) var(--spring);
+}
+
+.topbar__brand:hover { transform: scale(1.03); }
+.topbar__brand:active { transform: scale(0.97); }
+
+.topbar__brand svg {
+  color: var(--wax-400);
+  filter: drop-shadow(0 0 8px rgba(205, 89, 78, 0.5));
+}
+
+/* the ringed nav from the sketch, cast in glass */
+.nav-pill {
+  display: inline-flex;
+  align-items: stretch;
+  border-radius: var(--r-pill);
+  padding: 4px;
+}
+
+.nav-pill__link {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px clamp(12px, 1.6vw, 22px);
+  border-radius: var(--r-pill);
+  border: 1px solid transparent;
+  font-size: var(--fs-sm);
+  color: var(--ink-muted);
+  white-space: nowrap;
+  transition: color var(--dur-fast) var(--ease), border-color var(--dur) var(--ease),
+    background var(--dur) var(--ease), box-shadow var(--dur) var(--ease),
+    transform var(--dur) var(--spring);
+}
+
+.nav-pill__link + .nav-pill__link { box-shadow: inset 1px 0 0 var(--glass-rim); }
+.nav-pill__link:hover { color: var(--ink); transform: translateY(-1px); }
+.nav-pill__link:active { transform: scale(0.95); }
+
+/* active: a wax-outlined lozenge that springs into place */
+.nav-pill__link[aria-current='page'] {
+  color: var(--ink);
+  background: linear-gradient(
+      160deg,
+      rgba(205, 89, 78, 0.26),
+      rgba(148, 47, 46, 0.14) 60%,
+      rgba(148, 47, 46, 0.06)
+    );
+  border-color: var(--wax-400);
+  box-shadow: var(--glow-wax), var(--bevel-soft);
+  animation: pill-pop var(--dur-slow) var(--spring-lg);
+}
+
+.nav-pill__link[aria-current='page'] + .nav-pill__link,
+.nav-pill__link:has(+ [aria-current='page']) { box-shadow: none; }
+
+@keyframes pill-pop {
+  0% { transform: scale(0.84); }
+  100% { transform: scale(1); }
+}
+
+.topbar__right {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--sp-3);
+}
+
+.topbar__clock {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  letter-spacing: 0.04em;
+  color: var(--ink-faint);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.topbar__who {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 12px 5px 9px;
+  border-radius: var(--r-pill);
+  font-size: var(--fs-xs);
+  color: var(--ink-muted);
+  white-space: nowrap;
+}
+
+.topbar__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--wax-400);
+  box-shadow: 0 0 10px 1px rgba(205, 89, 78, 0.8);
+  animation: ember 3.2s var(--ease) infinite alternate;
+}
+
+@keyframes ember {
+  from { opacity: 0.55; }
+  to { opacity: 1; }
+}
+
+/* a wax-outlined icon button - the app's default affordance */
+.icon-btn {
+  display: inline-grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--r-md);
+  color: var(--ink-muted);
+  border: 1px solid transparent;
+  transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease),
+    border-color var(--dur-fast) var(--ease), box-shadow var(--dur) var(--ease),
+    transform var(--dur) var(--spring);
+}
+
+.icon-btn:hover {
+  background: var(--accent-soft);
+  color: var(--ink);
+  border-color: var(--glass-rim-wax);
+  transform: translateY(-1px) scale(1.06);
+}
+
+.icon-btn:active { transform: scale(0.9); }
+
+.icon-btn[aria-pressed='true'] {
+  background: var(--accent-soft);
+  border-color: var(--wax-400);
+  color: var(--wax-300);
+  box-shadow: var(--glow-wax);
+}
+
+@media (max-width: 720px) {
+  .topbar {
+    grid-template-columns: auto 1fr;
+    grid-template-areas: 'brand right' 'nav nav';
+    height: auto;
+    padding-block: 10px;
+    row-gap: 10px;
+  }
+  .topbar__brand { grid-area: brand; }
+  .topbar__right { grid-area: right; }
+  .topbar__nav { grid-area: nav; justify-self: center; }
+  .topbar__clock { display: none; }
+}
