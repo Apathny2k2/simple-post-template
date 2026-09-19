@@ -50,10 +50,13 @@ export function NewModelDialog({
   onClose,
   onCreate,
   title = 'New model',
+  focusOnClose,
 }: {
   onClose: () => void
   onCreate: (kind: ProjectKind, subtype: Subtype | undefined, name: string) => void
   title?: string
+  /** where focus goes when nothing opened this - see useModal */
+  focusOnClose?: React.RefObject<HTMLElement | null>
 }) {
   const [kind, setKind] = useState<ProjectKind>('items')
   const [subtype, setSubtype] = useState<Subtype | undefined>(() => defaultSubtype('items'))
@@ -63,7 +66,7 @@ export function NewModelDialog({
   const kinds = useRef<HTMLDivElement>(null)
   const subs = useRef<HTMLDivElement>(null)
 
-  useModal(panel, onClose)
+  useModal(panel, onClose, focusOnClose)
 
   useEffect(() => {
     first.current?.select()

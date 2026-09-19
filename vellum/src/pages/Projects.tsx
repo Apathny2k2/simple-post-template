@@ -1,4 +1,4 @@
-import { useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Menu } from '../components/Menu'
 import { Model3D, blockModel, lanternModel } from '../components/Model3D'
 import { ModelView } from '../components/ModelView'
@@ -248,6 +248,13 @@ function Library({ sceneId, shelf, openNew }: { sceneId: string; shelf: Shelf; o
   /* `/projects/:scene/:shelf/new` opens straight into the dialog, which
      is where the editor's File > New sends you. */
   const [newOpen, setNewOpen] = useState(openNew)
+  const newBtn = useRef<HTMLButtonElement>(null)
+
+  /* Navigating from this shelf to `/new` on the same shelf is a hash
+     change, not a remount, so the initial state above never sees it. */
+  useEffect(() => {
+    if (openNew) setNewOpen(true)
+  }, [openNew])
   const [query, setQuery] = useState('')
   const scene = scenes.find((s) => s.id === sceneId) ?? scenes[0]
 
@@ -316,7 +323,11 @@ function Library({ sceneId, shelf, openNew }: { sceneId: string; shelf: Shelf; o
           {/* outside the pill: the tabs choose what you are looking at,
               this makes something new, and a segmented control that
               mixes the two reads as a third shelf */}
-          <button className="btn btn--sm btn--primary library__new" onClick={() => setNewOpen(true)}>
+          <button
+            ref={newBtn}
+            className="btn btn--sm btn--primary library__new"
+            onClick={() => setNewOpen(true)}
+          >
             <Icon name="plus" size={13} /> New model
           </button>
 
@@ -365,7 +376,9 @@ function Library({ sceneId, shelf, openNew }: { sceneId: string; shelf: Shelf; o
         <Pager page={current} pages={pages} onPage={setPage} />
       </section>
 
-      {newOpen ? <NewModelDialog onClose={() => setNewOpen(false)} onCreate={create} /> : null}
+      {newOpen ? (
+        <NewModelDialog onClose={() => setNewOpen(false)} onCreate={create} focusOnClose={newBtn} />
+      ) : null}
     </main>
   )
 }

@@ -33,12 +33,25 @@ export function focusables(root: HTMLElement | null | undefined): HTMLElement[] 
  * keyboard user who closes a dialog is dropped at the top of the page
  * and has to tab all the way back to where they were.
  */
-export function useModal(panel: RefObject<HTMLElement | null>, onClose: () => void) {
+export function useModal(
+  panel: RefObject<HTMLElement | null>,
+  onClose: () => void,
+  /**
+   * Where focus goes when there was no opener to go back to - a dialog
+   * opened by a route has none, and without this a keyboard user who
+   * presses Escape is dropped on `body` at the top of the document.
+   * It should be the control that stands for what they just dismissed.
+   */
+  fallback?: RefObject<HTMLElement | null>,
+) {
   const close = useRef(onClose)
   close.current = onClose
+  const back = useRef(fallback)
+  back.current = fallback
 
   useEffect(() => {
     const opener = document.activeElement as HTMLElement | null
+    const hadOpener = !!opener && opener !== document.body
 
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
@@ -67,7 +80,8 @@ export function useModal(panel: RefObject<HTMLElement | null>, onClose: () => vo
     document.addEventListener('keydown', onKey, true)
     return () => {
       document.removeEventListener('keydown', onKey, true)
-      if (opener && document.contains(opener)) opener.focus()
+      if (hadOpener && opener && document.contains(opener)) opener.focus()
+      else back.current?.current?.focus()
     }
   }, [panel])
 }

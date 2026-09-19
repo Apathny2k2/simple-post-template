@@ -5,7 +5,7 @@ import { useModal } from '../lib/a11y'
 import { BLOCK, NO_TRAVEL, buildWorld, defaultPlacement, sceneClip, travelOf } from '../lib/world'
 import { cycleLength, hasBehaviour, particleById, stageAt } from '../lib/behaviour'
 import type { Behaviour, BehaviourStage } from '../lib/behaviour'
-import type { Placement, TimeOfDay } from '../lib/world'
+import type { Placement } from '../lib/world'
 import type { Clip, Model, ProjectKind, Subtype } from '../lib/model'
 import './WorldScene.css'
 
@@ -16,39 +16,25 @@ const PLACEMENTS: Array<{ id: Placement; label: string; blurb: string }> = [
 ]
 
 /**
- * Stars, once, at fixed places. Regenerating them every render made the
- * night sky crawl, which is not a thing night skies do.
- */
-const STARS = Array.from({ length: 64 }, (_, i) => {
-  const n = (k: number) => {
-    const v = Math.sin(i * 12.9898 + k * 78.233) * 43758.5453
-    return v - Math.floor(v)
-  }
-  return {
-    left: n(1) * 100,
-    top: n(2) * 62,
-    size: n(3) > 0.88 ? 3 : 2,
-    dim: 0.35 + n(4) * 0.6,
-    twinkle: 2.6 + n(5) * 4,
-    delay: n(6) * 4,
-  }
-})
-
-const CLOUDS = [
-  { top: 12, left: -20, w: 34, h: 4.5, dur: 190, delay: 0 },
-  { top: 19, left: -60, w: 22, h: 3.5, dur: 240, delay: -60 },
-  { top: 7, left: -100, w: 44, h: 5, dur: 300, delay: -140 },
-  { top: 25, left: -45, w: 17, h: 3, dur: 210, delay: -30 },
-]
-
-/**
- * A model, in a world, at a size you can judge.
+ * A model, on a stage, at a size you can judge.
  *
- * The scene is an ordinary `.vellum` - terrain, the player and the
+ * There used to be a world here - a sky, a sun, clouds, stars and a
+ * grass field - and it was the wrong idea. A modeller looking at their
+ * model does not want a landscape competing with it for attention, and
+ * a green field is a colour cast over everything they are trying to
+ * judge. So the stage is black and the floor is near enough black to
+ * disappear.
+ *
+ * What survives is what was doing work rather than decoration: the
+ * floor still travels, because a walk that covers no ground is the
+ * thing you cannot see in the timeline; it carries one line per block,
+ * because a floor that vanishes entirely takes that with it; and the
+ * two-block figure stays, because nothing else in the game tells you
+ * how big something is.
+ *
+ * The scene is an ordinary `.vellum` - the floor, the figure and the
  * model itself are all cubes on bones - so the renderer, the camera and
- * the animation system need to know nothing about any of this. The sky
- * is the one part that is not: it is flat, it is behind everything, and
- * a cube is the wrong tool for it.
+ * the animation system need to know nothing about any of this.
  */
 export function WorldScene({
   model,
@@ -74,7 +60,6 @@ export function WorldScene({
 
   const [placement, setPlacement] = useState<Placement>(() => defaultPlacement(kind, model.name, subtype))
   const [withPlayer, setWithPlayer] = useState(kind === 'mobs')
-  const [sky, setSky] = useState<TimeOfDay>('day')
   const [walking, setWalking] = useState(true)
   const [playing, setPlaying] = useState(true)
   const [time, setTime] = useState(0)
@@ -84,8 +69,8 @@ export function WorldScene({
      one of them: the world is repainted darker rather than filtered,
      which is why the model keeps its own colours. */
   const built = useMemo(
-    () => buildWorld(model, { kind, placement, withPlayer, sky }),
-    [model, kind, placement, withPlayer, sky],
+    () => buildWorld(model, { kind, placement, withPlayer }),
+    [model, kind, placement, withPlayer],
   )
   /* What the legs are asking for, read off the rig. A clip that does
      not loop, or drives no legs, asks for nothing and the field stays
@@ -198,7 +183,6 @@ export function WorldScene({
     built.blocks >= 1
       ? `${built.blocks} block${built.blocks === 1 ? '' : 's'} tall`
       : `${Math.round(built.blocks * BLOCK)} units tall`
-  const night = sky === 'night'
 
   return (
     <div className="world" role="dialog" aria-modal="true" aria-label="View in the real world">
@@ -218,50 +202,7 @@ export function WorldScene({
           </button>
         </header>
 
-        <div className="world__stage" ref={stage} data-sky={sky}>
-          {/* The sky, behind everything and flat, because it is a sky. */}
-          <div className="world__sky" aria-hidden="true">
-            <span className="world__body" />
-            {night ? (
-              <div className="world__stars">
-                {STARS.map((s, i) => (
-                  <span
-                    key={i}
-                    style={{
-                      left: `${s.left}%`,
-                      top: `${s.top}%`,
-                      width: s.size,
-                      height: s.size,
-                      opacity: s.dim,
-                      animationDuration: `${s.twinkle}s`,
-                      animationDelay: `${s.delay}s`,
-                    }}
-                  />
-                ))}
-              </div>
-            ) : (
-              <div className="world__clouds">
-                {CLOUDS.map((c, i) => (
-                  <span
-                    key={i}
-                    style={{
-                      top: `${c.top}%`,
-                      left: `${c.left}%`,
-                      width: `${c.w}%`,
-                      height: `${c.h}%`,
-                      animationDuration: `${c.dur}s`,
-                      animationDelay: `${c.delay}s`,
-                    }}
-                  />
-                ))}
-              </div>
-            )}
-            {/* The stage origin projects to exactly 50% / 46% of this box,
-                which is where the model stands - so at night the warm
-                pool sits on it however the camera is turned. */}
-            {night ? <span className="world__bloom" /> : null}
-          </div>
-
+        <div className="world__stage" ref={stage}>
           {/* The model shakes as a whole rather than each cube, which is
               what a block does when the ground under it is moving. */}
           <div
@@ -270,7 +211,7 @@ export function WorldScene({
             data-shaking={shake > 0 || undefined}
           >
           <ModelView
-            key={`${placement}-${withPlayer}-${sky}`}
+            key={`${placement}-${withPlayer}`}
             model={built.model}
             scale={scale}
             grid={false}
@@ -373,15 +314,6 @@ export function WorldScene({
               <Icon name="move" size={11} /> {(travel.speed / BLOCK).toFixed(2)} blocks/s
             </button>
           ) : null}
-
-          <button
-            className="chip"
-            aria-pressed={night}
-            onClick={() => setSky(night ? 'day' : 'night')}
-            title="Darkens the world, not the model - so anything meant to glow does"
-          >
-            <Icon name={night ? 'moon' : 'sun'} size={11} /> {night ? 'Night' : 'Day'}
-          </button>
 
           <button
             className="chip"

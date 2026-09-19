@@ -2,7 +2,7 @@
    The scene a model is actually going to live in.
 
    The Display tab shows a model on a tilted grid with nothing to judge
-   it against: no ground, no sky, and above all nothing of a known size.
+   it against: no ground, and above all nothing of a known size.
    A mob that looks right floating in a void is routinely twice the
    height of a player, and you find that out in game.
 
@@ -51,20 +51,23 @@ const FACE_SHADE: Record<FaceKey, number> = {
   west: 0.6,
 }
 
-export type TimeOfDay = 'day' | 'night'
 
 /** Sky light, and the colour the world is tinted toward under it. */
-const SKY: Record<TimeOfDay, { light: number; tint: [number, number, number]; tintAmount: number }> = {
-  day: { light: 1, tint: [255, 252, 240], tintAmount: 0.04 },
-  night: { light: 0.33, tint: [44, 66, 132], tintAmount: 0.34 },
-}
+/**
+ * There is no sky to light this any more, so there is one exposure and
+ * it is the model's own. The directional shading table still applies -
+ * that belongs to the geometry, not to the weather - but nothing tints
+ * or dims the stage, which is what lets a glow read as a glow against
+ * the black rather than against a field at dusk.
+ */
+const STAGE_LIGHT = 1
 
 /* ---------------- the atlas ---------------- */
 
 type Rect = [number, number, number, number]
 
 type TileKind =
-  | 'grass_top' | 'grass_side' | 'dirt'
+  | 'floor'
   | 'skin' | 'hair' | 'shirt' | 'sleeve' | 'trouser' | 'boot' | 'face'
   | 'void'
 
@@ -91,17 +94,18 @@ function texel(kind: TileKind, tx: number, ty: number): Paint | null {
   }
 
   switch (kind) {
-    case 'grass_top':
-      // flatter than it looks: a handful of darker blades over one green
-      return n > 0.88 ? { r: 105, g: 170, b: 78 } : jitter([124, 189, 107], 0.1)
-    case 'grass_side': {
-      // the green lip is ragged, three to five texels deep
-      const lip = 3 + Math.floor(noise(x, 0, 3) * 3)
-      if (y < lip) return n > 0.85 ? { r: 105, g: 170, b: 78 } : jitter([124, 189, 107], 0.1)
-      return jitter([134, 96, 67], 0.12)
+    case 'floor': {
+      /* Near-black, with one lighter texel on the block boundary. The
+         stage is meant to disappear, but a floor that disappears
+         entirely takes the treadmill with it: a walking mob would look
+         like a walking mob standing still. One line every block is the
+         least that still shows ground moving, and doubles as the ruler
+         it already had to be - so it is one line, dim, and nothing
+         else: a grid that draws the eye is a grid competing with the
+         model for it. */
+      if (x === 0 || y === 0) return { r: 31, g: 33, b: 39 }
+      return jitter([11, 12, 15], 0.07)
     }
-    case 'dirt':
-      return n > 0.9 ? { r: 110, g: 78, b: 54 } : jitter([134, 96, 67], 0.12)
     case 'skin':
       return jitter([199, 140, 98], 0.06)
     case 'hair':
@@ -154,12 +158,12 @@ class Atlas {
     /* Claimed first so that it is also what a request past the end of
        the sheet falls back to. The old fallback handed out whatever had
        been packed first, which was the field - so overflowing the
-       atlas grew grass on the fence posts instead of failing visibly. */
-    this.region('void', 4, 4, 1, 'day')
+       atlas painted floor onto everything instead of failing visibly. */
+    this.region('void', 4, 4, 1)
   }
 
   /**
-   * `emissive` ignores sky light, for a flame. `fit` scales the 16x16
+   * `emissive` ignores the stage exposure, for a flame. `fit` scales the 16x16
    * motif onto the region instead of slicing it: a fence post wants a
    * 4-texel slice of the plank pattern, but a player's 8-unit head
    * wants the whole face on it, not the top-left corner of one.
@@ -169,13 +173,12 @@ class Atlas {
     w: number,
     h: number,
     shade: number,
-    sky: TimeOfDay,
     emissive = false,
     fit = false,
   ): Rect {
     const width = Math.max(1, Math.round(w))
     const height = Math.max(1, Math.round(h))
-    const key = `${kind}:${width}x${height}:${shade.toFixed(2)}:${emissive ? 'e' : sky}:${fit ? 'f' : 's'}`
+    const key = `${kind}:${width}x${height}:${shade.toFixed(2)}:${emissive ? 'e' : 'l'}:${fit ? 'f' : 's'}`
     const found = this.spots.get(key)
     if (found) return found
 
@@ -197,24 +200,22 @@ class Atlas {
     this.x += width + pad
     this.shelf = Math.max(this.shelf, height + pad)
     this.spots.set(key, at)
-    this.paint(kind, at, shade, sky, emissive, fit)
+    this.paint(kind, at, shade, emissive, fit)
     return at
   }
 
-  private paint(kind: TileKind, at: Rect, shade: number, sky: TimeOfDay, emissive: boolean, fit: boolean) {
+  private paint(kind: TileKind, at: Rect, shade: number, emissive: boolean, fit: boolean) {
     const ctx = this.ctx
     if (!ctx) return
     const [x0, y0, x1, y1] = at
     const w = x1 - x0
     const h = y1 - y0
-    const { light, tint, tintAmount } = SKY[sky]
-    const k = emissive ? 1 : shade * light
-    const mix = emissive ? 0 : tintAmount * (1 - light) * 2.2
+    const k = emissive ? 1 : shade * STAGE_LIGHT
 
     /* One ImageData rather than a fillRect per texel. The field is a
        960 x 640 patch - six hundred thousand of them - and painting it
-       a rectangle at a time cost half a second every time the sky or
-       the placement changed. */
+       a rectangle at a time cost half a second every time the
+       placement changed. */
     const img = ctx.createImageData(w, h)
     const px = img.data
     for (let y = 0; y < h; y++) {
@@ -227,9 +228,9 @@ class Atlas {
           px[i + 3] = 0
           continue
         }
-        px[i] = t.r * k + (tint[0] - t.r * k) * mix
-        px[i + 1] = t.g * k + (tint[1] - t.g * k) * mix
-        px[i + 2] = t.b * k + (tint[2] - t.b * k) * mix
+        px[i] = t.r * k
+        px[i + 1] = t.g * k
+        px[i + 2] = t.b * k
         px[i + 3] = (t.a ?? 1) * 255
       }
     }
@@ -261,7 +262,6 @@ type Skin = Partial<Record<FaceKey, TileKind>> & { all?: TileKind }
 function block(
   atlas: Atlas,
   texture: string,
-  sky: TimeOfDay,
   name: string,
   from: Vec3,
   to: Vec3,
@@ -285,7 +285,7 @@ function block(
       const kind: TileKind = skin[key] ?? skin.all ?? 'void'
       // a void face is transparent at any size, so it claims one texel
       const [fw, fh] = kind === 'void' ? [4, 4] : span[key]
-      const uv = atlas.region(kind, fw, fh, FACE_SHADE[key], sky, opts.emissive, opts.fit) as UVRect
+      const uv = atlas.region(kind, fw, fh, FACE_SHADE[key], opts.emissive, opts.fit) as UVRect
       return [key, { uv, texture, rotation: 0 as const }]
     }),
   ) as Record<FaceKey, Face>
@@ -312,7 +312,7 @@ function block(
  * A flat field, and nothing else on it.
  *
  * One cube, not a grid of them. A tiled field needs its cubes to
- * overlap or antialiasing leaves a hairline of sky along every join,
+ * overlap or antialiasing leaves a hairline of the stage along every join,
  * and once they overlap their coplanar tops fight over which is in
  * front - either way a grid gets drawn across the grass. Offsetting
  * them in height trades that for a sliver of transparency at each
@@ -324,9 +324,9 @@ function block(
  * PNG. Its sides and underside are a single transparent texel each -
  * the frame never reaches them.
  */
-function terrain(atlas: Atlas, t: string, sky: TimeOfDay): { cubes: Cube[]; bone: Bone } {
-  const cube = block(atlas, t, sky, 'field', [-480, -BLOCK, -320], [480, 0, 320], {
-    up: 'grass_top',
+function terrain(atlas: Atlas, t: string): { cubes: Cube[]; bone: Bone } {
+  const cube = block(atlas, t, 'field', [-480, -BLOCK, -320], [480, 0, 320], {
+    up: 'floor',
     all: 'void',
   })
 
@@ -366,13 +366,12 @@ export type PlayerRig = { legs: [string, string]; arms: [string, string] }
 function playerParts(
   atlas: Atlas,
   t: string,
-  sky: TimeOfDay,
   at: Vec3,
 ): { cubes: Cube[]; bone: Bone; rig: PlayerRig } {
   const [x, y, z] = at
   const facing = (Math.atan2(x, z) * 180) / Math.PI - 26
   const put = (name: string, from: Vec3, to: Vec3, skin: Skin) =>
-    block(atlas, t, sky, name, from, to, skin, { fit: true })
+    block(atlas, t, name, from, to, skin, { fit: true })
 
   const head = put('player_head', [x - 4, y + 24, z - 4], [x + 4, y + 32, z + 4], {
     up: 'hair',
@@ -529,7 +528,6 @@ export type WorldOptions = {
   /** a player entity beside the model, for height and for reach */
   withPlayer: boolean
   /** night darkens the world, not the model - which is the point of it */
-  sky?: TimeOfDay
 }
 
 export type BuiltWorld = {
@@ -549,15 +547,10 @@ export type BuiltWorld = {
 }
 
 export function buildWorld(subject: Model, opts: WorldOptions): BuiltWorld {
-  /* Normalised once, here, rather than trusted all the way down: this
-     is called from JavaScript as well as from TypeScript, and an
-     unrecognised sky used to reach the painter and throw on a lookup
-     that had no entry for it. Anything that is not night is day. */
-  const sky: TimeOfDay = opts.sky === 'night' ? 'night' : 'day'
   const atlas = new Atlas(1024)
   const id = newId()
-  const ground = terrain(atlas, id, sky)
-  const player = opts.withPlayer ? playerParts(atlas, id, sky, [34, 0, 4]) : null
+  const ground = terrain(atlas, id)
+  const player = opts.withPlayer ? playerParts(atlas, id, [34, 0, 4]) : null
   const sheet: Texture = { ...atlas.texture('world.png'), id }
 
   const { lo, hi } = boundsOf(subject)

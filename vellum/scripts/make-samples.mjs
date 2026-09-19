@@ -108,7 +108,7 @@ const files = await p.evaluate(async () => {
    * bones are named rather than referenced, and the texture is painted
    * from the same spec so a cube and its pixels cannot drift apart.
    */
-  function build({ name, kind, subtype, sheet, cubes, bones, clips, behaviour, scale = 1 }) {
+  function build({ name, kind, subtype, sheet, cubes, bones, clips, behaviour, config, scale = 1 }) {
     /* Authored at whatever size reads well while drawing it, then
        brought into the space the format actually renders in: an item
        lives in a 16-unit slot, and a sword drawn 32 units long is two
@@ -205,6 +205,8 @@ const files = await p.evaluate(async () => {
       }
     }
 
+    if (config) model.config = config
+
     return {
       text: V.writeVellum(model),
       cubes: model.cubes.length,
@@ -222,6 +224,25 @@ const files = await p.evaluate(async () => {
 
   const runic = build({
     name: 'runic_blade', kind: 'items', subtype: 'weapon', sheet: 64, scale: 0.5,
+    /* The other half of shipping a weapon: what it is once it is not
+       just a shape. Custom model data is the line that ties this config
+       back to the model in the same file. */
+    config: {
+      material: 'DIAMOND_SWORD',
+      display: '&bRunic Blade',
+      lore: ['&7Cut from a stone that remembers.', '&8Hums when a rune is near.'],
+      model: 1001,
+      unbreakable: true,
+      hideFlags: true,
+      glint: true,
+      enchants: [{ name: 'SHARPNESS', level: '4' }, { name: 'FIRE_ASPECT', level: '1' }],
+      attributes: [
+        { slot: 'MainHand', attribute: 'Damage', value: '11' },
+        { slot: 'MainHand', attribute: 'AttackSpeed', value: '1.5' },
+      ],
+      skills: [{ skill: 'skill{s=RunicArc}', trigger: '~onUse', chance: '0.35' }],
+      dropGlow: true,
+    },
     cubes: [
       { name: 'pommel',    from: [-2,-2,-2],      to: [2,1,2],        origin: [0,0,0],    look: gold },
       { name: 'grip',      from: [-1,1,-1],       to: [1,7,1],        origin: [0,1,0],    look: wrap },

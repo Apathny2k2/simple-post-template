@@ -19,6 +19,8 @@
 
 import { validateBehaviour } from './behaviour'
 import type { Behaviour } from './behaviour'
+import { validateConfig } from './mythic'
+import type { MythicConfig } from './mythic'
 
 export type Vec3 = [number, number, number]
 export type UVRect = [number, number, number, number]
@@ -166,6 +168,8 @@ export type Model = {
   subtype?: Subtype
   /** what makes it act on its own, where it does; see lib/behaviour.ts */
   behaviour?: Behaviour
+  /** the MythicMobs config authored beside it; see lib/mythic.ts */
+  config?: MythicConfig
   resolution: { width: number; height: number }
   bones: Bone[]
   cubes: Cube[]
@@ -509,6 +513,7 @@ export function validateModel(model: Model, kind?: ProjectKind, subtype?: Subtyp
   }
 
   issues.push(...validateBehaviour(model, model.behaviour))
+  issues.push(...validateConfig(model.name, kind, model.config))
 
   return issues
 }

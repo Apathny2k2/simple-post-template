@@ -30,6 +30,7 @@
 
 import { FACES, subtypeFits } from './model'
 import type { Behaviour, BehaviourEffect, BehaviourRequirement, BehaviourStage, EffectKind } from './behaviour'
+import type { ConfigValue, MythicConfig, Row } from './mythic'
 import type {
   Bone,
   Channel,
@@ -47,7 +48,7 @@ import type {
 } from './model'
 
 export const FORMAT = 'model'
-export const CURRENT_VERSION = 4
+export const CURRENT_VERSION = 5
 
 /** A well-formed `.vellum` begins with exactly these bytes. */
 export const HEADER_PREFIX = `{"vellum":{"format":"${FORMAT}","version":${CURRENT_VERSION}},`
@@ -161,6 +162,13 @@ export type VellumDocument = {
    * empty behaviour onto every file would be noise in every diff.
    */
   behaviour?: VellumBehaviour
+  /**
+   * The MythicMobs config, as a flat map of the schema's own keys.
+   * Version 5 added it. Deliberately not the YAML: the YAML is derived,
+   * and storing a derived form is storing something that can disagree
+   * with what it was derived from.
+   */
+  config?: Record<string, unknown>
 }
 
 /* ---------------- errors ---------------- */
@@ -293,6 +301,11 @@ export function toVellumDocument(model: Model): VellumDocument {
         }
       : undefined
 
+  /* Only what was set: a config of forty defaults is forty lines of
+     noise in every diff, and MythicMobs reads an absent key as the
+     default anyway. */
+  const config = model.config && Object.keys(model.config).length ? model.config : undefined
+
   // insertion order here IS the written key order
   return compact({
     vellum: { format: FORMAT, version: CURRENT_VERSION },
@@ -305,6 +318,7 @@ export function toVellumDocument(model: Model): VellumDocument {
     textures,
     clips,
     behaviour,
+    config,
   })
 }
 
@@ -354,6 +368,37 @@ function readBehaviour(raw: VellumBehaviour | undefined): Behaviour | undefined 
   return { requires, stages }
 }
 
+/**
+ * A config off disk, with every value forced into one of the shapes a
+ * field can hold. Anything else is dropped rather than carried: a
+ * number where the form wants a list is a value nothing could render.
+ */
+function readConfig(raw: Record<string, unknown> | undefined): MythicConfig | undefined {
+  if (!raw || typeof raw !== 'object') return undefined
+  const out: MythicConfig = {}
+  for (const [key, value] of Object.entries(raw)) {
+    if (typeof value === 'string' || typeof value === 'boolean') {
+      out[key] = value
+    } else if (typeof value === 'number' && Number.isFinite(value)) {
+      out[key] = value
+    } else if (Array.isArray(value)) {
+      if (value.every((v) => typeof v === 'string')) {
+        out[key] = value as string[]
+      } else if (value.every((v) => v && typeof v === 'object' && !Array.isArray(v))) {
+        out[key] = value.map((v) => {
+          const row: Row = {}
+          for (const [k, c] of Object.entries(v as Record<string, unknown>)) {
+            if (typeof c === 'string') row[k] = c
+            else if (typeof c === 'number' && Number.isFinite(c)) row[k] = String(c)
+          }
+          return row
+        }) as ConfigValue
+      }
+    }
+  }
+  return Object.keys(out).length ? out : undefined
+}
+
 function upgrade(doc: VellumDocument): VellumDocument {
   let version = doc.vellum.version
   while (version < CURRENT_VERSION) {
@@ -375,6 +420,9 @@ function upgrade(doc: VellumDocument): VellumDocument {
         break
       case 3: // v4 added `behaviour`, and absent is already correct
         version = 4
+        break
+      case 4: // v5 added `config`, likewise
+        version = 5
         break
       default:
         throw new VellumFormatError(`No upgrade path from .vellum version ${version}.`)
@@ -497,6 +545,7 @@ export function fromVellumDocument(doc: VellumDocument): Model {
     kind,
     subtype,
     behaviour: readBehaviour(doc.behaviour),
+    config: readConfig(doc.config),
     resolution,
     bones,
     cubes,

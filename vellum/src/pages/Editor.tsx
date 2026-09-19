@@ -82,6 +82,10 @@ import { DEFAULT_DISPLAY, DisplayPanel } from './editor/DisplayPanel'
 import type { DisplayState, SlotId } from './editor/DisplayPanel'
 import { ScenePanel } from './editor/ScenePanel'
 import { BehaviourPanel } from './editor/BehaviourPanel'
+import { ConfigPanel } from './editor/ConfigPanel'
+import { ConfigOutput } from './editor/ConfigOutput'
+import { emptyConfig, hasConfig, setFields } from '../lib/mythic'
+import type { MythicConfig } from '../lib/mythic'
 import { EMPTY_BEHAVIOUR, cycleLength, geyserBehaviour, stageAt } from '../lib/behaviour'
 import type { Behaviour } from '../lib/behaviour'
 import { ConfirmDialog } from './editor/ConfirmDialog'
@@ -90,7 +94,7 @@ import { scenes } from '../lib/data'
 import { saveDataUrl, saveFile } from '../lib/download'
 import './Editor.css'
 
-type Mode = 'edit' | 'paint' | 'animate' | 'display' | 'behaviour'
+type Mode = 'edit' | 'paint' | 'animate' | 'display' | 'behaviour' | 'config'
 
 /* ================= menu bar ================= */
 
@@ -270,8 +274,10 @@ function MenuBar({
 /* ================= toolbar ================= */
 
 const toolsets: Record<Mode, Array<{ id: string; icon: IconName; label: string }>> = {
-  // a behaviour is edited in its panel, so the tool row has nothing to offer
+  // neither a behaviour nor a config is a canvas, so the tool row has
+  // nothing to offer either of them
   behaviour: [],
+  config: [],
   edit: [
     { id: 'move', icon: 'move', label: 'Move' },
     { id: 'resize', icon: 'resize', label: 'Resize' },
@@ -305,6 +311,7 @@ const baseModes: Array<{ id: Mode; label: string }> = [
   { id: 'paint', label: 'Paint' },
   { id: 'animate', label: 'Animate' },
   { id: 'behaviour', label: 'Behaviour' },
+  { id: 'config', label: 'Config' },
   { id: 'display', label: 'Display' },
 ]
 
@@ -314,11 +321,9 @@ const baseModes: Array<{ id: Mode; label: string }> = [
  * mob is animated by what it is doing, not by the blocks around it.
  */
 const modesFor = (kind: ProjectKind) =>
-  kind === 'mobs'
-    ? baseModes
-        .filter((m) => m.id !== 'behaviour')
-        .map((m) => (m.id === 'display' ? { ...m, label: 'Scene' } : m))
-    : baseModes
+  baseModes
+    .filter((m) => (m.id === 'behaviour' ? kind !== 'mobs' : m.id === 'config' ? hasConfig(kind) : true))
+    .map((m) => (m.id === 'display' && kind === 'mobs' ? { ...m, label: 'Scene' } : m))
 
 function Toolbar({
   kind,
@@ -2500,6 +2505,10 @@ export function Editor({ segments }: { segments: string[] }) {
   )
 
   const behaviour = model.behaviour ?? EMPTY_BEHAVIOUR
+  const config = useMemo(
+    () => ({ ...(hasConfig(kind) ? emptyConfig(kind) : {}), ...(model.config ?? {}) }),
+    [kind, model.config],
+  )
   const bhvNow = useMemo(() => stageAt(behaviour, bhvTime), [behaviour, bhvTime])
 
   /* The stage's clip loops inside the stage for as long as the stage
@@ -2527,6 +2536,11 @@ export function Editor({ segments }: { segments: string[] }) {
 
   const setBehaviour = useCallback(
     (next: Behaviour) => history.commit('behaviour', (m) => ({ ...m, behaviour: next })),
+    [history],
+  )
+
+  const setConfig = useCallback(
+    (next: MythicConfig) => history.commit('config', (m) => ({ ...m, config: next })),
     [history],
   )
   const bones = useMemo(() => boneList(model.bones), [model.bones])
@@ -3182,7 +3196,11 @@ export function Editor({ segments }: { segments: string[] }) {
 
         <div className="ed-rails">
           <div className="ed-col ed-col--left">
-            {mode === 'behaviour' ? (
+            {mode === 'config' && hasConfig(kind) ? (
+              <Panel title="Config" count={setFields(kind, config).length || 'none'}>
+                <ConfigPanel kind={kind} config={config} onChange={setConfig} />
+              </Panel>
+            ) : mode === 'behaviour' ? (
               <Panel
                 title="Behaviour"
                 count={
@@ -3311,7 +3329,14 @@ export function Editor({ segments }: { segments: string[] }) {
           </div>
 
           <Splitter onDrag={onLeft} />
-          <div className="ed-rails__gap" />
+          {/* The middle column is normally a hole through to the
+              viewport. In Config mode there is nothing to look at
+              through it, and a great deal to read. */}
+          <div className="ed-rails__gap">
+            {mode === 'config' && hasConfig(kind) ? (
+              <ConfigOutput id={model.name} kind={kind} config={config} />
+            ) : null}
+          </div>
           <Splitter onDrag={onRight} />
 
           <div className="ed-col ed-col--right">
@@ -3414,7 +3439,11 @@ export function Editor({ segments }: { segments: string[] }) {
         </span>
         <div className="ed-status__right">
           <span className={errors || warnings ? 'ed-status__bad' : undefined}>
-            {errors ? `${errors} errors` : warnings ? `${warnings} warnings` : 'valid'}
+            {errors
+              ? `${errors} error${errors === 1 ? '' : 's'}`
+              : warnings
+                ? `${warnings} warning${warnings === 1 ? '' : 's'}`
+                : 'valid'}
           </span>
           <span>{mode}</span>
           <span>vellum 0.6.0</span>

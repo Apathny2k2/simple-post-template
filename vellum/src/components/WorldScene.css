@@ -51,107 +51,16 @@
   white-space: nowrap;
 }
 
+/* Flat black. There was a sky here - a blue with the fog lightening
+   toward the horizon, a square sun, clouds, stars - and all of it was
+   competing with the one thing anybody opened this to look at. Black
+   also means a glow reads as a glow without a night mode to switch to. */
 .world__stage {
   position: relative;
   flex: 1;
   min-height: 0;
   overflow: hidden;
-  background: #78a7ff;
-  transition: background 600ms var(--ease);
-}
-
-.world__stage[data-sky='night'] { background: #0a0f26; }
-
-/* ---------------- the sky ----------------
-
-   Flat, behind everything, and not made of cubes. Minecraft's daytime
-   sky is one blue with the fog lightening toward the horizon, and the
-   sun is a square - the gradients here are that, not a studio backdrop. */
-
-.world__sky {
-  position: absolute;
-  inset: 0;
-  z-index: 0;
-  pointer-events: none;
-  overflow: hidden;
-  background: linear-gradient(180deg, #6f9fff 0%, #85b0ff 46%, #bcd6ff 78%, #d8e6ff 100%);
-  transition: background 600ms var(--ease), opacity 600ms var(--ease);
-}
-
-.world__stage[data-sky='night'] .world__sky {
-  background: linear-gradient(180deg, #05070f 0%, #0a1030 44%, #14204a 76%, #22305e 100%);
-}
-
-/* the sun, and then the moon: both squares, as they are in the game */
-.world__body {
-  position: absolute;
-  top: 12%;
-  right: 16%;
-  width: 46px;
-  height: 46px;
-  background: #fdf6c8;
-  box-shadow: 0 0 44px 18px rgba(253, 246, 200, 0.42);
-}
-
-.world__stage[data-sky='night'] .world__body {
-  background: #e8eefc;
-  box-shadow: 0 0 34px 10px rgba(200, 216, 255, 0.28);
-  /* a gibbous moon: one square with a bite out of the corner */
-  clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%, 0 74%, 26% 74%, 26% 26%, 0 26%);
-}
-
-.world__clouds { position: absolute; inset: 0; }
-
-.world__clouds > span {
-  position: absolute;
-  display: block;
-  background: rgba(255, 255, 255, 0.86);
-  animation: drift linear infinite;
-}
-
-@keyframes drift {
-  from { transform: translateX(0); }
-  to { transform: translateX(260%); }
-}
-
-.world__stars { position: absolute; inset: 0; }
-
-.world__stars > span {
-  position: absolute;
-  display: block;
-  background: #fff;
-  animation: twinkle ease-in-out infinite alternate;
-}
-
-@keyframes twinkle {
-  from { opacity: 0.15; }
-  to { opacity: 1; }
-}
-
-/* A pool of light on the ground under the model. The stage origin
-   projects to 50% / 46% of this box, which is where the model stands,
-   so it sits on it whichever way the camera is turned - but it is
-   painted on the sky, so it has to stay faint enough to read as ground
-   light rather than as a sunset behind the trees. */
-.world__bloom {
-  position: absolute;
-  left: 50%;
-  top: 52%;
-  width: 34%;
-  aspect-ratio: 2.4;
-  transform: translate(-50%, -50%);
-  background: radial-gradient(
-    ellipse,
-    rgba(255, 198, 126, 0.13) 0%,
-    rgba(255, 176, 104, 0.06) 42%,
-    transparent 70%
-  );
-  animation: flicker 3.4s var(--ease) infinite alternate;
-}
-
-@keyframes flicker {
-  from { opacity: 0.7; }
-  to { opacity: 1; }
+  background: #050507;
 }
 
 .world__stage .scene3d { z-index: 1; }

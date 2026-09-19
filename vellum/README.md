@@ -46,7 +46,7 @@ with a Vellum-owned schema. The extension is ours; the encoding is JSON so
 `git diff` on a model keeps working.
 
 ```
-{"vellum":{"format":"model","version":4},"name":"voidling","kind":"mobs","subtype":"hostile","resolution":{…},"bones":[…],"cubes":[…],"textures":[…],"clips":[…],"behaviour":{…}}
+{"vellum":{"format":"model","version":5},"name":"voidling","kind":"mobs","subtype":"hostile","resolution":{…},"bones":[…],"cubes":[…],"textures":[…],"clips":[…],"behaviour":{…},"config":{…}}
 ```
 
 Four properties are load-bearing, and the round-trip test asserts each rather
@@ -116,6 +116,53 @@ worked example.
 
 A behaviour on a mob is a warning rather than an error: a mob is animated by
 what it is doing, not by the blocks around it, so nothing would read it.
+
+### Config — what makes it a mob rather than a shape
+
+A `.vellum` says what something looks like and how it moves. None of that
+makes it a mob: 420 health, an armour value, a faction, a boss bar and a skill
+on a timer is a boss, and every one of those lives in a
+[MythicMobs](https://mythiccraft.io) config rather than in any geometry.
+Modelling here and writing the config elsewhere is how the two drift apart —
+the model says `geyser_block`, the config says `geyserblock`, and nothing
+tells you.
+
+So the config is authored beside the model, in a **Config** tab, and written
+out of it. The YAML sits live in the middle of the editor while you fill the
+form in, keyed by the model's own name, and leaves as a `.yml` or on the
+clipboard.
+
+**One description drives everything.** A field is declared once, in `SCHEMA`
+(`src/lib/mythic.ts`), and the form, the rules and the YAML all read that same
+declaration — which is why a key cannot appear in the editor and be missing
+from the export, or be spelled two ways. Adding a field is adding a line to
+the schema.
+
+A mob covers identity and faction, stats, the options switches, the boss bar,
+AI goal and target selectors, skills with triggers and chances, equipment,
+drops, damage modifiers, level modifiers and kill messages. An item covers
+material, display and lore, custom model data, amount, the options switches,
+durability, enchantments, per-slot attributes, use skills and drop options.
+Where MythicMobs offers a vocabulary — entity types, selectors, bar styles,
+enchantments — the field carries it as *suggestions* rather than a closed
+list, because a server with other plugins on it has more of them than we
+could know.
+
+Only what differs from MythicMobs' own default is written. A config of forty
+defaults is forty lines of noise in every diff, and the plugin reads an absent
+key as the default anyway.
+
+The rules catch what a server would refuse before the server does: a mob with
+no base entity, health that kills it on spawn, a boss bar over 30 health, goal
+selectors that do not start with `clear` (and so add to the vanilla set rather
+than replacing it), an equipment slot that is not one, a drop chance written
+as 25 when MythicMobs reads 0 to 1, an enchantment with no level, an attribute
+with no slot, a trigger that does not begin with `~`. An item with no custom
+model data is a warning, because that number is the only thing tying a config
+back to the model in the same file.
+
+`voidling.vellum` ships as the worked example: a 420-health boss with a purple
+segmented bar, fog, a threat table, three skills and a level curve.
 
 ### What the shape buys
 
@@ -259,10 +306,36 @@ flat three-tone shading, a CSS grid floor, drag-to-orbit, and a keyframed spin
 for the library cards. There is no mesh, no camera and no raster pipeline - it
 is there so the viewport reads as a viewport.
 
+## The stage
+
+**View in the real world** used to be a world — a sky, a square sun, clouds,
+stars and a grass field. It was the wrong idea. A modeller looking at a model
+does not want a landscape competing with it, and a green field is a colour
+cast over everything they are trying to judge.
+
+So the stage is black and the floor is near enough black to disappear. What
+survives is what was doing work rather than decoration:
+
+- **The floor still travels.** A walk that covers no ground is the one thing
+  the timeline cannot show you, so the model stands still and the ground moves
+  under it at the speed the legs are asking for. A leg swinging `a` degrees
+  about a pivot `r` from the foot sweeps a chord of `2r sin(a)`, and that chord
+  is the ground a stride covers. An attack does not travel; an idle rocking a
+  degree or two is not walking. Both fall out of the derivation.
+- **One line per block**, dim. A floor that vanishes entirely takes the
+  treadmill with it — a walking mob would look like a walking mob standing
+  still — and the line doubles as the ruler it had to be anyway.
+- **The two-block figure**, because nothing else in the game tells you how big
+  something is. It is rigged and walks at the same speed, solving the same
+  equation for its own leg length.
+
+There is no day/night any more, because there is no sky to change. Black is
+the dark theme: a glow reads as a glow without one.
+
 ## What works, and what does not
 
-The editor edits. Geometry, textures, rigs, clips, behaviours and the file
-itself are all real: cubes and bones are added, resized, reparented and deleted;
+The editor edits. Geometry, textures, rigs, clips, behaviours, configs and the
+file itself are all real: cubes and bones are added, resized, reparented and deleted;
 paint lands on the sheet through the UV rectangle it belongs to; clips are keyed,
 retimed and interpolated on a catmull-rom spline; and a model saves to and opens
 from a real `.vellum` through the same codec the samples ship in. Undo and redo
