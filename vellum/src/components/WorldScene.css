@@ -1,0 +1,108 @@
+.world {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: grid;
+  place-items: center;
+  padding: clamp(8px, 2.4vw, 28px);
+}
+
+.world__scrim {
+  position: absolute;
+  inset: 0;
+  background: rgba(3, 6, 13, 0.76);
+  backdrop-filter: blur(3px);
+}
+
+.world__panel {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: min(1180px, 100%);
+  height: min(780px, 100%);
+  border-radius: var(--r-lg);
+  border: 1px solid var(--glass-rim);
+  background: linear-gradient(180deg, var(--navy-900), var(--navy-970));
+  box-shadow: var(--shadow-pop);
+  overflow: hidden;
+  animation: panel-open var(--dur) var(--spring-soft);
+}
+
+.world__head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: 11px 14px;
+  border-bottom: 1px solid var(--glass-rim);
+  flex: none;
+}
+
+.world__title { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; }
+.world__title svg { color: var(--wax-300); }
+.world__title h2 { margin: 0; }
+
+.world__stat {
+  padding: 3px 10px;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--glass-rim);
+  background: var(--bg-sunken);
+  font-size: var(--fs-2xs);
+  color: var(--ink-muted);
+  white-space: nowrap;
+}
+
+.world__stage {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  /* a sky, so the scene has somewhere to be rather than floating on the panel */
+  background:
+    radial-gradient(120% 90% at 50% 8%, #5d86bf 0%, #3f5f92 38%, #24365c 68%, #131d38 100%);
+  overflow: hidden;
+}
+
+.world__hint {
+  position: absolute;
+  left: 14px;
+  bottom: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--glass-rim);
+  background: rgba(7, 12, 25, 0.72);
+  font-size: var(--fs-2xs);
+  color: var(--ink-muted);
+  pointer-events: none;
+}
+
+.world__bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: 9px 14px;
+  border-top: 1px solid var(--glass-rim);
+  background: rgba(7, 12, 25, 0.55);
+  flex: none;
+}
+
+.world__group { display: flex; align-items: center; gap: 4px; }
+.world__time { font-size: var(--fs-2xs); color: var(--ink-faint); margin-left: 4px; min-width: 96px; }
+
+.world__field { display: flex; align-items: center; gap: 7px; }
+.world__field > span { font-size: var(--fs-2xs); color: var(--ink-faint); white-space: nowrap; }
+.world__field .ed-select { min-width: 132px; }
+
+.world__note {
+  margin-left: auto;
+  font-size: var(--fs-2xs);
+  color: var(--ink-faint);
+}
+
+@media (max-width: 720px) {
+  .world__panel { height: 100%; }
+  .world__note { display: none; }
+  .world__field .ed-select { min-width: 104px; }
+}

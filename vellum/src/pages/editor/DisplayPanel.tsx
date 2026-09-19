@@ -53,6 +53,7 @@ export function DisplayPanel({
   transform,
   onTransform,
   onReset,
+  onWorld,
   all,
   children,
 }: {
@@ -61,6 +62,8 @@ export function DisplayPanel({
   transform: SlotTransform
   onTransform: (t: SlotTransform) => void
   onReset: () => void
+  /** open the scene: the model, in a world, next to something two blocks tall */
+  onWorld: () => void
   /** every slot, so "copy all" can emit the whole display block */
   all: DisplayState
   /** the numeric row component, passed in so it stays one implementation */
@@ -136,6 +139,14 @@ export function DisplayPanel({
           },
         ])}
       </div>
+
+      {/* A display slot poses a model against nothing at all: no ground,
+          no sky, and nothing of a known size. This is the other half of
+          judging a model - how big it actually is, and what its
+          animation looks like somewhere real. */}
+      <button className="btn btn--primary" style={{ width: '100%', marginTop: 12 }} onClick={onWorld}>
+        <Icon name="scene" size={14} /> View in the real world
+      </button>
 
       <div className="chip-row">
         <button className="chip" onClick={onReset}>

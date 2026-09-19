@@ -318,6 +318,14 @@ type Props = {
   onPaint?: (cubeId: string, face: FaceKey, u: number, v: number, phase: 'down' | 'move') => void
   /** a display-slot transform applied to the whole model, as a pack would */
   display?: { rotation: Vec3; translation: Vec3; scale: Vec3 } | null
+  /**
+   * Where the stage origin sits. A model stands on the grid, so its
+   * lowest point is what meets the floor; a whole scene has no floor
+   * to stand on and wants its middle in the middle of the frame.
+   */
+  anchorAt?: 'floor' | 'centre'
+  /** an explicit stage origin, in model units, overriding `anchorAt` */
+  anchorOn?: Vec3 | null
   className?: string
 }
 
@@ -344,6 +352,8 @@ export function ModelView({
   onDeselect,
   onPaint,
   display = null,
+  anchorAt = 'floor',
+  anchorOn = null,
   className = '',
 }: Props) {
   const [yaw, setYaw] = useState(initialYaw)
@@ -502,7 +512,7 @@ export function ModelView({
   /* Centred left-to-right and front-to-back, but stood ON the grid rather
      than through it: the model's lowest point is what meets the floor. */
   const anchor = useMemo(() => {
-    if (!model.cubes.length) return [0, 0, 0] as Vec3
+    if (!model.cubes.length) return anchorOn ?? ([0, 0, 0] as Vec3)
     const lo: Vec3 = [Infinity, Infinity, Infinity]
     const hi: Vec3 = [-Infinity, -Infinity, -Infinity]
     for (const c of model.cubes) {
@@ -511,8 +521,13 @@ export function ModelView({
         hi[i] = Math.max(hi[i], c.to[i])
       }
     }
-    return [(lo[0] + hi[0]) / 2, lo[1], (lo[2] + hi[2]) / 2] as Vec3
-  }, [model])
+    if (anchorOn) return anchorOn
+    return [
+      (lo[0] + hi[0]) / 2,
+      anchorAt === 'centre' ? (lo[1] + hi[1]) / 2 : lo[1],
+      (lo[2] + hi[2]) / 2,
+    ] as Vec3
+  }, [model, anchorAt, anchorOn])
 
   /* Zoom scales the whole stage rather than sliding the camera along Z:
      translateZ past the perspective origin distorts and eventually turns

@@ -16,7 +16,7 @@ animates nothing is an ordinary item.
 
 Built by `scripts/make-samples.mjs` rather than by hand.
 
-## 2. Display ▸ "View in real world"
+## 2. Display ▸ "View in real world" — **done**
 The Display tab previews a model on a tilted grid with nothing to judge
 scale against. Add a scene view:
 

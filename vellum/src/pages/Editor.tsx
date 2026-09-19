@@ -30,6 +30,7 @@ import type {
 } from '../lib/model'
 import { isVellum, readVellum, vellumFileName, writeVellum } from '../lib/vellum'
 import { AUTO_PRESETS, autoAnimate, readRig } from '../lib/auto-rig'
+import { WorldScene } from '../components/WorldScene'
 import { sampleById, samples } from '../lib/samples'
 import {
   addBone,
@@ -2237,6 +2238,8 @@ export function Editor({ segments }: { segments: string[] }) {
      needs no diffing and cannot drift - it is exact. */
   const [savedModel, setSavedModel] = useState<Model>(initial.model)
   const dirty = model !== savedModel
+  /** the scene overlay: the model in a world, at a size you can judge */
+  const [worldOpen, setWorldOpen] = useState(false)
   // the tab carries the unsaved marker too, not only the menu bar
   useTitle(`${dirty ? '\u2022 ' : ''}${fileName}`)
 
@@ -3075,6 +3078,7 @@ export function Editor({ segments }: { segments: string[] }) {
                   transform={displayState[slot]}
                   onTransform={(t) => setDisplayState((d) => ({ ...d, [slot]: t }))}
                   all={displayState}
+                  onWorld={() => setWorldOpen(true)}
                   onReset={() => setDisplayState((d) => ({ ...d, [slot]: DEFAULT_DISPLAY[slot] }))}
                 >
                   {(rows) =>
@@ -3206,6 +3210,17 @@ export function Editor({ segments }: { segments: string[] }) {
           </div>
         </div>
       </main>
+
+      {worldOpen ? (
+        <WorldScene
+          model={model}
+          kind={kind}
+          clip={clip}
+          clips={model.clips}
+          onClip={(id) => setClipId(id)}
+          onClose={() => setWorldOpen(false)}
+        />
+      ) : null}
 
       {pending ? (
         <ConfirmDialog
