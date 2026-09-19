@@ -34,6 +34,7 @@
    --------------------------------------------------------------- */
 
 import {
+  LIMITS,
   dashStore,
   readFile,
   readPack,
@@ -105,7 +106,7 @@ export const dashEndpoints: DashEndpoint[] = [
     path: '/dash/schema',
     group: 'Feed',
     summary: 'This contract, as JSON. Check it at startup rather than guessing which Vellum you are feeding.',
-    returns: '{ version: integer, endpoints: EndpointSpec[], limits: object }',
+    returns: '{ version: integer, base: string, endpoints: EndpointSpec[], limits: object }',
   },
 
   /* ---- Realm ---- */
@@ -249,30 +250,40 @@ export const dash = {
     const applied: Section[] = []
     const s = dashStore.snapshot
 
-    if (body.server !== undefined) {
-      const r = readServer(asBody(body.server) ?? {}, s.server)
-      s.server = r.value
+    /* Each section goes through the same reader the single-section
+       endpoint uses, and only lands in `applied` if it actually
+       applied. Taking a section that was thrown away and reporting it
+       as fed turns off the one signal - the `sample` badge - that says
+       which numbers on this page are real. */
+    const section = (
+      key: Section,
+      read: (b: Body) => { value: unknown; problems: string[]; touched: string[]; known: readonly string[] },
+      assign: (v: never) => void,
+    ) => {
+      const raw = body[key]
+      if (raw === undefined) return
+      const sub = asBody(raw)
+      if (!sub) {
+        problems.push(
+          `${key}: expected an object, got ${Array.isArray(raw) ? 'array' : raw === null ? 'null' : typeof raw} - skipped`,
+        )
+        return
+      }
+      const r = read(sub)
+      if (!r.touched.length) {
+        problems.push(`${key}: carried none of ${r.known.join(', ')} - skipped`)
+        return
+      }
       problems.push(...r.problems)
-      applied.push('server')
+      assign(r.value as never)
+      applied.push(key)
     }
-    if (body.pack !== undefined) {
-      const r = readPack(asBody(body.pack) ?? {}, s.pack)
-      s.pack = r.value
-      problems.push(...r.problems)
-      applied.push('pack')
-    }
-    if (body.players !== undefined) {
-      const r = readPlayers(asBody(body.players) ?? {}, s.players)
-      s.players = r.value
-      problems.push(...r.problems)
-      applied.push('players')
-    }
-    if (body.subscription !== undefined) {
-      const r = readSubscription(asBody(body.subscription) ?? {}, s.subscription)
-      s.subscription = r.value
-      problems.push(...r.problems)
-      applied.push('subscription')
-    }
+
+    section('server', (b) => readServer(b, s.server), (v) => (s.server = v))
+    section('pack', (b) => readPack(b, s.pack), (v) => (s.pack = v))
+    section('players', (b) => readPlayers(b, s.players), (v) => (s.players = v))
+    section('subscription', (b) => readSubscription(b, s.subscription), (v) => (s.subscription = v))
+
     if (body.files !== undefined) {
       if (!Array.isArray(body.files)) {
         problems.push('files: expected an array - the table was left alone')
@@ -280,15 +291,16 @@ export const dash = {
         const rows = (body.files as unknown[])
           .map((row, i) => readFile(asBody(row) ?? {}, i, problems))
           .filter((f): f is FileTouch => f !== null)
-        s.files = rows.slice(0, 50)
+        s.files = rows.slice(0, LIMITS.files)
         applied.push('files')
       }
     }
 
-    if (!applied.length) problems.push('nothing to apply: send at least one of server, pack, players, subscription, files')
+    if (!applied.length) {
+      problems.push('nothing was applied: send at least one of server, pack, players, subscription, files')
+    }
     dashStore.accept(null, 'POST /dash/snapshot', problems, via, applied.length > 0)
-    // the cards it touched re-render, but a plugin on a timer must not
-    // push one log line per card per poll - the log is for writes
+    // the cards it touched re-render; a plugin on a timer must not fill the log
     dashStore.notify(applied)
     return { ok: applied.length > 0, applied, problems }
   },
@@ -309,27 +321,46 @@ export const dash = {
   server(input: unknown, via: Via = 'bridge'): Ack {
     const body = asBody(input)
     if (!body) return reject('PATCH /dash/server', 'body must be a JSON object', via)
-    const { value, problems } = readServer(body, dashStore.snapshot.server)
-    dashStore.snapshot.server = value
-    dashStore.accept('server', 'PATCH /dash/server', problems, via)
-    return { ok: true, problems }
+    const r = readServer(body, dashStore.snapshot.server)
+    if (!r.touched.length) {
+      return reject('PATCH /dash/server', `nothing to apply: send one of ${r.known.join(', ')}`, via)
+    }
+    dashStore.snapshot.server = r.value
+    dashStore.accept('server', 'PATCH /dash/server', r.problems, via)
+    return { ok: true, problems: r.problems }
   },
 
   /** PATCH /dash/subscription */
   subscription(input: unknown, via: Via = 'bridge'): Ack {
     const body = asBody(input)
     if (!body) return reject('PATCH /dash/subscription', 'body must be a JSON object', via)
-    const { value, problems } = readSubscription(body, dashStore.snapshot.subscription)
-    dashStore.snapshot.subscription = value
-    dashStore.accept('subscription', 'PATCH /dash/subscription', problems, via)
-    return { ok: true, problems }
+    const r = readSubscription(body, dashStore.snapshot.subscription)
+    if (!r.touched.length) {
+      return reject('PATCH /dash/subscription', `nothing to apply: send one of ${r.known.join(', ')}`, via)
+    }
+    dashStore.snapshot.subscription = r.value
+    dashStore.accept('subscription', 'PATCH /dash/subscription', r.problems, via)
+    return { ok: true, problems: r.problems }
   },
 
   /** PATCH /dash/pack */
   pack(input: unknown, via: Via = 'bridge'): Ack {
     const body = asBody(input)
     if (!body) return reject('PATCH /dash/pack', 'body must be a JSON object', via)
-    const { value, problems } = readPack(body, dashStore.snapshot.pack)
+    /* archive, bytes and hash are documented as required, and the hash
+       is what every player report is compared against - so the first
+       report of a build has to carry them rather than inheriting the
+       sample's. */
+    const firstPack = !dashStore.meta.fed.includes('pack')
+    const missing = firstPack ? ['archive', 'bytes', 'hash'].filter((k) => body[k] === undefined) : []
+    if (missing.length) {
+      return reject('PATCH /dash/pack', `the first pack report must carry ${missing.join(', ')}`, via)
+    }
+    const r = readPack(body, dashStore.snapshot.pack)
+    if (!r.touched.length) {
+      return reject('PATCH /dash/pack', `nothing to apply: send one of ${r.known.join(', ')}`, via)
+    }
+    const { value, problems } = r
     dashStore.snapshot.pack = value
     dashStore.accept('pack', 'PATCH /dash/pack', problems, via)
 
@@ -351,7 +382,15 @@ export const dash = {
     if (!body) {
       return { ...reject('PUT /dash/players', 'body must be a JSON object', via), correct: 0, wrong: 0 }
     }
-    const { value, problems } = readPlayers(body, dashStore.snapshot.players)
+    const r = readPlayers(body, dashStore.snapshot.players)
+    if (!r.touched.length) {
+      return {
+        ...reject('PUT /dash/players', `nothing to apply: send one of ${r.known.join(', ')}`, via),
+        correct: dashStore.snapshot.players.correct,
+        wrong: dashStore.snapshot.players.wrong,
+      }
+    }
+    const { value, problems } = r
     dashStore.snapshot.players = value
     dashStore.accept('players', 'PUT /dash/players', problems, via)
     return { ok: true, problems, correct: value.correct, wrong: value.wrong }
@@ -423,7 +462,9 @@ export const dash = {
 
   /** GET /dash/schema */
   schema() {
-    return { version: DASH_API_VERSION, base: DASH_BASE, endpoints: dashEndpoints }
+    // the endpoint's own `returns` promises limits, and a plugin should
+    // not have to discover them by tripping over problems[]
+    return { version: DASH_API_VERSION, base: DASH_BASE, endpoints: dashEndpoints, limits: LIMITS }
   },
 
   /** Not an endpoint: drop back to the frozen sample. */

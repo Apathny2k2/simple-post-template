@@ -59,10 +59,12 @@ import {
   toDataUrl,
 } from '../lib/texture'
 import type { PixelSurface } from '../lib/texture'
+import type { Rescale } from '../lib/uv-pack'
 import { DEFAULT_DISPLAY, DisplayPanel } from './editor/DisplayPanel'
 import type { DisplayState, SlotId } from './editor/DisplayPanel'
 import { NewModelDialog } from './editor/NewModelDialog'
-import { navigate } from '../lib/router'
+import { ConfirmDialog } from './editor/ConfirmDialog'
+import { blockNavigation, navigate } from '../lib/router'
 import './Editor.css'
 
 type Mode = 'edit' | 'paint' | 'animate' | 'display'
@@ -180,12 +182,14 @@ function MenuBar({
   undoLabel,
   redoLabel,
   hasClip,
+  dirty,
 }: {
   fileName: string
   actions: Actions
   undoLabel: string | null
   redoLabel: string | null
   hasClip: boolean
+  dirty: boolean
 }) {
   const menus = useMemo(
     () => buildMenus(actions, { undoLabel, redoLabel, hasClip }),
@@ -208,8 +212,12 @@ function MenuBar({
           )}
         />
       ))}
-      <div className="ed-menubar__title">
-        <span className="ed-menubar__dirty">●</span>
+      <div className="ed-menubar__title" title={dirty ? 'Unsaved changes' : 'Saved'}>
+        {dirty ? (
+          <span className="ed-menubar__dirty" aria-label="Unsaved changes">
+            ●
+          </span>
+        ) : null}
         {fileName}
       </div>
     </div>
@@ -403,14 +411,21 @@ function Panel({
   children,
   grow,
   defaultOpen = true,
+  forceOpen,
 }: {
   title: string
   count?: ReactNode
   children: ReactNode
   grow?: boolean
   defaultOpen?: boolean
+  /** opens the panel when it becomes true - `defaultOpen` is only read at mount */
+  forceOpen?: boolean
 }) {
   const [open, setOpen] = useState(defaultOpen)
+
+  useEffect(() => {
+    if (forceOpen) setOpen(true)
+  }, [forceOpen])
   return (
     <section className={`panel${grow && open ? ' panel--grow' : ''}`} data-open={open}>
       <button className="panel__head" onClick={() => setOpen((o) => !o)} aria-expanded={open}>
@@ -1622,7 +1637,6 @@ export function Editor({ segments }: { segments: string[] }) {
   const surfaces = useRef(new Map<string, PixelSurface>())
   const lastTexel = useRef<[number, number] | null>(null)
   const commitTimer = useRef(0)
-  const [modelKey, setModelKey] = useState(0)
 
   // display
   const [slot, setSlot] = useState<SlotId>('thirdperson_righthand')
@@ -1632,10 +1646,27 @@ export function Editor({ segments }: { segments: string[] }) {
   const [openError, setOpenError] = useState<string | null>(null)
   const [saveNote, setSaveNote] = useState<string | null>(null)
 
+  /* Dirty is the model we have now against the last one written to disk
+     or read from it. Every edit produces a new Model object, so this
+     needs no diffing and cannot drift - it is exact. */
+  const [savedModel, setSavedModel] = useState<Model>(initial.model)
+  const dirty = model !== savedModel
+
+  /** Something irreversible, waiting on an answer. */
+  const [pending, setPending] = useState<{
+    title: string
+    body: string
+    confirmLabel: string
+    run: () => void
+  } | null>(null)
+
+  /** Set for exactly one navigation, once the user has said to discard. */
+  const allowNav = useRef(false)
+
   const loadModel = useCallback(
     (next: Model, name: string, nextKind: ProjectKind = 'items') => {
-      setModelKey((k) => k + 1)
       history.reset(next)
+      setSavedModel(next)
       setFileName(vellumFileName(name))
       setKind(nextKind)
       setSelected(next.cubes[0]?.id ?? null)
@@ -1661,29 +1692,55 @@ export function Editor({ segments }: { segments: string[] }) {
     if (mode !== 'animate') setPlaying(false)
   }, [mode])
 
-  /* Decode every texture into a canvas once per loaded model. Painting
-     writes into that canvas and the data URI is re-encoded from it, so
-     the effect must not re-run on its own output - hence keying on the
-     model identity rather than on `model.textures`. */
+  /* Painting writes into a decoded canvas and re-encodes the model's
+     data URI out of it, so the cache and the model can disagree - and
+     when they do, the cache wins the next time a stroke lands. Undo is
+     exactly that case: it puts the old texture back on the model and
+     leaves the canvas holding the pixels it just took away, so the next
+     stroke re-encodes the whole stale canvas over the top and the
+     undone stroke reappears.
+
+     So the cache remembers what it last encoded. Anything that changes
+     a texture from outside painting - an undo, a redo, a file opened -
+     no longer matches, and is decoded again before it can be painted
+     on. Keying this on the loaded model instead was the bug. */
+  const encoded = useRef(new Map<string, string>())
+  const decoding = useRef(new Set<string>())
+
   useEffect(() => {
     let cancelled = false
-    const map = new Map<string, PixelSurface>()
-    Promise.all(
-      model.textures.map(async (t) => {
+
+    // a texture the model no longer carries must not linger in the cache
+    const live = new Set(model.textures.map((t) => t.id))
+    for (const id of [...surfaces.current.keys()]) {
+      if (live.has(id)) continue
+      surfaces.current.delete(id)
+      encoded.current.delete(id)
+    }
+
+    const stale = model.textures.filter((t) => encoded.current.get(t.id) !== t.source)
+    if (!stale.length) return
+
+    for (const t of stale) decoding.current.add(t.id)
+    void Promise.all(
+      stale.map(async (t) => {
         try {
-          map.set(t.id, await loadSurface(t))
+          const surface = await loadSurface(t)
+          if (cancelled) return
+          surfaces.current.set(t.id, surface)
+          encoded.current.set(t.id, t.source)
         } catch {
           /* an undecodable texture simply cannot be painted */
+        } finally {
+          decoding.current.delete(t.id)
         }
       }),
-    ).then(() => {
-      if (!cancelled) surfaces.current = map
-    })
+    )
+
     return () => {
       cancelled = true
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [modelKey])
+  }, [model.textures])
 
   /** Re-encode a painted canvas back into the model, batched to a frame. */
   const writeTexture = useCallback(
@@ -1691,6 +1748,9 @@ export function Editor({ segments }: { segments: string[] }) {
       const surface = surfaces.current.get(id)
       if (!surface) return
       const source = toDataUrl(surface)
+      // recorded before the write, so the effect above can tell this
+      // change came from the cache and must not be decoded straight back
+      encoded.current.set(id, source)
       history.amend((m) => ({
         ...m,
         textures: m.textures.map((t) => (t.id === id ? { ...t, source } : t)),
@@ -1712,6 +1772,22 @@ export function Editor({ segments }: { segments: string[] }) {
     },
     [writeTexture],
   )
+
+  /* Growing the UV sheet means redrawing every texture at double size.
+     The decoded canvas is already in hand, so this is a nearest-
+     neighbour blit - lossless for pixel art, and synchronous. */
+  const rescale = useCallback<Rescale>((texture, factor) => {
+    const surface = surfaces.current.get(texture.id)
+    if (!surface) return null
+    const canvas = document.createElement('canvas')
+    canvas.width = Math.max(1, Math.round(surface.width * factor))
+    canvas.height = Math.max(1, Math.round(surface.height * factor))
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return null
+    ctx.imageSmoothingEnabled = false
+    ctx.drawImage(surface.canvas, 0, 0, canvas.width, canvas.height)
+    return canvas.toDataURL('image/png')
+  }, [])
 
   /** Land the last frame of a stroke before its undo step is closed. */
   const flushTexture = useCallback(() => {
@@ -1735,6 +1811,9 @@ export function Editor({ segments }: { segments: string[] }) {
 
   const issues = useMemo(() => validateModel(model, kind), [model, kind])
   const errors = issues.filter((i) => i.level === 'error').length
+  /* A panel that says "clean" while holding a warning is worse than one
+     that says nothing: it is the thing the user checks before shipping. */
+  const warnings = issues.length - errors
   const cube = model.cubes.find((c) => c.id === selected) ?? null
 
   /* Selecting a bone in the outliner is also how you choose what Animate
@@ -1759,8 +1838,59 @@ export function Editor({ segments }: { segments: string[] }) {
     [selected, history],
   )
 
-  const runSave = useCallback((name: string, text: string) => {
+  /* Four gestures used to throw work away without a word: reload,
+     leaving for another route, New model, and Open. The browser owns
+     the first - `beforeunload` is the only hook it offers. The other
+     three are ours, because a hash change never unloads the document
+     and neither dialog knew there was anything to lose. */
+  useEffect(() => {
+    if (!dirty) return
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault()
+      e.returnValue = ''
+    }
+    window.addEventListener('beforeunload', onBeforeUnload)
+    return () => window.removeEventListener('beforeunload', onBeforeUnload)
+  }, [dirty])
+
+  const unsaved = `${fileName} has changes that have not been saved, and undo does not reach back across a model change.`
+
+  useEffect(() => {
+    if (!dirty) return
+    return blockNavigation((to) => {
+      if (allowNav.current) {
+        allowNav.current = false
+        return true
+      }
+      setPending({
+        title: 'Leave the editor?',
+        body: unsaved,
+        confirmLabel: 'Discard and leave',
+        run: () => {
+          allowNav.current = true
+          navigate(to)
+        },
+      })
+      return false
+    })
+  }, [dirty, unsaved])
+
+  /** Run `next`, asking first when it would discard unsaved work. */
+  const guarded = useCallback(
+    (title: string, confirmLabel: string, next: () => void) => {
+      if (!dirty) {
+        next()
+        return
+      }
+      setPending({ title, body: unsaved, confirmLabel, run: next })
+    },
+    [dirty, unsaved],
+  )
+
+  const runSave = useCallback((name: string, text: string, snapshot: Model) => {
     void saveFile(name, text).then((note) => {
+      // a declined or failed save wrote nothing, so the model is still dirty
+      if (note.startsWith('Saved')) setSavedModel(snapshot)
       setSaveNote(note)
       window.setTimeout(() => setSaveNote(null), 6000)
     })
@@ -1771,7 +1901,10 @@ export function Editor({ segments }: { segments: string[] }) {
   const applyTool = useCallback(
     (textureId: string, x: number, y: number, bounds: UVRect | null, phase: 'down' | 'move') => {
       const surface = surfaces.current.get(textureId)
-      if (!surface) return
+      /* A stroke started in the same frame as an undo would otherwise
+         land on the canvas being replaced, and re-encode it. Dropping
+         those few texels is the cheaper mistake. */
+      if (!surface || decoding.current.has(textureId)) return
 
       if (tool === 'pipette') {
         const sampled = pick(surface, x, y)
@@ -1823,7 +1956,9 @@ export function Editor({ segments }: { segments: string[] }) {
       const target = model.cubes.find((c) => c.id === cubeId)
       if (!target) return
       if (phase === 'down') {
-        history.begin('paint')
+        // the pipette reads a pixel; it is not an edit and must not
+        // leave an empty step for the user to click back through
+        if (tool !== 'pipette') history.begin('paint')
         setSelected(cubeId)
         setFace(faceKey)
       }
@@ -1834,7 +1969,7 @@ export function Editor({ segments }: { segments: string[] }) {
       if (!texel) return
       applyTool(f.texture, texel[0], texel[1], faceBounds(f.uv), phase)
     },
-    [model.cubes, applyTool, history],
+    [model.cubes, applyTool, history, tool],
   )
 
   /* On the sheet, a fill is bounded by the UV island the click landed in -
@@ -1845,7 +1980,7 @@ export function Editor({ segments }: { segments: string[] }) {
     (x: number, y: number, phase: 'down' | 'move') => {
       const texture = model.textures[0]
       if (!texture) return
-      if (phase === 'down') history.begin('paint')
+      if (phase === 'down' && tool !== 'pipette') history.begin('paint')
       let bounds: UVRect | null = null
       for (const c of model.cubes) {
         for (const key of FACES) {
@@ -1859,7 +1994,7 @@ export function Editor({ segments }: { segments: string[] }) {
       }
       applyTool(texture.id, x, y, bounds, phase)
     },
-    [applyTool, model.cubes, model.textures, history],
+    [applyTool, model.cubes, model.textures, history, tool],
   )
 
   /* ---------------- animation ---------------- */
@@ -1932,17 +2067,17 @@ export function Editor({ segments }: { segments: string[] }) {
 
   const actions = useMemo<Actions>(
     () => ({
-      onOpen: () => fileInput.current?.click(),
-      onSave: () => runSave(vellumFileName(fileName), writeVellum(model)),
+      onOpen: () => guarded('Open another model?', 'Discard and open', () => fileInput.current?.click()),
+      onSave: () => runSave(vellumFileName(fileName), writeVellum(model), model),
       onSample: (id: string) => {
         const s = sampleById(id)
-        loadModel(s.model, s.file, s.kind)
+        guarded(`Open ${s.label}?`, 'Discard and open', () => loadModel(s.model, s.file, s.kind))
       },
-      onNew: () => setNewDialog(true),
+      onNew: () => guarded('Start a new model?', 'Discard and start', () => setNewDialog(true)),
       onUndo: history.undo,
       onRedo: history.redo,
       onAddCube: () => {
-        const next = addCube(model, null)
+        const next = addCube(model, null, rescale)
         history.commit('add cube', next.model)
         setSelected(next.id)
       },
@@ -1974,7 +2109,7 @@ export function Editor({ segments }: { segments: string[] }) {
       onAddKey: () => animBone && anim.addKey(animBone, 'rotation'),
       onCloseLoop: () => anim.closeLoop(),
     }),
-    [model, fileName, loadModel, runSave, selected, bones, history, anim, animBone],
+    [model, fileName, loadModel, runSave, selected, bones, history, anim, animBone, guarded, rescale],
   )
 
   /* Keyboard. Anything typed into a field belongs to that field, so the
@@ -1982,8 +2117,20 @@ export function Editor({ segments }: { segments: string[] }) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null
-      if (target && /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)) return
+      const typing = !!target && /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)
       const mod = e.ctrlKey || e.metaKey
+
+      /* Save is the one shortcut that must work with a field focused:
+         typing a number and hitting Ctrl+S is a single gesture, and
+         standing down here hands the keystroke to the browser's own
+         "Save page as" dialog, which is worse than doing nothing. */
+      if (mod && e.key.toLowerCase() === 's') {
+        e.preventDefault()
+        actions.onSave()
+        return
+      }
+      // everything else belongs to the field while one has focus
+      if (typing) return
 
       if (mod && e.key.toLowerCase() === 'z') {
         e.preventDefault()
@@ -1996,14 +2143,11 @@ export function Editor({ segments }: { segments: string[] }) {
         history.redo()
         return
       }
-      if (mod && e.key.toLowerCase() === 's') {
-        e.preventDefault()
-        actions.onSave()
-        return
-      }
       if (mod && e.key.toLowerCase() === 'd') {
         e.preventDefault()
-        actions.onDuplicate()
+        // Animate duplicates the clip; geometry is not what this mode edits
+        if (mode === 'animate') anim.duplicateClip()
+        else actions.onDuplicate()
         return
       }
       if (mod && e.key.toLowerCase() === 'o') {
@@ -2013,10 +2157,18 @@ export function Editor({ segments }: { segments: string[] }) {
       }
       if (mod) return
 
+      /* Delete means "the thing this mode edits", and nothing else.
+         Falling through to cube deletion whenever no keyframe happened
+         to be selected quietly dismantled the model one press at a
+         time, which is the last thing a texture or animation pass
+         should be able to do. */
       if (e.key === 'Delete' || e.key === 'Backspace') {
         e.preventDefault()
-        if (mode === 'animate' && selectedKey) anim.removeKey(selectedKey)
-        else actions.onDelete()
+        if (mode === 'animate') {
+          if (selectedKey) anim.removeKey(selectedKey)
+        } else if (mode === 'edit') {
+          actions.onDelete()
+        }
         return
       }
       if (e.key.toLowerCase() === 'k' && mode === 'animate' && animBone) {
@@ -2084,6 +2236,7 @@ export function Editor({ segments }: { segments: string[] }) {
         undoLabel={history.undoLabel}
         redoLabel={history.redoLabel}
         hasClip={!!clip}
+        dirty={dirty}
       />
       <Toolbar
         mode={mode}
@@ -2167,8 +2320,10 @@ export function Editor({ segments }: { segments: string[] }) {
 
             <Panel
               title="Validation"
-              count={errors ? `${errors} errors` : 'clean'}
-              defaultOpen={errors > 0 || !!openError}
+              count={errors ? `${errors} errors` : warnings ? `${warnings} warnings` : 'clean'}
+              defaultOpen={errors > 0 || warnings > 0 || !!openError}
+              // a refused file arrives long after mount, and in silence otherwise
+              forceOpen={!!openError}
             >
               {openError ? (
                 <p className="ed-hint ed-hint--warn" style={{ marginBottom: 10 }}>
@@ -2242,6 +2397,20 @@ export function Editor({ segments }: { segments: string[] }) {
         </div>
       </div>
 
+      {pending ? (
+        <ConfirmDialog
+          title={pending.title}
+          body={pending.body}
+          confirmLabel={pending.confirmLabel}
+          onCancel={() => setPending(null)}
+          onConfirm={() => {
+            const run = pending.run
+            setPending(null)
+            run()
+          }}
+        />
+      ) : null}
+
       {newDialog ? (
         <NewModelDialog
           onClose={() => setNewDialog(false)}
@@ -2264,11 +2433,11 @@ export function Editor({ segments }: { segments: string[] }) {
           {model.resolution.width} x {model.resolution.height}
         </span>
         <span className="ed-status__sel">
-          {saveNote ?? `selected: ${cube?.name ?? 'none'} · ${tool}`}
+          {saveNote ?? openError ?? `selected: ${cube?.name ?? 'none'} · ${tool}`}
         </span>
         <div className="ed-status__right">
-          <span className={errors ? 'ed-status__bad' : undefined}>
-            {errors ? `${errors} errors` : 'valid'}
+          <span className={errors || warnings ? 'ed-status__bad' : undefined}>
+            {errors ? `${errors} errors` : warnings ? `${warnings} warnings` : 'valid'}
           </span>
           <span>{mode}</span>
           <span>vellum 0.6.0</span>

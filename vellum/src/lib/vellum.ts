@@ -274,6 +274,18 @@ function upgrade(doc: VellumDocument): VellumDocument {
 let keyCounter = 0
 const keyId = () => `k${(keyCounter += 1).toString(36)}`
 
+/**
+ * A vector, or the fallback. `from`, `to` and a key's `value` used to be
+ * copied straight through while their neighbours were defaulted, so a
+ * file missing one of them - still valid JSON, still a Vellum document -
+ * reached the validator as `undefined` and took the whole editor down
+ * with it. Nothing that comes off disk is trusted to have a shape.
+ */
+const vec3 = (v: unknown, fallback: Vec3): Vec3 =>
+  Array.isArray(v) && v.length === 3 && v.every((n) => typeof n === 'number' && Number.isFinite(n))
+    ? [v[0], v[1], v[2]]
+    : fallback
+
 export function fromVellumDocument(doc: VellumDocument): Model {
   const resolution = doc.resolution ?? { width: 16, height: 16 }
 
@@ -303,10 +315,10 @@ export function fromVellumDocument(doc: VellumDocument): Model {
     return {
       id: c.id,
       name: c.name,
-      from: c.from,
-      to: c.to,
-      origin: c.origin ?? [0, 0, 0],
-      rotation: c.rotation ?? [0, 0, 0],
+      from: vec3(c.from, [0, 0, 0]),
+      to: vec3(c.to, vec3(c.from, [0, 0, 0])),
+      origin: vec3(c.origin, [0, 0, 0]),
+      rotation: vec3(c.rotation, [0, 0, 0]),
       faces,
       inflate: c.inflate ?? 0,
       boxUv: c.box_uv ?? false,
@@ -322,8 +334,8 @@ export function fromVellumDocument(doc: VellumDocument): Model {
     byId.set(b.id, {
       id: b.id,
       name: b.name,
-      origin: b.origin ?? [0, 0, 0],
-      rotation: b.rotation ?? [0, 0, 0],
+      origin: vec3(b.origin, [0, 0, 0]),
+      rotation: vec3(b.rotation, [0, 0, 0]),
       visible: !b.hidden,
       locked: Boolean(b.locked),
       children: (b.cubes ?? []).map((id) => ({ kind: 'cube' as const, id })),
@@ -350,9 +362,9 @@ export function fromVellumDocument(doc: VellumDocument): Model {
       channel: t.channel,
       keys: (t.keys ?? []).map((k) => ({
         id: keyId(),
-        time: k.time,
-        value: k.value,
-        interp: k.interp ?? 'linear',
+        time: Number.isFinite(k?.time) ? k.time : 0,
+        value: vec3(k?.value, t.channel === 'scale' ? [1, 1, 1] : [0, 0, 0]),
+        interp: k?.interp ?? 'linear',
       })),
     })),
   }))

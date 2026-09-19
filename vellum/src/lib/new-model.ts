@@ -11,6 +11,8 @@
    --------------------------------------------------------------- */
 
 import { FACES } from './model'
+import { boxUvFaces, makeRoom } from './uv-pack'
+import type { Rescale } from './uv-pack'
 import type { Bone, BoneChild, Cube, Face, FaceKey, Model, Texture, UVRect, Vec3 } from './model'
 
 export type NewModelKind = 'items' | 'mobs'
@@ -55,46 +57,11 @@ export function starterTexture(size: number, name: string): Texture {
 
 /* ---------------- pieces ---------------- */
 
-/**
- * Wrap a box's six faces onto the sheet the way a box unwrap does, so a
- * newly added cube already has somewhere sensible to paint. Laid out at
- * `at`, one texel per unit.
- */
-function boxUvFaces(
-  size: Vec3,
-  at: [number, number],
-  limit: number,
-  texture: string | null,
-): Record<FaceKey, Face> {
-  const [w, h, d] = size.map((v) => Math.max(1, Math.round(v))) as Vec3
-  const [ox, oy] = at
-  const clamp = (r: UVRect): UVRect => r.map((v) => Math.max(0, Math.min(limit, v))) as UVRect
-
-  const rects: Record<FaceKey, UVRect> = {
-    up: [ox + d, oy, ox + d + w, oy + d],
-    down: [ox + d + w, oy, ox + d + w * 2, oy + d],
-    east: [ox, oy + d, ox + d, oy + d + h],
-    north: [ox + d, oy + d, ox + d + w, oy + d + h],
-    west: [ox + d + w, oy + d, ox + d * 2 + w, oy + d + h],
-    south: [ox + d * 2 + w, oy + d, ox + d * 2 + w * 2, oy + d + h],
-  }
-
-  const faces = {} as Record<FaceKey, Face>
-  for (const key of FACES) faces[key] = { uv: clamp(rects[key]), texture, rotation: 0 }
-  return faces
-}
-
 export function makeCube(
   name: string,
   from: Vec3,
   to: Vec3,
-  opts: {
-    origin?: Vec3
-    rotation?: Vec3
-    uvAt?: [number, number]
-    uvLimit?: number
-    texture?: string | null
-  } = {},
+  opts: { origin?: Vec3; rotation?: Vec3; uvAt?: [number, number]; texture?: string | null } = {},
 ): Cube {
   const size: Vec3 = [to[0] - from[0], to[1] - from[1], to[2] - from[2]]
   return {
@@ -104,7 +71,7 @@ export function makeCube(
     to,
     origin: opts.origin ?? [(from[0] + to[0]) / 2, from[1], (from[2] + to[2]) / 2],
     rotation: opts.rotation ?? [0, 0, 0],
-    faces: boxUvFaces(size, opts.uvAt ?? [0, 0], opts.uvLimit ?? 64, opts.texture ?? null),
+    faces: boxUvFaces(size, opts.uvAt ?? [0, 0], opts.texture ?? null),
     inflate: 0,
     boxUv: false,
     visible: true,
@@ -131,18 +98,17 @@ export function createModel(kind: NewModelKind, name: string): Model {
 }
 
 function itemStarter(name: string): Model {
-  const texture = starterTexture(16, `${name}.png`)
-  // a single 16-unit cube: the thing you immediately resize
-  const cube = makeCube('cube', [4, 0, 4], [12, 16, 12], {
-    uvAt: [0, 0],
-    uvLimit: 16,
-    texture: texture.id,
-  })
+  /* 32 rather than 16: the starter cube is 8 x 16 x 8, whose unwrap
+     needs 32 x 24 texels. On a 16-wide sheet three of its six faces
+     used to be clamped to zero width, so the model you were handed had
+     half its faces unpaintable before you touched it. */
+  const texture = starterTexture(32, `${name}.png`)
+  const cube = makeCube('cube', [4, 0, 4], [12, 16, 12], { uvAt: [0, 0], texture: texture.id })
   const root = makeBone(name, [0, 0, 0], [{ kind: 'cube', id: cube.id }])
 
   return {
     name,
-    resolution: { width: 16, height: 16 },
+    resolution: { width: 32, height: 32 },
     bones: [root],
     cubes: [cube],
     textures: [texture],
@@ -156,12 +122,12 @@ function mobStarter(name: string): Model {
   const t = texture.id
 
   // pivots sit on the joints, which is what makes the rig animate properly
-  const head = makeCube('head', [-4, 24, -4], [4, 32, 4], { origin: [0, 24, 0], uvAt: [0, 0], uvLimit: L, texture: t })
-  const torso = makeCube('torso', [-4, 12, -2], [4, 24, 2], { origin: [0, 24, 0], uvAt: [16, 16], uvLimit: L, texture: t })
-  const armL = makeCube('arm_left', [-8, 12, -2], [-4, 24, 2], { origin: [-4, 23, 0], uvAt: [40, 16], uvLimit: L, texture: t })
-  const armR = makeCube('arm_right', [4, 12, -2], [8, 24, 2], { origin: [4, 23, 0], uvAt: [40, 32], uvLimit: L, texture: t })
-  const legL = makeCube('leg_left', [-4, 0, -2], [0, 12, 2], { origin: [-2, 12, 0], uvAt: [0, 32], uvLimit: L, texture: t })
-  const legR = makeCube('leg_right', [0, 0, -2], [4, 12, 2], { origin: [2, 12, 0], uvAt: [16, 32], uvLimit: L, texture: t })
+  const head = makeCube('head', [-4, 24, -4], [4, 32, 4], { origin: [0, 24, 0], uvAt: [0, 0], texture: t })
+  const torso = makeCube('torso', [-4, 12, -2], [4, 24, 2], { origin: [0, 12, 0], uvAt: [16, 16], texture: t })
+  const armL = makeCube('arm_left', [-8, 12, -2], [-4, 24, 2], { origin: [-4, 23, 0], uvAt: [40, 16], texture: t })
+  const armR = makeCube('arm_right', [4, 12, -2], [8, 24, 2], { origin: [4, 23, 0], uvAt: [40, 32], texture: t })
+  const legL = makeCube('leg_left', [-4, 0, -2], [0, 12, 2], { origin: [-2, 12, 0], uvAt: [0, 32], texture: t })
+  const legR = makeCube('leg_right', [0, 0, -2], [4, 12, 2], { origin: [2, 12, 0], uvAt: [16, 32], texture: t })
 
   const root = makeBone(name, [0, 0, 0], [
     {
@@ -197,19 +163,6 @@ function nextSpot(model: Model): { from: Vec3; to: Vec3 } {
   return { from: [-4, top, -4], to: [4, top + 8, 4] }
 }
 
-/** Somewhere on the sheet that nothing has claimed, or the origin if it is full. */
-function freeUvSpot(model: Model): [number, number] {
-  const limit = model.resolution.width
-  let lowest = 0
-  for (const c of model.cubes) {
-    for (const key of FACES) {
-      const [, y1, , y2] = c.faces[key].uv
-      lowest = Math.max(lowest, Math.max(y1, y2))
-    }
-  }
-  return lowest < limit ? [0, Math.ceil(lowest)] : [0, 0]
-}
-
 function addChild(bones: Bone[], parentId: string | null, child: BoneChild): Bone[] {
   if (!parentId) {
     if (!bones.length) return bones
@@ -226,20 +179,32 @@ function addChild(bones: Bone[], parentId: string | null, child: BoneChild): Bon
   })
 }
 
-/** Add a cube, parented to `parentId` when given and to the first root otherwise. */
-export function addCube(model: Model, parentId: string | null = null): { model: Model; id: string } {
+/**
+ * Add a cube, parented to `parentId` when given and to the first root
+ * otherwise. `rescale` lets the sheet grow when it is full; without one
+ * a full sheet means the new cube shares an island rather than getting
+ * a degenerate one, which is at least recoverable by hand.
+ */
+export function addCube(
+  model: Model,
+  parentId: string | null = null,
+  rescale: Rescale | null = null,
+): { model: Model; id: string } {
   const spot = nextSpot(model)
-  const cube = makeCube(`cube_${model.cubes.length + 1}`, spot.from, spot.to, {
-    uvAt: freeUvSpot(model),
-    uvLimit: model.resolution.width,
-    texture: model.textures[0]?.id ?? null,
+  const size: Vec3 = [spot.to[0] - spot.from[0], spot.to[1] - spot.from[1], spot.to[2] - spot.from[2]]
+  const room = makeRoom(model, size, rescale)
+  const base = room.model
+
+  const cube = makeCube(`cube_${base.cubes.length + 1}`, spot.from, spot.to, {
+    uvAt: room.at ?? [0, 0],
+    texture: base.textures[0]?.id ?? null,
   })
 
-  const bones = model.bones.length
-    ? addChild(model.bones, parentId, { kind: 'cube', id: cube.id })
-    : [makeBone(model.name, [0, 0, 0], [{ kind: 'cube', id: cube.id }])]
+  const bones = base.bones.length
+    ? addChild(base.bones, parentId, { kind: 'cube', id: cube.id })
+    : [makeBone(base.name, [0, 0, 0], [{ kind: 'cube', id: cube.id }])]
 
-  return { model: { ...model, cubes: [...model.cubes, cube], bones }, id: cube.id }
+  return { model: { ...base, cubes: [...base.cubes, cube], bones }, id: cube.id }
 }
 
 export function addBone(model: Model, parentId: string | null = null): { model: Model; id: string } {

@@ -248,6 +248,12 @@ export function validateModel(model: Model, kind?: ProjectKind): Issue[] {
         issues.push({ level: 'error', message: `"${tag}" ${key} face names a texture that does not exist` })
       }
       const [x1, y1, x2, y2] = uv
+      if (texture !== null && (x1 === x2 || y1 === y2)) {
+        issues.push({
+          level: 'warning',
+          message: `"${tag}" ${key} has a zero-area UV, so it cannot be textured or painted`,
+        })
+      }
       if (
         Math.min(x1, x2) < 0 ||
         Math.max(x1, x2) > model.resolution.width ||

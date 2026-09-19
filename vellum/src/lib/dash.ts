@@ -134,6 +134,10 @@ export const LIMITS = {
 
 type Problems = string[]
 
+/** `JSON.stringify` turns NaN and Infinity into "null", naming a value nobody sent. */
+const show = (v: unknown) =>
+  typeof v === 'number' && !Number.isFinite(v) ? String(v) : JSON.stringify(v)
+
 function str(v: unknown, field: string, max: number, fallback: string, problems: Problems): string {
   if (v === undefined || v === null) return fallback
   if (typeof v !== 'string') {
@@ -160,7 +164,7 @@ function num(
   if (v === undefined || v === null) return opts.fallback
   const n = typeof v === 'number' ? v : Number(v)
   if (!Number.isFinite(n)) {
-    problems.push(`${field}: ${JSON.stringify(v)} is not a finite number - kept the previous value`)
+    problems.push(`${field}: ${show(v)} is not a finite number - kept the previous value`)
     return opts.fallback
   }
   const rounded = opts.integer === false ? n : Math.round(n)
@@ -171,8 +175,18 @@ function num(
   return rounded
 }
 
-function bool(v: unknown, fallback: boolean): boolean {
-  return typeof v === 'boolean' ? v : fallback
+function bool(v: unknown, field: string, fallback: boolean, problems: Problems): boolean {
+  if (v === undefined || v === null) return fallback
+  if (typeof v === 'boolean') return v
+  /* `online: 1` is the natural shape out of Java, SQL and PHP, and this
+     is the field that says whether the realm is up - silently keeping
+     the old value was the worst place in the API to do that. */
+  if (v === 1 || v === 0) {
+    problems.push(`${field}: got ${v}, read as ${v === 1} - send a boolean`)
+    return v === 1
+  }
+  problems.push(`${field}: expected a boolean, got ${typeof v} - kept the previous value`)
+  return fallback
 }
 
 /**
@@ -193,7 +207,7 @@ function when(v: unknown, field: string, fallback: string, problems: Problems): 
     return fallback
   }
   if (Number.isNaN(d.getTime())) {
-    problems.push(`${field}: ${JSON.stringify(v)} is not a readable timestamp`)
+    problems.push(`${field}: ${show(v)} is not a readable timestamp`)
     return fallback
   }
   return d.toISOString()
@@ -202,14 +216,19 @@ function when(v: unknown, field: string, fallback: string, problems: Problems): 
 function oneOf<T extends string>(v: unknown, field: string, allowed: readonly T[], fallback: T, problems: Problems): T {
   if (v === undefined || v === null) return fallback
   if (typeof v === 'string' && (allowed as readonly string[]).includes(v)) return v as T
-  problems.push(`${field}: ${JSON.stringify(v)} is not one of ${allowed.join(' | ')} - used ${fallback}`)
+  problems.push(`${field}: ${show(v)} is not one of ${allowed.join(' | ')} - used ${fallback}`)
   return fallback
 }
 
-/** Keys the endpoint does not know about. Reported, never stored. */
-function unknownKeys(body: Record<string, unknown>, known: readonly string[], problems: Problems) {
+/**
+ * Reports unknown keys, and counts the known ones actually present.
+ * A body carrying none of them applied nothing, and an endpoint that
+ * answers `ok` to that has told the caller their plugin is working.
+ */
+function scan(body: Record<string, unknown>, known: readonly string[], problems: Problems) {
   const extra = Object.keys(body).filter((k) => !known.includes(k))
   if (extra.length) problems.push(`ignored unknown field(s): ${extra.join(', ')}`)
+  return { touched: known.filter((k) => body[k] !== undefined), known }
 }
 
 /* ---------------- the sample the Dash starts on ---------------- */
@@ -363,7 +382,7 @@ export const dashStore = new DashStore()
 
 export function readServer(body: Record<string, unknown>, current: ServerState) {
   const problems: Problems = []
-  unknownKeys(body, ['name', 'host', 'ip', 'status', 'online', 'breakdown', 'total'], problems)
+  const scanned = scan(body, ['name', 'host', 'ip', 'status', 'online', 'breakdown', 'total'], problems)
 
   let breakdown = current.breakdown
   if (body.breakdown !== undefined) {
@@ -386,7 +405,7 @@ export function readServer(body: Record<string, unknown>, current: ServerState) 
     host: str(body.host, 'host', LIMITS.host, current.host, problems),
     ip: str(body.ip, 'ip', LIMITS.ip, current.ip, problems),
     status: str(body.status, 'status', LIMITS.status, current.status, problems),
-    online: bool(body.online, current.online),
+    online: bool(body.online, 'online', current.online, problems),
     breakdown,
     // a plugin that reports rows but no total means the sum of the rows
     total:
@@ -394,12 +413,12 @@ export function readServer(body: Record<string, unknown>, current: ServerState) 
         ? breakdown.reduce((n, r) => n + r.count, 0)
         : num(body.total, 'total', { min: 0, max: LIMITS.count, fallback: current.total }, problems),
   }
-  return { value, problems }
+  return { value, problems, touched: scanned.touched, known: scanned.known }
 }
 
 export function readPack(body: Record<string, unknown>, current: PackState) {
   const problems: Problems = []
-  unknownKeys(body, ['archive', 'bytes', 'hash', 'pushedAt', 'version'], problems)
+  const scanned = scan(body, ['archive', 'bytes', 'hash', 'pushedAt', 'version'], problems)
   const value: PackState = {
     archive: str(body.archive, 'archive', LIMITS.archive, current.archive, problems),
     bytes: num(body.bytes, 'bytes', { min: 0, max: 1e12, fallback: current.bytes }, problems),
@@ -410,29 +429,29 @@ export function readPack(body: Record<string, unknown>, current: PackState) {
         ? current.version
         : str(body.version, 'version', LIMITS.version, current.version ?? '', problems) || null,
   }
-  return { value, problems }
+  return { value, problems, touched: scanned.touched, known: scanned.known }
 }
 
 export function readPlayers(body: Record<string, unknown>, current: PlayerCensus) {
   const problems: Problems = []
-  unknownKeys(body, ['correct', 'wrong', 'sampledAt'], problems)
+  const scanned = scan(body, ['correct', 'wrong', 'sampledAt'], problems)
   const value: PlayerCensus = {
     correct: num(body.correct, 'correct', { min: 0, max: LIMITS.count, fallback: current.correct }, problems),
     wrong: num(body.wrong, 'wrong', { min: 0, max: LIMITS.count, fallback: current.wrong }, problems),
     sampledAt: when(body.sampledAt, 'sampledAt', new Date().toISOString(), problems),
   }
-  return { value, problems }
+  return { value, problems, touched: scanned.touched, known: scanned.known }
 }
 
 export function readSubscription(body: Record<string, unknown>, current: SubscriptionState) {
   const problems: Problems = []
-  unknownKeys(body, ['type', 'cloud', 'seats'], problems)
+  const scanned = scan(body, ['type', 'cloud', 'seats'], problems)
   const value: SubscriptionState = {
     type: str(body.type, 'type', LIMITS.plan, current.type, problems),
     cloud: str(body.cloud, 'cloud', LIMITS.plan, current.cloud, problems),
     seats: str(body.seats, 'seats', LIMITS.seats, current.seats, problems),
   }
-  return { value, problems }
+  return { value, problems, touched: scanned.touched, known: scanned.known }
 }
 
 export function readFile(body: Record<string, unknown>, index: number, problems: Problems): FileTouch | null {
