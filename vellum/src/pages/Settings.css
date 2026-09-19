@@ -247,3 +247,77 @@
   }
   .settings__group + .settings__group { margin-top: var(--sp-4); }
 }
+
+/* ---------------- about: versions and changelog ---------------- */
+
+.verify {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0;
+  padding: 9px 11px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--glass-rim);
+  background: var(--bg-sunken);
+  font-size: var(--fs-xs);
+  color: var(--ink-muted);
+  line-height: 1.5;
+}
+
+.verify svg { margin-top: 2px; }
+.verify strong { color: var(--ink); font-weight: 500; }
+.verify[data-tone='ok'] { border-color: rgba(111, 174, 132, 0.55); }
+.verify[data-tone='ok'] svg { color: var(--ok); }
+.verify[data-tone='warn'] { border-color: var(--wax-500); }
+.verify[data-tone='warn'] svg { color: var(--wax-300); }
+.verify[data-tone='idle'] svg { color: var(--ink-faint); }
+
+.rel { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; }
+
+.rel__row {
+  padding: 10px 11px;
+  border-radius: var(--r-md);
+  border: 1px solid transparent;
+  transition: border-color var(--dur) var(--ease), background var(--dur) var(--ease);
+}
+
+.rel__row:nth-child(odd) { background: rgba(146, 165, 202, 0.04); }
+.rel__row:hover { border-color: var(--glass-rim); }
+
+.rel__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.rel__v { font-size: var(--fs-sm); color: var(--ink); }
+
+.rel__ch {
+  padding: 1px 7px;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--glass-rim);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.rel__ch[data-channel='plugin'] { border-color: var(--wax-500); color: var(--wax-200); }
+.rel__t { flex: 1; min-width: 0; font-size: var(--fs-xs); color: var(--ink-muted); }
+.rel__at { font-family: var(--font-mono); font-size: var(--fs-2xs); color: var(--ink-faint); }
+
+.rel__notes {
+  display: grid;
+  gap: 4px;
+  margin: 8px 0 0;
+  padding: 0 0 0 16px;
+  list-style: disc;
+  font-size: var(--fs-xs);
+  color: var(--ink-muted);
+  line-height: 1.55;
+}
+
+.rel__notes li::marker { color: var(--ink-faint); }

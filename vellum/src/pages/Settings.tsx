@@ -1,10 +1,22 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useMemo, useState, useSyncExternalStore } from 'react'
 import { Card } from '../components/Card'
 import { Icon } from '../lib/icons'
 import type { IconName } from '../lib/icons'
 import { navigate, useTitle } from '../lib/router'
 import { api } from '../lib/api'
 import { categories } from '../lib/support'
+import { dashStore, formatWhen } from '../lib/dash'
+import type { Release } from '../lib/dash'
+import { loadLink } from '../lib/dash-api'
+import {
+  AUTHOR,
+  PLUGIN_MIN,
+  PLUGIN_VERSION,
+  RENDERER,
+  STUDIO_VERSION,
+  verifyPlugin,
+} from '../lib/version'
+import type { VersionReport } from '../lib/version'
 import type { TicketCategory } from '../lib/support'
 import { Support } from './Support'
 import './Settings.css'
@@ -215,6 +227,177 @@ function PaidGate({ label }: { label: string }) {
   )
 }
 
+/* ---------------- about ---------------- */
+
+const BUILT = '09/19/26'
+
+/**
+ * What this build knows about itself. The Master Console replaces this
+ * the moment it pushes a changelog; until then a studio that has never
+ * been fed still has something true to show, rather than a card that
+ * says release notes "would render here".
+ */
+const BUILT_IN_RELEASES: Release[] = [
+  {
+    id: 'built-in-9',
+    version: STUDIO_VERSION,
+    channel: 'studio',
+    at: '2026-09-19T00:00:00.000Z',
+    title: 'Reachable without a mouse',
+    notes: [
+      'Dialogs trap focus and hand it back; menus and the model-kind picker take the arrow keys.',
+      'Every number field is named and steps on the arrows.',
+      'Touch drags work on the UV sheet, the scrub handles and the timeline.',
+      'Text clears AA contrast on every route, and the viewport fits the model it is given.',
+    ],
+  },
+  {
+    id: 'built-in-8',
+    version: '0.8.0',
+    channel: 'studio',
+    at: '2026-09-19T00:00:00.000Z',
+    title: 'The outliner became an outliner',
+    notes: [
+      'Bones have an inspector; rows rename in place and drag to reparent.',
+      'The timeline zooms and fits, and playback runs at 1.00x.',
+      'Locking refuses edits, paint and delete instead of doing nothing quietly.',
+    ],
+  },
+  {
+    id: 'built-in-7',
+    version: '0.7.0',
+    channel: 'plugin',
+    at: '2026-09-19T00:00:00.000Z',
+    title: 'The dashboard opened to a feed',
+    notes: [
+      'Twelve ingest endpoints, a window bridge and a postMessage door.',
+      'Every correction Vellum makes comes back in problems[].',
+    ],
+  },
+]
+
+const subscribeStore = (fn: () => void) => dashStore.subscribe(fn)
+
+function useReleases(): Release[] {
+  const version = useSyncExternalStore(
+    subscribeStore,
+    () => dashStore.version,
+    () => dashStore.version,
+  )
+  // the store mutates in place, so the counter is what changes identity
+  return useMemo(() => dashStore.releases, [version])
+}
+
+const VERSION_TONE: Record<VersionReport['state'], { icon: IconName; tone: string; label: string }> = {
+  'in-step': { icon: 'check', tone: 'ok', label: 'In step' },
+  'plugin-behind': { icon: 'warning', tone: 'warn', label: 'Plugin is behind' },
+  'studio-behind': { icon: 'warning', tone: 'warn', label: 'Studio is behind' },
+  unreachable: { icon: 'warning', tone: 'warn', label: 'No answer' },
+  unlinked: { icon: 'info', tone: 'idle', label: 'Not linked' },
+}
+
+function About() {
+  const pushed = useReleases()
+  const releases = pushed.length ? pushed : BUILT_IN_RELEASES
+  const [report, setReport] = useState<VersionReport | null>(null)
+  const [checking, setChecking] = useState(false)
+
+  const check = useCallback(async () => {
+    setChecking(true)
+    const link = loadLink()
+    setReport(await verifyPlugin(link?.baseUrl ?? null, link?.token ?? ''))
+    setChecking(false)
+  }, [])
+
+  const tone = report ? VERSION_TONE[report.state] : null
+
+  return (
+    <>
+      <Card title="Vellum" note={`Studio ${STUDIO_VERSION} \u00b7 plugin ${PLUGIN_VERSION}`} dividedHead>
+        <div className="kv">
+          <div className="kv__row"><span className="kv__k">Version</span><span className="kv__v">{STUDIO_VERSION}</span></div>
+          <div className="kv__row"><span className="kv__k">Plugin version</span><span className="kv__v">{PLUGIN_VERSION}</span></div>
+          <div className="kv__row"><span className="kv__k">Renderer</span><span className="kv__v">{RENDERER}</span></div>
+          <div className="kv__row"><span className="kv__k">Author</span><span className="kv__v">{AUTHOR}</span></div>
+          <div className="kv__row"><span className="kv__k">Typeface</span><span className="kv__v">Self-hosted, woff2</span></div>
+          <div className="kv__row"><span className="kv__k">Built</span><span className="kv__v">{BUILT}</span></div>
+        </div>
+      </Card>
+
+      <Card
+        title="Versions"
+        note={`This studio talks to plugin ${PLUGIN_MIN} and newer.`}
+        dividedHead
+        actions={
+          <button className="btn btn--sm btn--primary" onClick={() => void check()} disabled={checking}>
+            <Icon name="refresh" size={13} /> {checking ? 'Checking' : 'Check the plugin'}
+          </button>
+        }
+      >
+        {report ? (
+          <>
+            <p className="verify" data-tone={tone?.tone}>
+              <Icon name={tone?.icon ?? 'info'} size={13} />
+              <span>
+                <strong>{tone?.label}.</strong> {report.detail}
+              </span>
+            </p>
+            <div className="kv" style={{ marginTop: 'var(--sp-3)' }}>
+              <div className="kv__row"><span className="kv__k">Studio</span><span className="kv__v">{report.studio}</span></div>
+              <div className="kv__row"><span className="kv__k">Plugin</span><span className="kv__v">{report.plugin ?? 'no answer'}</span></div>
+              <div className="kv__row">
+                <span className="kv__k">Plugin wants studio</span>
+                <span className="kv__v">{report.studioMin ?? 'did not say'}</span>
+              </div>
+              <div className="kv__row">
+                <span className="kv__k">Checked</span>
+                <span className="kv__v">{formatWhen(new Date(report.checkedAt).toISOString(), Date.now())}</span>
+              </div>
+            </div>
+          </>
+        ) : (
+          <p className="ed-hint">
+            <Icon name="info" size={11} /> Vellum ships in two halves that move at different speeds, so a
+            version gap looks exactly like a bug. This asks the linked plugin what it is and compares.
+          </p>
+        )}
+      </Card>
+
+      <Card
+        title="Changelog"
+        note={
+          pushed.length
+            ? `${pushed.length} release${pushed.length === 1 ? '' : 's'} pushed from the Master Console.`
+            : 'What this build knows about itself. The Master Console replaces this when it pushes.'
+        }
+        dividedHead
+      >
+        <ol className="rel">
+          {releases.map((r) => (
+            <li className="rel__row" key={r.id}>
+              <div className="rel__head">
+                <span className="rel__v mono">{r.version}</span>
+                <span className="rel__ch" data-channel={r.channel}>
+                  {r.channel}
+                </span>
+                <span className="rel__t">{r.title}</span>
+                <span className="rel__at">{formatWhen(r.at, Date.now())}</span>
+              </div>
+              {r.notes.length ? (
+                <ul className="rel__notes">
+                  {r.notes.map((n, i) => (
+                    <li key={i}>{n}</li>
+                  ))}
+                </ul>
+              ) : null}
+            </li>
+          ))}
+        </ol>
+      </Card>
+    </>
+  )
+}
+
 function Body({ section }: { section: Section }) {
   switch (section.id) {
     case 'account':
@@ -306,19 +489,7 @@ function Body({ section }: { section: Section }) {
       return <ReportABug />
 
     case 'about':
-      return (
-        <>
-          <Card title="Vellum" note="Layout study - not a shipping build." dividedHead>
-            <div className="kv">
-              <div className="kv__row"><span className="kv__k">Version</span><span className="kv__v">0.4.1-mock</span></div>
-              <div className="kv__row"><span className="kv__k">Renderer</span><span className="kv__v">CSS transforms (stand-in)</span></div>
-              <div className="kv__row"><span className="kv__k">Typeface</span><span className="kv__v">Self-hosted, woff2</span></div>
-              <div className="kv__row"><span className="kv__k">Built</span><span className="kv__v">09/18/26</span></div>
-            </div>
-          </Card>
-          <SectionSlot title="Changelog" note="Reserved region - release notes would render here." />
-        </>
-      )
+      return <About />
 
     case 'billing':
       return (
@@ -416,7 +587,7 @@ export function Settings({ segments }: { segments: string[] }) {
           {paid.length ? (
             <div className="settings__group">
               <div className="settings__grouplabel">
-                <Icon name="key" size={11} /> Paid tiers
+                <Icon name="key" size={11} /> Manage
               </div>
               {paid.map(renderLink)}
             </div>

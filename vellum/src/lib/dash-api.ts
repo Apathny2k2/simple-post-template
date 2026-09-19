@@ -39,6 +39,7 @@ import {
   readFile,
   readPack,
   readPlayers,
+  readReleases,
   readServer,
   readSubscription,
 } from './dash'
@@ -50,7 +51,7 @@ export const DASH_BASE = '/api/v1'
 /** Bump when a field changes meaning. `GET /dash/schema` returns it. */
 export const DASH_API_VERSION = 1
 
-export type DashGroup = 'Realm' | 'Pack' | 'Players' | 'Files' | 'Feed'
+export type DashGroup = 'Realm' | 'Pack' | 'Players' | 'Files' | 'Feed' | 'Console'
 export type DashEndpoint = Spec<DashGroup>
 
 export const dashEndpoints: DashEndpoint[] = [
@@ -210,6 +211,34 @@ export const dashEndpoints: DashEndpoint[] = [
     group: 'Files',
     summary: 'Clear the table. For a plugin that rebuilds the list from scratch each cycle.',
     returns: '204',
+  },
+
+  /* ---- Console ---- */
+  {
+    method: 'PUT',
+    path: '/console/changelog',
+    group: 'Console',
+    summary:
+      'Replace the release notes this studio shows in About. Pushed from the Master Console, through the plugin, so a studio learns what changed without anyone visiting a website.',
+    body: [
+      { name: 'releases', type: 'Release[]', required: true, note: 'REPLACES the list. Newest 30 kept, sorted by date.' },
+      { name: 'releases[].version', type: 'string', required: true, note: 'An entry without one is dropped.' },
+      { name: 'releases[].channel', type: 'studio | plugin', note: 'Which half the note is about. Defaults to studio.' },
+      { name: 'releases[].at', type: 'string | integer', note: 'Release date. Defaults to now.' },
+      { name: 'releases[].title', type: 'string', note: 'One line. Defaults to the version.' },
+      { name: 'releases[].notes', type: 'string[]', note: 'Up to 12 lines, 200 characters each.' },
+    ],
+    returns: '{ ok: true, kept: integer, problems: string[] }',
+    usedBy: 'About \u25b8 Changelog',
+  },
+  {
+    method: 'GET',
+    path: '/plugin/version',
+    group: 'Console',
+    summary:
+      'Served BY the plugin, called by the studio: About checks the two halves are compatible rather than letting a version gap look like a bug.',
+    returns: '{ plugin: string, studioMin?: string, api?: integer }',
+    usedBy: 'About \u25b8 Versions',
   },
 ]
 
@@ -442,6 +471,20 @@ export const dash = {
     dashStore.snapshot.files = []
     dashStore.accept('files', 'DELETE /dash/files', [], via)
     return { ok: true, problems: [] }
+  },
+
+  /** PUT /console/changelog */
+  changelog(input: unknown, via: Via = 'bridge'): Ack & { kept: number } {
+    const body = asBody(input)
+    const raw = Array.isArray(input) ? input : body?.releases
+    if (raw === undefined)
+      return { ...reject('PUT /console/changelog', 'send { releases: [...] }', via), kept: 0 }
+
+    const problems: string[] = []
+    const releases = readReleases(raw, problems)
+    dashStore.setReleases(releases)
+    dashStore.accept(null, 'PUT /console/changelog', problems, via)
+    return { ok: true, problems, kept: releases.length }
   },
 
   /** POST /dash/heartbeat */

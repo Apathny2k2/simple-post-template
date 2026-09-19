@@ -195,6 +195,39 @@ capped at 50; older rows fall off.
 `DELETE /dash/files` clears the table, for a plugin that rebuilds the list
 each cycle.
 
+### Console
+
+Two calls that are not about cards. The first is fed to Vellum like any
+other; the second is the one call Vellum makes **to you**.
+
+`PUT /console/changelog` — replace the release notes shown in
+**Settings ▸ About ▸ Changelog**. This is how the Master Console tells a
+studio what changed without anybody visiting a website. Newest 30 kept,
+sorted by date.
+
+| field | type | note |
+|---|---|---|
+| `releases` | Release[] | **required** — REPLACES the list |
+| `releases[].version` | string | **required** — an entry without one is dropped |
+| `releases[].channel` | `studio` \| `plugin` | Which half the note is about. Defaults to `studio` |
+| `releases[].at` | string \| integer | Release date. Defaults to now |
+| `releases[].title` | string | One line, 96 characters. Defaults to the version |
+| `releases[].notes` | string[] | Up to 12 lines, 200 characters each |
+
+`GET /plugin/version` — **served by the plugin**, called by the studio.
+Settings ▸ About ▸ Versions asks for it so that a version gap between the
+two halves reads as a version gap rather than as a bug:
+
+```json
+{ "plugin": "0.2a", "studioMin": "0.8.0", "api": 1 }
+```
+
+`plugin` is required; without it the studio reports "no answer" rather
+than guessing. `studioMin` is the oldest studio you will talk to — leave
+it out and the studio only checks its own minimum, which is plugin
+`0.2a`. Version strings are dotted numbers with an optional trailing
+letter, so `0.2a` is newer than `0.2` and older than `0.2b`.
+
 ---
 
 ## What Vellum corrects

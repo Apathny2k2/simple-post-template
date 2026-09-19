@@ -80,6 +80,22 @@ export type DashSnapshot = {
 
 export type Section = keyof DashSnapshot
 
+/**
+ * One release note, pushed into a studio from the Master Console. The
+ * About panel used to reserve a region for these and render nothing;
+ * this is the shape that fills it.
+ */
+export type Release = {
+  id: string
+  version: string
+  /** which half of Vellum the note is about */
+  channel: 'studio' | 'plugin'
+  /** ISO 8601, already normalised */
+  at: string
+  title: string
+  notes: string[]
+}
+
 export type DashMeta = {
   /** the plugin's self-reported name and version, from its heartbeat */
   agent: string | null
@@ -124,6 +140,10 @@ export const LIMITS = {
   author: 48,
   /** the table scrolls, but a plugin streaming every save would grow forever */
   files: 50,
+  releaseTitle: 96,
+  releaseNote: 200,
+  releaseNotes: 12,
+  releases: 30,
   count: 1_000_000_000,
 } as const
 
@@ -287,6 +307,7 @@ export type DashEvent =
   | { type: 'section'; section: Section }
   | { type: 'meta' }
   | { type: 'ingest'; record: IngestRecord }
+  | { type: 'releases' }
 
 type Listener = (e: DashEvent) => void
 
@@ -304,6 +325,13 @@ class DashStore {
    * knows) and let Vellum do the counting.
    */
   roster = new Map<string, string>()
+
+  /**
+   * Release notes from the Master Console. Empty until one pushes:
+   * the About panel falls back to what this build knows about itself,
+   * which is honest rather than blank.
+   */
+  releases: Release[] = []
 
   /**
    * Bumped on every change. The snapshot is mutated in place, so its
@@ -358,6 +386,11 @@ class DashStore {
     return record
   }
 
+  setReleases(releases: Release[]) {
+    this.releases = releases
+    this.emit({ type: 'releases' })
+  }
+
   setAgent(agent: string | null, heartbeatSeconds: number) {
     this.meta = { ...this.meta, agent, heartbeatSeconds }
     this.emit({ type: 'meta' })
@@ -369,6 +402,8 @@ class DashStore {
     this.meta = { agent: null, lastSeen: null, heartbeatSeconds: 30, fed: [] }
     this.log = []
     this.roster.clear()
+    this.releases = []
+    this.emit({ type: 'releases' })
     this.emit({ type: 'meta' })
     for (const s of ['server', 'pack', 'players', 'subscription', 'files'] as Section[]) {
       this.emit({ type: 'section', section: s })
@@ -474,6 +509,59 @@ export function readFile(body: Record<string, unknown>, index: number, problems:
       problems,
     ),
   }
+}
+
+/**
+ * One entry of a changelog push. Notes that are not strings are dropped
+ * with a line in `problems` rather than rendered as "[object Object]".
+ */
+export function readRelease(body: Record<string, unknown>, index: number, problems: Problems): Release | null {
+  const version = str(body?.version, `releases[${index}].version`, LIMITS.version, '', problems)
+  if (!version) {
+    problems.push(`releases[${index}]: dropped, it names no version`)
+    return null
+  }
+
+  let notes: string[] = []
+  if (body?.notes !== undefined) {
+    if (!Array.isArray(body.notes)) {
+      problems.push(`releases[${index}].notes: expected an array - dropped`)
+    } else {
+      if (body.notes.length > LIMITS.releaseNotes)
+        problems.push(
+          `releases[${index}].notes: ${body.notes.length} notes, kept the first ${LIMITS.releaseNotes}`,
+        )
+      notes = body.notes
+        .slice(0, LIMITS.releaseNotes)
+        .map((n, i) => str(n, `releases[${index}].notes[${i}]`, LIMITS.releaseNote, '', problems))
+        .filter(Boolean)
+    }
+  }
+
+  return {
+    id: nextId('rel'),
+    version,
+    channel: oneOf(body?.channel, `releases[${index}].channel`, ['studio', 'plugin'] as const, 'studio', problems),
+    at: when(body?.at, `releases[${index}].at`, new Date().toISOString(), problems),
+    title: str(body?.title, `releases[${index}].title`, LIMITS.releaseTitle, version, problems),
+    notes,
+  }
+}
+
+/** The whole changelog, newest first, however the console ordered it. */
+export function readReleases(value: unknown, problems: Problems): Release[] {
+  if (!Array.isArray(value)) {
+    problems.push('releases: expected an array - nothing applied')
+    return []
+  }
+  if (value.length > LIMITS.releases)
+    problems.push(`releases: ${value.length} entries, kept the newest ${LIMITS.releases}`)
+  const out = value
+    .slice(0, LIMITS.releases)
+    .map((r, i) => readRelease((r ?? {}) as Record<string, unknown>, i, problems))
+    .filter((r): r is Release => r !== null)
+  out.sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0))
+  return out
 }
 
 /* ---------------- derived ---------------- */
