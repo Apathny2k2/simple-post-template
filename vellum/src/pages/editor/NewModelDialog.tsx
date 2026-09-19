@@ -3,7 +3,7 @@ import { Icon } from '../../lib/icons'
 import { arrowNav, useModal } from '../../lib/a11y'
 import type { NewModelKind } from '../../lib/new-model'
 
-const KINDS: Array<{ id: NewModelKind; label: string; icon: 'cube' | 'anim' | 'grid'; blurb: string; detail: string }> = [
+const KINDS: Array<{ id: NewModelKind; label: string; icon: 'cube' | 'anim' | 'grid' | 'bucket'; blurb: string; detail: string }> = [
   {
     id: 'items',
     label: 'Item',
@@ -24,6 +24,13 @@ const KINDS: Array<{ id: NewModelKind; label: string; icon: 'cube' | 'anim' | 'g
     icon: 'grid',
     blurb: 'A full 16-unit cube on a 64 x 64 sheet.',
     detail: 'Validated against the block rules: inside -16..32, one rotated axis, fixed angles.',
+  },
+  {
+    id: 'consumables',
+    label: 'Consumable',
+    icon: 'bucket',
+    blurb: 'A rigged flask that arrives with its use clip.',
+    detail: 'Tips back, the stopper comes away, the level drops. Validation asks for that clip.',
   },
 ]
 

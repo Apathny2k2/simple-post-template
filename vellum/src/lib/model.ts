@@ -23,7 +23,16 @@ export type UVRect = [number, number, number, number]
 export const FACES = ['north', 'east', 'south', 'west', 'up', 'down'] as const
 export type FaceKey = (typeof FACES)[number]
 
-export type ProjectKind = 'items' | 'mobs' | 'blocks'
+/**
+ * What a model is for. It drives which validation rules apply, and it
+ * is the project's, not the file's: a `.vellum` carries no format
+ * string, so one model can never claim two formats.
+ *
+ * `consumables` are items you hold and then use up - a potion, a loaf.
+ * They are item models with an animation that has to exist, because an
+ * eat or drink that plays nothing is the whole point missed.
+ */
+export type ProjectKind = 'items' | 'mobs' | 'blocks' | 'consumables'
 
 export type Face = {
   uv: UVRect
@@ -302,6 +311,17 @@ export function validateModel(model: Model, kind?: ProjectKind): Issue[] {
       }
     }
 
+    if (kind === 'consumables') {
+      /* Held in the hand and then used up. Minecraft renders these in
+         the item slot, so anything far outside the item volume will be
+         drawn somewhere the player is not looking. */
+      for (const v of [...cube.from, ...cube.to]) {
+        if (v < -16 || v > 32) {
+          issues.push({ level: 'warning', message: `"${tag}": ${v} is outside an item's -16..32 range` })
+        }
+      }
+    }
+
     if (kind === 'blocks') {
       for (const v of [...cube.from, ...cube.to]) {
         if (v < -16 || v > 32) {
@@ -371,6 +391,16 @@ export function validateModel(model: Model, kind?: ProjectKind): Issue[] {
         }
       }
     }
+  }
+
+  /* A consumable is defined by its use animation. Shipping one with no
+     clip is the whole point missed, and nothing else would have said
+     so - validation only ever looked at geometry. */
+  if (kind === 'consumables' && !model.clips.length) {
+    issues.push({
+      level: 'warning',
+      message: 'A consumable with no animation: add a use clip, or this is an ordinary item',
+    })
   }
 
   return issues

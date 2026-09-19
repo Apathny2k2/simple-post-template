@@ -13,9 +13,9 @@
 import { FACES } from './model'
 import { boxUvFaces, makeRoom } from './uv-pack'
 import type { Rescale } from './uv-pack'
-import type { Bone, BoneChild, Cube, Face, FaceKey, Model, Texture, UVRect, Vec3 } from './model'
+import type { Bone, BoneChild, Clip, Cube, Face, FaceKey, Key, Model, Texture, UVRect, Vec3 } from './model'
 
-export type NewModelKind = 'items' | 'mobs' | 'blocks'
+export type NewModelKind = 'items' | 'mobs' | 'blocks' | 'consumables'
 
 let counter = 0
 export const newId = () =>
@@ -96,6 +96,7 @@ export function makeBone(name: string, origin: Vec3, children: BoneChild[] = [])
 export function createModel(kind: NewModelKind, name: string): Model {
   if (kind === 'mobs') return mobStarter(name)
   if (kind === 'blocks') return blockStarter(name)
+  if (kind === 'consumables') return consumableStarter(name)
   return itemStarter(name)
 }
 
@@ -141,6 +142,78 @@ function itemStarter(name: string): Model {
     cubes: [cube],
     textures: [texture],
     clips: [],
+  }
+}
+
+/**
+ * A flask with a stopper, rigged on two bones and arriving with the
+ * clip that makes it a consumable rather than an item: tip it back,
+ * the stopper comes away, the level drops. The validator asks for that
+ * clip, so the starter had better have one.
+ */
+function consumableStarter(name: string): Model {
+  const texture = starterTexture(32, `${name}.png`)
+  const t = texture.id
+
+  const body = makeCube('body', [-3, 0, -3], [3, 8, 3], { origin: [0, 0, 0], uvAt: [0, 0], texture: t })
+  const neck = makeCube('neck', [-1.5, 8, -1.5], [1.5, 11, 1.5], { origin: [0, 8, 0], uvAt: [0, 14], texture: t })
+  const fill = makeCube('fill', [-2.5, 0.5, -2.5], [2.5, 6, 2.5], { origin: [0, 0.5, 0], uvAt: [12, 14], texture: t })
+  const cork = makeCube('cork', [-2, 11, -2], [2, 13, 2], { origin: [0, 11, 0], uvAt: [0, 24], texture: t })
+
+  const corkBone = makeBone('cork', [0, 11, 0], [{ kind: 'cube', id: cork.id }])
+  const fillBone = makeBone('fill', [0, 0.5, 0], [{ kind: 'cube', id: fill.id }])
+  const root = makeBone(name, [0, 0, 0], [
+    { kind: 'cube', id: body.id },
+    { kind: 'cube', id: neck.id },
+    { kind: 'bone', bone: fillBone },
+    { kind: 'bone', bone: corkBone },
+  ])
+
+  const key = (time: number, value: Vec3, interp: Key['interp'] = 'catmullrom'): Key => ({
+    id: newId(),
+    time,
+    value,
+    interp,
+  })
+
+  const use: Clip = {
+    id: newId(),
+    name: 'use',
+    loop: 'once',
+    length: 1.6,
+    snapping: 24,
+    tracks: [
+      {
+        bone: root.id,
+        channel: 'rotation',
+        keys: [key(0, [0, 0, 0]), key(0.35, [-18, 0, 4]), key(0.9, [-62, 0, 6]), key(1.6, [0, 0, 0])],
+      },
+      {
+        bone: corkBone.id,
+        channel: 'position',
+        keys: [key(0, [0, 0, 0]), key(0.3, [0, 0, 0], 'step'), key(0.55, [0, 4, -2]), key(1.6, [0, 0, 0], 'step')],
+      },
+      {
+        bone: corkBone.id,
+        channel: 'rotation',
+        keys: [key(0, [0, 0, 0]), key(0.3, [0, 0, 0], 'step'), key(0.55, [34, 0, 20]), key(1.6, [0, 0, 0], 'step')],
+      },
+      {
+        bone: fillBone.id,
+        channel: 'scale',
+        keys: [key(0, [1, 1, 1]), key(0.5, [1, 0.9, 1]), key(1.2, [1, 0.08, 1]), key(1.6, [1, 1, 1], 'step')],
+      },
+    ],
+  }
+
+  return {
+    name,
+    kind: 'consumables',
+    resolution: { width: 32, height: 32 },
+    bones: [root],
+    cubes: [body, neck, fill, cork],
+    textures: [texture],
+    clips: [use],
   }
 }
 

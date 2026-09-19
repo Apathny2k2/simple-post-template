@@ -4,13 +4,17 @@ Captured mid-session so it survives. Everything here is **app-side only** —
 the plugin implements its own half, so nothing below needs to reach past
 the studio.
 
-## 1. Animated sample items
+## 1. Animated sample items — **done**
 Four new models shipped with the editor, all animated:
-- two swords
-- one potion
-- one food
+- two swords — `runic_blade`, `emberfang`
+- one potion — `tide_flask`
+- one food — `honeyed_loaf`
 
-These unlock **consumable items** as a project kind.
+**consumables** is a project kind: its own starter, its own shelf, and a
+validation rule that asks for the use clip, because a consumable that
+animates nothing is an ordinary item.
+
+Built by `scripts/make-samples.mjs` rather than by hand.
 
 ## 2. Display ▸ "View in real world"
 The Display tab previews a model on a tilted grid with nothing to judge
@@ -37,10 +41,10 @@ database; it syncs with the plugin so a team sees the same files as a shared
 workspace with per-member identities. The account owner oversees all
 databases and retains access.
 
-## 5. Settings sidebar
+## 5. Settings sidebar — **done**
 Rename the **Paid Tiers** divider to **Manage**.
 
-## 6. About
+## 6. About — **done**
 - Version: approaching **v8/v9**
 - Plugin version: **v0.2a**, with a verifier call that checks the plugin and
   the studio are on compatible versions

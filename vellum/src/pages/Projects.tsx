@@ -43,6 +43,7 @@ const PER_PAGE = 12
 const kindLabel: Record<AssetKind, string> = {
   items: 'Items',
   mobs: 'Mobs & Anim.',
+  consumables: 'Consumables',
 }
 
 /** Scale a model so its longest axis lands near `target` pixels. */
@@ -242,7 +243,7 @@ function Library({ sceneId, kind }: { sceneId: string; kind: AssetKind }) {
           </button>
 
           <div className="library__tabs" role="tablist" aria-label="Library category">
-            {(['items', 'mobs'] as AssetKind[]).map((k) => (
+            {(['items', 'mobs', 'consumables'] as AssetKind[]).map((k) => (
               <button
                 key={k}
                 role="tab"
@@ -364,7 +365,7 @@ export function Projects({ segments }: { segments: string[] }) {
   const routeScene = segments[1]
   const routeKind = segments[2]
 
-  if (routeScene && (routeKind === 'items' || routeKind === 'mobs')) {
+  if (routeScene && (routeKind === 'items' || routeKind === 'mobs' || routeKind === 'consumables')) {
     const known = scenes.some((s) => s.id === routeScene) ? routeScene : scenes[0].id
     return <Library key={`${known}-${routeKind}`} sceneId={known} kind={routeKind} />
   }

@@ -10,7 +10,7 @@ export type Scene = {
   counts: { items: number; mobs: number }
 }
 
-export type AssetKind = 'items' | 'mobs'
+export type AssetKind = 'items' | 'mobs' | 'consumables'
 
 export type Asset = {
   id: string
@@ -117,6 +117,7 @@ const KIND_LABEL: Record<string, string> = {
   items: 'Item Model',
   mobs: 'Rigged Entity',
   blocks: 'Block Model',
+  consumables: 'Consumable',
 }
 
 /* The three models the probes built. These are the only cards whose
@@ -125,7 +126,7 @@ const realAssets: Asset[] = samples.map((s, i) => ({
   id: s.id,
   name: s.label,
   file: s.file,
-  kind: s.kind === 'mobs' ? 'mobs' : 'items',
+  kind: s.kind === 'mobs' ? 'mobs' : s.kind === 'consumables' ? 'consumables' : 'items',
   sceneId: scenes[0].id,
   format: KIND_LABEL[s.kind] ?? 'Model',
   cubes: s.model.cubes.length,
