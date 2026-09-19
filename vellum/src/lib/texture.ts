@@ -198,6 +198,64 @@ export function bucket(
   s.ctx.putImageData(image, x1, y1)
 }
 
+/* ---------------- shapes ----------------
+   A rectangle or an ellipse between two texels, outlined or filled.
+   The tool used to be the brush wearing a different icon. */
+
+export type ShapeKind = 'rect' | 'ellipse'
+
+export function drawShape(
+  s: PixelSurface,
+  from: [number, number],
+  to: [number, number],
+  colour: RGBA,
+  kind: ShapeKind,
+  filled: boolean,
+  size = 1,
+  bounds?: UVRect | null,
+) {
+  const x1 = Math.min(from[0], to[0])
+  const y1 = Math.min(from[1], to[1])
+  const x2 = Math.max(from[0], to[0])
+  const y2 = Math.max(from[1], to[1])
+  const stamp = (x: number, y: number) => paint(s, x, y, colour, size, bounds)
+
+  if (kind === 'rect') {
+    if (filled) {
+      for (let y = y1; y <= y2; y++) for (let x = x1; x <= x2; x++) stamp(x, y)
+      return
+    }
+    for (let x = x1; x <= x2; x++) {
+      stamp(x, y1)
+      stamp(x, y2)
+    }
+    for (let y = y1; y <= y2; y++) {
+      stamp(x1, y)
+      stamp(x2, y)
+    }
+    return
+  }
+
+  /* Midpoint ellipse by inclusion test rather than by the incremental
+     algorithm: at texture resolutions the cost is nothing and it keeps
+     the filled and outlined cases in one place. */
+  const cx = (x1 + x2) / 2
+  const cy = (y1 + y2) / 2
+  const rx = Math.max(0.5, (x2 - x1) / 2)
+  const ry = Math.max(0.5, (y2 - y1) / 2)
+  const inside = (x: number, y: number) => ((x - cx) / rx) ** 2 + ((y - cy) / ry) ** 2 <= 1
+
+  for (let y = y1; y <= y2; y++) {
+    for (let x = x1; x <= x2; x++) {
+      if (!inside(x, y)) continue
+      // an outline is a texel that is in the ellipse with a neighbour that is not
+      if (filled || !inside(x - 1, y) || !inside(x + 1, y) || !inside(x, y - 1) || !inside(x, y + 1)) {
+        stamp(x, y)
+      }
+    }
+  }
+}
+
 /** Bresenham, so a fast drag paints a line rather than dotting. */
 export function strokeBetween(
   from: [number, number],

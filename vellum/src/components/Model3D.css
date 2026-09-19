@@ -18,6 +18,12 @@
   inset: 0;
   transform-style: preserve-3d;
   will-change: transform;
+  /* A transform container, not a target. Left hit-testable it sits at
+     z=0 and swallows the click for anything the scene has pushed behind
+     that plane - which is every face once a display transform is
+     applied, so Display mode's "click a cube" hint was a lie. Events
+     fall through to .scene3d, which is where orbiting lives anyway. */
+  pointer-events: none;
   /* base pose: also what a spinning scene falls back to when the viewer
      has asked for reduced motion and the animation never runs */
   transform: translate(var(--pan-x, 0px), var(--pan-y, 0px)) translateZ(var(--zoom, 0px))

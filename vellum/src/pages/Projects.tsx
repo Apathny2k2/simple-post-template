@@ -7,7 +7,36 @@ import { Icon } from '../lib/icons'
 import { assetsFor, scenes } from '../lib/data'
 import type { Asset, AssetKind } from '../lib/data'
 import { navigate } from '../lib/router'
+import { saveDataUrl, saveFile } from '../lib/download'
+import { writeVellum } from '../lib/vellum'
 import './Projects.css'
+
+/** The card menu's two working entries, shared by every shelf. */
+function useAssetActions() {
+  const [note, setNote] = useState<string | null>(null)
+  const say = (text: string) => {
+    setNote(text)
+    window.setTimeout(() => setNote((n) => (n === text ? null : n)), 5000)
+  }
+
+  const onDownload = (asset: Asset) => {
+    if (!asset.sampleId) return
+    const s = sampleById(asset.sampleId)
+    void saveFile(s.file, writeVellum(s.model)).then(say)
+  }
+
+  const onTexture = (asset: Asset) => {
+    if (!asset.sampleId) return
+    const texture = sampleById(asset.sampleId).model.textures[0]
+    if (!texture) {
+      say('That model carries no texture.')
+      return
+    }
+    void saveDataUrl(texture.name.replace(/\.png$/i, '') + '.png', texture.source).then(say)
+  }
+
+  return { note, onDownload, onTexture }
+}
 
 const PER_PAGE = 12
 
@@ -52,7 +81,15 @@ function FlatRender({ palette }: { palette: [string, string, string] }) {
   )
 }
 
-function AssetCard({ asset }: { asset: Asset }) {
+function AssetCard({
+  asset,
+  onDownload,
+  onTexture,
+}: {
+  asset: Asset
+  onDownload: (a: Asset) => void
+  onTexture: (a: Asset) => void
+}) {
   const [menuOpen, setMenuOpen] = useState(false)
   const model = asset.kind === 'mobs' ? lanternModel(asset.hue) : blockModel(asset.hue)
   // cards backed by a real file show that file, not a stand-in
@@ -68,15 +105,20 @@ function AssetCard({ asset }: { asset: Asset }) {
         <Menu
           align="end"
           onOpenChange={setMenuOpen}
-          entries={[
-            { label: 'Open in Editor', icon: 'cube', onSelect: () => navigate(`/editor/${asset.sampleId ?? asset.id}`) },
-            { label: 'Showcase', icon: 'camera' },
-            { label: 'Duplicate', icon: 'copy' },
-            { label: 'View texture', icon: 'image' },
-            { label: 'Download', icon: 'download' },
-            { kind: 'separator' },
-            { label: 'Delete', icon: 'trash', danger: true },
-          ]}
+          /* Showcase, Duplicate and Delete used to sit here doing
+             nothing at all - Delete in particular reading as destructive
+             and confirming nothing. There is no library store behind
+             this page to delete from, so they are gone rather than
+             pretending. What is left works. */
+          entries={
+            real
+              ? [
+                  { label: 'Open in Editor', icon: 'cube', onSelect: () => navigate(`/editor/${asset.sampleId}`) },
+                  { label: 'Download .vellum', icon: 'download', onSelect: () => onDownload(asset) },
+                  { label: 'Export texture PNG', icon: 'image', onSelect: () => onTexture(asset) },
+                ]
+              : [{ kind: 'label', label: 'Placeholder card - nothing to open' }]
+          }
           trigger={({ toggle, id }) => (
             <button className="icon-btn" id={id} onClick={toggle} aria-label={`Actions for ${asset.name}`}>
               <Icon name="dots" size={15} />
@@ -161,6 +203,7 @@ function Pager({
 
 /** The shared library panel - identical for Items and for Mobs & Anim. */
 function Library({ sceneId, kind }: { sceneId: string; kind: AssetKind }) {
+  const actions = useAssetActions()
   const [page, setPage] = useState(1)
   const [query, setQuery] = useState('')
   const scene = scenes.find((s) => s.id === sceneId) ?? scenes[0]
@@ -225,14 +268,14 @@ function Library({ sceneId, kind }: { sceneId: string; kind: AssetKind }) {
           </div>
 
           <span className="library__count">
-            {rows.length} file{rows.length === 1 ? '' : 's'}
+            {actions.note ?? `${rows.length} file${rows.length === 1 ? '' : 's'}`}
           </span>
         </div>
 
         {slice.length ? (
           <div className="library__grid">
             {slice.map((a) => (
-              <AssetCard key={a.id} asset={a} />
+              <AssetCard key={a.id} asset={a} onDownload={actions.onDownload} onTexture={actions.onTexture} />
             ))}
           </div>
         ) : (

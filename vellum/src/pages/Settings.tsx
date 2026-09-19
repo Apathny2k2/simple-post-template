@@ -3,6 +3,9 @@ import { Card } from '../components/Card'
 import { Icon } from '../lib/icons'
 import type { IconName } from '../lib/icons'
 import { navigate } from '../lib/router'
+import { api } from '../lib/api'
+import { categories } from '../lib/support'
+import type { TicketCategory } from '../lib/support'
 import { Support } from './Support'
 import './Settings.css'
 
@@ -28,26 +31,162 @@ const paidSections: Section[] = [
 
 const allSections = [...freeSections, ...paidSections]
 
-function Switch({ on }: { on: boolean }) {
-  const [checked, setChecked] = useState(on)
+/* These are per-device preferences, so they live where the device can
+   keep them. They used to reset on every reload, which made three
+   switches that looked like settings and behaved like decoration. */
+const PREF_KEY = 'vellum.prefs'
+
+function readPref(id: string, fallback: boolean): boolean {
+  try {
+    const raw = localStorage.getItem(PREF_KEY)
+    const all = raw ? (JSON.parse(raw) as Record<string, boolean>) : {}
+    return typeof all[id] === 'boolean' ? all[id] : fallback
+  } catch {
+    // private mode, or blocked site data: the default is still correct
+    return fallback
+  }
+}
+
+function writePref(id: string, value: boolean) {
+  try {
+    const raw = localStorage.getItem(PREF_KEY)
+    const all = raw ? (JSON.parse(raw) as Record<string, boolean>) : {}
+    all[id] = value
+    localStorage.setItem(PREF_KEY, JSON.stringify(all))
+  } catch {
+    /* it holds for this session and no longer, which is better than nothing */
+  }
+}
+
+function Switch({ id, on, label }: { id: string; on: boolean; label: string }) {
+  const [checked, setChecked] = useState(() => readPref(id, on))
   return (
     <button
       className="switch"
       role="switch"
       aria-checked={checked}
-      onClick={() => setChecked((c) => !c)}
+      aria-label={label}
+      onClick={() => {
+        const next = !checked
+        setChecked(next)
+        writePref(id, next)
+      }}
     />
   )
 }
 
-function ToggleRow({ title, desc, on }: { title: string; desc: string; on: boolean }) {
+/**
+ * A bug report is a support ticket - the app already has a ticketing
+ * API, so the form that said "Goes straight to the tracker" now does.
+ * It used to do nothing at all, and was happy to send an empty one.
+ */
+function ReportABug() {
+  // the areas ARE the ticket categories; one list, not two that drift
+  const [area, setArea] = useState<TicketCategory>('editor')
+  const [severity, setSeverity] = useState('normal')
+  const [what, setWhat] = useState('')
+  const [withLog, setWithLog] = useState(true)
+  const [busy, setBusy] = useState(false)
+  const [sent, setSent] = useState<string | null>(null)
+
+  const valid = what.trim().length >= 12
+
+  const sessionLog = () =>
+    [
+      `route: ${window.location.hash || '#/'}`,
+      `viewport: ${window.innerWidth}x${window.innerHeight}`,
+      `pixel ratio: ${window.devicePixelRatio}`,
+      `agent: ${navigator.userAgent}`,
+      `time: ${new Date().toISOString()}`,
+    ].join('\n')
+
+  const send = async () => {
+    if (!valid || busy) return
+    setBusy(true)
+    try {
+      const ticket = await api.createTicket({
+        subject: `[${area}] ${what.trim().slice(0, 96)}`,
+        category: area,
+        priority: severity === 'high' ? 'high' : severity === 'low' ? 'low' : 'normal',
+        description: withLog ? `${what.trim()}\n\n---\nSession log\n${sessionLog()}` : what.trim(),
+        tags: ['bug', area, severity],
+      })
+      setSent(ticket.id)
+      setWhat('')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Card title="Report a bug" note="Opens a support ticket you can follow up on." dividedHead>
+      <div className="field-grid">
+        <label className="field">
+          <span className="field__label">Area</span>
+          <select value={area} onChange={(e) => setArea(e.target.value as TicketCategory)}>
+            {categories.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="field">
+          <span className="field__label">Severity</span>
+          <select value={severity} onChange={(e) => setSeverity(e.target.value)}>
+            <option value="low">Cosmetic</option>
+            <option value="normal">Normal</option>
+            <option value="high">Blocks my work</option>
+          </select>
+        </label>
+        <label className="field field--wide">
+          <span className="field__label">What happened</span>
+          <textarea
+            value={what}
+            placeholder="Steps, what you expected, what you got instead."
+            onChange={(e) => setWhat(e.target.value)}
+          />
+          <span className="field__hint">
+            {valid ? 'Ready to send.' : `${Math.max(0, 12 - what.trim().length)} more characters needed.`}
+          </span>
+        </label>
+      </div>
+
+      <label className="toggle-row" style={{ cursor: 'pointer' }}>
+        <div className="toggle-row__text">
+          <div className="toggle-row__t">Include a session log</div>
+          <div className="toggle-row__d">Route, viewport, pixel ratio and browser. No model data.</div>
+        </div>
+        <input
+          type="checkbox"
+          checked={withLog}
+          aria-label="Include a session log"
+          onChange={(e) => setWithLog(e.target.checked)}
+        />
+      </label>
+
+      <div className="row-actions" style={{ marginTop: 'var(--sp-4)' }}>
+        <button className="btn btn--primary" disabled={!valid || busy} onClick={send}>
+          <Icon name="bug" size={14} /> {busy ? 'Sending\u2026' : 'Send report'}
+        </button>
+        {sent ? (
+          <button className="btn btn--ghost" onClick={() => navigate('/settings/support')}>
+            Opened {sent} \u2014 view the thread
+          </button>
+        ) : null}
+      </div>
+    </Card>
+  )
+}
+
+function ToggleRow({ id, title, desc, on }: { id: string; title: string; desc: string; on: boolean }) {
   return (
     <div className="toggle-row">
       <div className="toggle-row__text">
         <div className="toggle-row__t">{title}</div>
         <div className="toggle-row__d">{desc}</div>
       </div>
-      <Switch on={on} />
+      <Switch id={id} on={on} label={title} />
     </div>
   )
 }
@@ -93,15 +232,18 @@ function Body({ section }: { section: Section }) {
                 <span className="field__hint">Last rotated 04/02/26.</span>
               </label>
             </div>
-            <div className="row-actions" style={{ marginTop: 'var(--sp-4)' }}>
-              <button className="btn btn--primary">Save changes</button>
-              <button className="btn">Revoke other sessions</button>
-            </div>
+            {/* "Revoke other sessions" needed a session store that does not
+                exist here, so it is gone rather than looking live. The
+                switches below are per-device and are kept for real. */}
+            <p className="field__hint" style={{ marginTop: 'var(--sp-4)' }}>
+              Account details are read-only in this build — the preferences below are the part
+              this device keeps.
+            </p>
           </Card>
           <Card title="This machine" dividedHead>
-            <ToggleRow title="Keep me signed in" desc="Skip the login prompt on this device." on />
-            <ToggleRow title="Send crash reports" desc="Anonymous stack traces only." on />
-            <ToggleRow title="Beta channel" desc="Opt into pre-release editor builds." on={false} />
+            <ToggleRow id="stay" title="Keep me signed in" desc="Skip the login prompt on this device." on />
+            <ToggleRow id="crash" title="Send crash reports" desc="Anonymous stack traces only." on />
+            <ToggleRow id="beta" title="Beta channel" desc="Opt into pre-release editor builds." on={false} />
           </Card>
           <SectionSlot
             title="Reusable card for section sectioning"
@@ -154,50 +296,14 @@ function Body({ section }: { section: Section }) {
             </div>
           </Card>
           <Card title="Watchers" dividedHead>
-            <ToggleRow title="Reload on external change" desc="Pick up edits made outside the editor." on />
-            <ToggleRow title="Index subfolders" desc="Walk nested directories when building the library." on />
+            <ToggleRow id="reload" title="Reload on external change" desc="Pick up edits made outside the editor." on />
+            <ToggleRow id="subfolders" title="Index subfolders" desc="Walk nested directories when building the library." on />
           </Card>
         </>
       )
 
     case 'report-a-bug':
-      return (
-        <>
-          <Card title="Report a bug" note="Goes straight to the tracker with your session log." dividedHead>
-            <div className="field-grid">
-              <label className="field">
-                <span className="field__label">Area</span>
-                <select defaultValue="editor">
-                  <option value="editor">Editor / viewport</option>
-                  <option value="library">Library</option>
-                  <option value="pack">Resource pack sync</option>
-                  <option value="other">Something else</option>
-                </select>
-              </label>
-              <label className="field">
-                <span className="field__label">Severity</span>
-                <select defaultValue="normal">
-                  <option value="low">Cosmetic</option>
-                  <option value="normal">Normal</option>
-                  <option value="high">Blocks my work</option>
-                </select>
-              </label>
-              <label className="field field--wide">
-                <span className="field__label">What happened</span>
-                <textarea placeholder="Steps, what you expected, what you got instead." />
-              </label>
-            </div>
-            <div className="row-actions" style={{ marginTop: 'var(--sp-4)' }}>
-              <button className="btn btn--primary">
-                <Icon name="bug" size={14} /> Send report
-              </button>
-              <button className="btn">
-                <Icon name="file" size={14} /> Attach session log
-              </button>
-            </div>
-          </Card>
-        </>
-      )
+      return <ReportABug />
 
     case 'about':
       return (

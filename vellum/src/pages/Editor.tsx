@@ -54,17 +54,19 @@ import {
   paint as paintTexels,
   pick,
   rgbaToHex,
+  drawShape,
   strokeBetween,
   texelOfFace,
   toDataUrl,
 } from '../lib/texture'
-import type { PixelSurface } from '../lib/texture'
+import type { PixelSurface, ShapeKind } from '../lib/texture'
 import type { Rescale } from '../lib/uv-pack'
 import { DEFAULT_DISPLAY, DisplayPanel } from './editor/DisplayPanel'
 import type { DisplayState, SlotId } from './editor/DisplayPanel'
 import { NewModelDialog } from './editor/NewModelDialog'
 import { ConfirmDialog } from './editor/ConfirmDialog'
 import { blockNavigation, navigate } from '../lib/router'
+import { saveDataUrl, saveFile } from '../lib/download'
 import './Editor.css'
 
 type Mode = 'edit' | 'paint' | 'animate' | 'display'
@@ -87,6 +89,9 @@ type Actions = {
   onDeleteClip: () => void
   onAddKey: () => void
   onCloseLoop: () => void
+  onQuad: () => void
+  onGrid: () => void
+  onExportTexture: () => void
 }
 
 function buildMenus(
@@ -159,16 +164,20 @@ function buildMenus(
     {
       label: 'View',
       entries: [
-        { label: 'Quad View', icon: 'grid', shortcut: 'Ctrl 4' },
-        { label: 'Toggle Grid', icon: 'grid', shortcut: 'G' },
+        { label: 'Quad View', icon: 'layers', shortcut: 'Ctrl 4', onSelect: actions.onQuad },
+        { label: 'Toggle Grid', icon: 'grid', shortcut: 'G', onSelect: actions.onGrid },
         { kind: 'separator' },
-        { label: 'Screenshot Model', icon: 'camera' },
+        /* "Screenshot Model" used to sit here doing nothing, and there is
+           no honest way to implement it: the viewport is composed from
+           CSS 3D transforms, not a canvas, so there is nothing to read
+           pixels out of. Exporting the texture is the thing this menu
+           can actually do. */
+        { label: 'Export texture PNG', icon: 'image', onSelect: actions.onExportTexture },
       ],
     },
     {
       label: 'Help',
       entries: [
-        { label: 'Documentation', icon: 'book' },
         { label: 'Report a Bug', icon: 'bug', onSelect: () => navigate('/settings/report-a-bug') },
         { label: 'About Vellum', icon: 'info', onSelect: () => navigate('/settings/about') },
       ],
@@ -275,6 +284,13 @@ function Toolbar({
   onAddBone,
   brush,
   onBrush,
+  shape,
+  onShape,
+  shapeFilled,
+  onShapeFilled,
+  snap,
+  onSnap,
+  onExportTexture,
   canUndo,
   canRedo,
   onUndo,
@@ -294,6 +310,13 @@ function Toolbar({
   onAddBone: () => void
   brush: number
   onBrush: (n: number) => void
+  shape: ShapeKind
+  onShape: (k: ShapeKind) => void
+  shapeFilled: boolean
+  onShapeFilled: (v: boolean) => void
+  snap: boolean
+  onSnap: () => void
+  onExportTexture: () => void
   canUndo: boolean
   canRedo: boolean
   onUndo: () => void
@@ -365,38 +388,65 @@ function Toolbar({
       <span className="ed-sep" />
 
       {mode === 'paint' ? (
-        <label className="ed-brush">
-          <span>Brush</span>
-          <input
-            type="range"
-            min={1}
-            max={8}
-            value={brush}
-            onChange={(e) => onBrush(Number(e.target.value))}
-            aria-label="Brush size"
-          />
-          <span className="mono">{brush}px</span>
-        </label>
-      ) : (
-        <select className="ed-select" defaultValue="global" aria-label="Transform space">
-          <option value="global">Global</option>
-          <option value="bone">Bone</option>
-          <option value="local">Local</option>
-        </select>
-      )}
+        <>
+          <label className="ed-brush">
+            <span>Brush</span>
+            <input
+              type="range"
+              min={1}
+              max={8}
+              value={brush}
+              onChange={(e) => onBrush(Number(e.target.value))}
+              aria-label="Brush size"
+            />
+            <span className="mono">{brush}px</span>
+          </label>
+          {tool === 'shape' ? (
+            <div className="ed-tools" role="group" aria-label="Shape">
+              {(['rect', 'ellipse'] as const).map((k) => (
+                <button
+                  key={k}
+                  className="ed-tool"
+                  title={k === 'rect' ? 'Rectangle' : 'Ellipse'}
+                  aria-label={k === 'rect' ? 'Rectangle' : 'Ellipse'}
+                  aria-pressed={shape === k}
+                  onClick={() => onShape(k)}
+                >
+                  <Icon name={k === 'rect' ? 'shape' : 'globe'} size={15} />
+                </button>
+              ))}
+              <button
+                className="ed-tool"
+                title="Fill the shape"
+                aria-label="Fill the shape"
+                aria-pressed={shapeFilled}
+                onClick={() => onShapeFilled(!shapeFilled)}
+              >
+                <Icon name="bucket" size={15} />
+              </button>
+            </div>
+          ) : null}
+        </>
+      ) : null}
 
       <div className="ed-toolbar__right">
-        <button className="ed-tool" title="Toggle grid" aria-pressed={grid} onClick={onGrid}>
+        <button className="ed-tool" title="Toggle grid (G)" aria-pressed={grid} onClick={onGrid}>
           <Icon name="grid" size={15} />
         </button>
-        <button className="ed-tool" title="Quad view" aria-pressed={quad} onClick={onQuad}>
+        <button className="ed-tool" title="Quad view (Ctrl 4)" aria-pressed={quad} onClick={onQuad}>
           <Icon name="layers" size={15} />
         </button>
-        <button className="ed-tool" title="Magnet snap" aria-pressed={false}>
+        <button
+          className="ed-tool"
+          title={snap ? 'Snapping to whole units' : 'Snap to whole units'}
+          aria-label="Snap to whole units"
+          aria-pressed={snap}
+          onClick={onSnap}
+        >
           <Icon name="magnet" size={15} />
         </button>
-        <button className="ed-tool" title="Screenshot">
-          <Icon name="camera" size={15} />
+        <button className="ed-tool" title="Export the texture as a PNG" aria-label="Export texture" onClick={onExportTexture}>
+          <Icon name="image" size={15} />
         </button>
       </div>
     </div>
@@ -447,6 +497,7 @@ function NumField({
   step = 1,
   disabled,
   onCommit,
+  snap,
 }: {
   axis: 'x' | 'y' | 'z' | 'n'
   value: number
@@ -455,7 +506,10 @@ function NumField({
   disabled?: boolean
   /** fired once a scrub ends, so a drag is one undo step rather than forty */
   onCommit?: () => void
+  /** round to whole units - what the magnet in the toolbar turns on */
+  snap?: boolean
 }) {
+  const emit = (v: number) => onChange(snap ? Math.round(v) : v)
   const drag = useRef<{ x: number; start: number } | null>(null)
   const [draft, setDraft] = useState<string | null>(null)
 
@@ -472,7 +526,7 @@ function NumField({
         onPointerMove={(e) => {
           const d = drag.current
           if (!d) return
-          onChange(Number((d.start + Math.round((e.clientX - d.x) / 3) * step).toFixed(2)))
+          emit(Number((d.start + Math.round((e.clientX - d.x) / 3) * step).toFixed(2)))
         }}
         onPointerUp={() => {
           if (drag.current) onCommit?.()
@@ -490,7 +544,7 @@ function NumField({
         onBlur={() => {
           if (draft !== null) {
             const next = Number(draft)
-            if (Number.isFinite(next)) onChange(next)
+            if (Number.isFinite(next)) emit(next)
             setDraft(null)
             onCommit?.()
           }
@@ -511,6 +565,7 @@ function NumRow({
   step,
   disabled,
   onCommit,
+  snap,
 }: {
   label: string
   value: Vec3
@@ -518,6 +573,7 @@ function NumRow({
   step?: number
   disabled?: boolean
   onCommit?: () => void
+  snap?: boolean
 }) {
   const axes: Array<'x' | 'y' | 'z'> = ['x', 'y', 'z']
   return (
@@ -530,6 +586,7 @@ function NumRow({
           step={step}
           disabled={disabled}
           onCommit={onCommit}
+          snap={snap}
           value={value[i]}
           onChange={(v) => {
             const next = [...value] as Vec3
@@ -548,10 +605,13 @@ function CubePanel({
   cube,
   kind,
   onChange,
+  snap,
 }: {
   cube: Cube | null
   kind: ProjectKind
   onChange: (fn: (c: Cube) => Cube) => void
+  /** the toolbar magnet: whole units for the fields where they mean something */
+  snap: boolean
 }) {
   if (!cube) {
     return <p className="ed-hint">Select a cube in the outliner to edit it.</p>
@@ -567,12 +627,14 @@ function CubePanel({
         <NumRow
           label="Position"
           value={cube.from}
+          snap={snap}
           onChange={(from) => onChange((c) => setCubePosition(c, from))}
         />
-        <NumRow label="Size" value={size} onChange={(s) => onChange((c) => setCubeSize(c, s))} />
+        <NumRow label="Size" value={size} snap={snap} onChange={(s) => onChange((c) => setCubeSize(c, s))} />
         <NumRow
           label="Pivot"
           value={cube.origin}
+          snap={snap}
           onChange={(origin) => onChange((c) => ({ ...c, origin }))}
         />
         <NumRow
@@ -797,7 +859,10 @@ function hexToHsv(hex: string): [number, number, number] {
   return [h, max ? d / max : 0, max]
 }
 
+const HEX = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i
+
 function ColorPanel({ colour, onColour }: { colour: string; onColour: (hex: string) => void }) {
+  const [draft, setDraft] = useState<string | null>(null)
   const [hue, setHue] = useState(() => hexToHsv(colour)[0])
   const [sat, setSat] = useState(() => hexToHsv(colour)[1])
   const [val, setVal] = useState(() => hexToHsv(colour)[2])
@@ -815,6 +880,21 @@ function ColorPanel({ colour, onColour }: { colour: string; onColour: (hex: stri
 
   const emit = (h: number, s2: number, v: number) => {
     const hex = hsvToHex(h, s2, v)
+    external.current = hex
+    onColour(hex)
+  }
+
+  const commitHex = () => {
+    if (draft === null) return
+    const m = HEX.exec(draft.trim())
+    setDraft(null)
+    if (!m) return
+    const body = m[1].length === 3 ? m[1].split('').map((c) => c + c).join('') : m[1]
+    const hex = `#${body.toLowerCase()}`
+    const [h, s2, v] = hexToHsv(hex)
+    setHue(h)
+    setSat(s2)
+    setVal(v)
     external.current = hex
     onColour(hex)
   }
@@ -856,7 +936,21 @@ function ColorPanel({ colour, onColour }: { colour: string; onColour: (hex: stri
 
       <div className="color-foot">
         <span className="color-swatch" style={{ background: colour }} />
-        <input className="color-hex" value={colour.toUpperCase()} readOnly />
+        {/* it was a read-only input dressed as an editable one, so an exact
+            colour could be read and never entered */}
+        <input
+          className="color-hex"
+          value={draft ?? colour.toUpperCase()}
+          aria-label="Colour, as hex"
+          spellCheck={false}
+          maxLength={7}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={() => commitHex()}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
+            if (e.key === 'Escape') setDraft(null)
+          }}
+        />
       </div>
 
       <div className="palette">
@@ -1651,6 +1745,12 @@ export function Editor({ segments }: { segments: string[] }) {
   // paint
   const [colour, setColour] = useState('#cd594e')
   const [brush, setBrush] = useState(1)
+  const [shape, setShape] = useState<ShapeKind>('rect')
+  const [shapeFilled, setShapeFilled] = useState(false)
+  const [snap, setSnap] = useState(true)
+  const [textureIndex, setTextureIndex] = useState(0)
+  const shapeFrom = useRef<[number, number] | null>(null)
+  const shapeUndo = useRef<ImageData | null>(null)
   const surfaces = useRef(new Map<string, PixelSurface>())
   const lastTexel = useRef<[number, number] | null>(null)
   const commitTimer = useRef(0)
@@ -1946,7 +2046,21 @@ export function Editor({ segments }: { segments: string[] }) {
   /* One texel, one tool. Everything upstream - the 2D sheet and the 3D
      back-projection - resolves to a call here. */
   const applyTool = useCallback(
-    (textureId: string, x: number, y: number, bounds: UVRect | null, phase: 'down' | 'move') => {
+    (
+      textureId: string,
+      x: number,
+      y: number,
+      bounds: UVRect | null,
+      phase: 'down' | 'move',
+      /**
+       * Where a brush or shape stamp may write. Set when painting on the
+       * model, where a stamp that runs off the face lands on some other
+       * cube; null on the 2D sheet, where the whole atlas is the canvas
+       * and clipping to an island would make half the tools useless.
+       * `bounds` is separate: it is what a fill is bounded by.
+       */
+      clip: UVRect | null = null,
+    ) => {
       const surface = surfaces.current.get(textureId)
       /* A stroke started in the same frame as an undo would otherwise
          land on the canvas being replaced, and re-encode it. Dropping
@@ -1955,7 +2069,35 @@ export function Editor({ segments }: { segments: string[] }) {
 
       if (tool === 'pipette') {
         const sampled = pick(surface, x, y)
-        if (sampled && sampled[3] > 0) setColour(rgbaToHex(sampled))
+        // a transparent texel used to be indistinguishable from a missed click
+        if (!sampled) return
+        if (sampled[3] === 0) {
+          setSaveNote('That texel is transparent \u2014 nothing to pick.')
+          window.setTimeout(() => setSaveNote(null), 2500)
+          return
+        }
+        setColour(rgbaToHex(sampled))
+        return
+      }
+
+      /* Rectangle or ellipse between where the drag started and where it
+         is now. The canvas is restored from a snapshot on every move so
+         the shape follows the cursor instead of leaving a smear - which
+         is what this tool did before, being the brush with a new icon. */
+      if (tool === 'shape') {
+        if (phase === 'down') {
+          shapeFrom.current = [x, y]
+          shapeUndo.current = surface.ctx.getImageData(0, 0, surface.width, surface.height)
+          lastTexel.current = [x, y]
+          return
+        }
+        const from = shapeFrom.current
+        const snapshot = shapeUndo.current
+        if (!from || !snapshot) return
+        surface.ctx.putImageData(snapshot, 0, 0)
+        drawShape(surface, from, [x, y], hexToRgba(colour), shape, shapeFilled, brush, clip)
+        lastTexel.current = [x, y]
+        commitTexture(textureId)
         return
       }
 
@@ -1968,7 +2110,7 @@ export function Editor({ segments }: { segments: string[] }) {
       }
 
       const rgba = tool === 'eraser' ? ([0, 0, 0, 0] as [number, number, number, number]) : hexToRgba(colour)
-      const stamp = (px: number, py: number) => paintTexels(surface, px, py, rgba, brush, bounds)
+      const stamp = (px: number, py: number) => paintTexels(surface, px, py, rgba, brush, clip)
 
       // a fast drag would otherwise dot rather than draw
       if (phase === 'move' && lastTexel.current) strokeBetween(lastTexel.current, [x, y], stamp)
@@ -1977,13 +2119,15 @@ export function Editor({ segments }: { segments: string[] }) {
       lastTexel.current = [x, y]
       commitTexture(textureId)
     },
-    [tool, colour, brush, commitTexture],
+    [tool, colour, brush, shape, shapeFilled, commitTexture],
   )
 
   /* A stroke is one undo step, however many texels it wrote. The last
      frame is flushed first, or it would land after the step closed. */
   useEffect(() => {
     const done = () => {
+      shapeFrom.current = null
+      shapeUndo.current = null
       if (!lastTexel.current && !commitTimer.current) return
       lastTexel.current = null
       flushTexture()
@@ -2014,7 +2158,7 @@ export function Editor({ segments }: { segments: string[] }) {
       const texel = texelOfFace(f.uv, u, v)
       // a zero-area UV has no texel under the click, so there is nothing to paint
       if (!texel) return
-      applyTool(f.texture, texel[0], texel[1], faceBounds(f.uv), phase)
+      applyTool(f.texture, texel[0], texel[1], faceBounds(f.uv), phase, faceBounds(f.uv))
     },
     [model.cubes, applyTool, history, tool],
   )
@@ -2163,13 +2307,30 @@ export function Editor({ segments }: { segments: string[] }) {
         history.commit(isBone ? 'delete bone' : 'delete cube', next)
         setSelected(next.cubes[0]?.id ?? null)
       },
+      onQuad: () => setQuad((q) => !q),
+      onGrid: () => setGrid((g) => !g),
+      onExportTexture: () => {
+        const texture = model.textures[textureIndex] ?? model.textures[0]
+        if (!texture) {
+          setSaveNote('This model has no texture to export.')
+          window.setTimeout(() => setSaveNote(null), 4000)
+          return
+        }
+        // the decoded canvas is the painted one; the model's URI may lag a frame
+        const surface = surfaces.current.get(texture.id)
+        const url = surface ? toDataUrl(surface) : texture.source
+        void saveDataUrl(texture.name.replace(/\.png$/i, '') + '.png', url).then((note: string) => {
+          setSaveNote(note)
+          window.setTimeout(() => setSaveNote(null), 6000)
+        })
+      },
       onNewClip: () => anim.newClip(),
       onDuplicateClip: () => anim.duplicateClip(),
       onDeleteClip: () => anim.removeClip(),
       onAddKey: () => animBone && anim.addKey(animBone, 'rotation'),
       onCloseLoop: () => anim.closeLoop(),
     }),
-    [model, fileName, kind, loadModel, runSave, selected, bones, history, anim, animBone, guarded, rescale],
+    [model, fileName, kind, textureIndex, loadModel, runSave, selected, bones, history, anim, animBone, guarded, rescale],
   )
 
   /* Keyboard. Anything typed into a field belongs to that field, so the
@@ -2213,6 +2374,16 @@ export function Editor({ segments }: { segments: string[] }) {
       if (mod && e.key.toLowerCase() === 'o') {
         e.preventDefault()
         actions.onOpen()
+        return
+      }
+      if (mod && e.key.toLowerCase() === 'n') {
+        e.preventDefault()
+        actions.onNew()
+        return
+      }
+      if (mod && e.key === '4') {
+        e.preventDefault()
+        setQuad((q) => !q)
         return
       }
       if (mod) return
@@ -2311,6 +2482,13 @@ export function Editor({ segments }: { segments: string[] }) {
         onAddBone={actions.onAddBone}
         brush={brush}
         onBrush={setBrush}
+        shape={shape}
+        onShape={setShape}
+        shapeFilled={shapeFilled}
+        onShapeFilled={setShapeFilled}
+        snap={snap}
+        onSnap={() => setSnap((v) => !v)}
+        onExportTexture={actions.onExportTexture}
         canUndo={history.canUndo}
         canRedo={history.canRedo}
         onUndo={history.undo}
@@ -2363,7 +2541,7 @@ export function Editor({ segments }: { segments: string[] }) {
               </>
             ) : (
               <Panel title="Cube" count={cube?.name ?? 'none'}>
-                <CubePanel cube={cube} kind={kind} onChange={editCube} />
+                <CubePanel cube={cube} kind={kind} onChange={editCube} snap={snap} />
               </Panel>
             )}
 
@@ -2436,7 +2614,13 @@ export function Editor({ segments }: { segments: string[] }) {
 
             <Panel title="Textures" count={model.textures.length}>
               {model.textures.map((t, i) => (
-                <button key={t.id} className="tex-row" aria-selected={i === 0}>
+                <button
+                  key={t.id}
+                  className="tex-row"
+                  aria-selected={i === textureIndex}
+                  title={`${t.name} \u2014 click to select, then View \u25b8 Export texture PNG`}
+                  onClick={() => setTextureIndex(i)}
+                >
                   <span
                     className="tex-thumb"
                     style={{
@@ -2505,53 +2689,4 @@ export function Editor({ segments }: { segments: string[] }) {
       </div>
     </div>
   )
-}
-
-/* ---------------------------------------------------------------
-   Handing the viewer a file.
-
-   In a browser this is an anchor click and the file is a true
-   `.vellum`. Inside the Artifact viewer the page cannot download
-   directly - it offers the file through the host, which allowlists
-   extensions, and `.vellum` is not among them. The bytes are identical
-   either way; only the name the viewer is offered differs, and the
-   editor says so rather than letting the save fail silently.
-   --------------------------------------------------------------- */
-type DownloadsApi = { save: (req: { filename: string; data: string }) => Promise<unknown> }
-
-declare global {
-  interface Window {
-    claude?: { use?: (name: string) => Promise<unknown> }
-  }
-}
-
-async function saveFile(name: string, text: string): Promise<string> {
-  let host: DownloadsApi | null = null
-  try {
-    host = ((await window.claude?.use?.('downloads')) as DownloadsApi | null) ?? null
-  } catch {
-    host = null
-  }
-
-  if (host) {
-    const filename = name.endsWith('.vellum') ? `${name}.json` : name
-    try {
-      await host.save({ filename, data: text })
-      return filename === name
-        ? `Saved ${filename}`
-        : `Saved as ${filename} — this viewer does not allow a .vellum extension`
-    } catch (e) {
-      const code = (e as { code?: string })?.code ?? 'failed'
-      return code === 'declined' ? 'Save cancelled' : `Could not save (${code})`
-    }
-  }
-
-  const blob = new Blob([text], { type: 'application/json' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = name
-  a.click()
-  URL.revokeObjectURL(url)
-  return `Saved ${name}`
 }

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, useSyncExternalStore } from 'react'
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { Card } from '../components/Card'
 import { Menu } from '../components/Menu'
 import { ApiReference as ApiSurface, EndpointBadge } from '../components/Endpoint'
@@ -20,9 +20,8 @@ import {
   loadLink,
 } from '../lib/dash-api'
 import type { Link, LinkState } from '../lib/dash-api'
+import { saveBlob } from '../lib/download'
 import './Dashboard.css'
-
-const inert = { kind: 'label' as const, label: 'Placeholder - no actions wired' }
 
 const dotsTrigger = ({ toggle, id }: { toggle: () => void; id: string }) => (
   <button className="icon-btn" id={id} onClick={toggle} aria-label="Card actions">
@@ -153,10 +152,27 @@ function FeedCard({
     return () => window.clearInterval(id)
   }, [demo])
 
-  const start = useCallback(() => {
-    if (!link.baseUrl.trim()) return
-    connect({ ...link, baseUrl: link.baseUrl.trim() }, setState)
-  }, [link])
+  const start = useCallback(
+    (next: Link = link) => {
+      if (!next.baseUrl.trim()) return
+      connect({ ...next, baseUrl: next.baseUrl.trim() }, setState)
+    },
+    [link],
+  )
+
+  /* Changing the interval used to update the select and nothing else -
+     the stored link kept the old value, requests kept the old cadence,
+     and Connect was disabled so there was no way to apply it. */
+  const relink = useCallback(
+    (patch: Partial<Link>) => {
+      setLink((l) => {
+        const next = { ...l, ...patch }
+        if (connectedRef.current) connect({ ...next, baseUrl: next.baseUrl.trim() }, setState)
+        return next
+      })
+    },
+    [],
+  )
 
   const stop = useCallback(() => {
     disconnect()
@@ -164,6 +180,8 @@ function FeedCard({
   }, [])
 
   const connected = state.status === 'streaming' || state.status === 'polling'
+  const connectedRef = useRef(connected)
+  connectedRef.current = connected
 
   return (
     <Card
@@ -209,7 +227,7 @@ function FeedCard({
               <select
                 className="field__input"
                 value={link.intervalMs}
-                onChange={(e) => setLink((l) => ({ ...l, intervalMs: Number(e.target.value) }))}
+                onChange={(e) => relink({ intervalMs: Number(e.target.value) })}
               >
                 <option value={5000}>5s</option>
                 <option value={15000}>15s</option>
@@ -223,13 +241,13 @@ function FeedCard({
             <input
               type="checkbox"
               checked={link.stream}
-              onChange={(e) => setLink((l) => ({ ...l, stream: e.target.checked }))}
+              onChange={(e) => relink({ stream: e.target.checked })}
             />
             Try the event stream first, fall back to polling
           </label>
 
           <div className="chip-row">
-            <button className="btn btn--primary btn--sm" onClick={start} disabled={!link.baseUrl.trim() || connected}>
+            <button className="btn btn--primary btn--sm" onClick={() => start()} disabled={!link.baseUrl.trim() || connected}>
               <Icon name="cloud" size={13} /> Connect
             </button>
             <button className="btn btn--ghost btn--sm" onClick={stop} disabled={!connected && state.status !== 'error'}>
@@ -331,6 +349,28 @@ export function Dashboard() {
   const { snapshot, meta, log, now, health } = useDash()
   const { server, pack, players, subscription, files } = snapshot
 
+  /* These are the two things the dashboard can genuinely do from a
+     card menu, and both go through the same API the reference
+     documents rather than a private path. */
+  const onUnlink = useCallback(() => {
+    disconnect()
+    dash.reset()
+  }, [])
+
+  const onCopyServer = useCallback(() => {
+    void navigator.clipboard?.writeText(JSON.stringify(dash.read().server, null, 2))
+  }, [])
+
+  const onExportFiles = useCallback(() => {
+    const head = 'name,directory,touched,by,sync,stale_clients'
+    const rows = dashStore.snapshot.files.map((f) =>
+      [f.name, f.where, f.touchedAt, f.by, f.sync, f.staleClients]
+        .map((v) => `"${String(v).replace(/"/g, '""')}"`)
+        .join(','),
+    )
+    void saveBlob('recent-files.csv', new Blob([[head, ...rows].join('\n')], { type: 'text/csv' }))
+  }, [])
+
   const total = players.correct + players.wrong
   const pct = total ? Math.round((players.correct / total) * 100) : 0
   const live = meta.fed.length > 0
@@ -377,7 +417,18 @@ export function Dashboard() {
               <span className="server-tag" data-online={server.online}>
                 {server.status}
               </span>
-              <Menu align="end" entries={[inert, { label: 'Rename realm', icon: 'pencil' }, { label: 'Reconnect', icon: 'refresh' }, { kind: 'separator' }, { label: 'Unlink', icon: 'close', danger: true }]} trigger={dotsTrigger} />
+              {/* Rename realm and Reconnect were inert: the realm's name
+                  comes from the plugin, and there is nothing to reconnect
+                  to that the feed card does not already own. */}
+              <Menu
+                align="end"
+                entries={[
+                  { label: 'Copy as JSON', icon: 'copy', onSelect: onCopyServer },
+                  { kind: 'separator' },
+                  { label: 'Unlink the plugin', icon: 'close', danger: true, onSelect: onUnlink },
+                ]}
+                trigger={dotsTrigger}
+              />
             </>
           }
         >
@@ -519,7 +570,16 @@ export function Dashboard() {
               <EndpointBadge method="POST" path="/dash/files" base={DASH_BASE} />
               <Menu
                 align="end"
-                entries={[inert, { label: 'Open folder', icon: 'folder' }, { label: 'Export list', icon: 'download' }, { kind: 'separator' }, { label: 'Clear history', icon: 'trash', danger: true }]}
+                entries={[
+                  { label: 'Export list as CSV', icon: 'download', onSelect: onExportFiles },
+                  { kind: 'separator' },
+                  {
+                    label: 'Clear history',
+                    icon: 'trash',
+                    danger: true,
+                    onSelect: () => dash.clearFiles('ui'),
+                  },
+                ]}
                 trigger={dotsTrigger}
               />
             </>

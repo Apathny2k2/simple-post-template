@@ -16,6 +16,12 @@
   cursor: pointer;
 }
 
+/* the stage opts its whole subtree out of hit-testing; the model opts back in */
+.bbbox,
+.bbface {
+  pointer-events: auto;
+}
+
 .bbface {
   position: absolute;
   left: 50%;

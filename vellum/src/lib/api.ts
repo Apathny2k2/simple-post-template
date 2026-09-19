@@ -320,11 +320,15 @@ export const api = {
   }): Promise<Ticket> {
     await latency(320)
     const now = new Date().toISOString()
+    /* The option is disabled in the form, but a disabled option is a UI
+       courtesy, not a rule - the endpoint documents "urgent requires a
+       paid tier" and has to be the one that enforces it. */
+    const priority = input.priority === 'urgent' ? 'high' : input.priority
     const ticket: Ticket = {
       id: store.nextTicketId(),
       subject: input.subject.trim(),
       status: 'open',
-      priority: input.priority,
+      priority,
       category: input.category,
       requester: me,
       assignee: null,
@@ -332,7 +336,7 @@ export const api = {
       updatedAt: now,
       tags: input.tags ?? [],
       unread: 0,
-      slaMinutes: input.priority === 'urgent' ? 60 : 480,
+      slaMinutes: 480,
     }
     store.tickets.unshift(ticket)
 
@@ -340,7 +344,10 @@ export const api = {
       id: nextId('msg'),
       ticketId: ticket.id,
       author: { id: 'sys', name: 'Vellum', role: 'system' },
-      body: 'Ticket opened',
+      body:
+        input.priority === 'urgent'
+          ? 'Ticket opened \u00b7 urgent is a paid tier, so this was filed as high'
+          : 'Ticket opened',
       createdAt: now,
       attachments: [],
       delivery: 'read',
