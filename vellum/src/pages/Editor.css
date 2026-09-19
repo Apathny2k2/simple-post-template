@@ -932,3 +932,65 @@
   .ed-col { max-height: none; overflow: visible; }
   .ed-split, .ed-rails__gap { display: none; }
 }
+
+/* ---------------- model-driven panel bits ---------------- */
+
+.ed-hint {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  font-size: var(--fs-xs);
+  color: var(--ink-faint);
+  line-height: 1.5;
+}
+
+.ed-hint svg { margin-top: 2px; flex: none; color: var(--wax-300); }
+.ed-hint--warn { margin-top: 9px; color: var(--wax-200); }
+
+.uv-faces {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 9px;
+}
+
+.uv-faces .chip { text-transform: capitalize; padding: 3px 9px; }
+
+.nf[data-disabled] { opacity: 0.5; }
+
+.ed-issues {
+  display: grid;
+  gap: 6px;
+  max-height: 190px;
+  overflow-y: auto;
+}
+
+.ed-issues li {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  font-size: var(--fs-2xs);
+  line-height: 1.45;
+  color: var(--ink-muted);
+}
+
+.ed-issues li svg { margin-top: 2px; flex: none; }
+.ed-issues li[data-level='error'] { color: var(--wax-200); }
+.ed-issues li[data-level='error'] svg { color: var(--wax-300); }
+.ed-issues li[data-level='warning'] svg { color: var(--flame-400); }
+
+.ed-status__bad { color: var(--wax-200); }
+
+/* the UV editor now draws the real texture behind the face rectangles */
+.uv { background-color: rgba(10, 16, 34, 0.86); }
+
+/* keyframe shape follows its interpolation, the way Blockbench marks them */
+.tl-key[data-interp='step'] { border-radius: 0; }
+.tl-key[data-interp='catmullrom'] { border-radius: 50%; }
+
+/* wireframe view */
+.ed-view[data-shading='wire'] .bbface {
+  background-image: none !important;
+  background-color: transparent !important;
+  outline-color: var(--wax-300);
+}
