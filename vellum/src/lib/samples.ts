@@ -1,12 +1,15 @@
-/* The models the editor opens with. These are real .bbmodel files - the same
-   bytes Blockbench would write, with their textures embedded as data URIs -
-   imported as JSON and parsed at load. */
+/* The models the editor opens with.
 
-import { parseBBModel } from './bbmodel'
+   These ship as `.vellum` - the native format. Their `.bbmodel` sources
+   live under docs/blockbench/source and are kept only as the import
+   record: opening a .bbmodel and saving is the migration, and once
+   migrated a model is a .vellum forever. */
+
+import { readVellum } from './vellum'
 import type { Model } from './bbmodel'
-import alienSword from '../models/alien_sword.bbmodel.json'
-import voidling from '../models/voidling.bbmodel.json'
-import resonatorBlock from '../models/resonator_block.bbmodel.json'
+import alienSword from '../models/alien_sword.vellum.json'
+import voidling from '../models/voidling.vellum.json'
+import resonatorBlock from '../models/resonator_block.vellum.json'
 
 export type Sample = {
   id: string
@@ -19,36 +22,32 @@ export type Sample = {
 
 const of = (
   id: string,
-  file: string,
   label: string,
   kind: Sample['kind'],
   blurb: string,
   raw: unknown,
-): Sample => ({ id, file, label, kind, blurb, model: parseBBModel(raw as object) })
+): Sample => ({ id, file: `${id}.vellum`, label, kind, blurb, model: readVellum(raw as object) })
 
 export const samples: Sample[] = [
   of(
     'alien_sword',
-    'alien_sword.bbmodel',
     'Alien Sword',
     'items',
-    'Generic Model. Swept blade built from stacked per-element rotations.',
+    'A swept blade built from stacked per-element rotations. 22 cubes, no rig.',
     alienSword,
   ),
   of(
     'voidling',
-    'voidling.bbmodel',
     'Voidling',
     'mobs',
-    'Generic Model, rigged to 16 bones and carrying three animations.',
+    'Rigged to 16 bones and carrying three clips: idle, walk and strike.',
     voidling,
   ),
   of(
     'resonator_block',
-    'resonator_block.bbmodel',
     'Resonator Block',
     'blocks',
-    'Java Block format: inside the 16-unit volume, single-axis rotation only.',
+    'Imported from the Java block format: inside the 16-unit volume, one rotated axis.',
     resonatorBlock,
   ),
 ]

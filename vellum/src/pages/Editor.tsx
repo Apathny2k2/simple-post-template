@@ -24,6 +24,8 @@ import type {
   UVRect,
   Vec3,
 } from '../lib/bbmodel'
+import { isVellum, readVellum, vellumFileName, writeVellum } from '../lib/vellum'
+import type { ProjectKind } from '../lib/bbmodel'
 import { sampleById, samples } from '../lib/samples'
 import { navigate } from '../lib/router'
 import './Editor.css'
@@ -34,6 +36,7 @@ type Mode = 'edit' | 'paint' | 'animate' | 'display'
 
 function buildMenus(actions: {
   onOpen: () => void
+  onSave: () => void
   onExport: () => void
   onSample: (id: string) => void
 }): Array<{ label: string; entries: MenuEntry[] }> {
@@ -48,7 +51,8 @@ function buildMenus(actions: {
           onSelect: () => actions.onSample(s.id),
         })),
         { kind: 'separator' },
-        { label: 'Open .bbmodel', icon: 'folder', shortcut: 'Ctrl O', onSelect: actions.onOpen },
+        { label: 'Open model\u2026', icon: 'folder', shortcut: 'Ctrl O', onSelect: actions.onOpen },
+        { label: 'Save .vellum', icon: 'save', shortcut: 'Ctrl S', onSelect: actions.onSave },
         { label: 'Export .bbmodel', icon: 'download', shortcut: 'Ctrl E', onSelect: actions.onExport },
       ],
     },
@@ -781,6 +785,7 @@ const quadViews = [
 
 function Viewport({
   model,
+  format,
   grid,
   quad,
   scale,
@@ -790,6 +795,7 @@ function Viewport({
   onSelect,
 }: {
   model: Model
+  format: string
   grid: boolean
   quad: boolean
   scale: number
@@ -837,7 +843,7 @@ function Viewport({
         )}
 
         <div className="ed-view__corner ed-view__corner--tl">
-          <Icon name="cube" size={11} /> {model.format}
+          <Icon name="cube" size={11} /> {format}
         </div>
 
         <div className="ed-view__corner ed-view__corner--tr">
@@ -1063,6 +1069,7 @@ export function Editor({ segments }: { segments: string[] }) {
 
   const [model, setModel] = useState<Model>(initial.model)
   const [fileName, setFileName] = useState(initial.file)
+  const [kind, setKind] = useState<ProjectKind>(initial.kind)
   const [mode, setMode] = useState<Mode>('edit')
   const [tool, setTool] = useState('move')
   const [grid, setGrid] = useState(true)
@@ -1077,9 +1084,10 @@ export function Editor({ segments }: { segments: string[] }) {
   const [playing, setPlaying] = useState(false)
   const fileInput = useRef<HTMLInputElement>(null)
 
-  const loadModel = useCallback((next: Model, name: string) => {
+  const loadModel = useCallback((next: Model, name: string, nextKind: ProjectKind = 'items') => {
     setModel(next)
-    setFileName(name)
+    setFileName(vellumFileName(name))
+    setKind(nextKind)
     setSelected(next.elements[0]?.uuid ?? null)
     setAnimUuid(next.animations[0]?.uuid ?? null)
     setCollapsed(new Set())
@@ -1093,11 +1101,17 @@ export function Editor({ segments }: { segments: string[] }) {
     if (!toolsets[mode].some((t) => t.id === tool)) setTool(toolsets[mode][0].id)
   }, [mode, tool])
 
+  // Animate mode opens playing: a still first frame reads as "animation broken"
+  useEffect(() => {
+    if (mode === 'animate' && model.animations.length) setPlaying(true)
+    if (mode !== 'animate') setPlaying(false)
+  }, [mode, model])
+
   const animation = useMemo(
     () => model.animations.find((a) => a.uuid === animUuid) ?? model.animations[0] ?? null,
     [model, animUuid],
   )
-  const issues = useMemo(() => validateModel(model), [model])
+  const issues = useMemo(() => validateModel(model, kind), [model, kind])
   const errors = issues.filter((i) => i.level === 'error').length
   const element = model.elements.find((e) => e.uuid === selected) ?? null
 
@@ -1112,33 +1126,43 @@ export function Editor({ segments }: { segments: string[] }) {
     [selected],
   )
 
+  const [openError, setOpenError] = useState<string | null>(null)
+  const [saveNote, setSaveNote] = useState<string | null>(null)
+
+  const runSave = useCallback((fileName: string, text: string) => {
+    void saveFile(fileName, text).then((note) => {
+      setSaveNote(note)
+      window.setTimeout(() => setSaveNote(null), 6000)
+    })
+  }, [])
+
   const actions = useMemo(
     () => ({
       onOpen: () => fileInput.current?.click(),
-      onExport: () => {
-        const blob = new Blob([serializeBBModel(model)], { type: 'application/json' })
-        const url = URL.createObjectURL(blob)
-        const a = document.createElement('a')
-        a.href = url
-        a.download = fileName.endsWith('.bbmodel') ? fileName : `${fileName}.bbmodel`
-        a.click()
-        URL.revokeObjectURL(url)
-      },
+      onSave: () => runSave(vellumFileName(fileName), writeVellum(model)),
+      onExport: () =>
+        runSave(vellumFileName(fileName).replace(/\.vellum$/, '.bbmodel'), serializeBBModel(model)),
       onSample: (id: string) => {
         const s = sampleById(id)
-        loadModel(s.model, s.file)
+        loadModel(s.model, s.file, s.kind)
       },
     }),
-    [model, fileName, loadModel],
+    [model, fileName, loadModel, runSave],
   )
 
+
+  /* A .vellum is read natively. A .bbmodel is an import: opening one and
+     saving it is the migration, which is why the name is restamped on load. */
   const onFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
+    const text = await file.text()
     try {
-      loadModel(parseBBModel(await file.text()), file.name)
-    } catch {
-      // a file that will not parse is not a model; leave the current one alone
+      const next = isVellum(text) ? readVellum(text) : parseBBModel(text)
+      loadModel(next, file.name, kind)
+      setOpenError(null)
+    } catch (err) {
+      setOpenError(err instanceof Error ? err.message : 'That file could not be read as a model.')
     }
     e.target.value = ''
   }
@@ -1170,7 +1194,7 @@ export function Editor({ segments }: { segments: string[] }) {
       <input
         ref={fileInput}
         type="file"
-        accept=".bbmodel,.json,application/json"
+        accept=".vellum,.bbmodel,.json,application/json"
         hidden
         onChange={onFile}
       />
@@ -1191,6 +1215,7 @@ export function Editor({ segments }: { segments: string[] }) {
       <div className="ed-body">
         <Viewport
           model={model}
+          format={`${model.format} \u00b7 ${kind}`}
           grid={grid}
           quad={quad}
           scale={scale}
@@ -1216,7 +1241,16 @@ export function Editor({ segments }: { segments: string[] }) {
               />
             </Panel>
 
-            <Panel title="Validation" count={errors ? `${errors} errors` : 'clean'} defaultOpen={errors > 0}>
+            <Panel
+              title="Validation"
+              count={errors ? `${errors} errors` : 'clean'}
+              defaultOpen={errors > 0 || !!openError}
+            >
+              {openError ? (
+                <p className="ed-hint ed-hint--warn" style={{ marginBottom: 10 }}>
+                  <Icon name="warning" size={11} /> {openError}
+                </p>
+              ) : null}
               {issues.length ? (
                 <ul className="ed-issues">
                   {issues.slice(0, 12).map((i, n) => (
@@ -1297,13 +1331,14 @@ export function Editor({ segments }: { segments: string[] }) {
       ) : null}
 
       <div className="ed-status">
-        <span>{model.format}</span>
+        <span>{fileName}</span>
+        <span>{kind}</span>
         <span>{model.elements.length} elements</span>
         <span>
           {model.resolution.width} x {model.resolution.height}
         </span>
         <span className="ed-status__sel">
-          selected: {element?.name ?? 'none'} · {tool}
+          {saveNote ?? `selected: ${element?.name ?? 'none'} · ${tool}`}
         </span>
         <div className="ed-status__right">
           <span className={errors ? 'ed-status__bad' : undefined}>
@@ -1315,4 +1350,53 @@ export function Editor({ segments }: { segments: string[] }) {
       </div>
     </div>
   )
+}
+
+/* ---------------------------------------------------------------
+   Handing the viewer a file.
+
+   In a browser this is an anchor click and the file is a true
+   `.vellum`. Inside the Artifact viewer the page cannot download
+   directly - it offers the file through the host, which allowlists
+   extensions, and `.vellum` is not among them. The bytes are identical
+   either way; only the name the viewer is offered differs, and the
+   editor says so rather than letting the save fail silently.
+   --------------------------------------------------------------- */
+type DownloadsApi = { save: (req: { filename: string; data: string }) => Promise<unknown> }
+
+declare global {
+  interface Window {
+    claude?: { use?: (name: string) => Promise<unknown> }
+  }
+}
+
+async function saveFile(name: string, text: string): Promise<string> {
+  let host: DownloadsApi | null = null
+  try {
+    host = ((await window.claude?.use?.('downloads')) as DownloadsApi | null) ?? null
+  } catch {
+    host = null
+  }
+
+  if (host) {
+    const filename = name.endsWith('.vellum') ? `${name}.json` : name
+    try {
+      await host.save({ filename, data: text })
+      return filename === name
+        ? `Saved ${filename}`
+        : `Saved as ${filename} \u2014 this viewer does not allow a .vellum extension`
+    } catch (e) {
+      const code = (e as { code?: string })?.code ?? 'failed'
+      return code === 'declined' ? 'Save cancelled' : `Could not save (${code})`
+    }
+  }
+
+  const blob = new Blob([text], { type: 'application/json' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = name
+  a.click()
+  URL.revokeObjectURL(url)
+  return `Saved ${name}`
 }

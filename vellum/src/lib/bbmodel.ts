@@ -509,7 +509,9 @@ const JAVA_ROTATIONS = new Set([-45, -22.5, 0, 22.5, 45])
  * file the real app would reject. `java_block` is the strict one: its limits
  * mirror what Minecraft's own Java block model format allows.
  */
-export function validateModel(model: Model): Issue[] {
+export type ProjectKind = 'items' | 'mobs' | 'blocks'
+
+export function validateModel(model: Model, kind?: ProjectKind): Issue[] {
   const issues: Issue[] = []
   const seen = new Set<string>()
 
@@ -540,7 +542,9 @@ export function validateModel(model: Model): Issue[] {
       }
     }
 
-    if (model.format === 'java_block') {
+    // `.vellum` carries no Blockbench meta - the architecture puts the kind in
+    // the project path instead - so block rules key off the project, not the file
+    if (kind === 'blocks' || model.format === 'java_block') {
       for (const v of [...el.from, ...el.to]) {
         if (v < -16 || v > 32) {
           issues.push({ level: 'error', message: `"${tag}": ${v} is outside the Java block range of -16..32` })

@@ -30,7 +30,76 @@ than shipping a page that silently 404s its own assets.
 | `#/projects` | sheet 2 | First scene. Pick a shelf: Items, or Mobs & Anim. |
 | `#/projects/:scene/:kind` | sheet 2 | The shared library panel. `< Back`, category tabs, card grid, `< 1 2 3 >`. |
 | `#/settings/:section` | sheet 1 | Search + section list, free sections above the `Paid tiers` divider. |
-| `#/editor/:assetId` | - | The Blockbench-shaped editor, reached from a card's `...` → Open in Editor. |
+| `#/editor/:sampleId` | - | The editor. Opens `.vellum`, imports `.bbmodel`, saves `.vellum`. |
+
+## `.vellum` — the native model format
+
+Every model this engine writes is a `.vellum`. A `.bbmodel` is an **import
+source**: opening one and saving is the migration, and after that the model is a
+`.vellum` forever. `src/lib/vellum.ts` implements the format; the `.bbmodel`
+sources for the bundled samples are kept under `docs/blockbench/source` as the
+import record only.
+
+Not a zip and not a custom binary: a compact, key-ordered UTF-8 JSON document
+with a Vellum-owned schema. The extension is ours; the encoding is JSON so
+`git diff` on a model keeps working.
+
+```
+{"vellum":{"format":"model","version":2},"name":"voidling","resolution":{…},"bones":[…],"cubes":[…],"textures":[…],"clips":[…]}
+```
+
+Four properties are load-bearing, and the round-trip test asserts each rather
+than trusting good intentions:
+
+1. **No magic number.** Identity is the *first JSON key*, so a well-formed file
+   begins byte-for-byte with `HEADER_PREFIX`.
+2. **Key order is structural.** Top-level keys are written in schema order and
+   faces are sorted, so a model whose faces reshuffle does not turn every diff
+   into noise.
+3. **Absent, never null.** Optional keys are omitted rather than written `null`.
+4. **Upgrading is the reader's job,** in memory, on every read. The writer always
+   stamps `CURRENT_VERSION` — never the version it was handed.
+
+Two refusals, both by name rather than by failing somewhere in the middle of a
+cube: a file from a **newer Vellum** than this one, which cannot be known to mean
+what this one would assume; and a **foreign file** — no `vellum` header, or a
+`format` that is not `model`.
+
+### What the shape buys
+
+| | `.bbmodel` | `.vellum` |
+| --- | --- | --- |
+| The tree | duplicated across `groups` + `outliner` | said **once**, as a `parent` id on each bone |
+| `face.texture` | an array index, so reordering re-skins the model | a texture **id** |
+| Animation | animators with mixed-channel keyframes | `clips` → `tracks` (one per bone-channel) → `keys` |
+| Per keyframe | bezier scaffolding written even for linear keys | `time`, `value`, `interp` |
+| Voidling on disk | 251 KB | **38 KB** |
+
+Deliberately **not** in the file: no rig (regenerated on save), no pack models or
+textures, no display transforms, no editor state, and none of Blockbench's
+`meta` — carrying that would leave the document with two version numbers that can
+disagree. The project **kind** (item / mob / block) lives in the project path
+rather than the file, which is why block-format rules key off the project and not
+a string inside the model.
+
+### The codec API
+
+```ts
+import { readVellum, writeVellum, isVellum, VellumFormatError } from './lib/vellum'
+
+const model = readVellum(text)      // throws VellumFormatError, by name
+const bytes = writeVellum(model)    // always stamps CURRENT_VERSION
+isVellum(text)                      // cheap sniff: does it start with {"vellum"
+```
+
+`src/lib/bbmodel.ts` keeps `parseBBModel` / `serializeBBModel` for the import and
+interop paths, plus `validateModel(model, kind)` — the rules the editor refuses to
+write past, including the Java block volume and its single-axis ±22.5°/±45°
+rotation limit.
+
+> The Studio's HTTP surface (`/api/mob/project`, the upload/apply pipeline, leases,
+> identity) belongs to the plugin, not to this editor, and is not implemented
+> here. This app reads and writes files.
 
 ## Support: ticketing and messaging
 
