@@ -1,4 +1,7 @@
-/* Static fixtures. Nothing here talks to a server - this is a layout mock. */
+/* Static fixtures for the library shelves, with the real .bbmodel samples
+   prepended so the first cards on each shelf open an actual model. */
+
+import { samples } from './samples'
 
 export type Scene = {
   id: string
@@ -22,6 +25,8 @@ export type Asset = {
   author: string
   /** drives the placeholder render + hover cube faces */
   hue: [string, string, string]
+  /** set on the cards backed by a real .bbmodel the editor can open */
+  sampleId?: string
 }
 
 export const scenes: Scene[] = [
@@ -106,8 +111,32 @@ export const assets: Asset[] = scenes.flatMap((scene, s) => [
   ...build(mobNames.slice(0, scene.counts.mobs), 'mobs', scene.id, s * 5 + 1),
 ])
 
+const FORMAT_LABEL: Record<string, string> = {
+  free: 'Generic Model',
+  java_block: 'Java Block/Item',
+  bedrock: 'Bedrock Entity',
+}
+
+/* The three models the probes built. These are the only cards whose
+   "Open in Editor" lands on the model the card is actually showing. */
+const realAssets: Asset[] = samples.map((s, i) => ({
+  id: s.id,
+  name: s.label,
+  file: s.file,
+  kind: s.kind === 'mobs' ? 'mobs' : 'items',
+  sceneId: scenes[0].id,
+  format: FORMAT_LABEL[s.model.format] ?? s.model.format,
+  elements: s.model.elements.length,
+  texture: `${s.model.resolution.width} x ${s.model.resolution.height}`,
+  updated: '09/19/26 03:18',
+  author: 'probe',
+  hue: palettes[i % palettes.length],
+  sampleId: s.id,
+}))
+
 export function assetsFor(sceneId: string, kind: AssetKind) {
-  return assets.filter((a) => a.sceneId === sceneId && a.kind === kind)
+  const real = realAssets.filter((a) => a.sceneId === sceneId && a.kind === kind)
+  return [...real, ...assets.filter((a) => a.sceneId === sceneId && a.kind === kind)]
 }
 
 /* ---------------- dashboard fixtures (static + stale on purpose) -------- */

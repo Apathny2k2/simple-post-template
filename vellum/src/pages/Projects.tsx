@@ -1,6 +1,8 @@
 import { useMemo, useState } from 'react'
 import { Menu } from '../components/Menu'
 import { Model3D, blockModel, lanternModel } from '../components/Model3D'
+import { BBModelView } from '../components/BBModelView'
+import { sampleById } from '../lib/samples'
 import { Icon } from '../lib/icons'
 import { assetsFor, scenes } from '../lib/data'
 import type { Asset, AssetKind } from '../lib/data'
@@ -12,6 +14,21 @@ const PER_PAGE = 12
 const kindLabel: Record<AssetKind, string> = {
   items: 'Items',
   mobs: 'Mobs & Anim.',
+}
+
+/** Scale a model so its longest axis lands near `target` pixels. */
+function fitScale(model: { elements: Array<{ from: number[]; to: number[] }> }, target: number) {
+  if (!model.elements.length) return 3
+  const lo = [Infinity, Infinity, Infinity]
+  const hi = [-Infinity, -Infinity, -Infinity]
+  for (const el of model.elements) {
+    for (let i = 0; i < 3; i++) {
+      lo[i] = Math.min(lo[i], el.from[i])
+      hi[i] = Math.max(hi[i], el.to[i])
+    }
+  }
+  const extent = Math.max(hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2], 1)
+  return Math.max(0.8, Math.min(9, target / extent))
 }
 
 /** The flat "2D Render" that sits in the card until you hover it. */
@@ -38,6 +55,8 @@ function FlatRender({ palette }: { palette: [string, string, string] }) {
 function AssetCard({ asset }: { asset: Asset }) {
   const [menuOpen, setMenuOpen] = useState(false)
   const model = asset.kind === 'mobs' ? lanternModel(asset.hue) : blockModel(asset.hue)
+  // cards backed by a real file show that file, not a stand-in
+  const real = asset.sampleId ? sampleById(asset.sampleId).model : null
 
   return (
     <article className="asset" data-open={menuOpen || undefined}>
@@ -50,7 +69,7 @@ function AssetCard({ asset }: { asset: Asset }) {
           align="end"
           onOpenChange={setMenuOpen}
           entries={[
-            { label: 'Open in Editor', icon: 'cube', onSelect: () => navigate(`/editor/${asset.id}`) },
+            { label: 'Open in Editor', icon: 'cube', onSelect: () => navigate(`/editor/${asset.sampleId ?? asset.id}`) },
             { label: 'Showcase', icon: 'camera' },
             { label: 'Duplicate', icon: 'copy' },
             { label: 'View texture', icon: 'image' },
@@ -67,13 +86,34 @@ function AssetCard({ asset }: { asset: Asset }) {
       </header>
 
       <div className="asset__stage">
-        <div className="asset__flat">
-          <FlatRender palette={asset.hue} />
-        </div>
-        <div className="asset__live">
-          <Model3D boxes={model} spin initialPitch={-22} zoom={-210} />
-        </div>
-        <span className="asset__renderlabel">2D render</span>
+        {real ? (
+          <>
+            <div className="asset__flat">
+              <BBModelView
+                model={real}
+                scale={fitScale(real, 120)}
+                grid={false}
+                orbit={false}
+                initialYaw={-30}
+                initialPitch={-16}
+              />
+            </div>
+            <div className="asset__live">
+              <BBModelView model={real} scale={fitScale(real, 132)} grid={false} orbit={false} spin />
+            </div>
+            <span className="asset__renderlabel">.bbmodel</span>
+          </>
+        ) : (
+          <>
+            <div className="asset__flat">
+              <FlatRender palette={asset.hue} />
+            </div>
+            <div className="asset__live">
+              <Model3D boxes={model} spin initialPitch={-22} zoom={-210} />
+            </div>
+            <span className="asset__renderlabel">2D render</span>
+          </>
+        )}
       </div>
 
       <div className="asset__meta">
