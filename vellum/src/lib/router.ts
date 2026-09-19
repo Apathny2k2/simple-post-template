@@ -83,3 +83,14 @@ export function useRoute(): Route {
 
   return route
 }
+
+/**
+ * Every route rendered as "Vellum" in the tab and in history, so a
+ * browser's back list was eight identical entries and a screen reader
+ * announced nothing on navigation.
+ */
+export function useTitle(title: string | null) {
+  useEffect(() => {
+    document.title = title ? `${title} — Vellum` : 'Vellum'
+  }, [title])
+}

@@ -306,7 +306,7 @@ function Thread({
       <header className="th__head">
         <div className="th__title">
           <span className="mono th__id">{ticket.id}</span>
-          <h3>{ticket.subject}</h3>
+          <h2 className="th__subject">{ticket.subject}</h2>
           <div className="th__tags">
             {ticket.tags.map((tag) => (
               <span className="tag" key={tag}>
@@ -422,7 +422,7 @@ function NewTicket({ onClose, onCreate }: { onClose: () => void; onCreate: (t: T
         <header className="dlg__head">
           <div>
             <div className="eyebrow">Support</div>
-            <h3 className="card__title">Open a ticket</h3>
+            <h2 className="card__title">Open a ticket</h2>
           </div>
           <EndpointBadge method="POST" path="/tickets" base={API_BASE} />
           <button className="icon-btn" onClick={onClose} aria-label="Close">
@@ -509,7 +509,7 @@ function ApiReference() {
       initialOpen="POST /tickets"
     >
       <section className="api__group">
-        <h4 className="api__gname">Webhooks</h4>
+        <h3 className="api__gname">Webhooks</h3>
         <p className="api__note">
           Signed with <code className="mono">X-Vellum-Signature</code> (HMAC-SHA256 over the raw
           body). Retried with backoff for 24h until a 2xx. Deduplicate on the event id.

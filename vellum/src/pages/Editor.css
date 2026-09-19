@@ -37,6 +37,12 @@
   border-bottom: 1px solid var(--glass-rim);
   box-shadow: var(--bevel-soft);
   flex: none;
+  /* under about 460px the menus and the file name are wider than the
+     bar. The toolbar below already scrolls; this one clipped instead,
+     so the file name you are editing was cut off with no way to see it. */
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
 }
 
 .ed-menubar__mark {
@@ -69,6 +75,7 @@
 
 .ed-menubar__title {
   margin-left: auto;
+  flex: none;
   display: flex;
   align-items: center;
   gap: 7px;
@@ -404,6 +411,7 @@
 .uv {
   position: relative;
   aspect-ratio: 1;
+  touch-action: none;
   width: 100%;
   border: 1px solid var(--glass-rim);
   border-radius: var(--r-md);
@@ -714,7 +722,7 @@
 
 .tex-row:hover { background: var(--accent-soft); color: var(--ink); transform: translateX(2px); }
 
-.tex-row[aria-selected='true'] {
+.tex-row[aria-current='true'] {
   background: linear-gradient(160deg, rgba(205, 89, 78, 0.24), rgba(148, 47, 46, 0.1));
   border-color: var(--wax-400);
   color: var(--wax-200);
@@ -818,10 +826,24 @@
 }
 
 .tl-name { height: 30px; z-index: 2; cursor: pointer; }
-.tl-name__bone { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tl-name__bone {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  /* it is a button now, so it has to be told not to look like one */
+  background: none;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+  min-width: 0;
+}
 .tl-name__ch { font-family: var(--font-mono); margin-left: auto; opacity: 0.6; }
 
-.tl-name[aria-selected='true'] {
+.tl-name[data-on] {
   color: var(--ink);
   background: #1b2340;
   box-shadow: inset 2px 0 0 var(--wax-300);
@@ -979,9 +1001,19 @@
   font-family: var(--font-mono);
   font-size: var(--fs-2xs);
   color: var(--ink-faint);
-  overflow: hidden;
+  /* the right-hand half of this bar used to be clipped away with no
+     way to reach it - the cube count and the selection both live there */
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
   white-space: nowrap;
 }
+
+.ed-status > * { flex: none; }
+
+.ed-menubar::-webkit-scrollbar,
+.ed-toolbar::-webkit-scrollbar,
+.ed-status::-webkit-scrollbar { height: 0; }
 
 .ed-status__sel { color: var(--wax-200); }
 .ed-status__right { margin-left: auto; display: flex; gap: var(--sp-4); }
@@ -1229,9 +1261,23 @@
 /* ---- timeline rows ---- */
 
 .tl-name { cursor: pointer; }
-.tl-name__bone { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tl-name__bone {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  /* it is a button now, so it has to be told not to look like one */
+  background: none;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+  min-width: 0;
+}
 
-.tl-name[aria-selected='true'] {
+.tl-name[data-on] {
   color: var(--ink);
   background: rgba(205, 89, 78, 0.12);
   box-shadow: inset 2px 0 0 var(--wax-300);
@@ -1338,4 +1384,41 @@
 .tree__root-drop:not(:empty) {
   border: 1px dashed var(--line-dashed);
   background: rgba(205, 89, 78, 0.06);
+}
+
+
+/* ---------------- touch ----------------
+
+   Every surface here is dragged rather than scrolled: the UV sheet, the
+   scrub handle beside a number, the colour square, the timeline ruler
+   and its keys, and the column dividers. Without this the browser reads
+   the first few pixels of each drag as a scroll, takes the pointer away
+   mid-gesture, and the control simply stops following your finger. */
+
+.nf__axis,
+.color-sv,
+.color-hue,
+.tl-ruler,
+.tl-key,
+.tl-playhead,
+.ed-split {
+  touch-action: none;
+}
+
+/* A panel that scrolls should not also bounce the page behind it. */
+.ed-col,
+.tl-main {
+  overscroll-behavior: contain;
+}
+
+
+/* ---------------- phones ----------------
+
+   Below this the viewport is barely wider than the hint that sits in
+   its corner, and the hint describes a mouse: it overlapped the zoom
+   buttons and the axis gizmo, and named gestures a finger does not
+   have. */
+@media (max-width: 560px) {
+  .ed-view__corner--bl { display: none; }
+  .ed-view { min-height: 46vh; }
 }

@@ -17,7 +17,8 @@
   min-width: 0;
 }
 
-.ep__p { overflow: hidden; text-overflow: ellipsis; }
+.ep { max-width: 100%; min-width: 0; }
+.ep__p { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 
 .ep__m {
   display: inline-block;
@@ -79,7 +80,17 @@
   font-size: var(--fs-xs);
 }
 
-.api__path { font-family: var(--font-mono); color: var(--ink); white-space: nowrap; }
+.api__path {
+  font-family: var(--font-mono);
+  color: var(--ink);
+  white-space: nowrap;
+  /* at 390px the summary and the "used by" pill are already hidden and
+     the path is all that is left, so it is the path that has to give -
+     nowrap with nothing to shrink pushed the chevron 15px off screen */
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .api__summary { color: var(--ink-faint); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .api__used {
@@ -144,6 +155,8 @@
   /* the endpoint itself is the useful half of the line at this width */
   .api__summary,
   .api__used { display: none; }
+  .api__path { flex: 1; }
+  .api__chev { flex: none; }
 }
 
 @media (max-width: 900px) {

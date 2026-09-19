@@ -112,6 +112,17 @@
   color: transparent;
 }
 
+/* Forced-colours mode throws the gradient away and keeps `transparent`,
+   which leaves the number invisible - the one figure the card exists to
+   show. Paint it with a real colour there. */
+@media (forced-colors: active) {
+  .stat__value {
+    background: none;
+    color: CanvasText;
+    forced-color-adjust: none;
+  }
+}
+
 .stat__label {
   font-size: var(--fs-2xs);
   letter-spacing: var(--tracking-caps);
@@ -586,6 +597,8 @@
 .feed__log li {
   display: flex;
   align-items: center;
+  /* the corrections list is a second line under the row it belongs to */
+  flex-wrap: wrap;
   gap: 8px;
   padding: 4px 6px;
   border-radius: var(--r-sm);
@@ -631,8 +644,30 @@
   color: var(--flame-400);
   font-family: var(--font-mono);
   font-size: 9px;
-  cursor: help;
+  border: 1px solid transparent;
+  cursor: pointer;
 }
+
+.feed__problems:hover,
+.feed__problems[aria-expanded='true'] { border-color: var(--flame-400); }
+
+.feed__problemlist {
+  flex-basis: 100%;
+  display: grid;
+  gap: 3px;
+  margin: 2px 0 1px;
+  padding: 6px 8px;
+  list-style: none;
+  border-radius: var(--r-sm);
+  background: rgba(4, 8, 18, 0.5);
+  border: 1px solid var(--glass-rim);
+  color: var(--flame-400);
+  font-family: var(--font-mono);
+  font-size: var(--fs-2xs);
+  animation: panel-open var(--dur) var(--spring-soft);
+}
+
+.feed__problemlist li { display: block; padding: 0; border: 0; background: none; }
 
 @media (max-width: 900px) {
   .feed { grid-template-columns: minmax(0, 1fr); }

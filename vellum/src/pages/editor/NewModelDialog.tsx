@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Icon } from '../../lib/icons'
+import { arrowNav, useModal } from '../../lib/a11y'
 import type { NewModelKind } from '../../lib/new-model'
 
 const KINDS: Array<{ id: NewModelKind; label: string; icon: 'cube' | 'anim' | 'grid'; blurb: string; detail: string }> = [
@@ -36,15 +37,14 @@ export function NewModelDialog({
   const [kind, setKind] = useState<NewModelKind>('items')
   const [name, setName] = useState('untitled')
   const first = useRef<HTMLInputElement>(null)
+  const panel = useRef<HTMLDivElement>(null)
+  const kinds = useRef<HTMLDivElement>(null)
+
+  useModal(panel, onClose)
 
   useEffect(() => {
     first.current?.select()
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
-    }
-    document.addEventListener('keydown', onKey)
-    return () => document.removeEventListener('keydown', onKey)
-  }, [onClose])
+  }, [])
 
   // the id rules a project path can carry
   const clean = name.trim().toLowerCase().replace(/[^a-z0-9_]+/g, '_').replace(/^_+|_+$/g, '')
@@ -53,11 +53,11 @@ export function NewModelDialog({
   return (
     <div className="dlg" role="dialog" aria-modal="true" aria-label="New model">
       <div className="dlg__scrim" onClick={onClose} />
-      <div className="dlg__panel" style={{ width: 'min(560px, 100%)' }}>
+      <div className="dlg__panel" ref={panel} style={{ width: 'min(560px, 100%)' }}>
         <header className="dlg__head">
           <div style={{ flex: 1 }}>
             <div className="eyebrow">Vellum</div>
-            <h3 className="card__title">New model</h3>
+            <h2 className="card__title">New model</h2>
           </div>
           <button className="icon-btn" onClick={onClose} aria-label="Close">
             <Icon name="close" size={15} />
@@ -65,13 +65,24 @@ export function NewModelDialog({
         </header>
 
         <div className="dlg__body">
-          <div className="newmodel__kinds" role="radiogroup" aria-label="Model kind">
+          {/* a radiogroup is one stop in the tab order, and the arrows
+              move within it - three separate tab stops is not what a
+              screen reader is told this is */}
+          <div
+            className="newmodel__kinds"
+            role="radiogroup"
+            aria-label="Model kind"
+            ref={kinds}
+            onKeyDown={(e) => arrowNav(kinds.current, e, { orientation: 'both' })}
+          >
             {KINDS.map((k) => (
               <button
                 key={k.id}
                 role="radio"
                 aria-checked={kind === k.id}
+                tabIndex={kind === k.id ? 0 : -1}
                 className="newmodel__kind"
+                onFocus={() => setKind(k.id)}
                 onClick={() => setKind(k.id)}
               >
                 <span className="newmodel__icon">

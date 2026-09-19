@@ -89,7 +89,7 @@ export function ApiReference<G extends string>({
     <Card className={className} eyebrow={eyebrow} title={title} note={note} actions={actions} dividedHead>
       {groups.map(([group, list]) => (
         <section className="api__group" key={group}>
-          <h4 className="api__gname">{group}</h4>
+          <h3 className="api__gname">{group}</h3>
           <div className="api__rows">
             {list.map((e) => {
               const key = `${e.method} ${e.path}`

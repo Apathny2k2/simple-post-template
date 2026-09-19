@@ -21,7 +21,11 @@
   --navy-600: #202e54;
   --navy-500: #2b3d69;
   --navy-400: #3d5287;
-  --navy-300: #5d75a8;
+  /* was #5d75a8, which read 4.1:1 on the app background and 3.3:1 on
+     the lightest panel - under AA for normal text everywhere it was
+     used, and it is used for every hint, caption and secondary label in
+     the app. This clears 4.5:1 against all five panel backgrounds. */
+  --navy-300: #7b90c0;
   --navy-200: #92a5ca;
   --navy-100: #c5d1e7;
   --navy-050: #e9eefa;

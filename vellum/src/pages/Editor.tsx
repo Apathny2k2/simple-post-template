@@ -1,9 +1,10 @@
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { Menu } from '../components/Menu'
 import type { MenuEntry } from '../components/Menu'
 import { ModelView } from '../components/ModelView'
 import { Icon, VellumMark } from '../lib/icons'
+import { arrowNav } from '../lib/a11y'
 import type { IconName } from '../lib/icons'
 import {
   FACES,
@@ -77,7 +78,7 @@ import { DEFAULT_DISPLAY, DisplayPanel } from './editor/DisplayPanel'
 import type { DisplayState, SlotId } from './editor/DisplayPanel'
 import { NewModelDialog } from './editor/NewModelDialog'
 import { ConfirmDialog } from './editor/ConfirmDialog'
-import { blockNavigation, navigate } from '../lib/router'
+import { blockNavigation, navigate, useTitle } from '../lib/router'
 import { saveDataUrl, saveFile } from '../lib/download'
 import './Editor.css'
 
@@ -226,8 +227,8 @@ function MenuBar({
           key={m.label}
           align="start"
           entries={m.entries}
-          trigger={({ toggle, open, id }) => (
-            <button className="ed-menubar__btn" id={id} aria-expanded={open} onClick={toggle}>
+          trigger={({ props }) => (
+            <button className="ed-menubar__btn" {...props}>
               {m.label}
             </button>
           )}
@@ -504,6 +505,7 @@ function Panel({
 
 function NumField({
   axis,
+  name,
   value,
   onChange,
   step = 1,
@@ -512,6 +514,13 @@ function NumField({
   snap,
 }: {
   axis: 'x' | 'y' | 'z' | 'n'
+  /**
+   * What this number is, spelled out. Every one of these used to be an
+   * unlabelled box: a screen reader read nineteen inputs called
+   * "edit text" and the axis letter beside them was a decoration it
+   * never connected to anything.
+   */
+  name: string
   value: number
   onChange: (v: number) => void
   step?: number
@@ -529,7 +538,8 @@ function NumField({
     <div className="nf" data-disabled={disabled || undefined}>
       <span
         className={`nf__axis nf__axis--${axis}`}
-        title="Drag to scrub"
+        title={`${name} \u2014 drag to scrub`}
+        aria-hidden="true"
         onPointerDown={(e) => {
           if (disabled) return
           drag.current = { x: e.clientX, start: value }
@@ -551,6 +561,7 @@ function NumField({
         className="nf__input"
         value={draft ?? String(value)}
         inputMode="decimal"
+        aria-label={name}
         disabled={disabled}
         onChange={(e) => setDraft(e.target.value)}
         onBlur={() => {
@@ -564,6 +575,17 @@ function NumField({
         onKeyDown={(e) => {
           if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
           if (e.key === 'Escape') setDraft(null)
+          /* scrubbing is a mouse gesture; the arrows are how the same
+             nudge is made without one. Shift takes ten steps at once. */
+          if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+            if (disabled) return
+            e.preventDefault()
+            const base = draft !== null && Number.isFinite(Number(draft)) ? Number(draft) : value
+            const by = step * (e.shiftKey ? 10 : 1) * (e.key === 'ArrowUp' ? 1 : -1)
+            setDraft(null)
+            emit(Number((base + by).toFixed(2)))
+            onCommit?.()
+          }
         }}
       />
     </div>
@@ -595,6 +617,7 @@ function NumRow({
         <NumField
           key={a}
           axis={a}
+          name={`${label} ${a.toUpperCase()}`}
           step={step}
           disabled={disabled}
           onCommit={onCommit}
@@ -667,12 +690,19 @@ function CubePanel({
         />
         <div className="nf-row">
           <span className="nf-row__label">Inflate</span>
-          <NumField axis="n" value={cube.inflate} disabled={locked} onChange={(inflate) => onChange((c) => ({ ...c, inflate }))} />
+          <NumField
+            axis="n"
+            name="Inflate"
+            value={cube.inflate}
+            disabled={locked}
+            onChange={(inflate) => onChange((c) => ({ ...c, inflate }))}
+          />
           <span className="nf-row__label" style={{ textAlign: 'right' }}>
             Faces
           </span>
           <NumField
             axis="n"
+            name="Textured faces"
             value={FACES.filter((f) => cube.faces[f].texture !== null).length}
             onChange={() => {}}
             disabled
@@ -831,14 +861,14 @@ function UVPanel({
       <div className="nf-grid" style={{ marginTop: 9 }}>
         <div className="nf-row">
           <span className="nf-row__label">UV from</span>
-          <NumField axis="x" value={current.uv[0]} onChange={(v) => onChange((c) => patchUV(c, face, 0, v))} />
-          <NumField axis="y" value={current.uv[1]} onChange={(v) => onChange((c) => patchUV(c, face, 1, v))} />
+          <NumField axis="x" name="UV from X" value={current.uv[0]} onChange={(v) => onChange((c) => patchUV(c, face, 0, v))} />
+          <NumField axis="y" name="UV from Y" value={current.uv[1]} onChange={(v) => onChange((c) => patchUV(c, face, 1, v))} />
           <span className="nf-row__label" />
         </div>
         <div className="nf-row">
           <span className="nf-row__label">UV to</span>
-          <NumField axis="x" value={current.uv[2]} onChange={(v) => onChange((c) => patchUV(c, face, 2, v))} />
-          <NumField axis="y" value={current.uv[3]} onChange={(v) => onChange((c) => patchUV(c, face, 3, v))} />
+          <NumField axis="x" name="UV to X" value={current.uv[2]} onChange={(v) => onChange((c) => patchUV(c, face, 2, v))} />
+          <NumField axis="y" name="UV to Y" value={current.uv[3]} onChange={(v) => onChange((c) => patchUV(c, face, 3, v))} />
           <span className="nf-row__label" />
         </div>
       </div>
@@ -1317,7 +1347,7 @@ function Viewport({
   label,
   grid,
   quad,
-  scale,
+  extent,
   clip,
   time,
   selected,
@@ -1330,7 +1360,8 @@ function Viewport({
   label: string
   grid: boolean
   quad: boolean
-  scale: number
+  /** the model's longest axis, in model units */
+  extent: number
   clip: Clip | null
   time: number
   selected: string | null
@@ -1341,9 +1372,31 @@ function Viewport({
 }) {
   const [shading, setShading] = useState<'solid' | 'wire'>('solid')
 
+  /* The fit used to be `430 / extent` - a constant that assumed a
+     desktop-sized viewport, so on a phone the model was cropped by the
+     frame it was supposed to be fitted to. Measure instead. */
+  const scene = useRef<HTMLDivElement>(null)
+  const [box, setBox] = useState({ w: 680, h: 680 })
+  useLayoutEffect(() => {
+    const el = scene.current
+    if (!el) return
+    const ro = new ResizeObserver(([entry]) => {
+      const r = entry.contentRect
+      if (r.width > 0 && r.height > 0) setBox({ w: r.width, h: r.height })
+    })
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+  /* The model stands ON the grid, and the grid sits at the middle of the
+     scene, so the height a model actually has to fit into is the half
+     above it - not the whole box. Fitting to the whole box is why the
+     head was cropped off at every window size narrower than the one the
+     old constant was tuned against. */
+  const scale = Math.max(1.5, Math.min(16, Math.min(box.w * 0.6, box.h * 0.44) / extent))
+
   return (
     <div className="ed-view" data-quad={quad || undefined} data-shading={shading}>
-      <div className="ed-view__scene">
+      <div className="ed-view__scene" ref={scene}>
         {quad ? (
           <div className="ed-quad">
             {quadViews.map((v) => (
@@ -1457,6 +1510,7 @@ const SNAPS = [0, 12, 24, 30, 60]
 
 function AnimationPanel({ anim }: { anim: AnimApi }) {
   const { clip } = anim
+  const boneList = useRef<HTMLDivElement>(null)
 
   if (!clip) {
     return (
@@ -1490,6 +1544,7 @@ function AnimationPanel({ anim }: { anim: AnimApi }) {
           <span className="nf-row__label">Length</span>
           <NumField
             axis="n"
+            name="Clip length in seconds"
             step={0.1}
             value={clip.length}
             onChange={(v) => anim.patchClip({ length: Math.max(0.1, Number(v.toFixed(3))) })}
@@ -1549,14 +1604,25 @@ function AnimationPanel({ anim }: { anim: AnimApi }) {
       <p className="ed-hint" style={{ marginTop: 10 }}>
         Animating
       </p>
-      <div className="tree tree--short" role="listbox" aria-label="Bone to animate">
+      {/* the options carried aria-selected but no tab stop, so this list
+          could be read and never reached. Roving tabindex: one stop for
+          the list, arrows within it, selection follows focus. */}
+      <div
+        className="tree tree--short"
+        role="listbox"
+        aria-label="Bone to animate"
+        ref={boneList}
+        onKeyDown={(e) => arrowNav(boneList.current, e, { select: '[role="option"]' })}
+      >
         {anim.bones.map((b) => (
           <div
             key={b.id}
             role="option"
             aria-selected={b.id === anim.bone}
+            tabIndex={b.id === anim.bone ? 0 : -1}
             className="tree__row"
             style={{ paddingLeft: 6 + b.depth * 13 }}
+            onFocus={() => anim.setBone(b.id)}
             onClick={() => anim.setBone(b.id)}
           >
             <Icon name="folder" size={12} className="tree__icon" />
@@ -1611,6 +1677,7 @@ function KeyframePanel({ anim }: { anim: AnimApi }) {
           <span className="nf-row__label">Time</span>
           <NumField
             axis="n"
+            name="Keyframe time in seconds"
             step={0.05}
             value={key.time}
             onChange={(time) => anim.patchKey(key.id, { time })}
@@ -1906,13 +1973,18 @@ function Timeline({
 
             {rows.map((r) => (
               <Fragment key={r.key}>
-                <div
-                  className="tl-name"
-                  aria-selected={r.bone === anim.bone}
-                  onClick={() => anim.setBone(r.bone)}
-                >
+                <div className="tl-name" data-on={r.bone === anim.bone || undefined}>
                   <Icon name="folder" size={11} />
-                  <span className="tl-name__bone">{r.boneName}</span>
+                  {/* the row used to be a div carrying aria-selected and a
+                      click handler: no role, no tab stop, nothing a
+                      keyboard could reach. The label is the button now. */}
+                  <button
+                    className="tl-name__bone"
+                    aria-pressed={r.bone === anim.bone}
+                    onClick={() => anim.setBone(r.bone)}
+                  >
+                    {r.boneName}
+                  </button>
                   <span className="tl-name__ch">{r.channel.slice(0, 3)}</span>
                   <button
                     className="tl-name__btn"
@@ -2087,6 +2159,8 @@ export function Editor({ segments }: { segments: string[] }) {
      needs no diffing and cannot drift - it is exact. */
   const [savedModel, setSavedModel] = useState<Model>(initial.model)
   const dirty = model !== savedModel
+  // the tab carries the unsaved marker too, not only the menu bar
+  useTitle(`${dirty ? '\u2022 ' : ''}${fileName}`)
 
   /** Something irreversible, waiting on an answer. */
   const [pending, setPending] = useState<{
@@ -2820,10 +2894,10 @@ export function Editor({ segments }: { segments: string[] }) {
   const onLeft = useCallback((dx: number) => setLeftW((w) => Math.min(460, Math.max(210, w + dx))), [])
   const onRight = useCallback((dx: number) => setRightW((w) => Math.min(460, Math.max(210, w - dx))), [])
 
-  // fit the model to the viewport from its real extent, not its distance
-  // from the origin - a tall sword and a 16-unit block both want to fill it
-  const scale = useMemo(() => {
-    if (!model.cubes.length) return 6
+  // fit the model from its real extent, not its distance from the origin -
+  // a tall sword and a 16-unit block both want to fill the viewport
+  const extent = useMemo(() => {
+    if (!model.cubes.length) return 24
     const lo = [Infinity, Infinity, Infinity]
     const hi = [-Infinity, -Infinity, -Infinity]
     for (const c of model.cubes) {
@@ -2832,8 +2906,7 @@ export function Editor({ segments }: { segments: string[] }) {
         hi[i] = Math.max(hi[i], c.to[i])
       }
     }
-    const extent = Math.max(hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2], 1)
-    return Math.max(1.5, Math.min(16, 430 / extent))
+    return Math.max(hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2], 1)
   }, [model])
 
   return (
@@ -2879,13 +2952,19 @@ export function Editor({ segments }: { segments: string[] }) {
         redoLabel={history.redoLabel}
       />
 
-      <div className="ed-body">
+      {/* the editor had no main landmark and no h1 at all: "skip to
+          content" had nothing to skip to, and the document announced
+          itself as a page about nothing */}
+      <main className="ed-body">
+        <h1 className="vh">
+          {fileName} {'\u2014'} {kind} model, {mode} mode
+        </h1>
         <Viewport
           model={model}
           label={kind}
           grid={grid}
           quad={quad}
-          scale={scale}
+          extent={extent}
           clip={mode === 'animate' ? clip : null}
           time={time}
           selected={selected}
@@ -3011,7 +3090,9 @@ export function Editor({ segments }: { segments: string[] }) {
                 <button
                   key={t.id}
                   className="tex-row"
-                  aria-selected={i === textureIndex}
+                  /* aria-selected means nothing on a button; this is
+                     "the one of the set you are on", which is aria-current */
+                  aria-current={i === textureIndex}
                   title={`${t.name} \u2014 click to select, then View \u25b8 Export texture PNG`}
                   onClick={() => setTextureIndex(i)}
                 >
@@ -3033,7 +3114,7 @@ export function Editor({ segments }: { segments: string[] }) {
             </Panel>
           </div>
         </div>
-      </div>
+      </main>
 
       {pending ? (
         <ConfirmDialog

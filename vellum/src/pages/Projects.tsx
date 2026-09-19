@@ -6,7 +6,7 @@ import { sampleById } from '../lib/samples'
 import { Icon } from '../lib/icons'
 import { assetsFor, scenes } from '../lib/data'
 import type { Asset, AssetKind } from '../lib/data'
-import { navigate } from '../lib/router'
+import { navigate, useTitle } from '../lib/router'
 import { saveDataUrl, saveFile } from '../lib/download'
 import { writeVellum } from '../lib/vellum'
 import './Projects.css'
@@ -99,9 +99,9 @@ function AssetCard({
     <article className="asset" data-open={menuOpen || undefined}>
       <header className="asset__head">
         <Icon name={asset.kind === 'mobs' ? 'anim' : 'cube'} size={14} className="asset__badge" />
-        <h3 className="asset__name" title={asset.name}>
+        <h2 className="asset__name" title={asset.name}>
           {asset.name}
-        </h3>
+        </h2>
         <Menu
           align="end"
           onOpenChange={setMenuOpen}
@@ -119,8 +119,8 @@ function AssetCard({
                 ]
               : [{ kind: 'label', label: 'Placeholder card - nothing to open' }]
           }
-          trigger={({ toggle, id }) => (
-            <button className="icon-btn" id={id} onClick={toggle} aria-label={`Actions for ${asset.name}`}>
+          trigger={({ props }) => (
+            <button className="icon-btn" {...props} aria-label={`Actions for ${asset.name}`}>
               <Icon name="dots" size={15} />
             </button>
           )}
@@ -203,6 +203,7 @@ function Pager({
 
 /** The shared library panel - identical for Items and for Mobs & Anim. */
 function Library({ sceneId, kind }: { sceneId: string; kind: AssetKind }) {
+  useTitle(kindLabel[kind])
   const actions = useAssetActions()
   const [page, setPage] = useState(1)
   const [query, setQuery] = useState('')
@@ -290,6 +291,7 @@ function Library({ sceneId, kind }: { sceneId: string; kind: AssetKind }) {
 
 /** The first scene: pick a project, then a shelf. */
 function Gateway() {
+  useTitle('Projects')
   const scene = scenes[0]
 
   const tiles: Array<{ kind: AssetKind; icon: 'cube' | 'anim'; desc: string; count: number; palette: [string, string, string] }> = [

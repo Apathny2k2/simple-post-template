@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { Card } from '../components/Card'
 import { Menu } from '../components/Menu'
+import type { TriggerProps } from '../components/Menu'
 import { ApiReference as ApiSurface, EndpointBadge } from '../components/Endpoint'
 import { Icon } from '../lib/icons'
+import { useTitle } from '../lib/router'
 import {
   dashStore,
   formatBytes,
@@ -23,8 +25,8 @@ import type { Link, LinkState } from '../lib/dash-api'
 import { saveBlob } from '../lib/download'
 import './Dashboard.css'
 
-const dotsTrigger = ({ toggle, id }: { toggle: () => void; id: string }) => (
-  <button className="icon-btn" id={id} onClick={toggle} aria-label="Card actions">
+const dotsTrigger = ({ props }: { props: TriggerProps }) => (
+  <button className="icon-btn" {...props} aria-label="Card actions">
     <Icon name="dots" size={16} />
   </button>
 )
@@ -102,6 +104,11 @@ function FeedCard({
   log: Array<{ id: string; at: number; op: string; ok: boolean; problems: string[]; via: string }>
   now: number
 }) {
+  /* which rows have their corrections open. They used to live in a
+     `title` attribute, which is a mouse-only tooltip: on a phone, and
+     for anyone driving this from the keyboard, the corrections Vellum
+     made to a plugin's payload were simply not readable. */
+  const [openProblems, setOpenProblems] = useState<string | null>(null)
   const [link, setLink] = useState<Link>(
     () => loadLink() ?? { baseUrl: '', token: '', intervalMs: 15000, stream: true },
   )
@@ -288,9 +295,21 @@ function FeedCard({
                   <code>{r.op}</code>
                   <span className="feed__logtime">{formatWhen(new Date(r.at).toISOString(), now)}</span>
                   {r.problems.length ? (
-                    <span className="feed__problems" title={r.problems.join('\n')}>
+                    <button
+                      className="feed__problems"
+                      aria-expanded={openProblems === r.id}
+                      aria-label={`${r.problems.length} correction${r.problems.length === 1 ? '' : 's'} on ${r.op}`}
+                      onClick={() => setOpenProblems((id) => (id === r.id ? null : r.id))}
+                    >
                       <Icon name="warning" size={10} /> {r.problems.length}
-                    </span>
+                    </button>
+                  ) : null}
+                  {openProblems === r.id ? (
+                    <ul className="feed__problemlist">
+                      {r.problems.map((why, i) => (
+                        <li key={i}>{why}</li>
+                      ))}
+                    </ul>
                   ) : null}
                 </li>
               ))}
@@ -321,7 +340,7 @@ function DashApiReference() {
       actions={<EndpointBadge method="GET" path="/dash/schema" base={DASH_BASE} />}
     >
       <section className="api__group">
-        <h4 className="api__gname">Without a network</h4>
+        <h3 className="api__gname">Without a network</h3>
         <p className="api__note">
           Every endpoint above is also a method on <code className="mono">window.Vellum.dash</code>, and
           the same calls arrive over <code className="mono">postMessage</code> from an allowlisted
@@ -346,6 +365,7 @@ function DashApiReference() {
  * knows about the pack should not have to invent a player count.
  */
 export function Dashboard() {
+  useTitle('Dashboard')
   const { snapshot, meta, log, now, health } = useDash()
   const { server, pack, players, subscription, files } = snapshot
 

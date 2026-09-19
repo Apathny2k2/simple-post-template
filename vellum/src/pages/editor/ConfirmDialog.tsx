@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { Icon } from '../../lib/icons'
+import { useModal } from '../../lib/a11y'
 
 /**
  * Asked before something irreversible. Deliberately not `window.confirm`:
@@ -20,25 +21,24 @@ export function ConfirmDialog({
   onCancel: () => void
 }) {
   const cancel = useRef<HTMLButtonElement>(null)
+  const panel = useRef<HTMLDivElement>(null)
+
+  // Tab stays in the dialog, Escape leaves it, focus goes back where it was
+  useModal(panel, onCancel)
 
   useEffect(() => {
     // focus the safe choice, not the destructive one
     cancel.current?.focus()
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onCancel()
-    }
-    document.addEventListener('keydown', onKey)
-    return () => document.removeEventListener('keydown', onKey)
-  }, [onCancel])
+  }, [])
 
   return (
     <div className="dlg" role="dialog" aria-modal="true" aria-label={title}>
       <div className="dlg__scrim" onClick={onCancel} />
-      <div className="dlg__panel" style={{ width: 'min(460px, 100%)' }}>
+      <div className="dlg__panel" ref={panel} style={{ width: 'min(460px, 100%)' }}>
         <header className="dlg__head">
           <div style={{ flex: 1 }}>
             <div className="eyebrow">Unsaved changes</div>
-            <h3 className="card__title">{title}</h3>
+            <h2 className="card__title">{title}</h2>
           </div>
           <button className="icon-btn" onClick={onCancel} aria-label="Close">
             <Icon name="close" size={15} />

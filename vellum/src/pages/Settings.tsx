@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { Card } from '../components/Card'
 import { Icon } from '../lib/icons'
 import type { IconName } from '../lib/icons'
-import { navigate } from '../lib/router'
+import { navigate, useTitle } from '../lib/router'
 import { api } from '../lib/api'
 import { categories } from '../lib/support'
 import type { TicketCategory } from '../lib/support'
@@ -367,6 +367,7 @@ export function Settings({ segments }: { segments: string[] }) {
   const [query, setQuery] = useState('')
   const active = (allSections.find((s) => s.id === segments[1])?.id ?? 'account') as SectionId
   const section = allSections.find((s) => s.id === active)!
+  useTitle(section.label)
 
   const q = query.trim().toLowerCase()
   const match = (list: Section[]) =>
