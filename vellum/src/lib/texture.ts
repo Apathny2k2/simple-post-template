@@ -76,11 +76,15 @@ export function rgbaToHex([r, g, b]: RGBA) {
  */
 export function texelOfFace(uv: UVRect, u: number, v: number): [number, number] | null {
   const [x1, y1, x2, y2] = uv
-  const w = x2 - x1
-  const h = y2 - y1
-  if (!w || !h) return null
-  // a reversed coordinate mirrors the face, so the interpolation follows it
-  return [Math.floor(x1 + u * w), Math.floor(y1 + v * h)]
+  if (x1 === x2 || y1 === y2) return null
+  /* The rectangle is normalised here even though a reversed one mirrors
+     the face, because the mirror has already been applied: the renderer
+     re-adds the flip as a CSS scale() on the plane, and `offsetX` is
+     reported in the element's own post-transform space. Following the
+     signed width as well flipped it twice, so clicking a pixel changed
+     the one opposite it. */
+  const [ax, ay, bx, by] = faceBounds(uv)
+  return [Math.floor(ax + u * (bx - ax)), Math.floor(ay + v * (by - ay))]
 }
 
 /** The texel rectangle a face occupies, normalised so min < max. */
@@ -94,15 +98,31 @@ export function faceBounds(uv: UVRect): UVRect {
 const inBounds = (x: number, y: number, s: PixelSurface) =>
   x >= 0 && y >= 0 && x < s.width && y < s.height
 
-/** Brush and eraser are the same operation; the eraser just writes alpha 0. */
-export function paint(s: PixelSurface, x: number, y: number, colour: RGBA, size: number) {
+/**
+ * Brush and eraser are the same operation; the eraser just writes alpha 0.
+ *
+ * `bounds` clips the stamp to one UV island. Without it a size-8 brush
+ * on a packed sheet wrote most of its 64 texels into other faces - a
+ * single click repainting three unrelated cubes - which is the same
+ * reason the bucket has always been bounded.
+ */
+export function paint(
+  s: PixelSurface,
+  x: number,
+  y: number,
+  colour: RGBA,
+  size: number,
+  bounds?: UVRect | null,
+) {
   const half = Math.floor((size - 1) / 2)
   const image = s.ctx.createImageData(1, 1)
+  const clip = bounds ? faceBounds(bounds) : null
   for (let dy = -half; dy <= size - 1 - half; dy++) {
     for (let dx = -half; dx <= size - 1 - half; dx++) {
       const px = x + dx
       const py = y + dy
       if (!inBounds(px, py, s)) continue
+      if (clip && (px < clip[0] || py < clip[1] || px >= clip[2] || py >= clip[3])) continue
       image.data[0] = colour[0]
       image.data[1] = colour[1]
       image.data[2] = colour[2]

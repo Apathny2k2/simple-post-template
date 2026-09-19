@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { Menu } from '../components/Menu'
 import type { MenuEntry } from '../components/Menu'
@@ -1069,8 +1069,8 @@ function Viewport({
 
         <div className="ed-view__corner ed-view__corner--bl">
           {onPaint
-            ? 'drag a face to paint · drag the backdrop or right-drag to orbit · scroll to zoom'
-            : 'drag to orbit · scroll to zoom · click a cube'}
+            ? 'drag a face to paint · backdrop or right-drag orbits · shift-drag pans · scroll zooms at the cursor'
+            : 'drag to orbit · shift or middle-drag to pan · scroll to zoom at the cursor · click a cube'}
         </div>
 
         <svg className="ed-axis-gizmo" viewBox="0 0 60 60" aria-hidden="true">
@@ -1113,6 +1113,16 @@ type AnimApi = {
   /** a key drag is one undo step, so it is bracketed rather than committed per frame */
   dragKey: (keyId: string, time: number, phase: 'down' | 'move' | 'up') => void
   patchKey: (keyId: string, patch: Partial<Omit<Key, 'id'>>, transient?: boolean) => void
+}
+
+/**
+ * Strips the Minecraft-style `animation.<model>.` prefix and nothing
+ * else. Taking the text after the last dot turned "2.5 second idle"
+ * into "5 second idle" and "walk.cycle.v2" into "v2".
+ */
+export function clipLabel(name: string) {
+  const m = /^animation\.[^.]+\.(.+)$/.exec(name)
+  return m ? m[1] : name
 }
 
 const LOOPS: Array<Clip['loop']> = ['loop', 'once', 'hold']
@@ -1420,7 +1430,7 @@ function Timeline({
           {anim.clips.length ? null : <option value="">no animations</option>}
           {anim.clips.map((c) => (
             <option key={c.id} value={c.id}>
-              {c.name.split('.').pop()} · {c.length}s
+              {clipLabel(c.name)} · {c.length}s
             </option>
           ))}
         </select>
@@ -1461,54 +1471,53 @@ function Timeline({
       </div>
 
       {clip ? (
+        /* One scroller, not two. The names column and the track column
+           used to scroll independently, so a single wheel gesture over
+           the tracks offset the labels by up to ten rows and the
+           timeline started reporting the wrong bone for every key. The
+           names are sticky inside the same grid instead. */
         <div className="tl-main">
-          <div className="tl-names">
-            <div className="tl-name" style={{ height: 22, opacity: 0.6 }}>
-              Channels
-            </div>
-            {rows.map((r) => (
-              <div
-                className="tl-name"
-                key={r.key}
-                aria-selected={r.bone === anim.bone}
-                onClick={() => anim.setBone(r.bone)}
-              >
-                <Icon name="folder" size={11} />
-                <span className="tl-name__bone">{r.boneName}</span>
-                <span className="tl-name__ch">{r.channel.slice(0, 3)}</span>
-                <button
-                  className="tl-name__btn"
-                  title={`Key ${r.boneName} ${r.channel} at the playhead`}
-                  aria-label={`Key ${r.boneName} ${r.channel}`}
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    anim.addKey(r.bone, r.channel)
-                  }}
-                >
-                  <Icon name="key" size={11} />
-                </button>
-              </div>
-            ))}
-            {!rows.length ? <div className="tl-name">pick a bone to animate</div> : null}
-          </div>
-
-          <div className="tl-track-wrap">
+          <div
+            className="tl-grid"
+            style={{ ['--track-w' as string]: `${trackW}px`, ['--px-per-s' as string]: `${PX_PER_S}px` }}
+          >
+            <div className="tl-corner">Channels</div>
             <div className="tl-ruler" style={{ width: trackW }} onPointerDown={scrub} onPointerMove={scrub}>
               {Array.from({ length: ticks }, (_, i) => (
                 <span className="tl-tick" key={i} style={{ width: PX_PER_S }}>
                   {i}s
                 </span>
               ))}
+              <span className="tl-end" style={{ left: length * PX_PER_S }} title={`clip ends at ${length}s`} />
             </div>
 
-            <div style={{ position: 'relative', minWidth: trackW }}>
-              {rows.map((r) => (
+            {rows.map((r) => (
+              <Fragment key={r.key}>
+                <div
+                  className="tl-name"
+                  aria-selected={r.bone === anim.bone}
+                  onClick={() => anim.setBone(r.bone)}
+                >
+                  <Icon name="folder" size={11} />
+                  <span className="tl-name__bone">{r.boneName}</span>
+                  <span className="tl-name__ch">{r.channel.slice(0, 3)}</span>
+                  <button
+                    className="tl-name__btn"
+                    title={`Key ${r.boneName} ${r.channel} at the playhead`}
+                    aria-label={`Key ${r.boneName} ${r.channel}`}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      anim.addKey(r.bone, r.channel)
+                    }}
+                  >
+                    <Icon name="key" size={11} />
+                  </button>
+                </div>
+
                 <div
                   className="tl-track"
-                  key={r.key}
-                  style={{ ['--px-per-s' as string]: `${PX_PER_S}px` }}
+                  style={{ width: trackW }}
                   onDoubleClick={(e) => {
-                    // double-click on empty track keys that channel where you clicked
                     const rect = e.currentTarget.getBoundingClientRect()
                     onTime(Math.max(0, Math.min(length, (e.clientX - rect.left) / PX_PER_S)))
                     anim.addKey(r.bone, r.channel)
@@ -1520,22 +1529,22 @@ function Timeline({
                       className="tl-key"
                       data-interp={kf.interp}
                       data-selected={kf.id === anim.selectedKey || undefined}
+                      data-past-end={kf.time > length + 1e-9 || undefined}
                       style={{ left: kf.time * PX_PER_S }}
-                      title={`${r.boneName} · ${r.channel} @ ${kf.time.toFixed(2)}s → ${kf.value.join(', ')} (${kf.interp})`}
+                      title={`${r.boneName} \u00b7 ${r.channel} @ ${kf.time.toFixed(2)}s \u2192 ${kf.value.join(', ')} (${kf.interp})`}
                       onPointerDown={(e) => {
                         e.stopPropagation()
                         ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
                         drag.current = { id: kf.id, x: e.clientX, start: kf.time }
                         anim.selectKey(kf.id)
                         anim.setBone(r.bone)
-                        onTime(kf.time)
+                        onTime(Math.min(kf.time, length))
                         onPlaying(false)
                       }}
                       onPointerMove={(e) => {
                         const d = drag.current
                         if (!d || d.id !== kf.id || e.buttons !== 1) return
-                        const next = d.start + (e.clientX - d.x) / PX_PER_S
-                        anim.dragKey(kf.id, next, 'move')
+                        anim.dragKey(kf.id, d.start + (e.clientX - d.x) / PX_PER_S, 'move')
                       }}
                       onPointerUp={() => {
                         if (drag.current?.id === kf.id) anim.dragKey(kf.id, kf.time, 'up')
@@ -1544,9 +1553,17 @@ function Timeline({
                     />
                   ))}
                 </div>
-              ))}
-              <span className="tl-playhead" style={{ left: time * PX_PER_S }} />
-            </div>
+              </Fragment>
+            ))}
+
+            {rows.length ? null : (
+              <>
+                <div className="tl-name">pick a bone to animate</div>
+                <div className="tl-track" style={{ width: trackW }} />
+              </>
+            )}
+
+            <span className="tl-playhead" style={{ left: `calc(var(--names-w) + ${time * PX_PER_S}px)` }} />
           </div>
         </div>
       ) : (
@@ -1663,12 +1680,21 @@ export function Editor({ segments }: { segments: string[] }) {
   /** Set for exactly one navigation, once the user has said to discard. */
   const allowNav = useRef(false)
 
+  /* What was selected when each model was current. Undo used to leave
+     the panels pointing at nothing - or, after undoing a delete, at the
+     wrong cube - because selection lived outside the history entirely.
+     A WeakMap keyed on the model object needs no bookkeeping and cannot
+     hold a model alive. */
+  const selectionAt = useRef(new WeakMap<Model, string | null>())
+
   const loadModel = useCallback(
     (next: Model, name: string, nextKind: ProjectKind = 'items') => {
+      // what the document says it is beats what the last one was
+      const resolved = next.kind ?? nextKind
       history.reset(next)
       setSavedModel(next)
       setFileName(vellumFileName(name))
-      setKind(nextKind)
+      setKind(resolved)
       setSelected(next.cubes[0]?.id ?? null)
       setClipId(next.clips[0]?.id ?? null)
       setPickedBone(null)
@@ -1677,9 +1703,30 @@ export function Editor({ segments }: { segments: string[] }) {
       setTime(0)
       setPlaying(false)
       setMode('edit')
+      // display slots are a preview of THIS model, not the last one
+      setDisplayState(DEFAULT_DISPLAY)
+      setSlot('thirdperson_righthand')
     },
     [history],
   )
+
+  /* Order matters here. Recording runs first, so on the render an undo
+     produces it would stamp the *new* selection onto the *old* model and
+     the restore below would read back what it was trying to replace. It
+     stands down for exactly that render instead. */
+  const lastTravel = useRef(0)
+
+  useEffect(() => {
+    if (history.travel !== lastTravel.current) return
+    selectionAt.current.set(model, selected)
+  }, [model, selected, history.travel])
+
+  useEffect(() => {
+    if (history.travel === lastTravel.current) return
+    lastTravel.current = history.travel
+    const was = selectionAt.current.get(history.present)
+    if (was !== undefined) setSelected(was)
+  }, [history.travel, history.present])
 
   // the tool palette changes per mode; keep the active tool valid
   useEffect(() => {
@@ -1921,7 +1968,7 @@ export function Editor({ segments }: { segments: string[] }) {
       }
 
       const rgba = tool === 'eraser' ? ([0, 0, 0, 0] as [number, number, number, number]) : hexToRgba(colour)
-      const stamp = (px: number, py: number) => paintTexels(surface, px, py, rgba, brush)
+      const stamp = (px: number, py: number) => paintTexels(surface, px, py, rgba, brush, bounds)
 
       // a fast drag would otherwise dot rather than draw
       if (phase === 'move' && lastTexel.current) strokeBetween(lastTexel.current, [x, y], stamp)
@@ -2039,7 +2086,11 @@ export function Editor({ segments }: { segments: string[] }) {
         setClipId(model.clips.find((c) => c.id !== clip.id)?.id ?? null)
         setSelectedKey(null)
       },
-      patchClip: (patch) => withClip('animation settings', (m, id) => updateClip(m, id, patch), true),
+      patchClip: (patch) => {
+        withClip('animation settings', (m, id) => updateClip(m, id, patch), true)
+        // a 3s playhead on a 1s clip renders past the end of the ruler
+        if (patch.length !== undefined) setTime((t) => Math.min(t, Math.max(0, patch.length!)))
+      },
       closeLoop: () => withClip('close the loop', (m, id) => closeLoop(m, id)),
       addKey: (bone, channel) =>
         withClip('add keyframe', (m, id) => setKey(m, id, bone, channel, time)),
@@ -2068,7 +2119,10 @@ export function Editor({ segments }: { segments: string[] }) {
   const actions = useMemo<Actions>(
     () => ({
       onOpen: () => guarded('Open another model?', 'Discard and open', () => fileInput.current?.click()),
-      onSave: () => runSave(vellumFileName(fileName), writeVellum(model), model),
+      onSave: () => {
+        const doc = { ...model, kind }
+        runSave(vellumFileName(fileName), writeVellum(doc), model)
+      },
       onSample: (id: string) => {
         const s = sampleById(id)
         guarded(`Open ${s.label}?`, 'Discard and open', () => loadModel(s.model, s.file, s.kind))
@@ -2097,6 +2151,12 @@ export function Editor({ segments }: { segments: string[] }) {
       onDelete: () => {
         if (!selected) return
         const isBone = bones.some((b) => b.id === selected)
+        /* After an undo the selection can name something the model no
+           longer has. Deleting it used to build a new model object that
+           differed from nothing, commit a step for it, and truncate the
+           redo branch - so the cube you had just undone became
+           unrecoverable. */
+        if (!isBone && !model.cubes.some((c) => c.id === selected)) return
         // a bone takes its subtree with it; a cube goes alone
         const next = isBone ? deleteBone(model, selected) : deleteCube(model, selected)
         if (next === model) return
@@ -2109,7 +2169,7 @@ export function Editor({ segments }: { segments: string[] }) {
       onAddKey: () => animBone && anim.addKey(animBone, 'rotation'),
       onCloseLoop: () => anim.closeLoop(),
     }),
-    [model, fileName, loadModel, runSave, selected, bones, history, anim, animBone, guarded, rescale],
+    [model, fileName, kind, loadModel, runSave, selected, bones, history, anim, animBone, guarded, rescale],
   )
 
   /* Keyboard. Anything typed into a field belongs to that field, so the
@@ -2294,7 +2354,7 @@ export function Editor({ segments }: { segments: string[] }) {
               </Panel>
             ) : mode === 'animate' ? (
               <>
-                <Panel title="Animation" count={clip ? clip.name.split('.').pop() : 'none'}>
+                <Panel title="Animation" count={clip ? clipLabel(clip.name) : 'none'}>
                   <AnimationPanel anim={anim} />
                 </Panel>
                 <Panel title="Keyframe" count={selectedKey ? 'selected' : undefined}>

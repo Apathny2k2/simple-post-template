@@ -44,8 +44,22 @@ export function makeClip(name: string, length = 1, snapping = 24): Clip {
   return { id: newId(), name, loop: 'loop', length, snapping, tracks: [] }
 }
 
+/** A name nothing else in the model is using. */
+export function uniqueName(taken: readonly string[], wanted: string): string {
+  if (!taken.includes(wanted)) return wanted
+  for (let n = 2; n < 1000; n++) {
+    const candidate = `${wanted}_${n}`
+    if (!taken.includes(candidate)) return candidate
+  }
+  return `${wanted}_${Date.now().toString(36)}`
+}
+
 export function addClip(model: Model, name?: string): { model: Model; id: string } {
-  const clip = makeClip(name?.trim() || `animation.${model.clips.length + 1}`)
+  /* Naming from the current count collided the moment anything was
+     deleted, and the picker is the only place a clip has an identity -
+     two options reading "4 · 1s" are indistinguishable. */
+  const names = model.clips.map((c) => c.name)
+  const clip = makeClip(uniqueName(names, name?.trim() || `animation.${model.clips.length + 1}`))
   return { model: { ...model, clips: [...model.clips, clip] }, id: clip.id }
 }
 
@@ -59,7 +73,7 @@ export function duplicateClip(model: Model, id: string): { model: Model; id: str
   const copy: Clip = {
     ...source,
     id: newId(),
-    name: `${source.name}_copy`,
+    name: uniqueName(model.clips.map((c) => c.name), `${source.name}_copy`),
     tracks: source.tracks.map((t) => ({
       ...t,
       keys: t.keys.map((k) => ({ ...k, id: newId(), value: [...k.value] as Vec3 })),
@@ -68,21 +82,20 @@ export function duplicateClip(model: Model, id: string): { model: Model; id: str
   return { model: { ...model, clips: [...model.clips, copy], }, id: copy.id }
 }
 
-/** Patch a clip in place. Shortening one also trims keys off its end. */
+/**
+ * Patch a clip in place.
+ *
+ * Shortening one used to delete every key past the new end - 77 down to
+ * 17 from one drag of the length field, with no warning and no way back
+ * except undo, and lengthening it again brought nothing back. Keys off
+ * the end round-trip through the codec perfectly well; the validator
+ * already says they are out of range, so they are kept and reported
+ * rather than destroyed.
+ */
 export function updateClip(model: Model, id: string, patch: Partial<Omit<Clip, 'id' | 'tracks'>>): Model {
   return {
     ...model,
-    clips: model.clips.map((clip) => {
-      if (clip.id !== id) return clip
-      const next = { ...clip, ...patch }
-      if (patch.length !== undefined && patch.length < clip.length) {
-        // a key past the end would fail validation and never play
-        next.tracks = clip.tracks
-          .map((t) => ({ ...t, keys: t.keys.filter((k) => k.time <= next.length + EPSILON) }))
-          .filter((t) => t.keys.length)
-      }
-      return next
-    }),
+    clips: model.clips.map((clip) => (clip.id === id ? { ...clip, ...patch } : clip)),
   }
 }
 

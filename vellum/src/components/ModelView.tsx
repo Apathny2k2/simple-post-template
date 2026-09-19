@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { FACES, samplePose, textureById } from '../lib/model'
 import type { Bone, Clip, Cube, Face as ModelFace, FaceKey, Model, Pose, Vec3 } from '../lib/model'
 import './Model3D.css'
@@ -20,6 +20,8 @@ const FACE_PLACEMENT: Record<
 
 const ZOOM_MIN = 0.3
 const ZOOM_MAX = 7
+/** Far enough to put any corner of a model under the cursor, near enough to find it again. */
+const PAN_LIMIT = 3000
 
 /**
  * Model space is Y-up and right-handed; CSS is Y-down. Mapping (x,y,z) to
@@ -326,7 +328,12 @@ export function ModelView({
   const [yaw, setYaw] = useState(initialYaw)
   const [pitch, setPitch] = useState(initialPitch)
   const [factor, setFactor] = useState(1)
+  /* Screen-space offset of the whole stage. Without it the scale is
+     always about the stage's own centre, so every zoom walked into the
+     middle of the model and there was no way to look at a corner of it. */
+  const [pan, setPan] = useState({ x: 0, y: 0 })
   const drag = useRef<{ x: number; y: number; yaw: number; pitch: number } | null>(null)
+  const panning = useRef<{ x: number; y: number; pan: { x: number; y: number } } | null>(null)
   const root = useRef<HTMLDivElement>(null)
   const pinch = useRef(new Map<number, { x: number; y: number }>())
   const pinchStart = useRef<{ span: number; factor: number } | null>(null)
@@ -334,11 +341,67 @@ export function ModelView({
   const pose = useMemo(() => samplePose(clip, time), [clip, time])
 
   const clampZoom = (f: number) => Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, f))
-  const nudge = useCallback((mul: number) => setFactor((f) => clampZoom(f * mul)), [])
+  const clampPan = (v: number) => Math.max(-PAN_LIMIT, Math.min(PAN_LIMIT, v))
+
+  /* Zooming about the cursor cannot be solved on paper here. The stage
+     scales in 3D and the result goes through a perspective divisor, so
+     the on-screen magnification is not the scale factor and the fixed
+     point is not the container's centre - assuming otherwise left the
+     thing under the cursor 288px away from it.
+
+     So it is measured. A hidden probe of known size rides inside the
+     stage; comparing its rect before and after the zoom gives both the
+     real screen ratio (from its width) and the real fixed point (from
+     where its centre went). The pan correction that holds the cursor
+     still follows from those two, and lands in the same frame. */
+  const probe = useRef<HTMLDivElement>(null)
+  const zoomAnchor = useRef<{ at: { x: number; y: number }; before: DOMRect } | null>(null)
+
+  const zoomAt = useCallback((mul: number, at?: { x: number; y: number }) => {
+    const before = probe.current?.getBoundingClientRect()
+    if (at && before && before.width > 0) zoomAnchor.current = { at, before }
+    setFactor((f) => clampZoom(f * mul))
+  }, [])
+
+  useLayoutEffect(() => {
+    const pending = zoomAnchor.current
+    zoomAnchor.current = null
+    if (!pending || !probe.current) return
+
+    const after = probe.current.getBoundingClientRect()
+    const k = after.width / pending.before.width
+    // no magnification means nothing to correct, and 1 - k would divide by zero
+    if (!Number.isFinite(k) || Math.abs(k - 1) < 1e-4) return
+
+    const o0 = { x: pending.before.x + pending.before.width / 2, y: pending.before.y + pending.before.height / 2 }
+    const o1 = { x: after.x + after.width / 2, y: after.y + after.height / 2 }
+    // o1 = C + k(o0 - C)  solved for the fixed point C
+    const cx = (o1.x - k * o0.x) / (1 - k)
+    const cy = (o1.y - k * o0.y) / (1 - k)
+    if (!Number.isFinite(cx) || !Number.isFinite(cy)) return
+
+    setPan((prev) => ({
+      x: clampPan(prev.x + (pending.at.x - cx) * (1 - k)),
+      y: clampPan(prev.y + (pending.at.y - cy) * (1 - k)),
+    }))
+  }, [factor])
+
+  const nudge = useCallback((mul: number) => zoomAt(mul), [zoomAt])
 
   const onPointerDown = useCallback(
     (e: React.PointerEvent) => {
       if (!orbit) return
+
+      /* Middle button or shift-drag pans. Left stays orbit and right
+         stays orbit-while-painting, so nothing that already worked
+         changes meaning. */
+      if (e.button === 1 || e.shiftKey) {
+        e.preventDefault()
+        panning.current = { x: e.clientX, y: e.clientY, pan }
+        ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
+        return
+      }
+
       pinch.current.set(e.pointerId, { x: e.clientX, y: e.clientY })
       if (pinch.current.size === 2) {
         const [a, b] = [...pinch.current.values()]
@@ -349,17 +412,35 @@ export function ModelView({
       drag.current = { x: e.clientX, y: e.clientY, yaw, pitch }
       ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
     },
-    [orbit, yaw, pitch, factor],
+    [orbit, yaw, pitch, factor, pan],
   )
 
+  /* the pinch handler needs the live factor without re-subscribing on every step */
+  const factorRef = useRef(factor)
+  factorRef.current = factor
+
   const onPointerMove = useCallback((e: React.PointerEvent) => {
+    const drift = panning.current
+    if (drift) {
+      setPan({
+        x: clampPan(drift.pan.x + (e.clientX - drift.x)),
+        y: clampPan(drift.pan.y + (e.clientY - drift.y)),
+      })
+      return
+    }
+
     if (pinch.current.has(e.pointerId)) pinch.current.set(e.pointerId, { x: e.clientX, y: e.clientY })
 
     const start = pinchStart.current
     if (start && pinch.current.size === 2) {
       const [a, b] = [...pinch.current.values()]
       const span = Math.hypot(a.x - b.x, a.y - b.y)
-      if (start.span > 0) setFactor(clampZoom((start.factor * span) / start.span))
+      if (start.span > 0) {
+        // pinch about the midpoint, the same way the wheel zooms at the cursor
+        const want = clampZoom((start.factor * span) / start.span)
+        const now = factorRef.current
+        if (now > 0 && want !== now) zoomAt(want / now, { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 })
+      }
       return
     }
 
@@ -367,9 +448,10 @@ export function ModelView({
     if (!from) return
     setYaw(from.yaw + (e.clientX - from.x) * 0.45)
     setPitch(Math.max(-88, Math.min(88, from.pitch - (e.clientY - from.y) * 0.35)))
-  }, [])
+  }, [zoomAt])
 
   const endDrag = useCallback((e: React.PointerEvent) => {
+    panning.current = null
     pinch.current.delete(e.pointerId)
     if (pinch.current.size < 2) pinchStart.current = null
     drag.current = null
@@ -383,13 +465,18 @@ export function ModelView({
     if (!node || !orbit) return
     const onWheel = (e: WheelEvent) => {
       e.preventDefault()
+      // shift+wheel scrolls the view sideways, as it does in most editors
+      if (e.shiftKey && !e.ctrlKey) {
+        setPan((prev) => ({ x: clampPan(prev.x - e.deltaY), y: prev.y }))
+        return
+      }
       // a trackpad pinch arrives as ctrl+wheel, with much smaller deltas
       const step = e.ctrlKey ? 0.01 : 0.0016
-      setFactor((f) => clampZoom(f * Math.exp(-e.deltaY * step)))
+      zoomAt(Math.exp(-e.deltaY * step), { x: e.clientX, y: e.clientY })
     }
     node.addEventListener('wheel', onWheel, { passive: false })
     return () => node.removeEventListener('wheel', onWheel)
-  }, [orbit])
+  }, [orbit, zoomAt])
 
   /* Centred left-to-right and front-to-back, but stood ON the grid rather
      than through it: the model's lowest point is what meets the floor. */
@@ -411,7 +498,8 @@ export function ModelView({
      the model inside out, while scaling keeps proportions exact. */
   const stage = spin
     ? undefined
-    : `translateZ(${zoom}px) rotateX(${pitch}deg) rotateY(${yaw}deg) scale3d(${factor}, ${factor}, ${factor})`
+    : `translate(${pan.x}px, ${pan.y}px) translateZ(${zoom}px) rotateX(${pitch}deg) ` +
+      `rotateY(${yaw}deg) scale3d(${factor}, ${factor}, ${factor})`
 
   return (
     <div
@@ -423,10 +511,14 @@ export function ModelView({
           '--yaw': `${yaw}deg`,
           '--zoom': `${zoom}px`,
           '--zoom-scale': factor,
+          '--pan-x': `${pan.x}px`,
+          '--pan-y': `${pan.y}px`,
           cursor: onPaint ? 'crosshair' : orbit ? 'grab' : undefined,
         } as React.CSSProperties
       }
       onPointerDown={onPointerDown}
+      // the browser's middle-click autoscroll widget fights a pan drag
+      onMouseDown={orbit ? (e) => e.button === 1 && e.preventDefault() : undefined}
       onPointerMove={onPointerMove}
       onPointerUp={endDrag}
       onPointerCancel={endDrag}
@@ -447,6 +539,8 @@ export function ModelView({
           </div>
         ) : null}
         <div className="scene3d__origin">
+          {/* measured, never seen: gives the zoom its real ratio and fixed point */}
+          <div className="scene3d__probe" ref={probe} aria-hidden="true" />
           <div
             className="bbroot"
             style={{
@@ -484,10 +578,11 @@ export function ModelView({
           <button
             type="button"
             className="scene3d__zoom-level"
-            title="Reset the view"
+            title="Recentre and reset the zoom"
             aria-label="Reset zoom"
             onClick={() => {
               setFactor(1)
+              setPan({ x: 0, y: 0 })
               setYaw(initialYaw)
               setPitch(initialPitch)
             }}

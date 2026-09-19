@@ -103,6 +103,8 @@ export type Clip = {
 
 export type Model = {
   name: string
+  /** what the model is for; drives which validation rules apply */
+  kind?: ProjectKind
   resolution: { width: number; height: number }
   bones: Bone[]
   cubes: Cube[]
@@ -312,9 +314,13 @@ export function validateModel(model: Model, kind?: ProjectKind): Issue[] {
       }
       for (const key of track.keys) {
         if (key.time < 0 || key.time > clip.length + 1e-9) {
+          /* A warning, not an error: the key round-trips through the
+             codec perfectly and the clip still plays, it simply never
+             reaches this one. Shortening a clip used to delete these
+             outright, which is the thing worth avoiding. */
           issues.push({
-            level: 'error',
-            message: `"${clip.name}" has a key at ${key.time}s, outside its ${clip.length}s length`,
+            level: 'warning',
+            message: `"${clip.name}" has a key at ${key.time}s, past its ${clip.length}s end - it will not play`,
           })
         }
       }

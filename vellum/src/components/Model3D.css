@@ -20,8 +20,9 @@
   will-change: transform;
   /* base pose: also what a spinning scene falls back to when the viewer
      has asked for reduced motion and the animation never runs */
-  transform: translateZ(var(--zoom, 0px)) rotateX(var(--pitch, -22deg))
-    rotateY(var(--yaw, -34deg)) scale3d(var(--zoom-scale, 1), var(--zoom-scale, 1), var(--zoom-scale, 1));
+  transform: translate(var(--pan-x, 0px), var(--pan-y, 0px)) translateZ(var(--zoom, 0px))
+    rotateX(var(--pitch, -22deg)) rotateY(var(--yaw, -34deg))
+    scale3d(var(--zoom-scale, 1), var(--zoom-scale, 1), var(--zoom-scale, 1));
 }
 
 .scene3d--spin .scene3d__stage {
@@ -40,6 +41,16 @@
   width: 0;
   height: 0;
   transform-style: preserve-3d;
+}
+
+.scene3d__probe {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100px;
+  height: 100px;
+  visibility: hidden;
+  pointer-events: none;
 }
 
 .scene3d__grid {

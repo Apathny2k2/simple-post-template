@@ -30,6 +30,12 @@ type State<T> = {
   /** what the last commit was called, and when - see `coalesce` */
   lastLabel: string | null
   lastAt: number
+  /**
+   * Bumped by undo and redo only. A caller that keeps state alongside
+   * the value - which cube was selected, say - watches this to know it
+   * has travelled rather than edited, without having to diff anything.
+   */
+  travel: number
 }
 
 /** Same-label commits closer together than this fold into one step. */
@@ -42,6 +48,8 @@ export type History<T> = {
   /** what Ctrl+Z would undo, for the menu label */
   undoLabel: string | null
   redoLabel: string | null
+  /** increments on undo and redo, never on an edit */
+  travel: number
   /**
    * Record one edit as one undo step. `coalesce` folds a run of
    * same-label edits together, which is what makes dragging a number
@@ -72,6 +80,7 @@ export function useHistory<T>(initial: T): History<T> {
     future: [],
     lastLabel: null,
     lastAt: 0,
+    travel: 0,
   })
 
   const commit = useCallback((label: string, next: T | ((current: T) => T), coalesce = false) => {
@@ -88,6 +97,7 @@ export function useHistory<T>(initial: T): History<T> {
         future: [],
         lastLabel: label,
         lastAt: now,
+        travel: s.travel,
       }
     })
   }, [])
@@ -131,6 +141,7 @@ export function useHistory<T>(initial: T): History<T> {
         future: [{ label: last.label, value: s.present }, ...s.future],
         lastLabel: null,
         lastAt: 0,
+        travel: s.travel + 1,
       }
     })
   }, [])
@@ -145,12 +156,13 @@ export function useHistory<T>(initial: T): History<T> {
         future: rest,
         lastLabel: null,
         lastAt: 0,
+        travel: s.travel + 1,
       }
     })
   }, [])
 
   const reset = useCallback(
-    (next: T) => setState({ past: [], present: next, future: [], lastLabel: null, lastAt: 0 }),
+    (next: T) => setState({ past: [], present: next, future: [], lastLabel: null, lastAt: 0, travel: 0 }),
     [],
   )
 
@@ -161,6 +173,7 @@ export function useHistory<T>(initial: T): History<T> {
       canRedo: state.future.length > 0,
       undoLabel: state.past[state.past.length - 1]?.label ?? null,
       redoLabel: state.future[0]?.label ?? null,
+      travel: state.travel,
       commit,
       begin,
       amend,

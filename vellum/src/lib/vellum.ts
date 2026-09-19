@@ -120,6 +120,14 @@ type VellumClip = {
 export type VellumDocument = {
   vellum: { format: string; version: number }
   name?: string
+  /**
+   * What the model is for. Block models are validated against rules the
+   * others are not, so a document that does not say leaves the editor
+   * guessing - and it used to guess from whichever page you happened to
+   * open first, which meant a block model opened after a mob was not
+   * checked at all.
+   */
+  kind?: string
   resolution?: { width: number; height: number }
   bones: VellumBone[]
   cubes: VellumCube[]
@@ -234,6 +242,7 @@ export function toVellumDocument(model: Model): VellumDocument {
   return compact({
     vellum: { format: FORMAT, version: CURRENT_VERSION },
     name: model.name || undefined,
+    kind: model.kind,
     resolution: model.resolution,
     bones,
     cubes,
@@ -299,16 +308,19 @@ export function fromVellumDocument(doc: VellumDocument): Model {
     source: t.source ?? '',
   }))
 
-  const known = new Set(textures.map((t) => t.id))
-
   const cubes: Cube[] = (doc.cubes ?? []).map((c) => {
     const faces = {} as Record<FaceKey, Face>
     for (const key of FACES) {
       const f = c.faces?.[key]
+      /* A face naming a texture this file does not carry keeps the name.
+         Erasing it here rendered the same - an untextured face - but it
+         also silenced the validator's own rule for exactly this case and
+         then wrote the detachment back on the next save, so a file whose
+         texture ids had been renamed by another tool was reported clean
+         and then permanently broken. */
       faces[key] = {
         uv: (f?.uv ?? [0, 0, 0, 0]) as UVRect,
-        // a face naming a texture the file does not carry is untextured
-        texture: f?.texture !== undefined && known.has(f.texture) ? f.texture : null,
+        texture: f?.texture ?? null,
         rotation: (f?.rotation ?? 0) as 0 | 90 | 180 | 270,
       }
     }
@@ -369,8 +381,11 @@ export function fromVellumDocument(doc: VellumDocument): Model {
     })),
   }))
 
+  const kind = doc.kind === 'items' || doc.kind === 'mobs' || doc.kind === 'blocks' ? doc.kind : undefined
+
   return {
     name: doc.name ?? 'model',
+    kind,
     resolution,
     bones,
     cubes,

@@ -108,6 +108,7 @@ function itemStarter(name: string): Model {
 
   return {
     name,
+    kind: 'items',
     resolution: { width: 32, height: 32 },
     bones: [root],
     cubes: [cube],
@@ -145,6 +146,7 @@ function mobStarter(name: string): Model {
 
   return {
     name,
+    kind: 'mobs',
     resolution: { width: L, height: L },
     bones: [root],
     cubes: [head, torso, armL, armR, legL, legR],

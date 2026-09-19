@@ -772,35 +772,97 @@
   text-shadow: 0 0 12px rgba(205, 89, 78, 0.6);
 }
 
-.tl-main { flex: 1; min-height: 0; display: grid; grid-template-columns: 178px minmax(0, 1fr); }
-.tl-names { border-right: 1px solid var(--glass-rim); overflow-y: auto; }
+/* One scroll container. The names column and the ruler stick inside it
+   rather than being separate scrollers, so a label can never drift away
+   from the track it names. */
+.tl-main {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  position: relative;
+}
 
+.tl-grid {
+  --names-w: 178px;
+  display: grid;
+  grid-template-columns: var(--names-w) max-content;
+  align-content: start;
+  position: relative;
+  min-width: 100%;
+}
+
+.tl-corner,
 .tl-name {
+  position: sticky;
+  left: 0;
   display: flex;
   align-items: center;
   gap: 6px;
-  height: 30px;
   padding-inline: 10px;
+  border-right: 1px solid var(--glass-rim);
   border-bottom: 1px solid var(--glass-rim);
   font-size: var(--fs-2xs);
   color: var(--ink-muted);
+  /* opaque, or the tracks show through it once you scroll sideways */
+  background: #101a33;
 }
 
+.tl-corner {
+  top: 0;
+  z-index: 4;
+  height: 22px;
+  opacity: 0.75;
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  font-size: 9px;
+}
+
+.tl-name { height: 30px; z-index: 2; cursor: pointer; }
+.tl-name__bone { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tl-name__ch { font-family: var(--font-mono); margin-left: auto; opacity: 0.6; }
-.tl-track-wrap { position: relative; overflow: auto; }
+
+.tl-name[aria-selected='true'] {
+  color: var(--ink);
+  background: #1b2340;
+  box-shadow: inset 2px 0 0 var(--wax-300);
+}
+
+.tl-name__btn {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 19px;
+  height: 19px;
+  margin-left: 2px;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--ink-faint);
+  cursor: pointer;
+  transition: color var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease),
+    border-color var(--dur-fast) var(--ease), transform var(--dur) var(--spring);
+}
+
+.tl-name__btn:hover {
+  color: var(--wax-200);
+  background: rgba(205, 89, 78, 0.18);
+  border-color: var(--wax-400);
+  transform: scale(1.1);
+}
 
 .tl-ruler {
   position: sticky;
   top: 0;
-  z-index: 2;
+  z-index: 3;
   height: 22px;
-  background: rgba(10, 16, 34, 0.8);
+  background: rgba(10, 16, 34, 0.94);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
   border-bottom: 1px solid var(--glass-rim);
   display: flex;
   align-items: flex-end;
-  min-width: 100%;
+  cursor: ew-resize;
 }
 
 .tl-tick {
@@ -812,6 +874,27 @@
   font-size: 9px;
   color: var(--ink-faint);
   padding-left: 4px;
+}
+
+/* the real end of the clip, which the whole-second ruler over-runs */
+.tl-end {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--ink-faint);
+  opacity: 0.7;
+}
+
+.tl-end::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 5px;
+  height: 5px;
+  background: var(--ink-faint);
+  clip-path: polygon(0 0, 100% 0, 0 100%);
 }
 
 .tl-track {
@@ -848,6 +931,14 @@
 
 .tl-key:active { transform: rotate(45deg) scale(0.9); }
 
+/* a key past the clip end still plays back nothing - say so */
+.tl-key[data-past-end] {
+  background: linear-gradient(160deg, var(--ink-faint), #2b3d69);
+  border-color: var(--ink-faint);
+  box-shadow: none;
+  opacity: 0.75;
+}
+
 .tl-playhead {
   position: absolute;
   top: 0;
@@ -855,7 +946,7 @@
   width: 1px;
   background: var(--wax-300);
   box-shadow: 0 0 10px rgba(222, 125, 109, 0.9);
-  z-index: 3;
+  z-index: 1;
   pointer-events: none;
 }
 
