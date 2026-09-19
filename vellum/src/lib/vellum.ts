@@ -28,7 +28,8 @@
    models or textures, no display transforms, and no editor state.
    --------------------------------------------------------------- */
 
-import { FACES } from './model'
+import { FACES, subtypeFits } from './model'
+import type { Behaviour, BehaviourEffect, BehaviourRequirement, BehaviourStage, EffectKind } from './behaviour'
 import type {
   Bone,
   Channel,
@@ -38,13 +39,15 @@ import type {
   FaceKey,
   Interpolation,
   Model,
+  ProjectKind,
+  Subtype,
   Texture,
   UVRect,
   Vec3,
 } from './model'
 
 export const FORMAT = 'model'
-export const CURRENT_VERSION = 2
+export const CURRENT_VERSION = 4
 
 /** A well-formed `.vellum` begins with exactly these bytes. */
 export const HEADER_PREFIX = `{"vellum":{"format":"${FORMAT}","version":${CURRENT_VERSION}},`
@@ -117,6 +120,17 @@ type VellumClip = {
   tracks: VellumTrack[]
 }
 
+export type VellumBehaviour = {
+  requires?: Array<{ id?: string; at?: number[]; block?: string }>
+  stages?: Array<{
+    id?: string
+    name?: string
+    seconds?: number
+    clip?: string | null
+    effects?: Array<{ kind?: string; id?: string; amount?: number; at?: number[] }>
+  }>
+}
+
 export type VellumDocument = {
   vellum: { format: string; version: number }
   name?: string
@@ -128,11 +142,25 @@ export type VellumDocument = {
    * checked at all.
    */
   kind?: string
+  /**
+   * What it is for, within its kind. Optional, and absent means nobody
+   * said - never "misc". Version 3 added it; a version 2 document that
+   * called itself a `consumables` kind becomes an item that says
+   * `consumable` here, which is the same claim in the shape that can
+   * also describe a weapon.
+   */
+  subtype?: string
   resolution?: { width: number; height: number }
   bones: VellumBone[]
   cubes: VellumCube[]
   textures: VellumTexture[]
   clips: VellumClip[]
+  /**
+   * What makes it act on its own. Version 4 added it, and it is absent
+   * on anything that does not - which is most models, so writing an
+   * empty behaviour onto every file would be noise in every diff.
+   */
+  behaviour?: VellumBehaviour
 }
 
 /* ---------------- errors ---------------- */
@@ -238,16 +266,45 @@ export function toVellumDocument(model: Model): VellumDocument {
     }),
   )
 
+  /* Absent, never empty: a model with no behaviour writes no behaviour
+     key at all, rather than an object with two empty lists in it. */
+  const b = model.behaviour
+  const behaviour: VellumBehaviour | undefined =
+    b && (b.requires.length || b.stages.length)
+      ? {
+          requires: b.requires.length
+            ? b.requires.map((r) => ({ id: r.id, at: r.at, block: r.block }))
+            : undefined,
+          stages: b.stages.length
+            ? b.stages.map((st) =>
+                compact({
+                  id: st.id,
+                  name: st.name,
+                  seconds: st.seconds,
+                  clip: st.clip ?? undefined,
+                  effects: st.effects.length
+                    ? st.effects.map((e) =>
+                        compact({ kind: e.kind, id: e.id, amount: e.amount, at: e.at }),
+                      )
+                    : undefined,
+                }),
+              )
+            : undefined,
+        }
+      : undefined
+
   // insertion order here IS the written key order
   return compact({
     vellum: { format: FORMAT, version: CURRENT_VERSION },
     name: model.name || undefined,
     kind: model.kind,
+    subtype: model.subtype,
     resolution: model.resolution,
     bones,
     cubes,
     textures,
     clips,
+    behaviour,
   })
 }
 
@@ -263,6 +320,40 @@ export function writeVellum(model: Model): string {
  * exist so that the ladder exists, and so a real migration has somewhere
  * to go.
  */
+const EFFECTS: EffectKind[] = ['particles', 'sound', 'shake']
+
+/**
+ * A behaviour off disk, with every field forced into the shape the rest
+ * of the app can rely on. Nothing here rejects a document: an offset
+ * that is not three numbers becomes the block below, and validation
+ * says so afterwards where a person can read it - a throw at this depth
+ * would only ever show up as "could not open".
+ */
+function readBehaviour(raw: VellumBehaviour | undefined): Behaviour | undefined {
+  if (!raw) return undefined
+  const requires: BehaviourRequirement[] = (raw.requires ?? []).map((r, i) => ({
+    id: typeof r.id === 'string' && r.id ? r.id : `br${i}`,
+    at: vec3(r.at, [0, -1, 0]),
+    block: typeof r.block === 'string' ? r.block : '',
+  }))
+  const stages: BehaviourStage[] = (raw.stages ?? []).map((st, i) => ({
+    id: typeof st.id === 'string' && st.id ? st.id : `bs${i}`,
+    name: typeof st.name === 'string' && st.name ? st.name : `stage ${i + 1}`,
+    seconds: typeof st.seconds === 'number' && Number.isFinite(st.seconds) ? st.seconds : 1,
+    clip: typeof st.clip === 'string' && st.clip ? st.clip : null,
+    effects: (st.effects ?? [])
+      .filter((e): e is { kind: string } & BehaviourEffect => EFFECTS.includes(e.kind as EffectKind))
+      .map((e) => ({
+        kind: e.kind as EffectKind,
+        id: typeof e.id === 'string' && e.id ? e.id : undefined,
+        amount: typeof e.amount === 'number' && Number.isFinite(e.amount) ? e.amount : 1,
+        at: Array.isArray(e.at) ? vec3(e.at, [0, 0, 0]) : undefined,
+      })),
+  }))
+  if (!requires.length && !stages.length) return undefined
+  return { requires, stages }
+}
+
 function upgrade(doc: VellumDocument): VellumDocument {
   let version = doc.vellum.version
   while (version < CURRENT_VERSION) {
@@ -272,6 +363,18 @@ function upgrade(doc: VellumDocument): VellumDocument {
         break
       case 1: // v2's added fields are optional, and absent is already correct
         version = 2
+        break
+      case 2:
+        /* v3 split "what it is" from "what it is for". `consumables` was
+           a kind, which put it beside `items` as though holding a potion
+           were a different act from holding a sword. It is an item with
+           a subtype, and that is the same claim in a shape that can also
+           describe a weapon or a tool. */
+        if (doc.kind === 'consumables') doc = { ...doc, kind: 'items', subtype: 'consumable' }
+        version = 3
+        break
+      case 3: // v4 added `behaviour`, and absent is already correct
+        version = 4
         break
       default:
         throw new VellumFormatError(`No upgrade path from .vellum version ${version}.`)
@@ -381,11 +484,19 @@ export function fromVellumDocument(doc: VellumDocument): Model {
     })),
   }))
 
-  const kind = doc.kind === 'items' || doc.kind === 'mobs' || doc.kind === 'blocks' ? doc.kind : undefined
+  const kind: ProjectKind | undefined =
+    doc.kind === 'items' || doc.kind === 'mobs' || doc.kind === 'blocks' ? doc.kind : undefined
+
+  /* A subtype the kind does not offer is dropped rather than carried:
+     absent means "not said", which every reader already handles, and a
+     nonsense subtype is a claim nothing downstream could act on. */
+  const subtype: Subtype | undefined = subtypeFits(kind, doc.subtype) ? doc.subtype : undefined
 
   return {
     name: doc.name ?? 'model',
     kind,
+    subtype,
+    behaviour: readBehaviour(doc.behaviour),
     resolution,
     bones,
     cubes,

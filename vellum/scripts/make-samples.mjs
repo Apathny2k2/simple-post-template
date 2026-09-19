@@ -108,7 +108,7 @@ const files = await p.evaluate(async () => {
    * bones are named rather than referenced, and the texture is painted
    * from the same spec so a cube and its pixels cannot drift apart.
    */
-  function build({ name, kind, sheet, cubes, bones, clips, scale = 1 }) {
+  function build({ name, kind, subtype, sheet, cubes, bones, clips, behaviour, scale = 1 }) {
     /* Authored at whatever size reads well while drawing it, then
        brought into the space the format actually renders in: an item
        lives in a 16-unit slot, and a sword drawn 32 units long is two
@@ -142,7 +142,7 @@ const files = await p.evaluate(async () => {
       width: sheet, height: sheet, uvWidth: sheet, uvHeight: sheet, source: '',
     }
     const model = {
-      name, kind,
+      name, kind, subtype,
       resolution: { width: sheet, height: sheet },
       bones: [], cubes: [], textures: [texture], clips: [],
     }
@@ -188,7 +188,29 @@ const files = await p.evaluate(async () => {
       })),
     }))
 
-    return { text: V.writeVellum(model), cubes: model.cubes.length, clips: model.clips.length }
+    /* A behaviour names clips, and a clip's id is only known once the
+       model is built - so the spec names them and they are resolved
+       here rather than being hand-copied into two places. */
+    if (behaviour) {
+      const clipId = (n) => model.clips.find((c) => c.name === n)?.id ?? null
+      model.behaviour = {
+        requires: behaviour.requires.map((r, i) => ({ id: `br${i}`, at: r.at, block: r.block })),
+        stages: behaviour.stages.map((st, i) => ({
+          id: `bs${i}`,
+          name: st.name,
+          seconds: st.seconds,
+          clip: st.clip ? clipId(st.clip) : null,
+          effects: st.effects ?? [],
+        })),
+      }
+    }
+
+    return {
+      text: V.writeVellum(model),
+      cubes: model.cubes.length,
+      clips: model.clips.length,
+      stages: model.behaviour?.stages.length ?? 0,
+    }
   }
 
   /* ================= 1. Runic Blade ================= */
@@ -199,7 +221,7 @@ const files = await p.evaluate(async () => {
   const rune   = { base: '#2f6fa8', glow: '#9fe8ff' }
 
   const runic = build({
-    name: 'runic_blade', kind: 'items', sheet: 64, scale: 0.5,
+    name: 'runic_blade', kind: 'items', subtype: 'weapon', sheet: 64, scale: 0.5,
     cubes: [
       { name: 'pommel',    from: [-2,-2,-2],      to: [2,1,2],        origin: [0,0,0],    look: gold },
       { name: 'grip',      from: [-1,1,-1],       to: [1,7,1],        origin: [0,1,0],    look: wrap },
@@ -244,7 +266,7 @@ const files = await p.evaluate(async () => {
   const bone   = { base: '#cfc2a4', sheen: true }
 
   const ember = build({
-    name: 'emberfang', kind: 'items', sheet: 64, scale: 0.5,
+    name: 'emberfang', kind: 'items', subtype: 'weapon', sheet: 64, scale: 0.5,
     cubes: [
       { name: 'pommel', from: [-1.5,-2,-1.5], to: [1.5,0.5,1.5], origin: [0,0,0],   look: bone },
       { name: 'grip',   from: [-1,0.5,-1],    to: [1,6,1],       origin: [0,0.5,0], look: horn },
@@ -287,7 +309,7 @@ const files = await p.evaluate(async () => {
   const paper = { base: '#d9cfae' }
 
   const flask = build({
-    name: 'tide_flask', kind: 'consumables', sheet: 64,
+    name: 'tide_flask', kind: 'items', subtype: 'consumable', sheet: 64,
     cubes: [
       { name: 'base',     from: [-3.5,0,-3.5],    to: [3.5,1.5,3.5],   origin: [0,0,0],   look: glass2 },
       { name: 'body',     from: [-3,1.5,-3],      to: [3,7,3],         origin: [0,1.5,0], look: glass },
@@ -327,7 +349,7 @@ const files = await p.evaluate(async () => {
   const crumbc = { base: '#d8bb87' }
 
   const loaf = build({
-    name: 'honeyed_loaf', kind: 'consumables', sheet: 64,
+    name: 'honeyed_loaf', kind: 'items', subtype: 'consumable', sheet: 64,
     cubes: [
       { name: 'loaf',      from: [-5,0,-3.5],     to: [5,4.5,3.5],   origin: [0,0,0],    look: crust },
       { name: 'crown',     from: [-4,4.5,-3],     to: [4,6.5,3],     origin: [0,4.5,0],  look: crown },
@@ -379,7 +401,7 @@ const files = await p.evaluate(async () => {
   const core   = { base: '#8d3fd6', glow: '#ecc6ff' }
 
   const alien = build({
-    name: 'alien_sword', kind: 'items', sheet: 64, scale: 0.5,
+    name: 'alien_sword', kind: 'items', subtype: 'weapon', sheet: 64, scale: 0.5,
     cubes: [
       { name: 'pommel',      from: [-2,-2,-2],       to: [2,0,2],        origin: [0,0,0],     look: chitin2 },
       { name: 'grip',        from: [-1.25,0,-1.25],  to: [1.25,6.5,1.25],origin: [0,0,0],     look: voidwr },
@@ -421,16 +443,94 @@ const files = await p.evaluate(async () => {
     ],
   })
 
-  return { runic, ember, flask, loaf, alien }
+  /* ================= 6. Geyser Block =================
+     The case behaviours were built around. Water over lava beneath it
+     arms the thing; then it charges quietly, rumbles as it nears full,
+     blows, and settles. None of that is in a clip - a clip cannot say
+     "for seven seconds" or "when there is lava below". */
+  const stone  = { base: '#5b5a57', sheen: true }
+  const stone2 = { base: '#47464a' }
+  const scald  = { base: '#2f7f96', glow: '#b6f2ff' }
+  const crackc = { base: '#b8471f', glow: '#ffbe6b' }
+
+  const geyser = build({
+    name: 'geyser_block', kind: 'blocks', sheet: 64,
+    cubes: [
+      { name: 'basin',   from: [0,0,0],       to: [16,5,16],      origin: [0,0,0],    look: stone },
+      { name: 'rim_n',   from: [0,5,0],       to: [16,7,3],       origin: [0,5,0],    look: stone2 },
+      { name: 'rim_s',   from: [0,5,13],      to: [16,7,16],      origin: [0,5,13],   look: stone2 },
+      { name: 'rim_w',   from: [0,5,3],       to: [3,7,13],       origin: [0,5,3],    look: stone2 },
+      { name: 'rim_e',   from: [13,5,3],      to: [16,7,13],      origin: [13,5,3],   look: stone2 },
+      { name: 'crack',   from: [3,4.9,3],     to: [13,5.2,13],    origin: [3,4.9,3],  look: crackc },
+      { name: 'throat',  from: [4,5,4],       to: [12,6,12],      origin: [4,5,4],    look: stone2 },
+      { name: 'surface', from: [4.5,6,4.5],   to: [11.5,7.5,11.5],origin: [8,6,8],    look: scald },
+      { name: 'jet',     from: [6,7.5,6],     to: [10,8,10],      origin: [8,7.5,8],  look: scald },
+    ],
+    bones: [{
+      name: 'root', origin: [8,0,8], children: [
+        { name: 'shell', origin: [8,0,8], cubes: ['basin','rim_n','rim_s','rim_w','rim_e','crack'] },
+        { name: 'vent',  origin: [8,5,8], cubes: ['throat'], children: [
+          { name: 'surface', origin: [8,6,8],   cubes: ['surface'] },
+          { name: 'jet',     origin: [8,7.5,8], cubes: ['jet'] },
+        ]},
+      ],
+    }],
+    clips: [
+      /* Quiet. The pool breathes and the cracks stay dim. */
+      { name: 'idle', loop: 'loop', length: 3.4, tracks: [
+        { bone: 'surface', channel: 'position', keys: [[0,[0,0,0]],[0.85,[0,0.25,0]],[1.7,[0,0,0]],[2.55,[0,-0.2,0]],[3.4,[0,0,0]]] },
+        { bone: 'surface', channel: 'scale',    keys: [[0,[1,1,1]],[1.7,[1.02,1,1.02]],[3.4,[1,1,1]]] },
+      ]},
+      /* Nearly full. The block itself starts moving. */
+      { name: 'rumble', loop: 'loop', length: 0.55, tracks: [
+        { bone: 'root',    channel: 'position', keys: [[0,[0,0,0],'linear'],[0.14,[0.35,0,-0.25],'linear'],[0.28,[-0.3,0,0.3],'linear'],[0.42,[0.2,0,0.2],'linear'],[0.55,[0,0,0],'linear']] },
+        { bone: 'surface', channel: 'position', keys: [[0,[0,0,0],'linear'],[0.28,[0,0.6,0],'linear'],[0.55,[0,0,0],'linear']] },
+        { bone: 'jet',     channel: 'scale',    keys: [[0,[1,1,1],'linear'],[0.28,[1,2.4,1],'linear'],[0.55,[1,1,1],'linear']] },
+      ]},
+      /* The burst. Linear on the way down: a spline through a value
+         this large undershoots past zero, and a negative scale turns
+         the column inside out. */
+      { name: 'erupt', loop: 'loop', length: 1.6, tracks: [
+        { bone: 'jet',     channel: 'scale',    keys: [[0,[1,1,1],'linear'],[0.18,[1.6,30,1.6],'linear'],[0.8,[1.3,24,1.3],'linear'],[1.3,[1,7,1],'linear'],[1.6,[1,1,1],'linear']] },
+        { bone: 'surface', channel: 'position', keys: [[0,[0,0,0],'linear'],[0.18,[0,1.2,0],'linear'],[1.0,[0,-0.8,0],'linear'],[1.6,[0,0,0],'linear']] },
+        { bone: 'root',    channel: 'position', keys: [[0,[0,0,0],'linear'],[0.12,[0.5,0,0.4],'linear'],[0.3,[-0.4,0,-0.3],'linear'],[0.6,[0,0,0],'linear'],[1.6,[0,0,0],'linear']] },
+      ]},
+    ],
+    behaviour: {
+      requires: [
+        { at: [0,-1,0], block: 'minecraft:water' },
+        { at: [0,-2,0], block: 'minecraft:lava' },
+      ],
+      stages: [
+        { name: 'charge', seconds: 7, clip: 'idle', effects: [
+          { kind: 'particles', id: 'minecraft:splash', amount: 2, at: [0,8,0] },
+        ]},
+        { name: 'rumble', seconds: 2.2, clip: 'rumble', effects: [
+          { kind: 'shake', amount: 0.45 },
+          { kind: 'particles', id: 'minecraft:block_dust', amount: 16, at: [0,1,0] },
+        ]},
+        { name: 'erupt', seconds: 1.6, clip: 'erupt', effects: [
+          { kind: 'particles', id: 'minecraft:cloud', amount: 40, at: [0,10,0] },
+          { kind: 'sound', id: 'minecraft:block.fire.extinguish', amount: 1 },
+        ]},
+        { name: 'settle', seconds: 2.6, clip: 'idle', effects: [
+          { kind: 'particles', id: 'minecraft:cloud', amount: 7, at: [0,9,0] },
+        ]},
+      ],
+    },
+  })
+
+  return { runic, ember, flask, loaf, alien, geyser }
 })
 
 const out = {
   runic_blade: files.runic, emberfang: files.ember,
   tide_flask: files.flask, honeyed_loaf: files.loaf,
   alien_sword: files.alien,
+  geyser_block: files.geyser,
 }
 for (const [name, r] of Object.entries(out)) {
   writeFileSync(new URL(`../src/models/${name}.vellum`, import.meta.url), r.text)
-  console.log(`${name.padEnd(14)} ${String(r.cubes).padStart(2)} cubes, ${r.clips} clips, ${(r.text.length/1024).toFixed(1)} KB`)
+  console.log(`${name.padEnd(14)} ${String(r.cubes).padStart(2)} cubes, ${r.clips} clips${r.stages ? `, ${r.stages} stages` : ''}, ${(r.text.length/1024).toFixed(1)} KB`)
 }
 await b.close()

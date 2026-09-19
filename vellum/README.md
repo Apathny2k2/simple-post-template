@@ -26,11 +26,12 @@ than shipping a page that silently 404s its own assets.
 
 | Route | Sheet | What it is |
 | --- | --- | --- |
-| `#/` | sheet 3 | Dash. **Static and stale on purpose** - fixed figures, inert controls, placeholder copy. |
+| `#/` | sheet 3 | Dash. Fed by a plugin through the documented API; the built-in sample until one reports. |
 | `#/projects` | sheet 2 | First scene. Pick a shelf: Items, or Mobs & Anim. |
-| `#/projects/:scene/:kind` | sheet 2 | The shared library panel. `< Back`, category tabs, card grid, `< 1 2 3 >`. |
-| `#/settings/:section` | sheet 1 | Search + section list, free sections above the `Paid tiers` divider. |
+| `#/projects/:scene/:shelf` | sheet 2 | The shared library panel. `< Back`, shelf tabs, **New model**, card grid, `< 1 2 3 >`. Cards are grouped by what each model is for. |
+| `#/settings/:section` | sheet 1 | Search + section list, free sections above the `Manage` divider. |
 | `#/editor/:sampleId` | - | The editor. Opens `.vellum`, imports `.bbmodel`, saves `.vellum`. |
+| `#/editor/new/:kind/:subtype/:name` | - | The same editor, on a model built from the URL. This is where **New model** lands. |
 
 ## `.vellum` — the native model format
 
@@ -45,7 +46,7 @@ with a Vellum-owned schema. The extension is ours; the encoding is JSON so
 `git diff` on a model keeps working.
 
 ```
-{"vellum":{"format":"model","version":2},"name":"voidling","resolution":{…},"bones":[…],"cubes":[…],"textures":[…],"clips":[…]}
+{"vellum":{"format":"model","version":4},"name":"voidling","kind":"mobs","subtype":"hostile","resolution":{…},"bones":[…],"cubes":[…],"textures":[…],"clips":[…],"behaviour":{…}}
 ```
 
 Four properties are load-bearing, and the round-trip test asserts each rather
@@ -64,6 +65,57 @@ Two refusals, both by name rather than by failing somewhere in the middle of a
 cube: a file from a **newer Vellum** than this one, which cannot be known to mean
 what this one would assume; and a **foreign file** — no `vellum` header, or a
 `format` that is not `model`.
+
+### What a model says it is
+
+Two fields, and they answer different questions.
+
+**`kind`** is what the model *is* — `items`, `mobs` or `blocks`. It picks the
+validation rules: a block is checked against the -16..32 range and its fixed
+rotation angles, an item against the 16-unit slot it is rendered in.
+
+**`subtype`** is what it is *for*, within its kind — a weapon, a tool, a
+consumable or misc; a hostile, neutral or docile mob. It changes no geometry.
+What it changes is which rules apply (a consumable with no use clip is a
+consumable in name only; a hostile with no attack clip will swing on its idle),
+where the card files itself on the shelf, and how the world view places it.
+
+`consumables` used to be a fourth `kind`, which put it beside `items` as though
+holding a potion were a different act from holding a sword. Version 3 split the
+two questions apart, and the reader upgrades an old document in memory:
+`kind: "consumables"` becomes `kind: "items", subtype: "consumable"`. That is
+the same claim in a shape that can also describe a weapon.
+
+A subtype the kind does not offer is dropped on read rather than carried.
+Absent means *nobody said*, which every reader already handles; a nonsense
+subtype is a claim nothing downstream could act on.
+
+### Behaviours — what makes a block act on its own
+
+A clip says **how** a model moves. It cannot say **when**, and for a block that
+is most of the question. A geyser is not a model with a steam clip: it is a
+model that sits quiet until there is water over lava beneath it, then charges
+for a while, rumbles as it nears full, blows, and settles.
+
+So `behaviour` is two things and nothing else:
+
+- **`requires`** — offsets in whole blocks and what has to be at each. All of
+  them, or none of it runs.
+- **`stages`** — an ordered cycle. Each stage lasts a number of seconds, loops
+  one of the model's own clips while it does, and may throw off particles, a
+  sound or a shake. The cycle repeats while the requirements hold.
+
+"Near full charge it rumbles" needs no special case — rumble is the stage before
+the burst, and how long the charge runs is the charge stage's own duration.
+
+The plugin checks the world and runs the clock. Vellum is the authoring half:
+the shape, the rules, and a clock good enough to watch the thing work. The
+Behaviour tab runs the cycle in the viewport; **View in the real world** runs it
+on the field with its particles and its shake. `geyser_block.vellum` is the
+worked example.
+
+A behaviour on a mob is a warning rather than an error: a mob is animated by
+what it is doing, not by the blocks around it, so nothing would read it.
 
 ### What the shape buys
 
@@ -209,13 +261,21 @@ is there so the viewport reads as a viewport.
 
 ## What works, and what does not
 
-Interactive: routing, shelf selection, library search + pagination, card
-hover (spin, 1.2x bounce) and its actions menu, settings search and sections,
-and in the editor - menus, mode and tool switching, panel collapse and resize,
-outliner selection with per-node hide/lock, the colour picker, UV face
-selection, numeric fields (type or drag the axis chip to scrub), quad view,
-grid toggle, and timeline playback. Support is fully interactive against the mock
-transport described above.
+The editor edits. Geometry, textures, rigs, clips, behaviours and the file
+itself are all real: cubes and bones are added, resized, reparented and deleted;
+paint lands on the sheet through the UV rectangle it belongs to; clips are keyed,
+retimed and interpolated on a catmull-rom spline; and a model saves to and opens
+from a real `.vellum` through the same codec the samples ship in. Undo and redo
+cover all of it, and leaving a dirty editor asks first.
 
-Not wired, by design: the dashboard entirely, plus saving, exporting, real
-geometry editing and anything that would need a backend.
+New models are made from the library shelf — **New model**, beside the tabs and
+outside the pill — which picks a kind, then what it is for, and hands the editor
+a URL it can rebuild from. A reload does not lose it.
+
+The dashboard is fed rather than faked: it renders what a plugin has reported
+through the documented API and the built-in sample until one does. Everything a
+paid tier would unlock shows its layout with the controls inert, and says so.
+
+Not wired, by design: anything that would need a server of our own. The plugin
+API is documented and the transport is mocked; no request leaves the page unless
+a plugin has been linked.

@@ -504,3 +504,11 @@
   letter-spacing: 0;
   color: var(--ink-faint);
 }
+
+/* Making a model is not a shelf you can be on, so it sits outside the
+   tab pill rather than becoming a third segment of it. */
+.library__new { flex: none; }
+
+@media (width <= 720px) {
+  .library__new { order: 3; }
+}

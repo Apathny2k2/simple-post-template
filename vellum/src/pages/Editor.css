@@ -1486,3 +1486,180 @@
 }
 
 .ed-menubar__back:active { transform: scale(0.9); }
+
+/* The subtype row. A kind is a big decision with a picture; what the
+   thing is *for* is a smaller one, so it reads as chips under it rather
+   than as a second wall of tiles. */
+.newmodel__sub { display: grid; gap: 7px; margin-top: 14px; }
+.newmodel__subrow { display: flex; flex-wrap: wrap; gap: 5px; }
+.newmodel__subchip[aria-checked='true'] {
+  border-color: var(--wax-400);
+  color: var(--wax-200);
+  background: rgba(205, 89, 78, 0.18);
+  box-shadow: var(--glow-wax);
+}
+.newmodel__sub .field__hint { min-height: 1.4em; }
+
+/* The mob Scene panel: measured facts first, then the way into the world. */
+.scene-kv .kv__v { font-size: var(--fs-xs); }
+.scene-travel { margin-top: 10px; align-items: flex-start; line-height: 1.5; }
+.scene-travel[data-moving] { color: var(--ink-muted); }
+.scene-travel[data-moving] svg { color: var(--ok); }
+.scene-travel strong { color: var(--ink); font-weight: 500; }
+
+/* ---------------- behaviour ---------------- */
+
+.bhv-empty { padding-bottom: 4px; }
+
+.bhv-sec + .bhv-sec {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--glass-rim);
+}
+
+.bhv-sec__head { display: flex; align-items: center; gap: 7px; margin-bottom: 8px; }
+.bhv-sec__title {
+  font-size: var(--fs-2xs);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--highlight);
+  font-weight: 600;
+}
+.bhv-sec__meta { font-size: var(--fs-2xs); color: var(--ink-faint); margin-left: auto; }
+.bhv-sec__head .chip { margin-left: auto; }
+.bhv-sec__meta + .chip { margin-left: 0; }
+
+.bhv-none { font-size: var(--fs-2xs); color: var(--ink-faint); line-height: 1.5; }
+.bhv-list { display: grid; gap: 8px; }
+
+.bhv-req,
+.bhv-stage {
+  display: grid;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--glass-rim);
+  border-radius: var(--r-md);
+  background: var(--bg-sunken);
+}
+
+.bhv-stage[data-on] {
+  border-color: var(--wax-400);
+  box-shadow: var(--glow-wax);
+  background: rgba(205, 89, 78, 0.08);
+}
+
+.bhv-req__top { display: flex; align-items: center; gap: 4px; }
+
+/* A grid, not a flex row: the rail is 300px and a flex row pushed the
+   reorder and remove buttons off the end of it, where the only sign
+   they existed was that nothing worked. */
+.bhv-stage__top {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 56px repeat(3, 24px);
+  gap: 3px;
+  align-items: center;
+}
+.bhv-req__block { flex: 1; min-width: 0; }
+.bhv-req__id { font-family: var(--font-mono); font-size: var(--fs-2xs); }
+.bhv-req__says {
+  font-size: var(--fs-2xs);
+  color: var(--wax-200);
+  letter-spacing: 0.02em;
+}
+
+.bhv-stage__name { min-width: 0; font-size: var(--fs-xs); padding: 5px 8px; }
+.bhv-stage__secs { min-width: 0; font-size: var(--fs-xs); padding: 5px 4px; text-align: right; }
+.bhv-stage__clip { width: 100%; }
+.bhv-stage__add { margin-top: 2px; }
+
+.bhv-x { width: 24px; height: 24px; flex: none; }
+.bhv-req__top .bhv-x { margin-left: auto; }
+.bhv-x:disabled { opacity: 0.35; cursor: not-allowed; }
+
+/* Kind, amount and remove on one line; whatever the effect is *of* -
+   a particle, a sound id - wraps onto its own, because a namespaced id
+   has no business being squeezed into a third of a narrow rail. */
+.bhv-fx {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 56px 24px;
+  gap: 3px;
+  align-items: center;
+}
+/* Placed rather than flowed: the id spans a whole row, and in DOM order
+   that would otherwise push the amount and the remove button onto a
+   third row of their own. */
+.bhv-fx__kind { grid-area: 1 / 1; min-width: 0; }
+.bhv-fx__amt { grid-area: 1 / 2; min-width: 0; font-size: var(--fs-2xs); padding: 5px 6px; text-align: right; }
+.bhv-fx > .bhv-x { grid-area: 1 / 3; }
+.bhv-fx__id { grid-area: 2 / 1 / 2 / -1; min-width: 0; font-size: var(--fs-2xs); padding: 5px 7px; }
+.bhv-fx__flat {
+  grid-area: 2 / 1 / 2 / -1;
+  color: var(--ink-faint);
+  font-size: var(--fs-2xs);
+  padding-left: 2px;
+}
+
+/* The whole cycle at a glance, with the clock riding over it. */
+.bhv-bar {
+  position: relative;
+  display: flex;
+  gap: 2px;
+  height: 26px;
+  margin-bottom: 8px;
+  border-radius: var(--r-sm);
+  overflow: hidden;
+}
+
+.bhv-bar__seg {
+  display: grid;
+  place-items: center;
+  min-width: 0;
+  padding-inline: 4px;
+  border: 1px solid var(--glass-rim);
+  border-radius: var(--r-xs);
+  background: rgba(146, 165, 202, 0.07);
+  font-size: 9px;
+  letter-spacing: 0.03em;
+  color: var(--ink-faint);
+  transition: background var(--dur) var(--ease), color var(--dur) var(--ease), border-color var(--dur) var(--ease);
+}
+
+.bhv-bar__seg > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+
+.bhv-bar__seg[data-on] {
+  border-color: var(--wax-400);
+  background: rgba(205, 89, 78, 0.3);
+  color: var(--ink);
+}
+
+.bhv-bar__head {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+  background: var(--wax-200);
+  box-shadow: 0 0 8px rgba(205, 89, 78, 0.9);
+  pointer-events: none;
+}
+
+/* The spinner arrows cost 14px of a 56px field, which is enough to clip
+   "0.45" down to "0" - and a number you cannot read is worse than no
+   control at all. The arrows step these anyway from the keyboard. */
+.bhv-stage__secs,
+.bhv-fx__amt {
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+
+.bhv-stage__secs::-webkit-inner-spin-button,
+.bhv-stage__secs::-webkit-outer-spin-button,
+.bhv-fx__amt::-webkit-inner-spin-button,
+.bhv-fx__amt::-webkit-outer-spin-button {
+  appearance: none;
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.bhv-play { margin-bottom: 10px; }
+.bhv-play__now { font-size: var(--fs-2xs); color: var(--ink-faint); }

@@ -13,9 +13,11 @@
 import { FACES } from './model'
 import { boxUvFaces, makeRoom } from './uv-pack'
 import type { Rescale } from './uv-pack'
-import type { Bone, BoneChild, Clip, Cube, Face, FaceKey, Key, Model, Texture, UVRect, Vec3 } from './model'
+import { defaultSubtype, subtypeFits } from './model'
+import type { Bone, BoneChild, Clip, Cube, Face, FaceKey, Key, Model, ProjectKind, Subtype, Texture, UVRect, Vec3 } from './model'
 
-export type NewModelKind = 'items' | 'mobs' | 'blocks' | 'consumables'
+/** Kept as a name because the dialog reads better for it; it is the project kind. */
+export type NewModelKind = ProjectKind
 
 let counter = 0
 export const newId = () =>
@@ -93,11 +95,28 @@ export function makeBone(name: string, origin: Vec3, children: BoneChild[] = [])
 
 /* ---------------- starters ---------------- */
 
-export function createModel(kind: NewModelKind, name: string): Model {
-  if (kind === 'mobs') return mobStarter(name)
-  if (kind === 'blocks') return blockStarter(name)
-  if (kind === 'consumables') return consumableStarter(name)
-  return itemStarter(name)
+/**
+ * A starter for a kind, stamped with the subtype the project asked for.
+ *
+ * Only one subtype changes what you get: a consumable arrives as a
+ * flask that already has its use clip, because a consumable is defined
+ * by that clip and starting from a bare cube means starting from
+ * something the rules will immediately complain about. Every other
+ * subtype is metadata - a weapon and a tool begin from the same cube,
+ * because what separates them is what the game does with one, not what
+ * it is shaped like.
+ */
+export function createModel(kind: NewModelKind, name: string, subtype?: Subtype): Model {
+  const sub = subtypeFits(kind, subtype) ? subtype : defaultSubtype(kind)
+  const base =
+    kind === 'mobs'
+      ? mobStarter(name)
+      : kind === 'blocks'
+        ? blockStarter(name)
+        : sub === 'consumable'
+          ? consumableStarter(name)
+          : itemStarter(name)
+  return { ...base, kind, subtype: sub }
 }
 
 /**
@@ -208,7 +227,8 @@ function consumableStarter(name: string): Model {
 
   return {
     name,
-    kind: 'consumables',
+    kind: 'items',
+    subtype: 'consumable',
     resolution: { width: 32, height: 32 },
     bones: [root],
     cubes: [body, neck, fill, cork],

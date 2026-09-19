@@ -1,9 +1,16 @@
 import { useEffect, useRef, useState } from 'react'
 import { Icon } from '../../lib/icons'
 import { arrowNav, useModal } from '../../lib/a11y'
-import type { NewModelKind } from '../../lib/new-model'
+import { SUBTYPES, defaultSubtype, subtypeLabel } from '../../lib/model'
+import type { ProjectKind, Subtype } from '../../lib/model'
 
-const KINDS: Array<{ id: NewModelKind; label: string; icon: 'cube' | 'anim' | 'grid' | 'bucket'; blurb: string; detail: string }> = [
+const KINDS: Array<{
+  id: ProjectKind
+  label: string
+  icon: 'cube' | 'anim' | 'grid'
+  blurb: string
+  detail: string
+}> = [
   {
     id: 'items',
     label: 'Item',
@@ -25,27 +32,36 @@ const KINDS: Array<{ id: NewModelKind; label: string; icon: 'cube' | 'anim' | 'g
     blurb: 'A full 16-unit cube on a 64 x 64 sheet.',
     detail: 'Validated against the block rules: inside -16..32, one rotated axis, fixed angles.',
   },
-  {
-    id: 'consumables',
-    label: 'Consumable',
-    icon: 'bucket',
-    blurb: 'A rigged flask that arrives with its use clip.',
-    detail: 'Tips back, the stopper comes away, the level drops. Validation asks for that clip.',
-  },
 ]
+
+/* What a subtype is actually for, said once so the picker is not a row
+   of words a modeller has to guess the consequences of. */
+const SUB_NOTE: Record<Subtype, string> = {
+  weapon: 'Swung. Dropped on the ground in the world view.',
+  tool: 'Held and used on a block. Dropped on the ground in the world view.',
+  consumable: 'Starts as a flask that already carries its use clip — the clip the rules ask for.',
+  misc: 'An ordinary item. Hangs in the air in the world view.',
+  hostile: 'Comes at the player. The rules ask for an attack clip.',
+  neutral: 'Fights back when hit.',
+  docile: 'Never attacks.',
+}
 
 export function NewModelDialog({
   onClose,
   onCreate,
+  title = 'New model',
 }: {
   onClose: () => void
-  onCreate: (kind: NewModelKind, name: string) => void
+  onCreate: (kind: ProjectKind, subtype: Subtype | undefined, name: string) => void
+  title?: string
 }) {
-  const [kind, setKind] = useState<NewModelKind>('items')
+  const [kind, setKind] = useState<ProjectKind>('items')
+  const [subtype, setSubtype] = useState<Subtype | undefined>(() => defaultSubtype('items'))
   const [name, setName] = useState('untitled')
   const first = useRef<HTMLInputElement>(null)
   const panel = useRef<HTMLDivElement>(null)
   const kinds = useRef<HTMLDivElement>(null)
+  const subs = useRef<HTMLDivElement>(null)
 
   useModal(panel, onClose)
 
@@ -53,18 +69,29 @@ export function NewModelDialog({
     first.current?.select()
   }, [])
 
+  /* A subtype only means anything inside its kind, so changing the kind
+     has to change it too - otherwise a Block could carry "hostile" out
+     of the dialog, which is a state the reader would only throw away. */
+  const pickKind = (k: ProjectKind) => {
+    setKind(k)
+    setSubtype(defaultSubtype(k))
+  }
+
+  const options = SUBTYPES[kind]
+
   // the id rules a project path can carry
   const clean = name.trim().toLowerCase().replace(/[^a-z0-9_]+/g, '_').replace(/^_+|_+$/g, '')
   const valid = clean.length > 0 && clean.length <= 64
+  const create = () => valid && onCreate(kind, subtype, clean)
 
   return (
-    <div className="dlg" role="dialog" aria-modal="true" aria-label="New model">
+    <div className="dlg" role="dialog" aria-modal="true" aria-label={title}>
       <div className="dlg__scrim" onClick={onClose} />
       <div className="dlg__panel" ref={panel} style={{ width: 'min(560px, 100%)' }}>
         <header className="dlg__head">
           <div style={{ flex: 1 }}>
             <div className="eyebrow">Vellum</div>
-            <h2 className="card__title">New model</h2>
+            <h2 className="card__title">{title}</h2>
           </div>
           <button className="icon-btn" onClick={onClose} aria-label="Close">
             <Icon name="close" size={15} />
@@ -89,8 +116,8 @@ export function NewModelDialog({
                 aria-checked={kind === k.id}
                 tabIndex={kind === k.id ? 0 : -1}
                 className="newmodel__kind"
-                onFocus={() => setKind(k.id)}
-                onClick={() => setKind(k.id)}
+                onFocus={() => pickKind(k.id)}
+                onClick={() => pickKind(k.id)}
               >
                 <span className="newmodel__icon">
                   <Icon name={k.icon} size={18} />
@@ -102,6 +129,41 @@ export function NewModelDialog({
             ))}
           </div>
 
+          {options.length ? (
+            <div className="newmodel__sub">
+              <span className="field__label" id="newmodel-sub">
+                What it is for
+              </span>
+              <div
+                className="newmodel__subrow"
+                role="radiogroup"
+                aria-labelledby="newmodel-sub"
+                ref={subs}
+                onKeyDown={(e) => arrowNav(subs.current, e, { orientation: 'horizontal' })}
+              >
+                {options.map((o) => (
+                  <button
+                    key={o}
+                    role="radio"
+                    aria-checked={subtype === o}
+                    tabIndex={subtype === o ? 0 : -1}
+                    className="chip newmodel__subchip"
+                    onFocus={() => setSubtype(o)}
+                    onClick={() => setSubtype(o)}
+                  >
+                    {subtypeLabel(o)}
+                  </button>
+                ))}
+              </div>
+              <span className="field__hint">{subtype ? SUB_NOTE[subtype] : null}</span>
+            </div>
+          ) : (
+            <p className="ed-hint newmodel__sub">
+              <Icon name="info" size={11} /> A block is one thing, so there is nothing further to say
+              about it here.
+            </p>
+          )}
+
           <label className="field" style={{ marginTop: 16 }}>
             <span className="field__label">Name</span>
             <input
@@ -111,7 +173,7 @@ export function NewModelDialog({
               maxLength={64}
               onChange={(e) => setName(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === 'Enter' && valid) onCreate(kind, clean)
+                if (e.key === 'Enter') create()
               }}
             />
             <span className="field__hint">
@@ -127,7 +189,7 @@ export function NewModelDialog({
             <button className="btn btn--ghost" onClick={onClose}>
               Cancel
             </button>
-            <button className="btn btn--primary" disabled={!valid} onClick={() => onCreate(kind, clean)}>
+            <button className="btn btn--primary" disabled={!valid} onClick={create}>
               Create
             </button>
           </div>

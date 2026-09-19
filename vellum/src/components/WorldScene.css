@@ -202,3 +202,55 @@
   .world__note { display: none; }
   .world__field .ed-select { min-width: 104px; }
 }
+
+/* ---------------- behaviour effects ---------------- */
+
+/* The whole model shakes, which is what a block does when the ground
+   under it is moving - shaking each cube would read as it falling apart. */
+.world__shake { position: absolute; inset: 0; }
+.world__shake[data-shaking] { animation: world-shake 0.09s linear infinite; }
+
+@keyframes world-shake {
+  0%   { transform: translate(0, 0); }
+  25%  { transform: translate(var(--shake, 1px), calc(var(--shake, 1px) * -0.5)); }
+  50%  { transform: translate(calc(var(--shake, 1px) * -0.7), var(--shake, 1px)); }
+  75%  { transform: translate(calc(var(--shake, 1px) * 0.4), calc(var(--shake, 1px) * 0.6)); }
+  100% { transform: translate(0, 0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .world__shake[data-shaking] { animation: none; }
+}
+
+.world__fx {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.world__fxgroup { position: absolute; left: 50%; width: 0; height: 0; }
+
+.world__fxgroup > span {
+  position: absolute;
+  width: var(--sz, 4px);
+  height: var(--sz, 4px);
+  margin: calc(var(--sz, 4px) / -2);
+  border-radius: 1px;
+  opacity: 0;
+  animation-name: fx-rise;
+  animation-iteration-count: infinite;
+  animation-timing-function: ease-out;
+}
+
+@keyframes fx-rise {
+  0%   { opacity: 0;    transform: translate(0, 0) scale(0.5); }
+  12%  { opacity: 0.95; transform: translate(calc(var(--dx) * 0.2), calc(var(--dy) * 0.14)) scale(1); }
+  70%  { opacity: 0.7; }
+  100% { opacity: 0;    transform: translate(var(--dx), var(--dy)) scale(0.7); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .world__fxgroup > span { animation-duration: 3s !important; }
+}

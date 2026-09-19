@@ -17,6 +17,9 @@
       a rectangle must never be normalised to min/max on load.
    --------------------------------------------------------------- */
 
+import { validateBehaviour } from './behaviour'
+import type { Behaviour } from './behaviour'
+
 export type Vec3 = [number, number, number]
 export type UVRect = [number, number, number, number]
 
@@ -24,15 +27,60 @@ export const FACES = ['north', 'east', 'south', 'west', 'up', 'down'] as const
 export type FaceKey = (typeof FACES)[number]
 
 /**
- * What a model is for. It drives which validation rules apply, and it
- * is the project's, not the file's: a `.vellum` carries no format
- * string, so one model can never claim two formats.
- *
- * `consumables` are items you hold and then use up - a potion, a loaf.
- * They are item models with an animation that has to exist, because an
- * eat or drink that plays nothing is the whole point missed.
+ * What a model is. It drives which validation rules apply, and it is
+ * the project's, not the file's: a `.vellum` carries no format string,
+ * so one model can never claim two formats.
  */
-export type ProjectKind = 'items' | 'mobs' | 'blocks' | 'consumables'
+export type ProjectKind = 'items' | 'mobs' | 'blocks'
+
+/**
+ * What it is *for*, which is a different question from what it is.
+ *
+ * A consumable used to be a fourth kind, which put it beside "item" as
+ * though holding a potion were a different act from holding a sword.
+ * It is not: a consumable is an item, and so are a weapon and a tool.
+ * What separates them is what the game does with one, and that is
+ * exactly what a subtype is - it picks the validation rules and it
+ * groups the shelf, and it changes no geometry.
+ *
+ * A model read from an older file has none. That is allowed: absent
+ * means "not said", and nothing may infer a subtype from a name.
+ */
+export type ItemType = 'weapon' | 'tool' | 'consumable' | 'misc'
+export type MobType = 'hostile' | 'neutral' | 'docile'
+export type Subtype = ItemType | MobType
+
+export const ITEM_TYPES: readonly ItemType[] = ['weapon', 'tool', 'consumable', 'misc']
+export const MOB_TYPES: readonly MobType[] = ['hostile', 'neutral', 'docile']
+
+/** The subtypes a kind offers, in the order a picker should show them. */
+export const SUBTYPES: Record<ProjectKind, readonly Subtype[]> = {
+  items: ITEM_TYPES,
+  mobs: MOB_TYPES,
+  blocks: [],
+}
+
+const SUBTYPE_LABELS: Record<Subtype, string> = {
+  weapon: 'Weapon',
+  tool: 'Tool',
+  consumable: 'Consumable',
+  misc: 'Misc',
+  hostile: 'Hostile',
+  neutral: 'Neutral',
+  docile: 'Docile',
+}
+
+export const subtypeLabel = (s: Subtype) => SUBTYPE_LABELS[s]
+
+/** What a new model of this kind starts as, or nothing where a kind has no subtypes. */
+export const defaultSubtype = (kind: ProjectKind): Subtype | undefined =>
+  kind === 'items' ? 'misc' : kind === 'mobs' ? 'neutral' : undefined
+
+/** Whether a subtype is one this kind actually offers. */
+export function subtypeFits(kind: ProjectKind | undefined, sub: unknown): sub is Subtype {
+  if (!kind) return false
+  return (SUBTYPES[kind] as readonly string[]).includes(sub as string)
+}
 
 export type Face = {
   uv: UVRect
@@ -112,8 +160,12 @@ export type Clip = {
 
 export type Model = {
   name: string
-  /** what the model is for; drives which validation rules apply */
+  /** what the model is; drives which validation rules apply */
   kind?: ProjectKind
+  /** what it is for, within its kind; absent means nobody said */
+  subtype?: Subtype
+  /** what makes it act on its own, where it does; see lib/behaviour.ts */
+  behaviour?: Behaviour
   resolution: { width: number; height: number }
   bones: Bone[]
   cubes: Cube[]
@@ -274,9 +326,13 @@ const BLOCK_ROTATIONS = new Set([-45, -22.5, 0, 22.5, 45])
  * format allows, and the kind comes from the project rather than the
  * file, because a `.vellum` carries no format string.
  */
-export function validateModel(model: Model, kind?: ProjectKind): Issue[] {
+export function validateModel(model: Model, kind?: ProjectKind, subtype?: Subtype): Issue[] {
   const issues: Issue[] = []
   const seen = new Set<string>()
+  /* The editor holds the kind and subtype the project says, which can
+     differ from what the document says while you are changing one. The
+     caller's answer wins; the document's is the fallback. */
+  const sub = subtype ?? model.subtype
 
   for (const cube of model.cubes) {
     const tag = cube.name || cube.id
@@ -311,10 +367,11 @@ export function validateModel(model: Model, kind?: ProjectKind): Issue[] {
       }
     }
 
-    if (kind === 'consumables') {
-      /* Held in the hand and then used up. Minecraft renders these in
-         the item slot, so anything far outside the item volume will be
-         drawn somewhere the player is not looking. */
+    if (kind === 'items') {
+      /* Minecraft renders every item in the item slot, so anything far
+         outside the item volume is drawn somewhere the player is not
+         looking. This used to ask only of consumables, as though a
+         sword hanging out of frame were fine. */
       for (const v of [...cube.from, ...cube.to]) {
         if (v < -16 || v > 32) {
           issues.push({ level: 'warning', message: `"${tag}": ${v} is outside an item's -16..32 range` })
@@ -398,7 +455,7 @@ export function validateModel(model: Model, kind?: ProjectKind): Issue[] {
      block in the player's hand - which is how a sword ends up taller
      than the player holding it. Nothing checked this, because
      validation only ever looked at each cube on its own. */
-  if ((kind === 'items' || kind === 'consumables') && model.cubes.length) {
+  if (kind === 'items' && model.cubes.length) {
     const lo = [Infinity, Infinity, Infinity]
     const hi = [-Infinity, -Infinity, -Infinity]
     for (const c of model.cubes) {
@@ -422,12 +479,39 @@ export function validateModel(model: Model, kind?: ProjectKind): Issue[] {
   /* A consumable is defined by its use animation. Shipping one with no
      clip is the whole point missed, and nothing else would have said
      so - validation only ever looked at geometry. */
-  if (kind === 'consumables' && !model.clips.length) {
+  if (sub === 'consumable' && !model.clips.length) {
     issues.push({
       level: 'warning',
       message: 'A consumable with no animation: add a use clip, or this is an ordinary item',
     })
   }
 
+  /* The pose a player sees most of a hostile mob is the one where it is
+     coming at them. A hostile with an idle and a walk and nothing else
+     will attack on the idle, which reads as the mob doing nothing while
+     the damage lands. */
+  if (sub === 'hostile' && model.clips.length && !model.clips.some((c) => ATTACK_CLIP.test(c.name))) {
+    issues.push({
+      level: 'warning',
+      message: 'A hostile mob with no attack clip: it will swing on its idle, which reads as nothing happening',
+    })
+  }
+
+  /* A subtype that the kind does not offer means the file was written
+     by hand or upgraded wrong. It is worth an error rather than a
+     shrug, because everything downstream - the shelf, the rules above -
+     reads it and finds nothing. */
+  if (sub && kind && !subtypeFits(kind, sub)) {
+    issues.push({
+      level: 'error',
+      message: `"${sub}" is not a subtype that ${kind} offer`,
+    })
+  }
+
+  issues.push(...validateBehaviour(model, model.behaviour))
+
   return issues
 }
+
+/** What reads as an attack in a clip name, across the usual vocabularies. */
+const ATTACK_CLIP = /attack|strike|swing|bite|lunge|slam|hit|charge/i

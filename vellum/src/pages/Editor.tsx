@@ -10,9 +10,11 @@ import {
   FACES,
   boneById,
   cubeSize,
+  defaultSubtype,
   flattenBones,
   setCubePosition,
   setCubeSize,
+  subtypeFits,
   validateModel,
 } from '../lib/model'
 import type {
@@ -44,7 +46,6 @@ import {
   reparent,
   updateBone,
 } from '../lib/new-model'
-import type { NewModelKind } from '../lib/new-model'
 import {
   CHANNELS,
   addClip,
@@ -79,14 +80,17 @@ import type { PixelSurface, ShapeKind } from '../lib/texture'
 import type { Rescale } from '../lib/uv-pack'
 import { DEFAULT_DISPLAY, DisplayPanel } from './editor/DisplayPanel'
 import type { DisplayState, SlotId } from './editor/DisplayPanel'
-import { NewModelDialog } from './editor/NewModelDialog'
+import { ScenePanel } from './editor/ScenePanel'
+import { BehaviourPanel } from './editor/BehaviourPanel'
+import { EMPTY_BEHAVIOUR, cycleLength, geyserBehaviour, stageAt } from '../lib/behaviour'
+import type { Behaviour } from '../lib/behaviour'
 import { ConfirmDialog } from './editor/ConfirmDialog'
 import { blockNavigation, navigate, useTitle } from '../lib/router'
 import { scenes } from '../lib/data'
 import { saveDataUrl, saveFile } from '../lib/download'
 import './Editor.css'
 
-type Mode = 'edit' | 'paint' | 'animate' | 'display'
+type Mode = 'edit' | 'paint' | 'animate' | 'display' | 'behaviour'
 
 /* ================= menu bar ================= */
 
@@ -266,6 +270,8 @@ function MenuBar({
 /* ================= toolbar ================= */
 
 const toolsets: Record<Mode, Array<{ id: string; icon: IconName; label: string }>> = {
+  // a behaviour is edited in its panel, so the tool row has nothing to offer
+  behaviour: [],
   edit: [
     { id: 'move', icon: 'move', label: 'Move' },
     { id: 'resize', icon: 'resize', label: 'Resize' },
@@ -294,14 +300,28 @@ const toolsets: Record<Mode, Array<{ id: string; icon: IconName; label: string }
   ],
 }
 
-const modes: Array<{ id: Mode; label: string }> = [
+const baseModes: Array<{ id: Mode; label: string }> = [
   { id: 'edit', label: 'Edit' },
   { id: 'paint', label: 'Paint' },
   { id: 'animate', label: 'Animate' },
+  { id: 'behaviour', label: 'Behaviour' },
   { id: 'display', label: 'Display' },
 ]
 
+/**
+ * A mob has no display transforms, so the tab that would edit them says
+ * what it actually opens instead - and it has no behaviour either: a
+ * mob is animated by what it is doing, not by the blocks around it.
+ */
+const modesFor = (kind: ProjectKind) =>
+  kind === 'mobs'
+    ? baseModes
+        .filter((m) => m.id !== 'behaviour')
+        .map((m) => (m.id === 'display' ? { ...m, label: 'Scene' } : m))
+    : baseModes
+
 function Toolbar({
+  kind,
   mode,
   onMode,
   tool,
@@ -328,6 +348,7 @@ function Toolbar({
   undoLabel,
   redoLabel,
 }: {
+  kind: ProjectKind
   mode: Mode
   onMode: (m: Mode) => void
   tool: string
@@ -357,7 +378,7 @@ function Toolbar({
   return (
     <div className="ed-toolbar">
       <div className="ed-modes" role="group" aria-label="Editor mode">
-        {modes.map((m) => (
+        {modesFor(kind).map((m) => (
           <button key={m.id} className="ed-mode" aria-pressed={m.id === mode} onClick={() => onMode(m.id)}>
             {m.label}
           </button>
@@ -2200,14 +2221,44 @@ function ownerBone(bones: Bone[], cubeId: string | null): string | null {
   return null
 }
 
+/**
+ * What the route asks the editor to open.
+ *
+ * `#/editor/<sample>` opens a model that ships with the app.
+ * `#/editor/new/<kind>/<subtype>/<name>` builds one, which is how the
+ * library's New Model button gets here: a URL survives a reload and a
+ * hand-off through memory does not, so the new model is described
+ * rather than passed.
+ */
+function startFrom(segments: string[]): { model: Model; file: string; kind: ProjectKind } {
+  if (segments[1] === 'new') {
+    const kind: ProjectKind =
+      segments[2] === 'mobs' || segments[2] === 'blocks' ? segments[2] : 'items'
+    const sub = subtypeFits(kind, segments[3]) ? segments[3] : defaultSubtype(kind)
+    // the URL is user-typeable, so the name goes through the same sieve the dialog uses
+    const name =
+      decodeURIComponent(segments[4] ?? '')
+        .toLowerCase()
+        .replace(/[^a-z0-9_]+/g, '_')
+        .replace(/^_+|_+$/g, '')
+        .slice(0, 64) || 'untitled'
+    return { model: createModel(kind, name, sub), file: `${name}.vellum`, kind }
+  }
+  const sample = sampleById(segments[1] ?? '')
+  return { model: sample.model, file: sample.file, kind: sample.kind }
+}
+
 export function Editor({ segments }: { segments: string[] }) {
-  const initial = useMemo(() => sampleById(segments[1] ?? ''), [segments])
+  const initial = useMemo(() => startFrom(segments), [segments])
 
   const history = useHistory<Model>(initial.model)
   const model = history.present
 
   const [fileName, setFileName] = useState(initial.file)
   const [kind, setKind] = useState<ProjectKind>(initial.kind)
+  /* No state of its own: a subtype is nothing but what the document
+     says, and a second copy of it is a second thing to keep in step. */
+  const subtype = model.subtype
   const [mode, setMode] = useState<Mode>('edit')
   const [tool, setTool] = useState('move')
   const [grid, setGrid] = useState(true)
@@ -2243,7 +2294,6 @@ export function Editor({ segments }: { segments: string[] }) {
   const [slot, setSlot] = useState<SlotId>('thirdperson_righthand')
   const [displayState, setDisplayState] = useState<DisplayState>(DEFAULT_DISPLAY)
 
-  const [newDialog, setNewDialog] = useState(false)
   const [openError, setOpenError] = useState<string | null>(null)
   const [saveNote, setSaveNote] = useState<string | null>(null)
 
@@ -2254,6 +2304,12 @@ export function Editor({ segments }: { segments: string[] }) {
   const dirty = model !== savedModel
   /** the scene overlay: the model in a world, at a size you can judge */
   const [worldOpen, setWorldOpen] = useState(false)
+
+  /* Behaviour preview. Its clock is separate from the animation
+     playhead: the cycle is minutes long where a clip is seconds, and
+     scrubbing one has nothing to do with the other. */
+  const [bhvTime, setBhvTime] = useState(0)
+  const [bhvPlaying, setBhvPlaying] = useState(false)
   // the tab carries the unsaved marker too, not only the menu bar
   useTitle(`${dirty ? '\u2022 ' : ''}${fileName}`)
 
@@ -2316,9 +2372,13 @@ export function Editor({ segments }: { segments: string[] }) {
     if (was !== undefined) setSelected(was)
   }, [history.travel, history.present])
 
-  // the tool palette changes per mode; keep the active tool valid
+  /* The tool palette changes per mode; keep the active tool valid.
+     Behaviour has no tools at all - it is two lists, not a canvas - so
+     there is nothing to fall back to and the tool is simply left as it
+     was for whichever mode comes next. */
   useEffect(() => {
-    if (!toolsets[mode].some((t) => t.id === tool)) setTool(toolsets[mode][0].id)
+    const set = toolsets[mode]
+    if (set.length && !set.some((t) => t.id === tool)) setTool(set[0].id)
   }, [mode, tool])
 
   // Animate mode opens playing when there is something to play: a still
@@ -2437,6 +2497,37 @@ export function Editor({ segments }: { segments: string[] }) {
   const clip = useMemo(
     () => model.clips.find((c) => c.id === clipId) ?? model.clips[0] ?? null,
     [model.clips, clipId],
+  )
+
+  const behaviour = model.behaviour ?? EMPTY_BEHAVIOUR
+  const bhvNow = useMemo(() => stageAt(behaviour, bhvTime), [behaviour, bhvTime])
+
+  /* The stage's clip loops inside the stage for as long as the stage
+     lasts: a 7s charge on a 2s idle plays it three and a half times,
+     which is what "plays while it charges" has to mean. */
+  const bhvClip = useMemo(
+    () => model.clips.find((c) => c.id === bhvNow.stage?.clip) ?? null,
+    [model.clips, bhvNow.stage],
+  )
+  const bhvClipTime = bhvClip?.length ? bhvNow.local % bhvClip.length : 0
+
+  useEffect(() => {
+    if (!bhvPlaying || mode !== 'behaviour' || cycleLength(behaviour) <= 0) return
+    let raf = 0
+    let last = performance.now()
+    const tick = (at: number) => {
+      const dt = (at - last) / 1000
+      last = at
+      setBhvTime((t) => t + dt)
+      raf = requestAnimationFrame(tick)
+    }
+    raf = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(raf)
+  }, [bhvPlaying, mode, behaviour])
+
+  const setBehaviour = useCallback(
+    (next: Behaviour) => history.commit('behaviour', (m) => ({ ...m, behaviour: next })),
+    [history],
   )
   const bones = useMemo(() => boneList(model.bones), [model.bones])
   const animBone = useMemo(() => {
@@ -2815,7 +2906,12 @@ export function Editor({ segments }: { segments: string[] }) {
         const s = sampleById(id)
         guarded(`Open ${s.label}?`, 'Discard and open', () => loadModel(s.model, s.file, s.kind))
       },
-      onNew: () => guarded('Start a new model?', 'Discard and start', () => setNewDialog(true)),
+      /* Creation lives on the shelf now, so this goes there rather than
+         opening a second copy of the same dialog in a second place. The
+         guard still runs, because leaving a dirty editor is leaving a
+         dirty editor however you do it. */
+      onNew: () =>
+        navigate(`/projects/${scenes[0].id}/${kind === 'mobs' ? 'mobs' : 'items'}/new`),
       onUndo: history.undo,
       onRedo: history.redo,
       /* Where a new node goes: into the selected bone, or into the bone
@@ -3034,6 +3130,7 @@ export function Editor({ segments }: { segments: string[] }) {
         dirty={dirty}
       />
       <Toolbar
+        kind={kind}
         mode={mode}
         onMode={setMode}
         tool={tool}
@@ -3074,18 +3171,65 @@ export function Editor({ segments }: { segments: string[] }) {
           grid={grid}
           quad={quad}
           extent={extent}
-          clip={mode === 'animate' ? clip : null}
-          time={time}
+          clip={mode === 'animate' ? clip : mode === 'behaviour' ? bhvClip : null}
+          time={mode === 'behaviour' ? bhvClipTime : time}
           selected={selected}
           onSelect={selectNode}
           onDeselect={() => setSelected(null)}
           onPaint={mode === 'paint' ? paintOnModel : undefined}
-          display={mode === 'display' ? displayState[slot] : null}
+          display={mode === 'display' && kind !== 'mobs' ? displayState[slot] : null}
         />
 
         <div className="ed-rails">
           <div className="ed-col ed-col--left">
-            {mode === 'display' ? (
+            {mode === 'behaviour' ? (
+              <Panel
+                title="Behaviour"
+                count={
+                  behaviour.stages.length
+                    ? `${behaviour.stages.length} stage${behaviour.stages.length === 1 ? '' : 's'}`
+                    : 'none'
+                }
+              >
+                <BehaviourPanel
+                  model={model}
+                  behaviour={behaviour}
+                  onChange={setBehaviour}
+                  now={bhvNow}
+                  playing={bhvPlaying}
+                  onPlaying={(p) => {
+                    if (p && cycleLength(behaviour) <= 0) return
+                    setBhvPlaying(p)
+                  }}
+                  onGeyser={() => {
+                    const find = (re: RegExp) => model.clips.find((c) => re.test(c.name))?.id
+                    setBehaviour(
+                      geyserBehaviour({
+                        idle: find(/idle|rest|charge/i),
+                        rumble: find(/rumble|shake|tremor/i),
+                        erupt: find(/erupt|burst|blow|use|swing/i),
+                      }),
+                    )
+                  }}
+                >
+                  {(rows) =>
+                    rows.map((r) => (
+                      <NumRow key={r.label} label={r.label} value={r.value} step={r.step} onChange={r.onChange} />
+                    ))
+                  }
+                </BehaviourPanel>
+              </Panel>
+            ) : mode === 'display' && kind === 'mobs' ? (
+              <Panel title="Scene" count={`${model.clips.length} clip${model.clips.length === 1 ? '' : 's'}`}>
+                <ScenePanel
+                  model={model}
+                  clip={clip}
+                  clips={model.clips}
+                  onClip={setClipId}
+                  onWorld={() => setWorldOpen(true)}
+                />
+              </Panel>
+            ) : mode === 'display' ? (
               <Panel title="Display" count={slot.replace(/_/g, ' ')}>
                 <DisplayPanel
                   slot={slot}
@@ -3230,6 +3374,8 @@ export function Editor({ segments }: { segments: string[] }) {
         <WorldScene
           model={model}
           kind={kind}
+          subtype={subtype}
+          behaviour={model.behaviour}
           clip={clip}
           clips={model.clips}
           onClip={(id) => setClipId(id)}
@@ -3251,15 +3397,6 @@ export function Editor({ segments }: { segments: string[] }) {
         />
       ) : null}
 
-      {newDialog ? (
-        <NewModelDialog
-          onClose={() => setNewDialog(false)}
-          onCreate={(k: NewModelKind, name: string) => {
-            setNewDialog(false)
-            loadModel(createModel(k, name), `${name}.vellum`, k)
-          }}
-        />
-      ) : null}
 
       {mode === 'animate' ? (
         <Timeline anim={anim} time={time} onTime={setTime} playing={playing} onPlaying={setPlaying} />
@@ -3267,7 +3404,7 @@ export function Editor({ segments }: { segments: string[] }) {
 
       <div className="ed-status">
         <span>{fileName}</span>
-        <span>{kind}</span>
+        <span>{subtype ? `${kind} \u00b7 ${subtype}` : kind}</span>
         <span>{model.cubes.length} cubes</span>
         <span>
           {model.resolution.width} x {model.resolution.height}

@@ -1,6 +1,7 @@
 /* Static fixtures for the library shelves, with the real .vellum samples
    prepended so the first cards on each shelf open an actual model. */
 
+import type { ProjectKind, Subtype } from './model'
 import { samples } from './samples'
 
 export type Scene = {
@@ -10,7 +11,7 @@ export type Scene = {
   counts: { items: number; mobs: number }
 }
 
-export type AssetKind = 'items' | 'mobs' | 'consumables'
+export type AssetKind = ProjectKind
 
 /**
  * Which shelf a kind lives on. Consumables are items - they are held,
@@ -23,11 +24,47 @@ export type Shelf = 'items' | 'mobs'
 
 export const shelfOf = (kind: AssetKind): Shelf => (kind === 'mobs' ? 'mobs' : 'items')
 
+/**
+ * What a card is filed under inside its shelf. A subtype is the better
+ * answer where the project gave one; a kind is the fallback, so a block
+ * and an item that says nothing about itself still land somewhere
+ * rather than in a group called "undefined".
+ */
+export type Group = Subtype | ProjectKind
+
+export const groupOf = (a: Pick<Asset, 'kind' | 'subtype'>): Group => a.subtype ?? a.kind
+
+const GROUP_ORDER: Group[] = [
+  'weapon', 'tool', 'consumable', 'misc', 'items', 'blocks',
+  'hostile', 'neutral', 'docile', 'mobs',
+]
+
+const GROUP_LABELS: Record<Group, string> = {
+  weapon: 'Weapons',
+  tool: 'Tools',
+  consumable: 'Consumables',
+  misc: 'Misc',
+  items: 'Items',
+  blocks: 'Blocks',
+  hostile: 'Hostile',
+  neutral: 'Neutral',
+  docile: 'Docile',
+  mobs: 'Mobs',
+}
+
+export const groupLabel = (g: Group) => GROUP_LABELS[g] ?? g
+export const groupRank = (g: Group) => {
+  const i = GROUP_ORDER.indexOf(g)
+  return i === -1 ? GROUP_ORDER.length : i
+}
+
 export type Asset = {
   id: string
   name: string
   file: string
   kind: AssetKind
+  /** what it is for, where the model said; absent is allowed */
+  subtype?: Subtype
   sceneId: string
   format: string
   cubes: number
@@ -128,7 +165,17 @@ const KIND_LABEL: Record<string, string> = {
   items: 'Item Model',
   mobs: 'Rigged Entity',
   blocks: 'Block Model',
-  consumables: 'Consumable',
+}
+
+/* Where a subtype says something a kind cannot, it is what the card
+   should print: "Weapon" tells a modeller more than "Item Model". */
+const SUBTYPE_FORMAT: Partial<Record<Subtype, string>> = {
+  weapon: 'Weapon',
+  tool: 'Tool',
+  consumable: 'Consumable',
+  hostile: 'Hostile Mob',
+  neutral: 'Neutral Mob',
+  docile: 'Docile Mob',
 }
 
 /* The three models the probes built. These are the only cards whose
@@ -137,9 +184,10 @@ const realAssets: Asset[] = samples.map((s, i) => ({
   id: s.id,
   name: s.label,
   file: s.file,
-  kind: s.kind === 'mobs' ? 'mobs' : s.kind === 'consumables' ? 'consumables' : 'items',
+  kind: s.kind,
+  subtype: s.subtype,
   sceneId: scenes[0].id,
-  format: KIND_LABEL[s.kind] ?? 'Model',
+  format: (s.subtype && SUBTYPE_FORMAT[s.subtype]) ?? KIND_LABEL[s.kind] ?? 'Model',
   cubes: s.model.cubes.length,
   texture: `${s.model.resolution.width} x ${s.model.resolution.height}`,
   updated: '09/19/26 03:18',
@@ -151,12 +199,11 @@ const realAssets: Asset[] = samples.map((s, i) => ({
 /* Only real models are shelved. The fixture list below still backs the
    dashboard's "recent files" copy, but nothing fabricated is offered as
    something you can open. */
-/** Everything on a shelf, its own kinds kept together and in order. */
+/** Everything on a shelf, its own groups kept together and in order. */
 export function assetsFor(sceneId: string, shelf: Shelf) {
-  const order: AssetKind[] = ['items', 'consumables', 'mobs']
   return realAssets
     .filter((a) => a.sceneId === sceneId && shelfOf(a.kind) === shelf)
-    .sort((a, b) => order.indexOf(a.kind) - order.indexOf(b.kind))
+    .sort((a, b) => groupRank(groupOf(a)) - groupRank(groupOf(b)))
 }
 
 /* ---------------- editor fixtures -------------------------------------- */

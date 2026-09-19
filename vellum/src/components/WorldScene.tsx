@@ -3,8 +3,10 @@ import { ModelView } from './ModelView'
 import { Icon } from '../lib/icons'
 import { useModal } from '../lib/a11y'
 import { BLOCK, NO_TRAVEL, buildWorld, defaultPlacement, sceneClip, travelOf } from '../lib/world'
+import { cycleLength, hasBehaviour, particleById, stageAt } from '../lib/behaviour'
+import type { Behaviour, BehaviourStage } from '../lib/behaviour'
 import type { Placement, TimeOfDay } from '../lib/world'
-import type { Clip, Model, ProjectKind } from '../lib/model'
+import type { Clip, Model, ProjectKind, Subtype } from '../lib/model'
 import './WorldScene.css'
 
 const PLACEMENTS: Array<{ id: Placement; label: string; blurb: string }> = [
@@ -55,9 +57,13 @@ export function WorldScene({
   clips,
   onClip,
   onClose,
+  subtype,
+  behaviour,
 }: {
   model: Model
   kind: ProjectKind
+  subtype?: Subtype
+  behaviour?: Behaviour
   clip: Clip | null
   clips: Clip[]
   onClip: (id: string | null) => void
@@ -66,7 +72,7 @@ export function WorldScene({
   const panel = useRef<HTMLDivElement>(null)
   useModal(panel, onClose)
 
-  const [placement, setPlacement] = useState<Placement>(() => defaultPlacement(kind, model.name))
+  const [placement, setPlacement] = useState<Placement>(() => defaultPlacement(kind, model.name, subtype))
   const [withPlayer, setWithPlayer] = useState(kind === 'mobs')
   const [sky, setSky] = useState<TimeOfDay>('day')
   const [walking, setWalking] = useState(true)
@@ -85,9 +91,23 @@ export function WorldScene({
      not loop, or drives no legs, asks for nothing and the field stays
      put - an attack that walked away would be worse than one that did
      not. */
-  const travel = useMemo(() => travelOf(model, clip), [model, clip])
-  const moving = walking ? travel : NO_TRAVEL
-  const scene = useMemo(() => sceneClip(built, clip, moving), [built, clip, moving])
+  /* A behaviour, if it has one, drives which clip plays rather than the
+     picker: the whole point is watching the cycle, and a geyser looks
+     like an idle block until the stage that blows it comes round. */
+  const cyclic = hasBehaviour(behaviour) && cycleLength(behaviour) > 0 ? behaviour : null
+  const [runCycle, setRunCycle] = useState(true)
+  const cycle = cyclic && runCycle ? cyclic : null
+  const [cycleT, setCycleT] = useState(0)
+  const now = useMemo(() => (cycle ? stageAt(cycle, cycleT) : null), [cycle, cycleT])
+
+  const subject = useMemo(() => {
+    if (!cycle) return clip
+    return model.clips.find((c) => c.id === now?.stage?.clip) ?? null
+  }, [cycle, clip, model.clips, now?.stage?.clip])
+
+  const travel = useMemo(() => travelOf(model, subject), [model, subject])
+  const moving = walking && !cycle ? travel : NO_TRAVEL
+  const scene = useMemo(() => sceneClip(built, subject, moving), [built, subject, moving])
 
   const stage = useRef<HTMLDivElement>(null)
   const [box, setBox] = useState({ w: 900, h: 620 })
@@ -102,18 +122,38 @@ export function WorldScene({
     return () => ro.disconnect()
   }, [])
 
-  const fit = Math.min(box.w * 0.66, box.h * 0.86) / 140
+  /* 140 units of frame was a constant tuned around a mob, and it left a
+     16-unit block as a speck on a field nobody was looking at. Frame
+     the subject instead - and the player too when the player is there
+     to be compared against, since a comparison you have to squint at
+     is not one. */
+  const subjectUnits = Math.max(built.blocks * BLOCK, withPlayer ? 2 * BLOCK : 0)
+  const fit = Math.min(box.w * 0.66, box.h * 0.86) / Math.max(72, subjectUnits * 2.6)
   /* A dropped or hovering item is small on purpose, so the island stops
      being the subject and the camera comes in - the scenery is there for
      scale, not to be looked at. */
-  const scale = Math.max(1, Math.min(14, fit * (built.placement === 'ground' ? 1 : 1.95)))
+  const scale = Math.max(1, Math.min(18, fit * (built.placement === 'ground' ? 1 : 1.95)))
 
   /* The clock lives in a ref: an effect that depends on `time` and
      resets its own baseline every frame runs at half speed. */
   const timeRef = useRef(0)
   timeRef.current = time
   useEffect(() => {
-    if (!playing || !scene) return
+    if (!playing || !cycle) return
+    let raf = 0
+    let last = performance.now()
+    const step = (at: number) => {
+      const dt = (at - last) / 1000
+      last = at
+      setCycleT((t) => t + dt)
+      raf = requestAnimationFrame(step)
+    }
+    raf = requestAnimationFrame(step)
+    return () => cancelAnimationFrame(raf)
+  }, [playing, cycle])
+
+  useEffect(() => {
+    if (!playing || !scene || cycle) return
     let raf = 0
     let last = performance.now()
     const step = (now: number) => {
@@ -125,13 +165,24 @@ export function WorldScene({
     }
     raf = requestAnimationFrame(step)
     return () => cancelAnimationFrame(raf)
-  }, [playing, scene])
+  }, [playing, scene, cycle])
 
   useEffect(() => {
     setTime(0)
   }, [scene])
 
-  const reset = useCallback(() => setTime(0), [])
+  const reset = useCallback(() => {
+    setTime(0)
+    setCycleT(0)
+  }, [])
+
+  /* The stage's clip loops inside the stage, so a 7s charge on a 2s
+     idle plays it three and a half times. */
+  const at = cycle && scene?.length ? (now?.local ?? 0) % scene.length : time
+
+  const shake = cycle
+    ? (now?.stage?.effects ?? []).filter((e) => e.kind === 'shake').reduce((n, e) => Math.max(n, e.amount), 0)
+    : 0
 
   /* Playing the animation here is the point of the scene, so a model
      that has one arrives with it running rather than with "none"
@@ -211,6 +262,13 @@ export function WorldScene({
             {night ? <span className="world__bloom" /> : null}
           </div>
 
+          {/* The model shakes as a whole rather than each cube, which is
+              what a block does when the ground under it is moving. */}
+          <div
+            className="world__shake"
+            style={shake > 0 ? ({ '--shake': `${shake * 3}px` } as React.CSSProperties) : undefined}
+            data-shaking={shake > 0 || undefined}
+          >
           <ModelView
             key={`${placement}-${withPlayer}-${sky}`}
             model={built.model}
@@ -220,10 +278,13 @@ export function WorldScene({
             initialYaw={-38}
             initialPitch={-14}
             clip={scene}
-            time={time}
+            time={at}
             anchorAt="centre"
             anchorOn={built.placement === 'ground' ? null : built.focus}
           />
+          </div>
+
+          <Effects stage={cycle ? (now?.stage ?? null) : null} scale={scale} />
 
           {withPlayer ? (
             <span className="world__hint">
@@ -246,16 +307,35 @@ export function WorldScene({
             <button className="ed-tool" onClick={reset} title="Back to the start" aria-label="Back to the start">
               <Icon name="skipBack" size={14} />
             </button>
+            {cyclic ? (
+              <button
+                className="ed-tool"
+                onClick={() => setRunCycle((r) => !r)}
+                title={runCycle ? 'Play the picked clip instead' : 'Run the behaviour cycle'}
+                aria-label={runCycle ? 'Play the picked clip instead' : 'Run the behaviour cycle'}
+                aria-pressed={runCycle}
+              >
+                <Icon name="power" size={14} />
+              </button>
+            ) : null}
+            {/* Two clocks run here and only one of them is driving, so
+                the read-out says which. */}
             <span className="world__time mono">
-              {time.toFixed(2)}s{scene ? ` / ${scene.length.toFixed(2)}s` : ''}
+              {cycle
+                ? `${now?.stage?.name ?? '-'} · ${(now?.local ?? 0).toFixed(1)}s / ${cycleLength(cycle).toFixed(1)}s`
+                : `${time.toFixed(2)}s${scene ? ` / ${scene.length.toFixed(2)}s` : ''}`}
             </span>
           </div>
 
           <label className="world__field">
-            <span>Animation</span>
+            <span>{cycle ? 'Cycle' : 'Animation'}</span>
+            {/* While the cycle drives, the picker would be a control
+                that changes nothing, so it says what is playing instead. */}
             <select
               className="ed-select"
-              value={clip?.id ?? ''}
+              value={cycle ? (subject?.id ?? '') : (clip?.id ?? '')}
+              disabled={!!cycle}
+              title={cycle ? 'The behaviour is choosing the clip' : undefined}
               onChange={(e) => onClip(e.target.value || null)}
             >
               <option value="">none</option>
@@ -321,6 +401,63 @@ export function WorldScene({
           </span>
         </footer>
       </div>
+    </div>
+  )
+}
+
+/* ---------------------------------------------------------------
+   A stage's particles.
+
+   No engine and no per-frame React: each particle is one span with a
+   CSS keyframe, and the group's members are staggered across the
+   lifetime by animation-delay so the stream reads as continuous. The
+   burst falls out of the stage change - mounting forty of them at once
+   is what an eruption looks like.
+
+   The emitter sits on the model's vertical axis at the effect's own
+   height, and the horizontal spread is per-particle. That is honest
+   about what it can know: the camera orbits, so an offset resolved
+   against one yaw would point the wrong way the moment you dragged it.
+   --------------------------------------------------------------- */
+
+/** A stable spread per index, so a group does not reshuffle every render. */
+const spread = (i: number) => {
+  const n = Math.sin(i * 12.9898) * 43758.5453
+  return n - Math.floor(n)
+}
+
+function Effects({ stage, scale }: { stage: BehaviourStage | null; scale: number }) {
+  if (!stage) return null
+  const groups = stage.effects.filter((e) => e.kind === 'particles' && e.amount > 0)
+  if (!groups.length) return null
+
+  return (
+    <div className="world__fx" aria-hidden="true">
+      {groups.map((e, g) => {
+        const kind = particleById(e.id)
+        const n = Math.max(1, Math.min(40, Math.round(e.amount)))
+        const life = 1.1 + Math.abs(kind.rise) * 0.9
+        const up = (e.at?.[1] ?? 0) * scale
+        return (
+          <div className="world__fxgroup" key={`${stage.id}-${g}`} style={{ top: `calc(46% - ${up}px)` }}>
+            {Array.from({ length: n }, (_, i) => (
+              <span
+                key={i}
+                style={
+                  {
+                    background: kind.colour,
+                    '--dx': `${(spread(i + g * 97) - 0.5) * 3.2 * scale}px`,
+                    '--dy': `${-kind.rise * 7 * scale}px`,
+                    '--sz': `${Math.max(2, scale * 0.42)}px`,
+                    animationDuration: `${life}s`,
+                    animationDelay: `${(i / n) * life}s`,
+                  } as React.CSSProperties
+                }
+              />
+            ))}
+          </div>
+        )
+      })}
     </div>
   )
 }

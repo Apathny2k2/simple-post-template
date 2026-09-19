@@ -35,7 +35,7 @@
    --------------------------------------------------------------- */
 
 import { FACES } from './model'
-import type { Bone, BoneChild, Clip, Cube, Face, FaceKey, Key, Model, ProjectKind, Texture, Track, UVRect, Vec3 } from './model'
+import type { Bone, BoneChild, Clip, Cube, Face, FaceKey, Key, Model, ProjectKind, Subtype, Texture, Track, UVRect, Vec3 } from './model'
 import { newId } from './new-model'
 import { readRig } from './auto-rig'
 
@@ -486,9 +486,12 @@ const TOOLS = /sword|blade|axe|pick|shovel|spade|hoe|knife|dagger|spear|lance|bo
  * and consumables are things you drop on the floor; a plain item model
  * is a thing you hold up and look at.
  */
-export function defaultPlacement(kind: ProjectKind, name: string): Placement {
+export function defaultPlacement(kind: ProjectKind, name: string, subtype?: Subtype): Placement {
   if (kind === 'mobs' || kind === 'blocks') return 'ground'
-  if (kind === 'consumables') return 'dropped'
+  /* A subtype is something the project actually said, so it beats the
+     name test below, which is a guess over a vocabulary. */
+  if (subtype === 'consumable' || subtype === 'weapon' || subtype === 'tool') return 'dropped'
+  if (subtype === 'misc') return 'air'
   return TOOLS.test(name) ? 'dropped' : 'air'
 }
 

@@ -66,7 +66,12 @@ export default function App() {
       ) : root === 'settings' ? (
         <Settings segments={segments} />
       ) : root === 'editor' ? (
-        <Editor segments={segments} />
+        /* Keyed on the model the route names: the editor reads its
+           document once, at mount, so without this a hash change from
+           one model to another left the previous one on screen. The
+           dirty guard runs before the route settles, so a remount here
+           only ever follows a navigation the user approved. */
+        <Editor key={segments.slice(1).join('/')} segments={segments} />
       ) : (
         <NotFound path={path} />
       )}

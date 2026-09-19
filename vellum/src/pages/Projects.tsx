@@ -4,9 +4,10 @@ import { Model3D, blockModel, lanternModel } from '../components/Model3D'
 import { ModelView } from '../components/ModelView'
 import { sampleById } from '../lib/samples'
 import { Icon } from '../lib/icons'
-import { assetsFor, scenes, shelfOf } from '../lib/data'
-import type { Asset, AssetKind, Shelf } from '../lib/data'
-import type { Model } from '../lib/model'
+import { assetsFor, groupLabel, groupOf, scenes, shelfOf } from '../lib/data'
+import type { Asset, Shelf } from '../lib/data'
+import { NewModelDialog } from './editor/NewModelDialog'
+import type { Model, ProjectKind, Subtype } from '../lib/model'
 import { navigate, useTitle } from '../lib/router'
 import { saveDataUrl, saveFile } from '../lib/download'
 import { writeVellum } from '../lib/vellum'
@@ -40,12 +41,6 @@ function useAssetActions() {
 }
 
 const PER_PAGE = 12
-
-const kindLabel: Record<AssetKind, string> = {
-  items: 'Items',
-  mobs: 'Mobs & Anim.',
-  consumables: 'Consumables',
-}
 
 /** The two shelves, and what the tab on each says. */
 const shelfLabel: Record<Shelf, string> = { items: 'Items', mobs: 'Mobs & Anim.' }
@@ -246,10 +241,13 @@ function Pager({
 }
 
 /** The shared library panel - identical for Items and for Mobs & Anim. */
-function Library({ sceneId, shelf }: { sceneId: string; shelf: Shelf }) {
+function Library({ sceneId, shelf, openNew }: { sceneId: string; shelf: Shelf; openNew?: boolean }) {
   useTitle(shelfLabel[shelf])
   const actions = useAssetActions()
   const [page, setPage] = useState(1)
+  /* `/projects/:scene/:shelf/new` opens straight into the dialog, which
+     is where the editor's File > New sends you. */
+  const [newOpen, setNewOpen] = useState(openNew)
   const [query, setQuery] = useState('')
   const scene = scenes.find((s) => s.id === sceneId) ?? scenes[0]
 
@@ -268,10 +266,21 @@ function Library({ sceneId, shelf }: { sceneId: string; shelf: Shelf }) {
     navigate(`/projects/${scene.id}/${next}`)
   }
 
-  /* The shelf is sorted by kind, so a heading goes wherever the kind
-     changes - and only when more than one kind is on it, because a
-     single heading over a whole shelf says nothing the tab did not. */
-  const kinds = [...new Set(slice.map((a) => a.kind))]
+  /* Making a model used to mean opening one you did not want first, so
+     that the editor's own File menu was reachable. The shelf is where a
+     modeller already is when they decide to make something, so it is
+     where the button belongs - and the editor builds it from the URL
+     rather than being handed an object, so a reload does not lose it. */
+  const create = (kind: ProjectKind, subtype: Subtype | undefined, name: string) => {
+    setNewOpen(false)
+    navigate(`/editor/new/${kind}/${subtype ?? '-'}/${encodeURIComponent(name)}`)
+  }
+
+  /* Grouped by what the model says it is for, not by its kind: a shelf
+     of eight items reads as Weapons, Tools and Consumables, which is
+     how a modeller looks for one. A kind is only the fallback for a
+     model whose project never said. */
+  const groups = [...new Set(slice.map(groupOf))]
 
   return (
     <main className="page">
@@ -304,6 +313,13 @@ function Library({ sceneId, shelf }: { sceneId: string; shelf: Shelf }) {
             ))}
           </div>
 
+          {/* outside the pill: the tabs choose what you are looking at,
+              this makes something new, and a segmented control that
+              mixes the two reads as a third shelf */}
+          <button className="btn btn--sm btn--primary library__new" onClick={() => setNewOpen(true)}>
+            <Icon name="plus" size={13} /> New model
+          </button>
+
           <div className="library__search">
             <Icon name="search" size={14} />
             <input
@@ -323,19 +339,19 @@ function Library({ sceneId, shelf }: { sceneId: string; shelf: Shelf }) {
         </div>
 
         {slice.length ? (
-          kinds.map((k) => (
-            <section className="library__group" key={k}>
-              {kinds.length > 1 ? (
+          groups.map((g) => (
+            <section className="library__group" key={g}>
+              {groups.length > 1 ? (
                 <h2 className="library__groupname">
-                  {kindLabel[k]}
+                  {groupLabel(g)}
                   <span className="library__groupn mono">
-                    {slice.filter((a) => a.kind === k).length}
+                    {slice.filter((a) => groupOf(a) === g).length}
                   </span>
                 </h2>
               ) : null}
               <div className="library__grid">
                 {slice
-                  .filter((a) => a.kind === k)
+                  .filter((a) => groupOf(a) === g)
                   .map((a) => (
                     <AssetCard key={a.id} asset={a} onDownload={actions.onDownload} onTexture={actions.onTexture} />
                   ))}
@@ -348,6 +364,8 @@ function Library({ sceneId, shelf }: { sceneId: string; shelf: Shelf }) {
 
         <Pager page={current} pages={pages} onPage={setPage} />
       </section>
+
+      {newOpen ? <NewModelDialog onClose={() => setNewOpen(false)} onCreate={create} /> : null}
     </main>
   )
 }
@@ -429,9 +447,16 @@ export function Projects({ segments }: { segments: string[] }) {
 
   if (routeKind === 'items' || routeKind === 'mobs' || routeKind === 'consumables') {
     const known = scenes.some((s) => s.id === routeScene) ? routeScene : scenes[0].id
-    // consumables moved onto the Items shelf; links to the old tab still work
-    const shelf = shelfOf(routeKind)
-    return <Library key={`${known}-${shelf}`} sceneId={known} shelf={shelf} />
+    // consumables became an item subtype; links to the old tab still work
+    const shelf = shelfOf(routeKind === 'consumables' ? 'items' : routeKind)
+    return (
+      <Library
+        key={`${known}-${shelf}`}
+        sceneId={known}
+        shelf={shelf}
+        openNew={segments[3] === 'new'}
+      />
+    )
   }
 
   return <Gateway />
