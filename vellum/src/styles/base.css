@@ -30,8 +30,10 @@ body {
    The room the glass sits in.
 
    Glass over a flat fill reads as a grey box, so the page keeps a
-   slow-drifting field of navy and wax light underneath for every
-   blurred surface to pick up.
+   slow-drifting field of navy light underneath for every blurred
+   surface to pick up. Navy only: the two wax-red pools that used to sit
+   in the corners cast an orange wash over half the page and fought
+   every screenshot taken of it.
    --------------------------------------------------------------- */
 
 body::before {
@@ -41,9 +43,9 @@ body::before {
   z-index: -2;
   background:
     radial-gradient(42% 38% at 16% 10%, rgba(61, 82, 135, 0.6), transparent 66%),
-    radial-gradient(34% 30% at 84% 6%, rgba(149, 47, 46, 0.34), transparent 64%),
+    radial-gradient(34% 30% at 84% 6%, rgba(45, 64, 110, 0.4), transparent 64%),
     radial-gradient(46% 42% at 74% 86%, rgba(43, 61, 105, 0.62), transparent 68%),
-    radial-gradient(30% 28% at 26% 82%, rgba(180, 64, 58, 0.24), transparent 62%),
+    radial-gradient(30% 28% at 26% 82%, rgba(32, 46, 84, 0.45), transparent 62%),
     var(--bg);
   animation: ambient 34s var(--ease) infinite alternate;
 }

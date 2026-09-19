@@ -3,7 +3,7 @@ import { ModelView } from './ModelView'
 import { Icon } from '../lib/icons'
 import { useModal } from '../lib/a11y'
 import { BLOCK, buildWorld, defaultPlacement, sceneClip } from '../lib/world'
-import type { Placement } from '../lib/world'
+import type { Placement, TimeOfDay } from '../lib/world'
 import type { Clip, Model, ProjectKind } from '../lib/model'
 import './WorldScene.css'
 
@@ -14,11 +14,39 @@ const PLACEMENTS: Array<{ id: Placement; label: string; blurb: string }> = [
 ]
 
 /**
+ * Stars, once, at fixed places. Regenerating them every render made the
+ * night sky crawl, which is not a thing night skies do.
+ */
+const STARS = Array.from({ length: 64 }, (_, i) => {
+  const n = (k: number) => {
+    const v = Math.sin(i * 12.9898 + k * 78.233) * 43758.5453
+    return v - Math.floor(v)
+  }
+  return {
+    left: n(1) * 100,
+    top: n(2) * 62,
+    size: n(3) > 0.88 ? 3 : 2,
+    dim: 0.35 + n(4) * 0.6,
+    twinkle: 2.6 + n(5) * 4,
+    delay: n(6) * 4,
+  }
+})
+
+const CLOUDS = [
+  { top: 12, left: -20, w: 34, h: 4.5, dur: 190, delay: 0 },
+  { top: 19, left: -60, w: 22, h: 3.5, dur: 240, delay: -60 },
+  { top: 7, left: -100, w: 44, h: 5, dur: 300, delay: -140 },
+  { top: 25, left: -45, w: 17, h: 3, dur: 210, delay: -30 },
+]
+
+/**
  * A model, in a world, at a size you can judge.
  *
  * The scene is an ordinary `.vellum` - terrain, the player and the
  * model itself are all cubes on bones - so the renderer, the camera and
- * the animation system need to know nothing about any of this.
+ * the animation system need to know nothing about any of this. The sky
+ * is the one part that is not: it is flat, it is behind everything, and
+ * a cube is the wrong tool for it.
  */
 export function WorldScene({
   model,
@@ -40,14 +68,17 @@ export function WorldScene({
 
   const [placement, setPlacement] = useState<Placement>(() => defaultPlacement(kind, model.name))
   const [withPlayer, setWithPlayer] = useState(kind === 'mobs')
+  const [sky, setSky] = useState<TimeOfDay>('day')
   const [playing, setPlaying] = useState(true)
   const [time, setTime] = useState(0)
 
-  /* Rebuilding this paints two canvases, so it is memoised on the few
-     things that actually change it rather than on every frame. */
+  /* Rebuilding this paints a 512px sheet, so it is memoised on the few
+     things that actually change it rather than on every frame. Night is
+     one of them: the world is repainted darker rather than filtered,
+     which is why the model keeps its own colours. */
   const built = useMemo(
-    () => buildWorld(model, { kind, placement, withPlayer }),
-    [model, kind, placement, withPlayer],
+    () => buildWorld(model, { kind, placement, withPlayer, sky }),
+    [model, kind, placement, withPlayer, sky],
   )
   const scene = useMemo(() => sceneClip(built, clip), [built, clip])
 
@@ -64,11 +95,6 @@ export function WorldScene({
     return () => ro.disconnect()
   }, [])
 
-  /* The platform is 7 blocks across and the tree stands 4 above it, so
-     what has to fit is about 140 units either way. The scene is anchored
-     at its middle rather than its floor - there is no grid for it to
-     stand on, and standing it on one left the whole island in the top
-     half of the frame. */
   const fit = Math.min(box.w * 0.66, box.h * 0.86) / 140
   /* A dropped or hovering item is small on purpose, so the island stops
      being the subject and the camera comes in - the scenery is there for
@@ -111,6 +137,7 @@ export function WorldScene({
   }, [clip, clips, onClip])
 
   const label = built.blocks >= 1 ? `${built.blocks} blocks tall` : `${Math.round(built.blocks * BLOCK)} units tall`
+  const night = sky === 'night'
 
   return (
     <div className="world" role="dialog" aria-modal="true" aria-label="View in the real world">
@@ -130,9 +157,52 @@ export function WorldScene({
           </button>
         </header>
 
-        <div className="world__stage" ref={stage}>
+        <div className="world__stage" ref={stage} data-sky={sky}>
+          {/* The sky, behind everything and flat, because it is a sky. */}
+          <div className="world__sky" aria-hidden="true">
+            <span className="world__body" />
+            {night ? (
+              <div className="world__stars">
+                {STARS.map((s, i) => (
+                  <span
+                    key={i}
+                    style={{
+                      left: `${s.left}%`,
+                      top: `${s.top}%`,
+                      width: s.size,
+                      height: s.size,
+                      opacity: s.dim,
+                      animationDuration: `${s.twinkle}s`,
+                      animationDelay: `${s.delay}s`,
+                    }}
+                  />
+                ))}
+              </div>
+            ) : (
+              <div className="world__clouds">
+                {CLOUDS.map((c, i) => (
+                  <span
+                    key={i}
+                    style={{
+                      top: `${c.top}%`,
+                      left: `${c.left}%`,
+                      width: `${c.w}%`,
+                      height: `${c.h}%`,
+                      animationDuration: `${c.dur}s`,
+                      animationDelay: `${c.delay}s`,
+                    }}
+                  />
+                ))}
+              </div>
+            )}
+            {/* The stage origin projects to exactly 50% / 46% of this box,
+                which is where the model stands - so at night the warm
+                pool sits on it however the camera is turned. */}
+            {night ? <span className="world__bloom" /> : null}
+          </div>
+
           <ModelView
-            key={`${placement}-${withPlayer}`}
+            key={`${placement}-${withPlayer}-${sky}`}
             model={built.model}
             scale={scale}
             grid={false}
@@ -142,12 +212,9 @@ export function WorldScene({
             clip={scene}
             time={time}
             anchorAt="centre"
-            /* a dropped potion is small, and that is the truth the scene
-               is there to tell - so the camera looks at the item and lets
-               the island fall where it falls, rather than framing an
-               island with a speck on it */
             anchorOn={built.placement === 'ground' ? null : built.focus}
           />
+
           {withPlayer ? (
             <span className="world__hint">
               <Icon name="user" size={11} /> The player is two blocks tall. Yours is {label}.
@@ -205,6 +272,15 @@ export function WorldScene({
               ))}
             </select>
           </label>
+
+          <button
+            className="chip"
+            aria-pressed={night}
+            onClick={() => setSky(night ? 'day' : 'night')}
+            title="Darkens the world, not the model - so anything meant to glow does"
+          >
+            <Icon name={night ? 'moon' : 'sun'} size={11} /> {night ? 'Night' : 'Day'}
+          </button>
 
           <button
             className="chip"
