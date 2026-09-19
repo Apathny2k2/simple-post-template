@@ -108,7 +108,35 @@ const files = await p.evaluate(async () => {
    * bones are named rather than referenced, and the texture is painted
    * from the same spec so a cube and its pixels cannot drift apart.
    */
-  function build({ name, kind, sheet, cubes, bones, clips }) {
+  function build({ name, kind, sheet, cubes, bones, clips, scale = 1 }) {
+    /* Authored at whatever size reads well while drawing it, then
+       brought into the space the format actually renders in: an item
+       lives in a 16-unit slot, and a sword drawn 32 units long is two
+       blocks of sword in a player's hand. Scaling here rather than in
+       the coordinates keeps the numbers above legible. */
+    const s = scale
+    if (s !== 1) {
+      cubes = cubes.map((c) => ({
+        ...c,
+        from: c.from.map((v) => v * s),
+        to: c.to.map((v) => v * s),
+        origin: c.origin?.map((v) => v * s),
+      }))
+      const shrink = (spec) => ({
+        ...spec,
+        origin: spec.origin.map((v) => v * s),
+        children: spec.children?.map(shrink),
+      })
+      bones = bones.map(shrink)
+      clips = clips.map((c) => ({
+        ...c,
+        tracks: c.tracks.map((t) =>
+          t.channel === 'position'
+            ? { ...t, keys: t.keys.map(([time, v, i]) => [time, v.map((n) => n * s), i]) }
+            : t,
+        ),
+      }))
+    }
     const texture = {
       id: newId(), name: `${name}.png`,
       width: sheet, height: sheet, uvWidth: sheet, uvHeight: sheet, source: '',
@@ -171,7 +199,7 @@ const files = await p.evaluate(async () => {
   const rune   = { base: '#2f6fa8', glow: '#9fe8ff' }
 
   const runic = build({
-    name: 'runic_blade', kind: 'items', sheet: 64,
+    name: 'runic_blade', kind: 'items', sheet: 64, scale: 0.5,
     cubes: [
       { name: 'pommel',    from: [-2,-2,-2],      to: [2,1,2],        origin: [0,0,0],    look: gold },
       { name: 'grip',      from: [-1,1,-1],       to: [1,7,1],        origin: [0,1,0],    look: wrap },
@@ -216,7 +244,7 @@ const files = await p.evaluate(async () => {
   const bone   = { base: '#cfc2a4', sheen: true }
 
   const ember = build({
-    name: 'emberfang', kind: 'items', sheet: 64,
+    name: 'emberfang', kind: 'items', sheet: 64, scale: 0.5,
     cubes: [
       { name: 'pommel', from: [-1.5,-2,-1.5], to: [1.5,0.5,1.5], origin: [0,0,0],   look: bone },
       { name: 'grip',   from: [-1,0.5,-1],    to: [1,6,1],       origin: [0,0.5,0], look: horn },

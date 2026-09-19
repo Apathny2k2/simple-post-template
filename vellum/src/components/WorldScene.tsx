@@ -136,7 +136,10 @@ export function WorldScene({
     onClip(clips[0].id)
   }, [clip, clips, onClip])
 
-  const label = built.blocks >= 1 ? `${built.blocks} blocks tall` : `${Math.round(built.blocks * BLOCK)} units tall`
+  const label =
+    built.blocks >= 1
+      ? `${built.blocks} block${built.blocks === 1 ? '' : 's'} tall`
+      : `${Math.round(built.blocks * BLOCK)} units tall`
   const night = sky === 'night'
 
   return (

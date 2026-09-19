@@ -388,8 +388,12 @@ function terrain(atlas: Atlas, t: string, sky: TimeOfDay): { cubes: Cube[]; bone
       const z0 = SHORE + cz * CD
       const x0 = cx * CW - CW / 2 - LAP
       const x1 = cx * CW + CW / 2 + LAP
-      put(`shore_${cx}_${cz}`, [x0, -1.8 * B, z0 - LAP], [x1, -0.5 * B, z0 + CD + LAP], surface('sand'))
-      put(`water_${cx}_${cz}`, [x0, -0.5 * B, z0 - LAP], [x1, -0.2 * B, z0 + CD + LAP], surface('water'))
+      /* Whole blocks, at the depths the game uses: the lake bed is one
+         block below the land, and a water block's surface sits two
+         units down from the top of it. Before this the bed was 1.3
+         blocks thick and the water was a 0.3-block sheet. */
+      put(`shore_${cx}_${cz}`, [x0, -2 * B, z0 - LAP], [x1, -B, z0 + CD + LAP], surface('sand'))
+      put(`water_${cx}_${cz}`, [x0, -B, z0 - LAP], [x1, -2, z0 + CD + LAP], surface('water'))
     }
   }
 
@@ -407,19 +411,26 @@ function terrain(atlas: Atlas, t: string, sky: TimeOfDay): { cubes: Cube[]; bone
   put('canopy_wide', [tx - 2.5 * B, 3 * B, tz - 2.5 * B], [tx + 2.5 * B, 5 * B, tz + 2.5 * B], LEAVES)
   put('canopy_cap', [tx - 1.5 * B, 5 * B, tz - 1.5 * B], [tx + 1.5 * B, 6 * B, tz + 1.5 * B], LEAVES)
 
-  // a fence behind the stage, for depth
+  /* A fence, at the game's own numbers: a 4 x 16 x 4 post with two
+     3-unit rails 2 deep, at y 6 and y 12. The posts used to be 22 units
+     tall - nearly a block and a half - with the top rail floating above
+     where a real post ends. */
+  const fz = -4 * B
   for (let i = -2; i <= 2; i++) {
-    put(`post_${i + 2}`, [i * B - 2, 0, -4 * B - 2], [i * B + 2, 22, -4 * B + 2], PLANKS)
+    put(`post_${i + 2}`, [i * B - 2, 0, fz - 2], [i * B + 2, B, fz + 2], PLANKS)
   }
-  put('rail_low', [-2 * B - 2, 8, -4 * B - 1], [2 * B + 2, 11, -4 * B + 1], PLANKS)
-  put('rail_high', [-2 * B - 2, 16, -4 * B - 1], [2 * B + 2, 19, -4 * B + 1], PLANKS)
+  for (const [name, y] of [['rail_low', 6], ['rail_high', 12]] as const) {
+    put(name, [-2 * B - 2, y, fz - 1], [2 * B + 2, y + 3, fz + 1], PLANKS)
+  }
 
-  /* A torch. At night its flame is painted emissive - it ignores sky
-     light - which is the one thing in the terrain that stays bright, so
-     it reads as the light source rather than as a yellow block. */
+  /* A torch, also at the game's numbers: a 2 x 10 x 2 stick with the
+     flame on top of it. It was a 4-wide, 9-tall stub, which is a
+     bollard. At night the flame is painted emissive - it ignores sky
+     light - so it reads as the light rather than as a yellow block. */
   const lx = 2.6 * B
-  put('torch_post', [lx - 2, 0, -1.4 * B - 2], [lx + 2, 9, -1.4 * B + 2], { all: 'torch' })
-  put('torch_flame', [lx - 2, 9, -1.4 * B - 2], [lx + 2, 12, -1.4 * B + 2], { all: 'flame' }, true)
+  const lz = -1.4 * B
+  put('torch_post', [lx - 1, 0, lz - 1], [lx + 1, 10, lz + 1], { all: 'torch' })
+  put('torch_flame', [lx - 1, 9, lz - 1], [lx + 1, 11, lz + 1], { all: 'flame' }, true)
 
   return {
     cubes,

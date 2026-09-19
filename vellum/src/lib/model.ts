@@ -393,6 +393,32 @@ export function validateModel(model: Model, kind?: ProjectKind): Issue[] {
     }
   }
 
+  /* Minecraft renders a held item inside a 16-unit slot, so a model
+     whose bounding box is bigger than that is drawn bigger than a
+     block in the player's hand - which is how a sword ends up taller
+     than the player holding it. Nothing checked this, because
+     validation only ever looked at each cube on its own. */
+  if ((kind === 'items' || kind === 'consumables') && model.cubes.length) {
+    const lo = [Infinity, Infinity, Infinity]
+    const hi = [-Infinity, -Infinity, -Infinity]
+    for (const c of model.cubes) {
+      for (let i = 0; i < 3; i++) {
+        lo[i] = Math.min(lo[i], c.from[i])
+        hi[i] = Math.max(hi[i], c.to[i])
+      }
+    }
+    const axis = ['X', 'Y', 'Z']
+    for (let i = 0; i < 3; i++) {
+      const span = hi[i] - lo[i]
+      if (span > 16.001) {
+        issues.push({
+          level: 'warning',
+          message: `${span.toFixed(1)} units across ${axis[i]} — an item is rendered in a 16-unit slot, so this is ${(span / 16).toFixed(2)} blocks in hand`,
+        })
+      }
+    }
+  }
+
   /* A consumable is defined by its use animation. Shipping one with no
      clip is the whole point missed, and nothing else would have said
      so - validation only ever looked at geometry. */
