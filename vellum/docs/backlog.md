@@ -30,10 +30,14 @@ scale against. Add a scene view:
 - **Tools, weapons, consumables**: rendered as a dropped item on the landscape,
   not held.
 
-## 3. Smart auto-animation
+## 3. Smart auto-animation — **done**
 An engine that reads a model's structure — bone names, hierarchy, symmetry,
 limb lengths — and generates plausible animation. **Mobs only.** Offer 3–4
 presets (idle, walk, attack, and one more).
+
+Four: idle, walk, attack, hurt. `src/lib/auto-rig.ts` reads names first
+and falls back to shape, and the panel reports what it decided so a wrong
+guess is visible.
 
 ## 4. Settings ▸ Cloud (paid)
 A cloud interface for paid tiers. Vellum allocates each paid account a

@@ -29,6 +29,7 @@ import type {
   Vec3,
 } from '../lib/model'
 import { isVellum, readVellum, vellumFileName, writeVellum } from '../lib/vellum'
+import { AUTO_PRESETS, autoAnimate, readRig } from '../lib/auto-rig'
 import { sampleById, samples } from '../lib/samples'
 import {
   addBone,
@@ -54,6 +55,7 @@ import {
   duplicateClip,
   findTrack,
   setKey,
+  uniqueName,
   updateClip,
   updateKey,
 } from '../lib/animation'
@@ -1493,6 +1495,12 @@ type AnimApi = {
   /** a key drag is one undo step, so it is bracketed rather than committed per frame */
   dragKey: (keyId: string, time: number, phase: 'down' | 'move' | 'up') => void
   patchKey: (keyId: string, patch: Partial<Omit<Key, 'id'>>, transient?: boolean) => void
+  /** what kind of project this is - auto-animation is mobs only */
+  kind: ProjectKind
+  /** the model itself, so the rig reader has something to read */
+  model: Model
+  /** build a preset and select it; returns what it was called, or null */
+  autoAnimate: (presetId: string) => string | null
 }
 
 /**
@@ -1507,6 +1515,71 @@ export function clipLabel(name: string) {
 
 const LOOPS: Array<Clip['loop']> = ['loop', 'once', 'hold']
 const SNAPS = [0, 12, 24, 30, 60]
+
+/**
+ * What the rig reader made of this model, and the presets it can build
+ * from that reading. It says what it found before it offers to animate
+ * it, so a wrong guess - a "blade_left" read as an arm - is visible
+ * rather than mysterious.
+ */
+function AutoAnimate({ anim }: { anim: AnimApi }) {
+  const [note, setNote] = useState<string | null>(null)
+  const rig = useMemo(() => readRig(anim.model), [anim.model])
+
+  if (anim.kind !== 'mobs') {
+    return (
+      <p className="ed-hint">
+        <Icon name="info" size={11} /> Auto-animation reads a skeleton, so it is for mobs. This is a{' '}
+        {anim.kind.replace(/s$/, '')} project.
+      </p>
+    )
+  }
+
+  const say = (text: string) => {
+    setNote(text)
+    window.setTimeout(() => setNote((n) => (n === text ? null : n)), 5000)
+  }
+
+  return (
+    <>
+      <p className="ed-hint" style={{ marginTop: 0 }}>
+        <Icon name="anim" size={11} /> Read {rig.bones.length} bones and found {rig.summary}.{' '}
+        {rig.confidence >= 0.6
+          ? 'Mostly from their names.'
+          : rig.confidence > 0
+            ? 'Mostly from their shape, since the names say little.'
+            : 'From their shape alone - nothing is named in a way it recognises.'}
+      </p>
+
+      <div className="auto-grid">
+        {AUTO_PRESETS.map((preset) => {
+          const missing = preset.needs(rig)
+          return (
+            <button
+              key={preset.id}
+              className="auto"
+              disabled={!!missing}
+              title={missing ? `Cannot: ${missing}` : preset.blurb}
+              onClick={() => {
+                const name = anim.autoAnimate(preset.id)
+                say(name ? `Built ${name}. Edit it like any other clip.` : `Nothing to drive for ${preset.label}.`)
+              }}
+            >
+              <span className="auto__name">{preset.label}</span>
+              <span className="auto__blurb">{missing ? `Cannot: ${missing}` : preset.blurb}</span>
+            </button>
+          )
+        })}
+      </div>
+
+      {note ? <p className="ed-hint ed-hint--warn">{note}</p> : null}
+      <p className="ed-hint">
+        <Icon name="info" size={11} /> These are a starting pose set, not a finished animation - every
+        key lands on the timeline and edits like one you placed yourself.
+      </p>
+    </>
+  )
+}
 
 function AnimationPanel({ anim }: { anim: AnimApi }) {
   const { clip } = anim
@@ -1523,6 +1596,8 @@ function AnimationPanel({ anim }: { anim: AnimApi }) {
             <Icon name="plus" size={11} /> New animation
           </button>
         </div>
+        <div className="ed-rule" />
+        <AutoAnimate anim={anim} />
       </>
     )
   }
@@ -1632,6 +1707,9 @@ function AnimationPanel({ anim }: { anim: AnimApi }) {
         ))}
         {!anim.bones.length ? <p className="ed-hint">This model has no bones to animate.</p> : null}
       </div>
+
+      <div className="ed-rule" />
+      <AutoAnimate anim={anim} />
     </>
   )
 }
@@ -2691,8 +2769,21 @@ export function Editor({ segments }: { segments: string[] }) {
       },
       patchKey: (keyId, patch, transient) =>
         withClip('keyframe', (m, id) => updateKey(m, id, keyId, patch), transient !== false),
+      kind,
+      model,
+      autoAnimate: (presetId) => {
+        const built = autoAnimate(model, presetId)
+        if (!built) return null
+        const named = { ...built, name: uniqueName(model.clips.map((c) => c.name), built.name) }
+        history.commit(`auto ${presetId}`, { ...model, clips: [...model.clips, named] })
+        setClipId(named.id)
+        setSelectedKey(null)
+        setTime(0)
+        setPlaying(false)
+        return named.name
+      },
     }
-  }, [model, clip, bones, animBone, selectedKey, time, history])
+  }, [model, kind, clip, bones, animBone, selectedKey, time, history])
 
   /* ---------------- file + edit actions ---------------- */
 
