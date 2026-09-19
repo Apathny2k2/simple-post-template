@@ -38,12 +38,14 @@ import {
   dashStore,
   readFile,
   readPack,
+  readCloud,
+  readMember,
   readPlayers,
   readReleases,
   readServer,
   readSubscription,
 } from './dash'
-import type { DashSnapshot, FileTouch, IngestRecord, Section } from './dash'
+import type { DashSnapshot, FileTouch, IngestRecord, Member, Section } from './dash'
 import type { EndpointSpec as Spec } from './endpoint'
 
 export const DASH_BASE = '/api/v1'
@@ -51,7 +53,7 @@ export const DASH_BASE = '/api/v1'
 /** Bump when a field changes meaning. `GET /dash/schema` returns it. */
 export const DASH_API_VERSION = 1
 
-export type DashGroup = 'Realm' | 'Pack' | 'Players' | 'Files' | 'Feed' | 'Console'
+export type DashGroup = 'Realm' | 'Pack' | 'Players' | 'Files' | 'Feed' | 'Console' | 'Cloud'
 export type DashEndpoint = Spec<DashGroup>
 
 export const dashEndpoints: DashEndpoint[] = [
@@ -67,6 +69,7 @@ export const dashEndpoints: DashEndpoint[] = [
       { name: 'pack', type: 'Pack', note: 'Same body as PATCH /dash/pack.' },
       { name: 'players', type: 'Census', note: 'Same body as PUT /dash/players.' },
       { name: 'subscription', type: 'Subscription', note: 'Same body as PATCH /dash/subscription.' },
+      { name: 'cloud', type: 'Workspace', note: 'Same body as PATCH /cloud/workspace.' },
       { name: 'files', type: 'FileTouch[]', note: 'REPLACES the list. Use POST /dash/files to append.' },
     ],
     returns: '{ ok: true, applied: string[], problems: string[] }',
@@ -213,6 +216,43 @@ export const dashEndpoints: DashEndpoint[] = [
     returns: '204',
   },
 
+  /* ---- Cloud ---- */
+  {
+    method: 'PATCH',
+    path: '/cloud/workspace',
+    group: 'Cloud',
+    summary:
+      "The database a paid account is allocated. Send what changed; the panel in Settings \u25b8 Cloud reads exactly this.",
+    body: [
+      { name: 'id', type: 'string', note: 'Workspace id, as your side names it.' },
+      { name: 'region', type: 'string', note: 'Where the database lives.' },
+      { name: 'status', type: 'synced | syncing | paused | error', note: 'What the sync is doing right now.' },
+      { name: 'usedBytes', type: 'integer', note: 'Storage in use.' },
+      { name: 'quotaBytes', type: 'integer', note: 'What the plan allows.' },
+      { name: 'syncedAt', type: 'string | integer', note: 'When the last sync completed.' },
+      { name: 'members', type: 'Member[]', note: 'REPLACES the roster. Up to 40.' },
+    ],
+    returns: '{ ok: true, problems: string[] }',
+    usedBy: 'Settings \u25b8 Cloud',
+  },
+  {
+    method: 'PUT',
+    path: '/cloud/members',
+    group: 'Cloud',
+    summary:
+      'Just the roster, for a plugin that tracks who is connected without touching the rest of the workspace.',
+    body: [
+      { name: 'members', type: 'Member[]', required: true, note: 'REPLACES the list.' },
+      { name: 'members[].name', type: 'string', required: true, note: 'One without a name is dropped.' },
+      { name: 'members[].id', type: 'string', note: 'Your own id for them. Generated if absent.' },
+      { name: 'members[].role', type: 'owner | editor | viewer', note: 'Defaults to viewer.' },
+      { name: 'members[].seenAt', type: 'string | integer', note: 'Last seen. Defaults to now.' },
+      { name: 'members[].holding', type: 'integer', note: 'Files they currently have open.' },
+    ],
+    returns: '{ ok: true, kept: integer, problems: string[] }',
+    usedBy: 'Settings \u25b8 Cloud',
+  },
+
   /* ---- Console ---- */
   {
     method: 'PUT',
@@ -312,6 +352,7 @@ export const dash = {
     section('pack', (b) => readPack(b, s.pack), (v) => (s.pack = v))
     section('players', (b) => readPlayers(b, s.players), (v) => (s.players = v))
     section('subscription', (b) => readSubscription(b, s.subscription), (v) => (s.subscription = v))
+    section('cloud', (b) => readCloud(b, s.cloud), (v) => (s.cloud = v))
 
     if (body.files !== undefined) {
       if (!Array.isArray(body.files)) {
@@ -326,7 +367,9 @@ export const dash = {
     }
 
     if (!applied.length) {
-      problems.push('nothing was applied: send at least one of server, pack, players, subscription, files')
+      problems.push(
+        'nothing was applied: send at least one of server, pack, players, subscription, files, cloud',
+      )
     }
     dashStore.accept(null, 'POST /dash/snapshot', problems, via, applied.length > 0)
     // the cards it touched re-render; a plugin on a timer must not fill the log
@@ -471,6 +514,38 @@ export const dash = {
     dashStore.snapshot.files = []
     dashStore.accept('files', 'DELETE /dash/files', [], via)
     return { ok: true, problems: [] }
+  },
+
+  /** PATCH /cloud/workspace */
+  cloud(input: unknown, via: Via = 'bridge'): Ack {
+    const body = asBody(input)
+    if (!body) return reject('PATCH /cloud/workspace', 'body must be a JSON object', via)
+    const r = readCloud(body, dashStore.snapshot.cloud)
+    if (!r.touched.length)
+      return reject('PATCH /cloud/workspace', `carried none of ${r.known.join(', ')}`, via)
+    dashStore.snapshot.cloud = r.value
+    dashStore.accept('cloud', 'PATCH /cloud/workspace', r.problems, via)
+    return { ok: true, problems: r.problems }
+  },
+
+  /** PUT /cloud/members */
+  members(input: unknown, via: Via = 'bridge'): Ack & { kept: number } {
+    const body = asBody(input)
+    const raw = Array.isArray(input) ? input : body?.members
+    if (!Array.isArray(raw))
+      return { ...reject('PUT /cloud/members', 'send { members: [...] }', via), kept: 0 }
+
+    const problems: string[] = []
+    const members = raw
+      .slice(0, LIMITS.members)
+      .map((m, i) => readMember(asBody(m) ?? {}, i, problems))
+      .filter((m): m is Member => m !== null)
+    if (raw.length > LIMITS.members)
+      problems.push(`members: ${raw.length} listed, kept the first ${LIMITS.members}`)
+
+    dashStore.snapshot.cloud = { ...dashStore.snapshot.cloud, members }
+    dashStore.accept('cloud', 'PUT /cloud/members', problems, via)
+    return { ok: true, problems, kept: members.length }
   },
 
   /** PUT /console/changelog */

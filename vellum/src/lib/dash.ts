@@ -70,12 +70,43 @@ export type FileTouch = {
   staleClients: number
 }
 
+/**
+ * One person with access to a paid account's workspace. The identity is
+ * per-member rather than per-seat: a shared workspace where two people
+ * are both "the licence" tells you nothing about who touched what.
+ */
+export type Member = {
+  id: string
+  name: string
+  role: 'owner' | 'editor' | 'viewer'
+  /** ISO 8601 */
+  seenAt: string
+  /** files this member currently has open for editing */
+  holding: number
+}
+
+/**
+ * The database Vellum allocates to a paid account. The plugin syncs
+ * against it, so a team opens the same files from the same place.
+ */
+export type Workspace = {
+  id: string
+  region: string
+  status: 'synced' | 'syncing' | 'paused' | 'error'
+  usedBytes: number
+  quotaBytes: number
+  /** ISO 8601 */
+  syncedAt: string
+  members: Member[]
+}
+
 export type DashSnapshot = {
   server: ServerState
   pack: PackState
   players: PlayerCensus
   subscription: SubscriptionState
   files: FileTouch[]
+  cloud: Workspace
 }
 
 export type Section = keyof DashSnapshot
@@ -138,6 +169,9 @@ export const LIMITS = {
   fileName: 120,
   filePath: 160,
   author: 48,
+  region: 32,
+  workspaceId: 48,
+  members: 40,
   /** the table scrolls, but a plugin streaming every save would grow forever */
   files: 50,
   releaseTitle: 96,
@@ -291,6 +325,17 @@ const SEED: DashSnapshot = {
     sync: sync as PackSync,
     staleClients: staleClients as number,
   })),
+  cloud: {
+    id: 'ws_aurelian_7f21',
+    region: 'eu-west-2',
+    status: 'paused',
+    usedBytes: 0,
+    quotaBytes: 5_368_709_120,
+    syncedAt: '2026-09-18T23:30:00.000Z',
+    members: [
+      { id: 'm-1', name: 'g.alex', role: 'owner', seenAt: '2026-09-19T09:12:00.000Z', holding: 0 },
+    ],
+  },
 }
 
 const clone = (s: DashSnapshot): DashSnapshot => ({
@@ -299,6 +344,7 @@ const clone = (s: DashSnapshot): DashSnapshot => ({
   players: { ...s.players },
   subscription: { ...s.subscription },
   files: s.files.map((f) => ({ ...f })),
+  cloud: { ...s.cloud, members: s.cloud.members.map((m) => ({ ...m })) },
 })
 
 /* ---------------- store ---------------- */
@@ -405,7 +451,7 @@ class DashStore {
     this.releases = []
     this.emit({ type: 'releases' })
     this.emit({ type: 'meta' })
-    for (const s of ['server', 'pack', 'players', 'subscription', 'files'] as Section[]) {
+    for (const s of ['server', 'pack', 'players', 'subscription', 'files', 'cloud'] as Section[]) {
       this.emit({ type: 'section', section: s })
     }
   }
@@ -487,6 +533,52 @@ export function readSubscription(body: Record<string, unknown>, current: Subscri
     seats: str(body.seats, 'seats', LIMITS.seats, current.seats, problems),
   }
   return { value, problems, touched: scanned.touched, known: scanned.known }
+}
+
+export function readMember(body: Record<string, unknown>, index: number, problems: Problems): Member | null {
+  const name = str(body?.name, `members[${index}].name`, LIMITS.name, '', problems)
+  if (!name) {
+    problems.push(`members[${index}]: dropped, it has no name`)
+    return null
+  }
+  return {
+    id: typeof body?.id === 'string' && body.id.trim() ? body.id.trim().slice(0, 64) : nextId('m'),
+    name,
+    role: oneOf(body?.role, `members[${index}].role`, ['owner', 'editor', 'viewer'] as const, 'viewer', problems),
+    seenAt: when(body?.seenAt, `members[${index}].seenAt`, new Date().toISOString(), problems),
+    holding: num(body?.holding, `members[${index}].holding`, { min: 0, max: LIMITS.files, fallback: 0 }, problems),
+  }
+}
+
+export function readCloud(body: Record<string, unknown>, current: Workspace) {
+  const problems: Problems = []
+  const known = ['id', 'region', 'status', 'usedBytes', 'quotaBytes', 'syncedAt', 'members'] as const
+  const scanned = scan(body, known, problems)
+
+  let members = current.members
+  if (body.members !== undefined) {
+    if (!Array.isArray(body.members)) {
+      problems.push('members: expected an array - kept the previous list')
+    } else {
+      if (body.members.length > LIMITS.members)
+        problems.push(`members: ${body.members.length} listed, kept the first ${LIMITS.members}`)
+      members = body.members
+        .slice(0, LIMITS.members)
+        .map((m, i) => readMember((m ?? {}) as Record<string, unknown>, i, problems))
+        .filter((m): m is Member => m !== null)
+    }
+  }
+
+  const value: Workspace = {
+    id: str(body.id, 'id', LIMITS.workspaceId, current.id, problems),
+    region: str(body.region, 'region', LIMITS.region, current.region, problems),
+    status: oneOf(body.status, 'status', ['synced', 'syncing', 'paused', 'error'] as const, current.status, problems),
+    usedBytes: num(body.usedBytes, 'usedBytes', { min: 0, max: Number.MAX_SAFE_INTEGER, fallback: current.usedBytes }, problems),
+    quotaBytes: num(body.quotaBytes, 'quotaBytes', { min: 0, max: Number.MAX_SAFE_INTEGER, fallback: current.quotaBytes }, problems),
+    syncedAt: when(body.syncedAt, 'syncedAt', current.syncedAt, problems),
+    members,
+  }
+  return { value, problems, touched: scanned.touched, known }
 }
 
 export function readFile(body: Record<string, unknown>, index: number, problems: Problems): FileTouch | null {

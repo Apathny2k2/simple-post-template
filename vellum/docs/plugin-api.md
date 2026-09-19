@@ -195,6 +195,38 @@ capped at 50; older rows fall off.
 `DELETE /dash/files` clears the table, for a plugin that rebuilds the list
 each cycle.
 
+### Cloud
+
+The workspace a paid account is allocated. Vellum shows exactly what you
+send here in **Settings ▸ Cloud** and invents nothing when you send
+nothing.
+
+`PATCH /cloud/workspace` — send what changed.
+
+| field | type | note |
+|---|---|---|
+| `id` | string | Workspace id, as your side names it |
+| `region` | string | Where the database lives |
+| `status` | `synced` \| `syncing` \| `paused` \| `error` | What the sync is doing right now |
+| `usedBytes` | integer | Storage in use |
+| `quotaBytes` | integer | What the plan allows |
+| `syncedAt` | string \| integer | When the last sync completed |
+| `members` | Member[] | REPLACES the roster, up to 40 |
+
+`PUT /cloud/members` — just the roster, for a plugin that tracks who is
+connected without touching the rest of the workspace.
+
+| field | type | note |
+|---|---|---|
+| `members[].name` | string | **required** — one without a name is dropped |
+| `members[].id` | string | Your own id for them; generated if absent |
+| `members[].role` | `owner` \| `editor` \| `viewer` | Defaults to `viewer` |
+| `members[].seenAt` | string \| integer | Last seen. Defaults to now |
+| `members[].holding` | integer | Files they currently have open |
+
+The shared-file list in that panel is the same one `POST /dash/files`
+feeds — there is one list of files, not two.
+
 ### Console
 
 Two calls that are not about cards. The first is fed to Vellum like any

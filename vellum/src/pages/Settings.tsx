@@ -5,8 +5,8 @@ import type { IconName } from '../lib/icons'
 import { navigate, useTitle } from '../lib/router'
 import { api } from '../lib/api'
 import { categories } from '../lib/support'
-import { dashStore, formatWhen } from '../lib/dash'
-import type { Release } from '../lib/dash'
+import { dashStore, formatBytes, formatWhen, healthOf } from '../lib/dash'
+import type { Member, Release, Workspace } from '../lib/dash'
 import { loadLink } from '../lib/dash-api'
 import {
   AUTHOR,
@@ -23,7 +23,7 @@ import './Settings.css'
 
 type SectionId =
   | 'account' | 'profile' | 'directory' | 'report-a-bug' | 'about'
-  | 'billing' | 'teams' | 'support'
+  | 'cloud' | 'billing' | 'teams' | 'support'
 
 type Section = { id: SectionId; label: string; icon: IconName; paid?: boolean; blurb: string }
 
@@ -36,6 +36,13 @@ const freeSections: Section[] = [
 ]
 
 const paidSections: Section[] = [
+  {
+    id: 'cloud',
+    label: 'Cloud',
+    icon: 'cloud',
+    paid: true,
+    blurb: 'The workspace your team shares, and who is in it.',
+  },
   { id: 'billing', label: 'Billing', icon: 'card', paid: true, blurb: 'Plan, payment method and invoice history.' },
   { id: 'teams', label: 'Teams', icon: 'users', paid: true, blurb: 'Seats, roles and shared scene access.' },
   { id: 'support', label: 'Support', icon: 'support', paid: true, blurb: 'Priority queue and direct escalation.' },
@@ -398,6 +405,151 @@ function About() {
   )
 }
 
+/* ---------------- cloud ---------------- */
+
+const ROLE_BLURB: Record<Member['role'], string> = {
+  owner: 'Full access, including the workspace itself.',
+  editor: 'Opens and saves files in the workspace.',
+  viewer: 'Opens files; cannot save over them.',
+}
+
+const SYNC_TONE: Record<Workspace['status'], { tone: string; say: string }> = {
+  synced: { tone: 'ok', say: 'In sync with the plugin.' },
+  syncing: { tone: 'idle', say: 'A sync is running.' },
+  paused: { tone: 'idle', say: 'Nothing is syncing - no plugin has reported.' },
+  error: { tone: 'warn', say: 'The last sync failed.' },
+}
+
+/**
+ * The workspace a paid account is allocated, as the plugin reports it.
+ * Everything here is fed through `PATCH /cloud/workspace` and
+ * `PUT /cloud/members`, which is the same door the dashboard cards use -
+ * there is no second, private path, and nothing here is invented when
+ * the plugin has said nothing.
+ */
+function Cloud() {
+  const version = useSyncExternalStore(
+    subscribeStore,
+    () => dashStore.version,
+    () => dashStore.version,
+  )
+  const { cloud, files, meta } = useMemo(
+    () => ({
+      cloud: dashStore.snapshot.cloud,
+      files: dashStore.snapshot.files,
+      meta: dashStore.meta,
+    }),
+    [version],
+  )
+
+  const fed = meta.fed.includes('cloud')
+  const tone = SYNC_TONE[cloud.status]
+  const used = cloud.quotaBytes ? Math.min(100, (cloud.usedBytes / cloud.quotaBytes) * 100) : 0
+  const health = healthOf(meta)
+
+  return (
+    <>
+      <PaidGate label="Cloud" />
+
+      <Card
+        title="Workspace"
+        note={fed ? `Reported by the plugin \u00b7 ${health}` : 'No plugin has reported a workspace yet.'}
+        dividedHead
+        actions={<span className="ep__m ep__m--patch">PATCH /cloud/workspace</span>}
+      >
+        <p className="verify" data-tone={tone.tone}>
+          <Icon name="cloud" size={13} />
+          <span>
+            <strong>{cloud.status}.</strong> {tone.say} Last sync{' '}
+            {formatWhen(cloud.syncedAt, Date.now())}.
+          </span>
+        </p>
+
+        <div className="kv" style={{ marginTop: 'var(--sp-3)' }}>
+          <div className="kv__row"><span className="kv__k">Database</span><span className="kv__v mono">{cloud.id}</span></div>
+          <div className="kv__row"><span className="kv__k">Region</span><span className="kv__v">{cloud.region}</span></div>
+          <div className="kv__row">
+            <span className="kv__k">Storage</span>
+            <span className="kv__v">
+              {formatBytes(cloud.usedBytes)} of {formatBytes(cloud.quotaBytes)}
+            </span>
+          </div>
+        </div>
+
+        <div className="quota" role="img" aria-label={`${Math.round(used)}% of the workspace quota used`}>
+          <span style={{ width: `${Math.max(used, 1.5)}%` }} />
+        </div>
+      </Card>
+
+      <Card
+        title="Members"
+        note={`${cloud.members.length} ${cloud.members.length === 1 ? 'identity' : 'identities'} on this workspace.`}
+        dividedHead
+        actions={<span className="ep__m ep__m--put">PUT /cloud/members</span>}
+      >
+        <div className="dir-list">
+          {cloud.members.map((m) => (
+            <div className="dir-row" key={m.id}>
+              <Icon name={m.role === 'owner' ? 'key' : 'user'} size={14} />
+              <span className="dir-row__path">{m.name}</span>
+              <span className="mem__role" data-role={m.role} title={ROLE_BLURB[m.role]}>
+                {m.role}
+              </span>
+              <span className="mem__seen mono">
+                {m.holding ? `${m.holding} open \u00b7 ` : ''}
+                {formatWhen(m.seenAt, Date.now())}
+              </span>
+            </div>
+          ))}
+          {!cloud.members.length ? (
+            <p className="ed-hint">Nobody has been reported on this workspace yet.</p>
+          ) : null}
+        </div>
+      </Card>
+
+      <Card
+        title="Shared files"
+        note="The same list the plugin syncs, so a team opens the same files from the same place."
+        dividedHead
+      >
+        {files.length ? (
+          <div className="dir-list">
+            {files.slice(0, 8).map((f) => (
+              <div className="dir-row" key={f.id}>
+                <Icon name="file" size={14} />
+                <span className="dir-row__path">
+                  {f.where}/{f.name}
+                </span>
+                <span className="dir-row__tag" data-sync={f.sync}>
+                  {f.sync}
+                </span>
+                <span className="mem__seen mono">
+                  {f.by} {'\u00b7'} {formatWhen(f.touchedAt, Date.now())}
+                </span>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="ed-hint">No files have been reported yet.</p>
+        )}
+      </Card>
+
+      {/* Said plainly, because it is true and because a shared database
+          somebody else administers is not what everybody assumes a
+          "cloud workspace" means. */}
+      <Card title="Who can read this" dividedHead>
+        <p className="ed-hint" style={{ marginTop: 0 }}>
+          <Icon name="info" size={11} /> The workspace database is allocated and administered by
+          Vellum. The account owner listed above administers your team's access to it, and Vellum's
+          operator retains administrative access to every workspace it hosts - for support, for
+          migration and for abuse handling. Files you do not want held that way belong in a local
+          project, which is what Vellum opens by default.
+        </p>
+      </Card>
+    </>
+  )
+}
+
 function Body({ section }: { section: Section }) {
   switch (section.id) {
     case 'account':
@@ -490,6 +642,9 @@ function Body({ section }: { section: Section }) {
 
     case 'about':
       return <About />
+
+    case 'cloud':
+      return <Cloud />
 
     case 'billing':
       return (

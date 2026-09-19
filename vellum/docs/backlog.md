@@ -39,11 +39,15 @@ Four: idle, walk, attack, hurt. `src/lib/auto-rig.ts` reads names first
 and falls back to shape, and the panel reports what it decided so a wrong
 guess is visible.
 
-## 4. Settings ▸ Cloud (paid)
+## 4. Settings ▸ Cloud (paid) — **done**
 A cloud interface for paid tiers. Vellum allocates each paid account a
 database; it syncs with the plugin so a team sees the same files as a shared
 workspace with per-member identities. The account owner oversees all
 databases and retains access.
+
+Fed through `PATCH /cloud/workspace` and `PUT /cloud/members`, the same
+door the dashboard cards use, and the panel says out loud who can read a
+hosted workspace.
 
 ## 5. Settings sidebar — **done**
 Rename the **Paid Tiers** divider to **Manage**.
