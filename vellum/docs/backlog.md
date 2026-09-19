@@ -20,8 +20,10 @@ Built by `scripts/make-samples.mjs` rather than by hand.
 The Display tab previews a model on a tilted grid with nothing to judge
 scale against. Add a scene view:
 
-- Render a Minecraft-style landscape in 3D and place the model in it.
-- Play the model's animations in that scene.
+- A flat Minecraft-style field, and the model on it.
+- Play the model's animations there — and loop locomotion rather than
+  playing it in place: a mob with a walk cycle walks continuously,
+  because the ground travels under it at the speed its legs ask for.
 - **Mobs**: option to spawn a temporary player entity beside the model, so an
   attack animation can be judged against a real target and a real height.
 - **Item models**: placed in the air, same scenery.

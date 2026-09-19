@@ -6,11 +6,18 @@
    A mob that looks right floating in a void is routinely twice the
    height of a player, and you find that out in game.
 
-   So: build a Minecraft-shaped world, drop the model into it beside
-   something a known two blocks tall, and play its animation there. The
-   world is a `.vellum` model like any other - the same cubes, bones,
-   UVs and clips - which means the renderer, the camera and the
-   animation system all work on it unchanged.
+   So: a flat field, a figure of a known two blocks beside it, and the
+   model's animation played there. The world is a `.vellum` model like
+   any other - the same cubes, bones, UVs and clips - which means the
+   renderer, the camera and the animation system all work on it
+   unchanged.
+
+   The field is deliberately empty. It is not scenery; it is a ruler and
+   a treadmill. A walk cycle played in place tells you the legs move; it
+   does not tell you whether the mob covers ground or moonwalks, which
+   is the thing you cannot see in the timeline and cannot unsee in game.
+   So the ground travels under the model at the speed the legs are
+   actually asking for, and a walk loops forever.
 
    Three things make it read as Minecraft rather than as coloured boxes:
 
@@ -30,6 +37,7 @@
 import { FACES } from './model'
 import type { Bone, BoneChild, Clip, Cube, Face, FaceKey, Key, Model, ProjectKind, Texture, Track, UVRect, Vec3 } from './model'
 import { newId } from './new-model'
+import { readRig } from './auto-rig'
 
 export const BLOCK = 16
 
@@ -56,10 +64,9 @@ const SKY: Record<TimeOfDay, { light: number; tint: [number, number, number]; ti
 type Rect = [number, number, number, number]
 
 type TileKind =
-  | 'grass_top' | 'grass_side' | 'dirt' | 'stone' | 'cobble'
-  | 'log_side' | 'log_top' | 'leaves' | 'planks' | 'water' | 'sand'
+  | 'grass_top' | 'grass_side' | 'dirt'
   | 'skin' | 'hair' | 'shirt' | 'sleeve' | 'trouser' | 'boot' | 'face'
-  | 'torch' | 'flame' | 'void'
+  | 'void'
 
 /** Deterministic, so the same world is the same world every time. */
 function noise(x: number, y: number, salt: number) {
@@ -95,46 +102,6 @@ function texel(kind: TileKind, tx: number, ty: number): Paint | null {
     }
     case 'dirt':
       return n > 0.9 ? { r: 110, g: 78, b: 54 } : jitter([134, 96, 67], 0.12)
-    case 'stone':
-      return n > 0.88 ? { r: 110, g: 110, b: 110 } : jitter([126, 126, 126], 0.09)
-    case 'cobble': {
-      // clustered blobs rather than per-texel noise, which is what makes
-      // cobble read as stones instead of static
-      const bx = Math.floor(x / 4) * 4
-      const by = Math.floor(y / 4) * 4
-      const blob = noise(bx, by, 17)
-      const base: [number, number, number] = blob > 0.66 ? [140, 140, 140] : blob > 0.33 ? [122, 122, 122] : [100, 100, 100]
-      const edge = x % 4 === 0 || y % 4 === 0
-      return jitter(edge ? [82, 82, 82] : base, 0.1)
-    }
-    case 'log_side': {
-      const bark = noise(x, 0, 7)
-      return jitter(bark > 0.72 ? [85, 67, 42] : bark > 0.4 ? [107, 84, 51] : [96, 75, 46], 0.08)
-    }
-    case 'log_top': {
-      const d = Math.hypot(x - 7.5, y - 7.5)
-      const ring = Math.sin(d * 2.4) > 0.25
-      return jitter(ring ? [126, 100, 64] : [160, 129, 78], 0.07)
-    }
-    case 'leaves': {
-      // real gaps, in clumps: a canopy you cannot see the sky through is
-      // a green box, but per-texel holes are confetti
-      const clump = noise(Math.floor(x / 2) * 2, Math.floor(y / 2) * 2, 23)
-      if (clump > 0.88) return null
-      return jitter(n > 0.68 ? [74, 126, 50] : [92, 150, 60], 0.1)
-    }
-    case 'planks': {
-      const grain = y % 8 === 0 || y % 8 === 7
-      const join = x % 8 === 3 && y % 8 > 1 && y % 8 < 6
-      return jitter(grain || join ? [143, 108, 64] : [184, 140, 85], 0.07)
-    }
-    case 'water': {
-      const wave = Math.sin((x * 0.9 + y * 0.35)) * 0.05
-      const k = 0.96 + n * 0.08 + wave
-      return { r: 63 * k, g: 118 * k, b: 228 * k, a: 0.78 }
-    }
-    case 'sand':
-      return jitter([219, 211, 160], 0.09)
     case 'skin':
       return jitter([199, 140, 98], 0.06)
     case 'hair':
@@ -157,10 +124,6 @@ function texel(kind: TileKind, tx: number, ty: number): Paint | null {
       if (y < 3) return jitter([58, 42, 29], 0.1)
       return jitter([199, 140, 98], 0.06)
     }
-    case 'torch':
-      return jitter([124, 96, 58], 0.08)
-    case 'flame':
-      return { r: 255, g: 214 - n * 60, b: 96 - n * 60 }
     case 'void':
       // a face that is never meant to be seen, and costs one texel to say so
       return null
@@ -242,25 +205,35 @@ class Atlas {
     const ctx = this.ctx
     if (!ctx) return
     const [x0, y0, x1, y1] = at
+    const w = x1 - x0
+    const h = y1 - y0
     const { light, tint, tintAmount } = SKY[sky]
     const k = emissive ? 1 : shade * light
     const mix = emissive ? 0 : tintAmount * (1 - light) * 2.2
 
-    const w = x1 - x0
-    const h = y1 - y0
+    /* One ImageData rather than a fillRect per texel. The field is a
+       960 x 640 patch - six hundred thousand of them - and painting it
+       a rectangle at a time cost half a second every time the sky or
+       the placement changed. */
+    const img = ctx.createImageData(w, h)
+    const px = img.data
     for (let y = 0; y < h; y++) {
       for (let x = 0; x < w; x++) {
         const t = fit
           ? texel(kind, Math.floor((x * 16) / w), Math.floor((y * 16) / h))
           : texel(kind, x, y)
-        if (!t) continue
-        const r = t.r * k + (tint[0] - t.r * k) * mix
-        const g = t.g * k + (tint[1] - t.g * k) * mix
-        const b = t.b * k + (tint[2] - t.b * k) * mix
-        ctx.fillStyle = `rgba(${r | 0},${g | 0},${b | 0},${t.a ?? 1})`
-        ctx.fillRect(x0 + x, y0 + y, 1, 1)
+        const i = (y * w + x) * 4
+        if (!t) {
+          px[i + 3] = 0
+          continue
+        }
+        px[i] = t.r * k + (tint[0] - t.r * k) * mix
+        px[i + 1] = t.g * k + (tint[1] - t.g * k) * mix
+        px[i + 2] = t.b * k + (tint[2] - t.b * k) * mix
+        px[i + 3] = (t.a ?? 1) * 255
       }
     }
+    ctx.putImageData(img, x0, y0)
   }
 
   texture(name: string): Texture {
@@ -309,7 +282,7 @@ function block(
 
   const faces = Object.fromEntries(
     FACES.map((key) => {
-      const kind = skin[key] ?? skin.all ?? 'stone'
+      const kind: TileKind = skin[key] ?? skin.all ?? 'void'
       // a void face is transparent at any size, so it claims one texel
       const [fw, fh] = kind === 'void' ? [4, 4] : span[key]
       const uv = atlas.region(kind, fw, fh, FACE_SHADE[key], sky, opts.emissive, opts.fit) as UVRect
@@ -334,159 +307,108 @@ function block(
 
 /* ---------------- the terrain ---------------- */
 
-const GRASS: Skin = { up: 'grass_top', down: 'dirt', all: 'grass_side' }
-const STONE: Skin = { all: 'stone' }
-const COBBLE: Skin = { all: 'cobble' }
-const LOG: Skin = { up: 'log_top', down: 'log_top', all: 'log_side' }
-const LEAVES: Skin = { all: 'leaves' }
-const PLANKS: Skin = { all: 'planks' }
 
+/**
+ * A flat field, and nothing else on it.
+ *
+ * One cube, not a grid of them. A tiled field needs its cubes to
+ * overlap or antialiasing leaves a hairline of sky along every join,
+ * and once they overlap their coplanar tops fight over which is in
+ * front - either way a grid gets drawn across the grass. Offsetting
+ * them in height trades that for a sliver of transparency at each
+ * step, because the sides are void. There is no arrangement of many
+ * cubes that has no seam; one cube has no join to show.
+ *
+ * It costs a 960 x 640 patch of the sheet, which sounds expensive and
+ * is not: the pattern repeats every 16 texels, so it is about 75 KB of
+ * PNG. Its sides and underside are a single transparent texel each -
+ * the frame never reaches them.
+ */
 function terrain(atlas: Atlas, t: string, sky: TimeOfDay): { cubes: Cube[]; bone: Bone } {
-  const cubes: Cube[] = []
-  const put = (name: string, from: Vec3, to: Vec3, skin: Skin, emissive = false) =>
-    cubes.push(block(atlas, t, sky, name, from, to, skin, { emissive }))
-
-  const B = BLOCK
-
-  /* A ground cube shows its top and nothing else. The interior sides of
-     a tiled field are vertical planes seen nearly edge-on, and backface
-     culling only hides the half of them pointing away - nine slabs drew
-     a grid over the plain. The outer sides are past the frame anyway,
-     so every one of them is void: one transparent texel, no seam.
-
-     Tiling rather than one huge cube because the sheet is 512 square
-     and a face is painted one texel per unit: a 30-block plain as a
-     single cube wants a 480 x 480 patch, which is most of the atlas. As
-     a grid of identical cubes they all share one region instead. */
-  const surface = (top: TileKind): Skin => ({ up: top, all: 'void' })
-  const CW = 10 * B // one ground cube, in units
-  const CD = 6 * B
-  const SHORE = 3 * B // where the grass gives way to the water
-  /* Cubes that merely touch leave a hairline of sky between them once
-     the browser antialiases the edges. Their sides are void, so half a
-     unit of overlap costs nothing and closes it. */
-  const LAP = 0.5
-
-  for (let cx = -1; cx <= 1; cx++) {
-    for (let cz = -2; cz <= 0; cz++) {
-      put(
-        `plain_${cx}_${cz}`,
-        [cx * CW - CW / 2 - LAP, -B, SHORE + cz * CD - CD - LAP],
-        [cx * CW + CW / 2 + LAP, 0, SHORE + cz * CD + LAP],
-        surface('grass_top'),
-      )
-    }
-  }
-
-  /* The one boundary that is meant to be seen: the bank where the grass
-     drops to the water. It is also how the water gets to be lower than
-     the land without carving a hole in a cube. */
-  put('bank', [-1.5 * CW, -B, SHORE - 4], [1.5 * CW, 0, SHORE], { up: 'grass_top', south: 'grass_side', all: 'void' })
-
-  for (let cx = -1; cx <= 1; cx++) {
-    for (let cz = 0; cz <= 1; cz++) {
-      const z0 = SHORE + cz * CD
-      const x0 = cx * CW - CW / 2 - LAP
-      const x1 = cx * CW + CW / 2 + LAP
-      /* Whole blocks, at the depths the game uses: the lake bed is one
-         block below the land, and a water block's surface sits two
-         units down from the top of it. Before this the bed was 1.3
-         blocks thick and the water was a 0.3-block sheet. */
-      put(`shore_${cx}_${cz}`, [x0, -2 * B, z0 - LAP], [x1, -B, z0 + CD + LAP], surface('sand'))
-      put(`water_${cx}_${cz}`, [x0, -B, z0 - LAP], [x1, -2, z0 + CD + LAP], surface('water'))
-    }
-  }
-
-  // a two-step rise at the back, so the ground is not one flat plane
-  put('rise_1', [-5 * B, 0, -6 * B], [-B, B, -2 * B], GRASS)
-  put('rise_2', [-4 * B, B, -6 * B], [-2 * B, 2 * B, -4 * B], GRASS)
-  put('cliff', [-4 * B, 0, -6 * B], [-3 * B, B, -5 * B], STONE)
-  put('boulder', [-3.5 * B, 2 * B, -5.5 * B], [-2.5 * B, 3 * B, -4.5 * B], COBBLE)
-
-  /* An oak: a 1x1 trunk five blocks up, a 5x5 canopy two blocks deep
-     with a 3x3 cap on it, which is the shape Minecraft grows. */
-  const tx = -5.5 * B
-  const tz = 1.5 * B
-  put('trunk', [tx - B / 2, 0, tz - B / 2], [tx + B / 2, 5 * B, tz + B / 2], LOG)
-  put('canopy_wide', [tx - 2.5 * B, 3 * B, tz - 2.5 * B], [tx + 2.5 * B, 5 * B, tz + 2.5 * B], LEAVES)
-  put('canopy_cap', [tx - 1.5 * B, 5 * B, tz - 1.5 * B], [tx + 1.5 * B, 6 * B, tz + 1.5 * B], LEAVES)
-
-  /* A fence, at the game's own numbers: a 4 x 16 x 4 post with two
-     3-unit rails 2 deep, at y 6 and y 12. The posts used to be 22 units
-     tall - nearly a block and a half - with the top rail floating above
-     where a real post ends. */
-  const fz = -4 * B
-  for (let i = -2; i <= 2; i++) {
-    put(`post_${i + 2}`, [i * B - 2, 0, fz - 2], [i * B + 2, B, fz + 2], PLANKS)
-  }
-  for (const [name, y] of [['rail_low', 6], ['rail_high', 12]] as const) {
-    put(name, [-2 * B - 2, y, fz - 1], [2 * B + 2, y + 3, fz + 1], PLANKS)
-  }
-
-  /* A torch, also at the game's numbers: a 2 x 10 x 2 stick with the
-     flame on top of it. It was a 4-wide, 9-tall stub, which is a
-     bollard. At night the flame is painted emissive - it ignores sky
-     light - so it reads as the light rather than as a yellow block. */
-  const lx = 2.6 * B
-  const lz = -1.4 * B
-  put('torch_post', [lx - 1, 0, lz - 1], [lx + 1, 10, lz + 1], { all: 'torch' })
-  put('torch_flame', [lx - 1, 9, lz - 1], [lx + 1, 11, lz + 1], { all: 'flame' }, true)
+  const cube = block(atlas, t, sky, 'field', [-480, -BLOCK, -320], [480, 0, 320], {
+    up: 'grass_top',
+    all: 'void',
+  })
 
   return {
-    cubes,
+    cubes: [cube],
     bone: {
       id: newId(),
-      name: 'terrain',
+      name: 'ground',
       origin: [0, 0, 0],
       rotation: [0, 0, 0],
       visible: true,
       locked: true,
-      children: cubes.map((c) => ({ kind: 'cube', id: c.id }) as BoneChild),
+      children: [{ kind: 'cube', id: cube.id }],
     },
   }
 }
 
 /* ---------------- the player ---------------- */
 
+export type PlayerRig = { legs: [string, string]; arms: [string, string] }
+
 /**
  * Two blocks tall, which is the whole point of it: a mob is either
  * about the height of the thing standing next to it or it is not, and
  * that is not a judgement anybody makes reliably against a void.
  *
+ * Rigged on joints rather than welded into one piece, so that when the
+ * ground starts moving it can walk at the same speed instead of
+ * standing still on a floor sliding out from under it.
+ *
  * `facing` is worked out rather than passed: rotateY maps the local -z
  * axis to (-sin, 0, -cos), so the yaw that points a figure at the
- * origin from (x, z) is atan2(x, z).
+ * origin from (x, z) is atan2(x, z) - eased back toward the camera,
+ * because a figure turned squarely at the model shows the viewer the
+ * back of its head.
  */
 function playerParts(
   atlas: Atlas,
   t: string,
   sky: TimeOfDay,
   at: Vec3,
-): { cubes: Cube[]; bone: Bone } {
+): { cubes: Cube[]; bone: Bone; rig: PlayerRig } {
   const [x, y, z] = at
-  /* Facing is worked out rather than eyeballed, then eased 26 degrees
-     back toward the default camera: a figure turned squarely at the
-     model shows the viewer the back of its head, and a head with no
-     face on it is a brown box. */
   const facing = (Math.atan2(x, z) * 180) / Math.PI - 26
   const put = (name: string, from: Vec3, to: Vec3, skin: Skin) =>
     block(atlas, t, sky, name, from, to, skin, { fit: true })
 
-  const cubes = [
-    put('player_head', [x - 4, y + 24, z - 4], [x + 4, y + 32, z + 4], {
-      up: 'hair',
-      north: 'face',
-      all: 'skin',
-    }),
-    put('player_body', [x - 4, y + 12, z - 2], [x + 4, y + 24, z + 2], { all: 'shirt' }),
-    put('player_arm_left', [x - 8, y + 12, z - 2], [x - 4, y + 24, z + 2], { down: 'skin', all: 'sleeve' }),
-    put('player_arm_right', [x + 4, y + 12, z - 2], [x + 8, y + 24, z + 2], { down: 'skin', all: 'sleeve' }),
-    put('player_leg_left', [x - 4, y, z - 2], [x, y + 12, z + 2], { down: 'boot', all: 'trouser' }),
-    put('player_leg_right', [x, y, z - 2], [x + 4, y + 12, z + 2], { down: 'boot', all: 'trouser' }),
-  ]
+  const head = put('player_head', [x - 4, y + 24, z - 4], [x + 4, y + 32, z + 4], {
+    up: 'hair',
+    north: 'face',
+    all: 'skin',
+  })
+  const body = put('player_body', [x - 4, y + 12, z - 2], [x + 4, y + 24, z + 2], { all: 'shirt' })
+  const armL = put('player_arm_left', [x - 8, y + 12, z - 2], [x - 4, y + 24, z + 2], { down: 'skin', all: 'sleeve' })
+  const armR = put('player_arm_right', [x + 4, y + 12, z - 2], [x + 8, y + 24, z + 2], { down: 'skin', all: 'sleeve' })
+  const legL = put('player_leg_left', [x - 4, y, z - 2], [x, y + 12, z + 2], { down: 'boot', all: 'trouser' })
+  const legR = put('player_leg_right', [x, y, z - 2], [x + 4, y + 12, z + 2], { down: 'boot', all: 'trouser' })
+
+  const joint = (name: string, origin: Vec3, cube: Cube, children: BoneChild[] = []): Bone => ({
+    id: newId(),
+    name,
+    origin,
+    rotation: [0, 0, 0],
+    visible: true,
+    locked: true,
+    children: [{ kind: 'cube', id: cube.id }, ...children],
+  })
+
+  const headBone = joint('player_neck', [x, y + 24, z], head)
+  const armLBone = joint('player_shoulder_left', [x - 4, y + 23, z], armL)
+  const armRBone = joint('player_shoulder_right', [x + 4, y + 23, z], armR)
+  const legLBone = joint('player_hip_left', [x - 2, y + 12, z], legL)
+  const legRBone = joint('player_hip_right', [x + 2, y + 12, z], legR)
+  const torso = joint('player_torso', [x, y + 12, z], body, [
+    { kind: 'bone', bone: headBone },
+    { kind: 'bone', bone: armLBone },
+    { kind: 'bone', bone: armRBone },
+  ])
 
   return {
-    cubes,
+    cubes: [head, body, armL, armR, legL, legR],
+    rig: { legs: [legLBone.id, legRBone.id], arms: [armLBone.id, armRBone.id] },
     bone: {
       id: newId(),
       name: 'player',
@@ -494,9 +416,63 @@ function playerParts(
       rotation: [0, facing, 0],
       visible: true,
       locked: true,
-      children: cubes.map((c) => ({ kind: 'cube', id: c.id }) as BoneChild),
+      children: [
+        { kind: 'bone', bone: torso },
+        { kind: 'bone', bone: legLBone },
+        { kind: 'bone', bone: legRBone },
+      ],
     },
   }
+}
+
+/* ---------------- how far a walk actually walks ---------------- */
+
+/** The legs' own reach, so a walk covers the ground it looks like it covers. */
+const PLAYER_LEG = 12
+
+export type Travel = {
+  /** what the legs are asking for, in units per cycle */
+  asked: number
+  /** whole blocks per cycle - the only distance the field can loop on */
+  blocks: number
+  /** units per second, after rounding */
+  speed: number
+}
+
+export const NO_TRAVEL: Travel = { asked: 0, blocks: 0, speed: 0 }
+
+/**
+ * How far a clip means to travel, read off the rig rather than guessed
+ * or asked for. A leg swinging by `a` degrees about a pivot `r` from
+ * the foot sweeps an arc whose chord is `2r sin(a)`, and that chord is
+ * the ground a stride covers.
+ *
+ * Only a looping clip travels. An attack lunges and comes back; a
+ * model that walked away during one would be worse than one that
+ * stayed put.
+ */
+export function travelOf(subject: Model, clip: Clip | null): Travel {
+  if (!clip || clip.loop !== 'loop' || clip.length <= 0) return NO_TRAVEL
+  const rig = readRig(subject)
+  if (!rig.byRole.leg.length) return NO_TRAVEL
+
+  let asked = 0
+  for (const leg of rig.byRole.leg) {
+    const track = clip.tracks.find((t) => t.bone === leg.id && t.channel === 'rotation')
+    if (!track || track.keys.length < 2) continue
+    const swing = Math.max(...track.keys.map((k) => Math.abs(k.value[0])))
+    asked = Math.max(asked, 2 * leg.reach * Math.sin((swing * Math.PI) / 180))
+  }
+
+  // a breathing idle rocks the legs a degree or two; that is not walking
+  if (asked < 3) return NO_TRAVEL
+
+  /* The field is tiled, so it can only wrap on a whole block - anything
+     else jumps visibly at the loop. Rounding the stride there is what
+     buys a seam nobody can see, and the speed reported back is the
+     rounded one, because that is the speed you are looking at. */
+  const blocks = Math.max(1, Math.round(asked / BLOCK))
+  return { asked, blocks, speed: (blocks * BLOCK) / clip.length }
 }
 
 /* ---------------- placing the subject ---------------- */
@@ -557,6 +533,10 @@ export type BuiltWorld = {
   model: Model
   /** the bone the subject hangs from, so the scene can pose it */
   subjectId: string
+  /** the field, which is what moves when the model walks */
+  groundId: string
+  /** the reference figure's joints, so it can walk at the same speed */
+  player: PlayerRig | null
   /** how tall the model is, in blocks, for the caption */
   blocks: number
   /** the middle of the subject, so the camera can look at it rather than at the island */
@@ -571,7 +551,7 @@ export function buildWorld(subject: Model, opts: WorldOptions): BuiltWorld {
      unrecognised sky used to reach the painter and throw on a lookup
      that had no entry for it. Anything that is not night is day. */
   const sky: TimeOfDay = opts.sky === 'night' ? 'night' : 'day'
-  const atlas = new Atlas(512)
+  const atlas = new Atlas(1024)
   const id = newId()
   const ground = terrain(atlas, id, sky)
   const player = opts.withPlayer ? playerParts(atlas, id, sky, [34, 0, 4]) : null
@@ -629,6 +609,8 @@ export function buildWorld(subject: Model, opts: WorldOptions): BuiltWorld {
 
   return {
     focus: [0, shift[1] + ((lo[1] + hi[1]) / 2) * factor, 0],
+    groundId: ground.bone.id,
+    player: player?.rig ?? null,
     model: {
       name: `${subject.name} in the world`,
       kind: subject.kind,
@@ -661,10 +643,42 @@ const key = (time: number, value: Vec3, interp: Key['interp'] = 'linear'): Key =
  * A `once` clip gets a beat of stillness on the end so a repeated
  * attack reads as separate swings rather than a stutter.
  */
-export function sceneClip(built: BuiltWorld, clip: Clip | null): Clip | null {
+export function sceneClip(built: BuiltWorld, clip: Clip | null, travel: Travel = NO_TRAVEL): Clip | null {
   const extra: Track[] = []
   const base = clip?.length ?? 3
   const length = clip ? (clip.loop === 'once' ? clip.length * 1.4 : clip.length) : 3
+
+  /* The model walks by standing still while the world goes past it,
+     which is the only way a walk can loop forever and stay in frame.
+     One whole block per cycle wraps invisibly on a tiled field. */
+  if (built.placement === 'ground' && travel.speed > 0 && clip) {
+    const dist = travel.blocks * BLOCK
+    extra.push({
+      bone: built.groundId,
+      channel: 'position',
+      keys: [key(0, [0, 0, 0]), key(clip.length, [0, 0, dist])],
+    })
+
+    /* And the figure beside it walks too. A reference standing still on
+       a floor sliding out from under it is a worse lie than no
+       reference at all - so it takes the swing that covers the same
+       ground its own legs would: chord = 2r sin(a), solved for a. */
+    if (built.player) {
+      const swing = (Math.asin(Math.min(0.85, dist / (2 * PLAYER_LEG))) * 180) / Math.PI
+      const cycle = (bone: string, amp: number, flip: boolean) =>
+        extra.push({
+          bone,
+          channel: 'rotation',
+          keys: [0, 0.25, 0.5, 0.75, 1].map((f, i) =>
+            key(clip.length * f, [[0, 1, 0, -1, 0][i] * (flip ? -amp : amp), 0, 0], 'catmullrom'),
+          ),
+        })
+      cycle(built.player.legs[0], swing, false)
+      cycle(built.player.legs[1], swing, true)
+      cycle(built.player.arms[0], swing * 0.6, true)
+      cycle(built.player.arms[1], swing * 0.6, false)
+    }
+  }
 
   if (built.placement === 'dropped' || built.placement === 'air') {
     const spins = built.placement === 'dropped' ? Math.max(1, Math.round(length / 2.5)) : 1

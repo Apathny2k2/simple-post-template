@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { ModelView } from './ModelView'
 import { Icon } from '../lib/icons'
 import { useModal } from '../lib/a11y'
-import { BLOCK, buildWorld, defaultPlacement, sceneClip } from '../lib/world'
+import { BLOCK, NO_TRAVEL, buildWorld, defaultPlacement, sceneClip, travelOf } from '../lib/world'
 import type { Placement, TimeOfDay } from '../lib/world'
 import type { Clip, Model, ProjectKind } from '../lib/model'
 import './WorldScene.css'
@@ -69,6 +69,7 @@ export function WorldScene({
   const [placement, setPlacement] = useState<Placement>(() => defaultPlacement(kind, model.name))
   const [withPlayer, setWithPlayer] = useState(kind === 'mobs')
   const [sky, setSky] = useState<TimeOfDay>('day')
+  const [walking, setWalking] = useState(true)
   const [playing, setPlaying] = useState(true)
   const [time, setTime] = useState(0)
 
@@ -80,7 +81,13 @@ export function WorldScene({
     () => buildWorld(model, { kind, placement, withPlayer, sky }),
     [model, kind, placement, withPlayer, sky],
   )
-  const scene = useMemo(() => sceneClip(built, clip), [built, clip])
+  /* What the legs are asking for, read off the rig. A clip that does
+     not loop, or drives no legs, asks for nothing and the field stays
+     put - an attack that walked away would be worse than one that did
+     not. */
+  const travel = useMemo(() => travelOf(model, clip), [model, clip])
+  const moving = walking ? travel : NO_TRAVEL
+  const scene = useMemo(() => sceneClip(built, clip, moving), [built, clip, moving])
 
   const stage = useRef<HTMLDivElement>(null)
   const [box, setBox] = useState({ w: 900, h: 620 })
@@ -276,6 +283,17 @@ export function WorldScene({
             </select>
           </label>
 
+          {travel.speed > 0 ? (
+            <button
+              className="chip"
+              aria-pressed={walking}
+              onClick={() => setWalking((v) => !v)}
+              title={`Derived from the leg swing: ${travel.asked.toFixed(1)} units a cycle, rounded to ${travel.blocks} block${travel.blocks === 1 ? '' : 's'} so the field loops without a seam`}
+            >
+              <Icon name="move" size={11} /> {(travel.speed / BLOCK).toFixed(2)} blocks/s
+            </button>
+          ) : null}
+
           <button
             className="chip"
             aria-pressed={night}
@@ -295,7 +313,11 @@ export function WorldScene({
           </button>
 
           <span className="world__note">
-            {playing ? 'Drag to orbit while it plays' : 'Paused — drag to look around the pose'}
+            {!playing
+              ? 'Paused — drag to look around the pose'
+              : moving.speed > 0
+                ? 'Walking — the ground moves, so the cycle never ends'
+                : 'Drag to orbit while it plays'}
           </span>
         </footer>
       </div>
