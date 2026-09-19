@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Card } from '../components/Card'
 import { Icon } from '../lib/icons'
 import { API_BASE, api, endpoints, webhookEvents } from '../lib/api'
-import type { EndpointSpec, HttpMethod } from '../lib/api'
+import { ApiReference as ApiSurface, EndpointBadge } from '../components/Endpoint'
 import {
   categories,
   clockTime,
@@ -22,15 +22,6 @@ import type {
 import './Support.css'
 
 /* ---------------- shared bits ---------------- */
-
-function EndpointBadge({ method, path }: { method: HttpMethod; path: string }) {
-  return (
-    <code className="ep" title={`${method} ${API_BASE}${path}`}>
-      <span className={`ep__m ep__m--${method.toLowerCase()}`}>{method}</span>
-      <span className="ep__p">{path}</span>
-    </code>
-  )
-}
 
 function StatusPill({ status }: { status: TicketStatus }) {
   return <span className={`pill pill--${status}`}>{status}</span>
@@ -95,7 +86,7 @@ function TicketList({
             onChange={(e) => onQuery(e.target.value)}
           />
         </label>
-        <EndpointBadge method="GET" path="/tickets" />
+        <EndpointBadge method="GET" path="/tickets" base={API_BASE} />
       </div>
 
       <div className="tl__rows">
@@ -275,8 +266,8 @@ function Composer({
       </div>
 
       <div className="cmp__foot">
-        <EndpointBadge method="POST" path="/tickets/{id}/messages" />
-        <EndpointBadge method="POST" path="/tickets/{id}/typing" />
+        <EndpointBadge method="POST" path="/tickets/{id}/messages" base={API_BASE} />
+        <EndpointBadge method="POST" path="/tickets/{id}/typing" base={API_BASE} />
         <span className="cmp__hint mono">Enter sends &middot; Shift+Enter newline</span>
       </div>
     </div>
@@ -357,13 +348,13 @@ function Thread({
               ))}
             </select>
           </label>
-          <EndpointBadge method="PATCH" path="/tickets/{id}" />
+          <EndpointBadge method="PATCH" path="/tickets/{id}" base={API_BASE} />
         </div>
       </header>
 
       <div className="th__scroll" ref={scroller}>
         <div className="th__stream">
-          <EndpointBadge method="GET" path="/tickets/{id}/events" />
+          <EndpointBadge method="GET" path="/tickets/{id}/events" base={API_BASE} />
           <span className="th__streamnote">live &middot; server-sent events</span>
         </div>
 
@@ -433,7 +424,7 @@ function NewTicket({ onClose, onCreate }: { onClose: () => void; onCreate: (t: T
             <div className="eyebrow">Support</div>
             <h3 className="card__title">Open a ticket</h3>
           </div>
-          <EndpointBadge method="POST" path="/tickets" />
+          <EndpointBadge method="POST" path="/tickets" base={API_BASE} />
           <button className="icon-btn" onClick={onClose} aria-label="Close">
             <Icon name="close" size={15} />
           </button>
@@ -509,92 +500,14 @@ function NewTicket({ onClose, onCreate }: { onClose: () => void; onCreate: (t: T
 /* ---------------- API reference ---------------- */
 
 function ApiReference() {
-  const groups = useMemo(() => {
-    const byGroup = new Map<EndpointSpec['group'], EndpointSpec[]>()
-    for (const e of endpoints) {
-      const list = byGroup.get(e.group) ?? []
-      list.push(e)
-      byGroup.set(e.group, list)
-    }
-    return [...byGroup.entries()]
-  }, [])
-
-  const [open, setOpen] = useState<string | null>('POST /tickets')
-
   return (
-    <Card
-      eyebrow="Reference"
+    <ApiSurface
       title="Support API"
-      note={`Base URL ${API_BASE} · bearer token · JSON in, JSON out`}
-      dividedHead
+      note={`Base URL ${API_BASE} \u00b7 bearer token \u00b7 JSON in, JSON out`}
+      base={API_BASE}
+      endpoints={endpoints}
+      initialOpen="POST /tickets"
     >
-      {groups.map(([group, list]) => (
-        <section className="api__group" key={group}>
-          <h4 className="api__gname">{group}</h4>
-          <div className="api__rows">
-            {list.map((e) => {
-              const key = `${e.method} ${e.path}`
-              const isOpen = open === key
-              return (
-                <div className="api__row" key={key} data-open={isOpen || undefined}>
-                  <button className="api__line" onClick={() => setOpen(isOpen ? null : key)}>
-                    <span className={`ep__m ep__m--${e.method.toLowerCase()}`}>{e.method}</span>
-                    <code className="api__path">{e.path}</code>
-                    <span className="api__summary">{e.summary}</span>
-                    {e.usedBy ? <span className="api__used">{e.usedBy}</span> : null}
-                    <Icon name="chevronDown" size={12} className="api__chev" />
-                  </button>
-
-                  {isOpen ? (
-                    <div className="api__detail">
-                      <div className="api__url mono">
-                        {e.method} {API_BASE}
-                        {e.path}
-                      </div>
-                      {e.params?.length ? (
-                        <>
-                          <div className="api__label">Query</div>
-                          <dl className="api__params">
-                            {e.params.map((p) => (
-                              <div key={p.name}>
-                                <dt className="mono">{p.name}</dt>
-                                <dd>
-                                  <span className="api__type mono">{p.type}</span> {p.note}
-                                </dd>
-                              </div>
-                            ))}
-                          </dl>
-                        </>
-                      ) : null}
-                      {e.body?.length ? (
-                        <>
-                          <div className="api__label">Body</div>
-                          <dl className="api__params">
-                            {e.body.map((p) => (
-                              <div key={p.name}>
-                                <dt className="mono">
-                                  {p.name}
-                                  {p.required ? <span className="api__req">*</span> : null}
-                                </dt>
-                                <dd>
-                                  <span className="api__type mono">{p.type}</span> {p.note}
-                                </dd>
-                              </div>
-                            ))}
-                          </dl>
-                        </>
-                      ) : null}
-                      <div className="api__label">Returns</div>
-                      <code className="api__returns mono">{e.returns}</code>
-                    </div>
-                  ) : null}
-                </div>
-              )
-            })}
-          </div>
-        </section>
-      ))}
-
       <section className="api__group">
         <h4 className="api__gname">Webhooks</h4>
         <p className="api__note">
@@ -610,7 +523,7 @@ function ApiReference() {
           ))}
         </dl>
       </section>
-    </Card>
+    </ApiSurface>
   )
 }
 

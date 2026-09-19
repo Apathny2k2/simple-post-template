@@ -143,40 +143,6 @@ export function assetsFor(sceneId: string, kind: AssetKind) {
   return realAssets.filter((a) => a.sceneId === sceneId && a.kind === kind)
 }
 
-/* ---------------- dashboard fixtures (static + stale on purpose) -------- */
-
-export const serverSummary = {
-  name: 'Vellum PvP',
-  host: 'eu-west-2.vellum.gg',
-  ip: '10.42.6.118',
-  status: 'Connected',
-  breakdown: [
-    { label: 'Assets', count: 13 },
-    { label: 'Rigs', count: 4 },
-    { label: 'Mobs', count: 1 },
-  ],
-  total: 18,
-}
-
-export const packInfo = {
-  archive: 'current.zip',
-  size: '41.8 MB',
-  hash: 'sha1 : 9f2c04e1',
-  pushed: '09/12/26 14:02',
-}
-
-export const playerCounts = { correct: 13, wrong: 7 }
-
-export const subscription = { type: 'Free', cloud: 'N/A', seats: '1 of 1' }
-
-export const recentFiles = [
-  { name: 'euler.vellum', where: '/aurelian/rigs', touched: '09/16/26 18:41', by: 'g.alex' },
-  { name: 'keep_warden.vellum', where: '/aurelian/mobs', touched: '09/16/26 11:07', by: 'kite' },
-  { name: 'brass_lantern.vellum', where: '/aurelian/items', touched: '09/15/26 22:19', by: 'nine' },
-  { name: 'tide_compass.vellum', where: '/tidewrack/items', touched: '09/14/26 09:55', by: 'm.ferris' },
-  { name: 'ember_hound.vellum', where: '/emberfall/mobs', touched: '09/13/26 16:30', by: 'aurelia' },
-]
-
 /* ---------------- editor fixtures -------------------------------------- */
 
 export type OutlinerNode = {

@@ -29,23 +29,12 @@ import type {
   TicketStatus,
 } from './support'
 
+import type { EndpointSpec as Spec, HttpMethod } from './endpoint'
+
 export const API_BASE = '/api/v1'
 
-export type HttpMethod = 'GET' | 'POST' | 'PATCH' | 'DELETE'
-
-export type Param = { name: string; type: string; required?: boolean; note: string }
-
-export type EndpointSpec = {
-  method: HttpMethod
-  path: string
-  group: 'Tickets' | 'Messages' | 'Realtime' | 'Attachments' | 'Meta'
-  summary: string
-  params?: Param[]
-  body?: Param[]
-  returns: string
-  /** shown as the endpoint badge next to the UI it backs */
-  usedBy?: string
-}
+export type { HttpMethod, Param } from './endpoint'
+export type EndpointSpec = Spec<'Tickets' | 'Messages' | 'Realtime' | 'Attachments' | 'Meta'>
 
 export const endpoints: EndpointSpec[] = [
   {
