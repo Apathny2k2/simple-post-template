@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Icon } from '../../lib/icons'
 import type { NewModelKind } from '../../lib/new-model'
 
-const KINDS: Array<{ id: NewModelKind; label: string; icon: 'cube' | 'anim'; blurb: string; detail: string }> = [
+const KINDS: Array<{ id: NewModelKind; label: string; icon: 'cube' | 'anim' | 'grid'; blurb: string; detail: string }> = [
   {
     id: 'items',
     label: 'Item',
@@ -16,6 +16,13 @@ const KINDS: Array<{ id: NewModelKind; label: string; icon: 'cube' | 'anim'; blu
     icon: 'anim',
     blurb: 'A six-part rig on a 64 x 64 sheet.',
     detail: 'Head, torso, two arms and two legs, each on its own bone with the pivot on the joint.',
+  },
+  {
+    id: 'blocks',
+    label: 'Block',
+    icon: 'grid',
+    blurb: 'A full 16-unit cube on a 64 x 64 sheet.',
+    detail: 'Validated against the block rules: inside -16..32, one rotated axis, fixed angles.',
   },
 ]
 

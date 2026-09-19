@@ -59,6 +59,10 @@ function Face({
 }) {
   const px = { w: w * scale, h: h * scale }
   const texture = textureById(model, face.texture)
+  const spin = face.rotation ?? 0
+  // a quarter turn swaps which side of the face the UV rectangle spans
+  const turned = spin === 90 || spin === 270
+  const inner = { w: turned ? px.h : px.w, h: turned ? px.w : px.h }
 
   const style: React.CSSProperties = {
     width: px.w,
@@ -68,6 +72,14 @@ function Face({
     transform,
   }
 
+  const skin: React.CSSProperties = {
+    width: inner.w,
+    height: inner.h,
+    marginLeft: -inner.w / 2,
+    marginTop: -inner.h / 2,
+    transform: spin ? `rotate(${spin}deg)` : undefined,
+  }
+
   if (texture && texture.source) {
     const [x1, y1, x2, y2] = face.uv
     const uw = Math.abs(x2 - x1) || 1
@@ -75,12 +87,12 @@ function Face({
     // Scale the sheet so the UV rectangle covers this face exactly, then slide
     // it so the rectangle's corner lands on the face's corner. The sheet is
     // measured in UV space, which is not always the PNG's pixel size.
-    const sx = px.w / uw
-    const sy = px.h / uh
-    style.backgroundImage = `url(${texture.source})`
-    style.backgroundSize = `${texture.uvWidth * sx}px ${texture.uvHeight * sy}px`
-    style.backgroundPosition = `${-Math.min(x1, x2) * sx}px ${-Math.min(y1, y2) * sy}px`
-    style.imageRendering = 'pixelated'
+    const sx = inner.w / uw
+    const sy = inner.h / uh
+    skin.backgroundImage = `url(${texture.source})`
+    skin.backgroundSize = `${texture.uvWidth * sx}px ${texture.uvHeight * sy}px`
+    skin.backgroundPosition = `${-Math.min(x1, x2) * sx}px ${-Math.min(y1, y2) * sy}px`
+    skin.imageRendering = 'pixelated'
     // A reversed UV coordinate is how a face is mirrored. Normalising the
     // rectangle to min/max would silently throw that away, so the flip is
     // re-applied to the plane instead.
@@ -90,7 +102,7 @@ function Face({
       style.transform = `${transform} scale(${flipX ? -1 : 1}, ${flipY ? -1 : 1})`
     }
   } else {
-    style.background = 'rgba(146, 165, 202, 0.25)'
+    skin.background = 'rgba(146, 165, 202, 0.25)'
   }
 
   /* offsetX/offsetY are already in the element's own coordinate system -
@@ -101,13 +113,17 @@ function Face({
     const u = e.nativeEvent.offsetX / px.w
     const v = e.nativeEvent.offsetY / px.h
     if (u < 0 || v < 0 || u > 1 || v > 1) return
-    onPaint(name, u, v, phase)
+    // un-turn the hit so it lands on the texel that is actually drawn there
+    const [tu, tv] =
+      spin === 90 ? [v, 1 - u] : spin === 180 ? [1 - u, 1 - v] : spin === 270 ? [1 - v, u] : [u, v]
+    onPaint(name, tu, tv, phase)
   }
 
   return (
     <div
       className="bbface"
       data-face={name}
+      data-spin={spin || undefined}
       style={style}
       onPointerDown={
         onPaint
@@ -123,7 +139,9 @@ function Face({
           : undefined
       }
       onPointerMove={onPaint ? (e) => e.buttons === 1 && report(e, 'move') : undefined}
-    />
+    >
+      <div className="bbface__skin" style={skin} />
+    </div>
   )
 }
 
@@ -290,6 +308,8 @@ type Props = {
   time?: number
   selected?: string | null
   onSelect?: (id: string) => void
+  /** a click that lands on nothing - the only way back to no selection */
+  onDeselect?: () => void
   /**
    * When set, a LEFT drag on a face paints. Every other drag - on empty
    * space, or with any other button - still orbits, so you are never
@@ -321,6 +341,7 @@ export function ModelView({
   time = 0,
   selected = null,
   onSelect,
+  onDeselect,
   onPaint,
   display = null,
   className = '',
@@ -517,6 +538,10 @@ export function ModelView({
         } as React.CSSProperties
       }
       onPointerDown={onPointerDown}
+      onClick={(e) => {
+        // the scene itself is only ever hit when nothing else was
+        if (onDeselect && e.target === e.currentTarget) onDeselect()
+      }}
       // the browser's middle-click autoscroll widget fights a pan drag
       onMouseDown={orbit ? (e) => e.button === 1 && e.preventDefault() : undefined}
       onPointerMove={onPointerMove}

@@ -26,10 +26,21 @@
   position: absolute;
   left: 50%;
   top: 50%;
-  background-repeat: no-repeat;
   outline: 1px solid rgba(0, 0, 0, 0.22);
   outline-offset: -1px;
   backface-visibility: hidden;
+  overflow: hidden;
+}
+
+/* The texture rides on its own layer so a face's UV rotation can turn
+   the image without turning the face. `rotation` round-tripped through
+   the format faithfully and was never drawn. */
+.bbface__skin {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  background-repeat: no-repeat;
+  pointer-events: none;
 }
 
 /* a light pass so form reads without a renderer: top brightest, bottom darkest */

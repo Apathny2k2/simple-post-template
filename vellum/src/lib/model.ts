@@ -177,7 +177,32 @@ const DEFAULTS: Record<Channel, Vec3> = {
   scale: [1, 1, 1],
 }
 
-/** A track's value at time `t`, honouring step vs interpolated keys. */
+/**
+ * Catmull-Rom through four control points, at parameter `k` on the
+ * middle segment. The end segments repeat their outer neighbour, which
+ * is the usual clamped form and keeps a two-key curve from flying off.
+ */
+const spline = (p0: number, p1: number, p2: number, p3: number, k: number) => {
+  const k2 = k * k
+  const k3 = k2 * k
+  return (
+    0.5 *
+    (2 * p1 +
+      (-p0 + p2) * k +
+      (2 * p0 - 5 * p1 + 4 * p2 - p3) * k2 +
+      (-p0 + 3 * p1 - 3 * p2 + p3) * k3)
+  )
+}
+
+/**
+ * A track's value at time `t`.
+ *
+ * `step` holds until the next key. `catmullrom` runs a spline through
+ * the neighbouring keys - it used to fall through to the same lerp as
+ * `linear`, which made a third of the easing menu decorative and played
+ * back every shipped clip as if it had been authored straight, since
+ * they are all authored catmullrom.
+ */
 export function sampleTrack(track: Track, t: number): Vec3 {
   const keys = [...track.keys].sort((a, b) => a.time - b.time)
   if (!keys.length) return DEFAULTS[track.channel]
@@ -190,11 +215,22 @@ export function sampleTrack(track: Track, t: number): Vec3 {
     const b = keys[i + 1]
     if (t < a.time || t > b.time) continue
     if (a.interp === 'step') return a.value
+
     const k = (t - a.time) / (b.time - a.time || 1)
+    if (a.interp !== 'catmullrom') {
+      return [
+        a.value[0] + (b.value[0] - a.value[0]) * k,
+        a.value[1] + (b.value[1] - a.value[1]) * k,
+        a.value[2] + (b.value[2] - a.value[2]) * k,
+      ]
+    }
+
+    const p0 = keys[i - 1] ?? a
+    const p3 = keys[i + 2] ?? b
     return [
-      a.value[0] + (b.value[0] - a.value[0]) * k,
-      a.value[1] + (b.value[1] - a.value[1]) * k,
-      a.value[2] + (b.value[2] - a.value[2]) * k,
+      spline(p0.value[0], a.value[0], b.value[0], p3.value[0], k),
+      spline(p0.value[1], a.value[1], b.value[1], p3.value[1], k),
+      spline(p0.value[2], a.value[2], b.value[2], p3.value[2], k),
     ]
   }
   return last.value

@@ -7,6 +7,7 @@ import { Icon, VellumMark } from '../lib/icons'
 import type { IconName } from '../lib/icons'
 import {
   FACES,
+  boneById,
   cubeSize,
   flattenBones,
   setCubePosition,
@@ -28,7 +29,18 @@ import type {
 } from '../lib/model'
 import { isVellum, readVellum, vellumFileName, writeVellum } from '../lib/vellum'
 import { sampleById, samples } from '../lib/samples'
-import { addBone, addCube, createModel, deleteBone, deleteCube, duplicateCube } from '../lib/new-model'
+import {
+  addBone,
+  addCube,
+  createModel,
+  deleteBone,
+  deleteCube,
+  duplicateBone,
+  duplicateCube,
+  renameNode,
+  reparent,
+  updateBone,
+} from '../lib/new-model'
 import type { NewModelKind } from '../lib/new-model'
 import {
   CHANNELS,
@@ -620,32 +632,42 @@ function CubePanel({
   const size = cubeSize(cube)
   // block models only accept one rotated axis, at fixed angles
   const blockLocked = kind === 'blocks'
+  const locked = cube.locked
 
   return (
     <>
+      {locked ? (
+        <p className="ed-hint ed-hint--warn" style={{ marginBottom: 9 }}>
+          <Icon name="lock" size={11} /> Locked. Unlock it below to move, resize or paint it.
+        </p>
+      ) : null}
+
       <div className="nf-grid">
         <NumRow
           label="Position"
           value={cube.from}
+          disabled={locked}
           snap={snap}
           onChange={(from) => onChange((c) => setCubePosition(c, from))}
         />
-        <NumRow label="Size" value={size} snap={snap} onChange={(s) => onChange((c) => setCubeSize(c, s))} />
+        <NumRow label="Size" value={size} disabled={locked} snap={snap} onChange={(s) => onChange((c) => setCubeSize(c, s))} />
         <NumRow
           label="Pivot"
           value={cube.origin}
+          disabled={locked}
           snap={snap}
           onChange={(origin) => onChange((c) => ({ ...c, origin }))}
         />
         <NumRow
           label="Rotation"
           value={cube.rotation}
+          disabled={locked}
           step={blockLocked ? 22.5 : 2.5}
           onChange={(rotation) => onChange((c) => ({ ...c, rotation }))}
         />
         <div className="nf-row">
           <span className="nf-row__label">Inflate</span>
-          <NumField axis="n" value={cube.inflate} onChange={(inflate) => onChange((c) => ({ ...c, inflate }))} />
+          <NumField axis="n" value={cube.inflate} disabled={locked} onChange={(inflate) => onChange((c) => ({ ...c, inflate }))} />
           <span className="nf-row__label" style={{ textAlign: 'right' }}>
             Faces
           </span>
@@ -820,6 +842,42 @@ function UVPanel({
           <span className="nf-row__label" />
         </div>
       </div>
+
+      <div className="chip-row">
+        <button
+          className="chip"
+          title="Turn the texture within this face"
+          onClick={() =>
+            onChange((c) => ({
+              ...c,
+              faces: {
+                ...c.faces,
+                [face]: {
+                  ...c.faces[face],
+                  rotation: (((c.faces[face].rotation ?? 0) + 90) % 360) as 0 | 90 | 180 | 270,
+                },
+              },
+            }))
+          }
+        >
+          <Icon name="rotate" size={11} /> Rotate texture {current.rotation ?? 0}°
+        </button>
+        <button
+          className="chip"
+          title="Swap the UV horizontally - a reversed rectangle is how a face mirrors"
+          onClick={() =>
+            onChange((c) => {
+              const uv = c.faces[face].uv
+              return {
+                ...c,
+                faces: { ...c.faces, [face]: { ...c.faces[face], uv: [uv[2], uv[1], uv[0], uv[3]] as UVRect } },
+              }
+            })
+          }
+        >
+          <Icon name="flip" size={11} /> Mirror
+        </button>
+      </div>
     </>
   )
 }
@@ -985,6 +1043,8 @@ function Outliner({
   onSelect,
   onToggleBone,
   onModel,
+  onRename,
+  onMove,
 }: {
   model: Model
   selected: string | null
@@ -992,11 +1052,73 @@ function Outliner({
   onSelect: (id: string) => void
   onToggleBone: (id: string) => void
   onModel: (label: string, fn: (m: Model) => Model) => void
+  onRename: (id: string, name: string) => void
+  /** null parent means "make it a root" */
+  onMove: (id: string, parentId: string | null) => void
 }) {
   const rows = useMemo(() => flattenBones(model, collapsed), [model, collapsed])
+  const [editing, setEditing] = useState<string | null>(null)
+  const [dragId, setDragId] = useState<string | null>(null)
+  const [over, setOver] = useState<string | null>(null)
+
+  /* Pointer events rather than HTML5 drag-and-drop. DnD does not exist
+     on touch at all, and it needs the browser's own drag protocol, so
+     the gesture would work on a mouse and nowhere else. A movement
+     threshold keeps an ordinary click from being read as a drag. */
+  const press = useRef<{ id: string; x: number; y: number; pointerId: number; moved: boolean } | null>(null)
+  /* pointerup clears the drag before the click fires, so the click has
+     to be told separately - otherwise releasing over a bone toggled it
+     collapsed and hid the row you had just moved */
+  const swallowClick = useRef(false)
+
+  const rowUnder = (x: number, y: number) => {
+    const el = document.elementFromPoint(x, y)?.closest('[data-node]') as HTMLElement | null
+    return el?.dataset.node ?? null
+  }
+
+  const onRowMove = (e: React.PointerEvent) => {
+    const held = press.current
+    if (!held) return
+    if (!held.moved && Math.hypot(e.clientX - held.x, e.clientY - held.y) < 5) return
+    if (!held.moved) {
+      held.moved = true
+      setDragId(held.id)
+      /* Capture only once a drag is real. Capturing on pointerdown
+         retargets the click that follows to the capture element, which
+         quietly killed row selection and double-click-to-rename. */
+      e.currentTarget.setPointerCapture(held.pointerId)
+    }
+    const target = rowUnder(e.clientX, e.clientY)
+    setOver(target && target !== held.id && bonesById.has(target) ? target : null)
+  }
+
+  const onRowUp = (e: React.PointerEvent) => {
+    const held = press.current
+    press.current = null
+    if (held?.moved && e.currentTarget.hasPointerCapture(held.pointerId)) {
+      e.currentTarget.releasePointerCapture(held.pointerId)
+    }
+    if (!held?.moved) {
+      setDragId(null)
+      setOver(null)
+      return
+    }
+    swallowClick.current = true
+    const target = rowUnder(e.clientX, e.clientY)
+    // off the rows entirely means "make it a root"
+    if (target !== held.id) onMove(held.id, target && bonesById.has(target) ? target : null)
+    setDragId(null)
+    setOver(null)
+  }
+
+  const bonesById = useMemo(() => {
+    const map = new Map<string, true>()
+    for (const r of rows) if (r.kind === 'bone') map.set(r.bone.id, true)
+    return map
+  }, [rows])
 
   const setBone = (id: string, patch: Partial<Bone>) =>
-    onModel('Bone toggle', (m) => {
+    onModel('bone toggle', (m) => {
       const walk = (bones: Bone[]): Bone[] =>
         bones.map((b) => ({
           ...(b.id === id ? { ...b, ...patch } : b),
@@ -1008,13 +1130,24 @@ function Outliner({
     })
 
   const setCube = (id: string, patch: Partial<Cube>) =>
-    onModel('Cube toggle', (m) => ({
+    onModel('cube toggle', (m) => ({
       ...m,
       cubes: m.cubes.map((c) => (c.id === id ? { ...c, ...patch } : c)),
     }))
 
   return (
-    <div className="tree" role="tree">
+    <div
+      className="tree"
+      role="tree"
+      data-dragging={dragId ? true : undefined}
+      onPointerMove={onRowMove}
+      onPointerUp={onRowUp}
+      onPointerCancel={() => {
+        press.current = null
+        setDragId(null)
+        setOver(null)
+      }}
+    >
       {rows.map((row) => {
         const isBone = row.kind === 'bone'
         const node = isBone ? row.bone : row.cube
@@ -1026,11 +1159,30 @@ function Outliner({
             role="treeitem"
             aria-selected={node.id === selected}
             data-hidden={!visible || undefined}
+            data-drop={over === node.id || undefined}
+            data-dragged={dragId === node.id || undefined}
+            data-node={node.id}
             className="tree__row"
             style={{ paddingLeft: 6 + row.depth * 13 }}
+            onPointerDown={(e) => {
+              if (editing === node.id || e.button !== 0) return
+              /* a fresh press is a fresh gesture: whatever the last drop
+                 asked us to swallow, it is not this */
+              swallowClick.current = false
+              press.current = { id: node.id, x: e.clientX, y: e.clientY, pointerId: e.pointerId, moved: false }
+            }}
             onClick={() => {
+              // a click that turned into a drag is not a selection
+              if (dragId || swallowClick.current) {
+                swallowClick.current = false
+                return
+              }
               onSelect(node.id)
-              if (isBone) onToggleBone(node.id)
+              if (isBone && editing !== node.id) onToggleBone(node.id)
+            }}
+            onDoubleClick={(e) => {
+              e.stopPropagation()
+              setEditing(node.id)
             }}
           >
             {isBone ? (
@@ -1041,11 +1193,35 @@ function Outliner({
               />
             ) : null}
             <Icon name={isBone ? 'folder' : 'cube'} size={12} className="tree__icon" />
-            <span className="tree__name">{node.name}</span>
+
+            {editing === node.id ? (
+              <input
+                className="tree__rename"
+                defaultValue={node.name}
+                autoFocus
+                maxLength={64}
+                aria-label={`Rename ${node.name}`}
+                onClick={(e) => e.stopPropagation()}
+                onBlur={(e) => {
+                  onRename(node.id, e.target.value)
+                  setEditing(null)
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
+                  if (e.key === 'Escape') setEditing(null)
+                }}
+              />
+            ) : (
+              <span className="tree__name" title="Double-click to rename, drag onto a bone to reparent">
+                {node.name}
+              </span>
+            )}
+
             <button
               className="tree__toggle"
               data-on={locked || undefined}
-              title="Lock"
+              title={locked ? `Unlock ${node.name}` : `Lock ${node.name}`}
+              aria-label={locked ? `Unlock ${node.name}` : `Lock ${node.name}`}
               onClick={(e) => {
                 e.stopPropagation()
                 if (isBone) setBone(node.id, { locked: !locked })
@@ -1057,7 +1233,8 @@ function Outliner({
             <button
               className="tree__toggle"
               data-on={visible || undefined}
-              title="Visibility"
+              title={visible ? `Hide ${node.name}` : `Show ${node.name}`}
+              aria-label={visible ? `Hide ${node.name}` : `Show ${node.name}`}
               onClick={(e) => {
                 e.stopPropagation()
                 if (isBone) setBone(node.id, { visible: !visible })
@@ -1069,7 +1246,60 @@ function Outliner({
           </div>
         )
       })}
+      <div className="tree__root-drop">{dragId ? 'release here to make it a root' : null}</div>
     </div>
+  )
+}
+
+/* ================= bone panel ================= */
+
+/**
+ * Bones are what animation drives, and they had no inspector at all -
+ * selecting one emptied the left column and `Add Bone` produced
+ * something fixed at the origin that could never be moved.
+ */
+function BonePanel({
+  bone,
+  onChange,
+  snap,
+}: {
+  bone: Bone
+  onChange: (patch: Partial<Omit<Bone, 'id' | 'children'>>) => void
+  snap: boolean
+}) {
+  return (
+    <>
+      <div className="nf-grid">
+        <NumRow
+          label="Pivot"
+          value={bone.origin}
+          snap={snap}
+          disabled={bone.locked}
+          onChange={(origin) => onChange({ origin })}
+        />
+        <NumRow
+          label="Rotation"
+          value={bone.rotation}
+          step={2.5}
+          disabled={bone.locked}
+          onChange={(rotation) => onChange({ rotation })}
+        />
+      </div>
+
+      <p className="ed-hint" style={{ marginTop: 10 }}>
+        <Icon name="info" size={11} /> The pivot is the joint this bone turns about, and every cube
+        under it turns with it.
+      </p>
+
+      <div className="chip-row">
+        <button className="chip" aria-pressed={bone.visible} onClick={() => onChange({ visible: !bone.visible })}>
+          <Icon name={bone.visible ? 'eye' : 'eyeOff'} size={11} /> Visible
+        </button>
+        <button className="chip" aria-pressed={bone.locked} onClick={() => onChange({ locked: !bone.locked })}>
+          <Icon name="lock" size={11} /> Locked
+        </button>
+      </div>
+    </>
   )
 }
 
@@ -1092,6 +1322,7 @@ function Viewport({
   time,
   selected,
   onSelect,
+  onDeselect,
   onPaint,
   display,
 }: {
@@ -1104,6 +1335,7 @@ function Viewport({
   time: number
   selected: string | null
   onSelect: (id: string) => void
+  onDeselect: () => void
   onPaint?: (cubeId: string, face: FaceKey, u: number, v: number, phase: 'down' | 'move') => void
   display?: { rotation: Vec3; translation: Vec3; scale: Vec3 } | null
 }) {
@@ -1144,6 +1376,7 @@ function Viewport({
             time={time}
             selected={selected}
             onSelect={onSelect}
+            onDeselect={onDeselect}
             onPaint={onPaint}
             display={display}
           />
@@ -1416,7 +1649,12 @@ function KeyframePanel({ anim }: { anim: AnimApi }) {
 
 /* ================= timeline ================= */
 
-const PX_PER_S = 96
+/* The scale used to be this constant and nothing else, so a 0.5s clip
+   occupied 48px of a 1500px panel with every key within six pixels of
+   its neighbour, and a 40s clip could only be scrolled. */
+const PX_MIN = 12
+const PX_MAX = 1200
+const PX_DEFAULT = 96
 
 type Row = { key: string; bone: string; boneName: string; channel: Channel; track: Track | null }
 
@@ -1435,9 +1673,37 @@ function Timeline({
 }) {
   const { clip } = anim
   const length = clip?.length ?? 1
-  const ticks = Math.max(1, Math.ceil(length))
-  const trackW = ticks * PX_PER_S
+  const [pxPerS, setPxPerS] = useState(PX_DEFAULT)
+  const main = useRef<HTMLDivElement>(null)
   const drag = useRef<{ id: string; x: number; start: number } | null>(null)
+
+  const clampPx = (v: number) => Math.max(PX_MIN, Math.min(PX_MAX, v))
+
+  /** Fill the panel with the clip, which is what you want nine times in ten. */
+  const fit = useCallback(() => {
+    const width = main.current?.clientWidth
+    if (!width || !clip) return
+    setPxPerS(clampPx((width - 178 - 24) / Math.max(clip.length, 0.05)))
+  }, [clip])
+
+  // ctrl or shift + wheel zooms the timeline, as it does in every editor
+  useEffect(() => {
+    const node = main.current
+    if (!node) return
+    const onWheel = (e: WheelEvent) => {
+      if (!e.ctrlKey && !e.shiftKey) return
+      e.preventDefault()
+      setPxPerS((v) => clampPx(v * Math.exp(-e.deltaY * 0.002)))
+    }
+    node.addEventListener('wheel', onWheel, { passive: false })
+    return () => node.removeEventListener('wheel', onWheel)
+  }, [])
+
+  /* Ticks follow the scale: whole seconds when there is room, tenths
+     when the clip is short enough that seconds say nothing. */
+  const tickStep = pxPerS >= 220 ? 0.1 : pxPerS >= 60 ? 1 : pxPerS >= 24 ? 5 : 10
+  const ticks = Math.max(1, Math.ceil(length / tickStep))
+  const trackW = Math.max(ticks * tickStep * pxPerS, 1)
 
   const nameOf = useCallback(
     (id: string) => anim.bones.find((b) => b.id === id)?.name ?? id,
@@ -1473,6 +1739,20 @@ function Timeline({
     return out
   }, [clip, anim.bone, nameOf])
 
+  /* The playhead lives in a ref for the duration of a playthrough.
+     Depending on `time` tore the loop down and rebuilt it on every
+     frame, and `last` was reset each time - so the gap between the
+     state update and the effect re-running was simply dropped, and a
+     one-second clip took nearly two seconds to play.
+
+     `loop` used to be a label too. The tick wrapped unconditionally, so
+     `once` and `hold` were byte-identical to `loop` - and the shipped
+     `strike` clip is authored `once` and ran forever. */
+  const timeRef = useRef(time)
+  useEffect(() => {
+    timeRef.current = time
+  }, [time])
+
   useEffect(() => {
     if (!playing || !clip) return
     let raf = 0
@@ -1480,17 +1760,34 @@ function Timeline({
     const tick = (now: number) => {
       const dt = (now - last) / 1000
       last = now
-      onTime((time + dt) % clip.length)
-      raf = requestAnimationFrame(tick)
+      const next = timeRef.current + dt
+      timeRef.current = next
+      if (next < clip.length) {
+        onTime(next)
+        raf = requestAnimationFrame(tick)
+        return
+      }
+      if (clip.loop === 'loop') {
+        const wrapped = clip.length ? next % clip.length : 0
+        timeRef.current = wrapped
+        onTime(wrapped)
+        raf = requestAnimationFrame(tick)
+        return
+      }
+      // hold freezes on the last pose; once drops back to the rest pose
+      const end = clip.loop === 'hold' ? clip.length : 0
+      timeRef.current = end
+      onTime(end)
+      onPlaying(false)
     }
     raf = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(raf)
-  }, [playing, clip, time, onTime])
+  }, [playing, clip, onTime, onPlaying])
 
   const scrub = (e: React.PointerEvent<HTMLDivElement>) => {
     if (e.buttons !== 1 && e.type !== 'pointerdown') return
     const r = e.currentTarget.getBoundingClientRect()
-    onTime(Math.max(0, Math.min(length, (e.clientX - r.left) / PX_PER_S)))
+    onTime(Math.max(0, Math.min(length, (e.clientX - r.left) / pxPerS)))
   }
 
   return (
@@ -1543,6 +1840,28 @@ function Timeline({
         </button>
 
         <div className="ed-toolbar__right">
+          <div className="ed-tools" role="group" aria-label="Timeline zoom">
+            <button
+              className="ed-tool"
+              title="Zoom the timeline out"
+              aria-label="Zoom timeline out"
+              onClick={() => setPxPerS((v) => clampPx(v / 1.5))}
+            >
+              <Icon name="minus" size={14} />
+            </button>
+            <button className="ed-tool" title="Fit the clip to the panel" aria-label="Fit timeline" onClick={fit}>
+              <Icon name="resize" size={14} />
+            </button>
+            <button
+              className="ed-tool"
+              title="Zoom the timeline in"
+              aria-label="Zoom timeline in"
+              onClick={() => setPxPerS((v) => clampPx(v * 1.5))}
+            >
+              <Icon name="plus" size={14} />
+            </button>
+          </div>
+          <span className="ed-sep" />
           <button
             className="ed-tool"
             title="Add a keyframe to the animated bone's rotation at the playhead"
@@ -1570,19 +1889,19 @@ function Timeline({
            the tracks offset the labels by up to ten rows and the
            timeline started reporting the wrong bone for every key. The
            names are sticky inside the same grid instead. */
-        <div className="tl-main">
+        <div className="tl-main" ref={main}>
           <div
             className="tl-grid"
-            style={{ ['--track-w' as string]: `${trackW}px`, ['--px-per-s' as string]: `${PX_PER_S}px` }}
+            style={{ ['--track-w' as string]: `${trackW}px`, ['--px-per-s' as string]: `${pxPerS}px` }}
           >
             <div className="tl-corner">Channels</div>
             <div className="tl-ruler" style={{ width: trackW }} onPointerDown={scrub} onPointerMove={scrub}>
               {Array.from({ length: ticks }, (_, i) => (
-                <span className="tl-tick" key={i} style={{ width: PX_PER_S }}>
-                  {i}s
+                <span className="tl-tick" key={i} style={{ width: tickStep * pxPerS }}>
+                  {Number((i * tickStep).toFixed(2))}s
                 </span>
               ))}
-              <span className="tl-end" style={{ left: length * PX_PER_S }} title={`clip ends at ${length}s`} />
+              <span className="tl-end" style={{ left: length * pxPerS }} title={`clip ends at ${length}s`} />
             </div>
 
             {rows.map((r) => (
@@ -1613,7 +1932,7 @@ function Timeline({
                   style={{ width: trackW }}
                   onDoubleClick={(e) => {
                     const rect = e.currentTarget.getBoundingClientRect()
-                    onTime(Math.max(0, Math.min(length, (e.clientX - rect.left) / PX_PER_S)))
+                    onTime(Math.max(0, Math.min(length, (e.clientX - rect.left) / pxPerS)))
                     anim.addKey(r.bone, r.channel)
                   }}
                 >
@@ -1624,7 +1943,7 @@ function Timeline({
                       data-interp={kf.interp}
                       data-selected={kf.id === anim.selectedKey || undefined}
                       data-past-end={kf.time > length + 1e-9 || undefined}
-                      style={{ left: kf.time * PX_PER_S }}
+                      style={{ left: kf.time * pxPerS }}
                       title={`${r.boneName} \u00b7 ${r.channel} @ ${kf.time.toFixed(2)}s \u2192 ${kf.value.join(', ')} (${kf.interp})`}
                       onPointerDown={(e) => {
                         e.stopPropagation()
@@ -1638,7 +1957,7 @@ function Timeline({
                       onPointerMove={(e) => {
                         const d = drag.current
                         if (!d || d.id !== kf.id || e.buttons !== 1) return
-                        anim.dragKey(kf.id, d.start + (e.clientX - d.x) / PX_PER_S, 'move')
+                        anim.dragKey(kf.id, d.start + (e.clientX - d.x) / pxPerS, 'move')
                       }}
                       onPointerUp={() => {
                         if (drag.current?.id === kf.id) anim.dragKey(kf.id, kf.time, 'up')
@@ -1657,7 +1976,7 @@ function Timeline({
               </>
             )}
 
-            <span className="tl-playhead" style={{ left: `calc(var(--names-w) + ${time * PX_PER_S}px)` }} />
+            <span className="tl-playhead" style={{ left: `calc(var(--names-w) + ${time * pxPerS}px)` }} />
           </div>
         </div>
       ) : (
@@ -1962,6 +2281,7 @@ export function Editor({ segments }: { segments: string[] }) {
      that says nothing: it is the thing the user checks before shipping. */
   const warnings = issues.length - errors
   const cube = model.cubes.find((c) => c.id === selected) ?? null
+  const selectedBone = selected ? boneById(model, selected) : null
 
   /* Selecting a bone in the outliner is also how you choose what Animate
      mode drives, so the two never disagree. */
@@ -1973,17 +2293,55 @@ export function Editor({ segments }: { segments: string[] }) {
     [bones],
   )
 
+  const rename = useCallback(
+    (id: string, name: string) => history.commit('rename', (m) => renameNode(m, id, name)),
+    [history],
+  )
+
+  const move = useCallback(
+    (id: string, parentId: string | null) => {
+      history.commit('reparent', (m) => reparent(m, id, parentId))
+      /* Drop into a collapsed bone and the row you just moved vanished:
+         it was inside a branch nothing was showing. Open the branch you
+         dropped into, the way every file tree does. */
+      if (parentId)
+        setCollapsed((s) => {
+          if (!s.has(parentId)) return s
+          const next = new Set(s)
+          next.delete(parentId)
+          return next
+        })
+    },
+    [history],
+  )
+
+  const editBone = useCallback(
+    (id: string, patch: Partial<Omit<Bone, 'id' | 'children'>>) =>
+      history.commit('bone edit', (m) => updateBone(m, id, patch), true),
+    [history],
+  )
+
   const editCube = useCallback(
     (fn: (c: Cube) => Cube) => {
       if (!selected) return
+      /* A padlock that stops nothing is decoration. It is stored, it is
+         serialised, it dims the outliner row - and every transform,
+         every brush stroke and Delete all went straight through it. */
+      if (model.cubes.find((c) => c.id === selected)?.locked) return
       history.commit(
         'cube edit',
         (m) => ({ ...m, cubes: m.cubes.map((c) => (c.id === selected ? fn(c) : c)) }),
         true,
       )
     },
-    [selected, history],
+    [selected, history, model.cubes],
   )
+
+  /** Say why nothing happened, once, rather than ignoring the gesture. */
+  const refuseLocked = useCallback((what: string) => {
+    setSaveNote(`${what} is locked \u2014 unlock it in the outliner first.`)
+    window.setTimeout(() => setSaveNote(null), 3000)
+  }, [])
 
   /* Four gestures used to throw work away without a word: reload,
      leaving for another route, New model, and Open. The browser owns
@@ -2146,6 +2504,10 @@ export function Editor({ segments }: { segments: string[] }) {
     (cubeId: string, faceKey: FaceKey, u: number, v: number, phase: 'down' | 'move') => {
       const target = model.cubes.find((c) => c.id === cubeId)
       if (!target) return
+      if (target.locked) {
+        if (phase === 'down') refuseLocked(`"${target.name}"`)
+        return
+      }
       if (phase === 'down') {
         // the pipette reads a pixel; it is not an edit and must not
         // leave an empty step for the user to click back through
@@ -2160,7 +2522,7 @@ export function Editor({ segments }: { segments: string[] }) {
       if (!texel) return
       applyTool(f.texture, texel[0], texel[1], faceBounds(f.uv), phase, faceBounds(f.uv))
     },
-    [model.cubes, applyTool, history, tool],
+    [model.cubes, applyTool, history, tool, refuseLocked],
   )
 
   /* On the sheet, a fill is bounded by the UV island the click landed in -
@@ -2274,22 +2636,31 @@ export function Editor({ segments }: { segments: string[] }) {
       onNew: () => guarded('Start a new model?', 'Discard and start', () => setNewDialog(true)),
       onUndo: history.undo,
       onRedo: history.redo,
+      /* Where a new node goes: into the selected bone, or into the bone
+         that owns the selected cube. `addCube` has always taken a parent
+         id - the UI just never passed the one it already had, so
+         everything landed on the first root however deep you were. */
       onAddCube: () => {
-        const next = addCube(model, null, rescale)
+        const parent = bones.some((b) => b.id === selected) ? selected : ownerBone(model.bones, selected)
+        const next = addCube(model, parent, rescale)
         history.commit('add cube', next.model)
         setSelected(next.id)
       },
       onAddBone: () => {
-        const next = addBone(model, null)
+        const parent = bones.some((b) => b.id === selected) ? selected : ownerBone(model.bones, selected)
+        const next = addBone(model, parent)
         history.commit('add bone', next.model)
         setSelected(next.id)
         setPickedBone(next.id)
       },
       onDuplicate: () => {
         if (!selected) return
-        const next = duplicateCube(model, selected)
+        // a bone duplicates with its whole subtree; it used to do nothing at all
+        const next = bones.some((b) => b.id === selected)
+          ? duplicateBone(model, selected)
+          : duplicateCube(model, selected)
         if (!next) return
-        history.commit('duplicate cube', next.model)
+        history.commit(bones.some((b) => b.id === selected) ? 'duplicate bone' : 'duplicate cube', next.model)
         setSelected(next.id)
       },
       onDelete: () => {
@@ -2301,6 +2672,17 @@ export function Editor({ segments }: { segments: string[] }) {
            redo branch - so the cube you had just undone became
            unrecoverable. */
         if (!isBone && !model.cubes.some((c) => c.id === selected)) return
+
+        const lockedCube = model.cubes.find((c) => c.id === selected && c.locked)
+        const lockedBone = isBone && bones.find((b) => b.id === selected)
+        if (lockedCube) {
+          refuseLocked(`"${lockedCube.name}"`)
+          return
+        }
+        if (lockedBone && boneById(model, selected)?.locked) {
+          refuseLocked(`"${lockedBone.name}"`)
+          return
+        }
         // a bone takes its subtree with it; a cube goes alone
         const next = isBone ? deleteBone(model, selected) : deleteCube(model, selected)
         if (next === model) return
@@ -2330,7 +2712,7 @@ export function Editor({ segments }: { segments: string[] }) {
       onAddKey: () => animBone && anim.addKey(animBone, 'rotation'),
       onCloseLoop: () => anim.closeLoop(),
     }),
-    [model, fileName, kind, textureIndex, loadModel, runSave, selected, bones, history, anim, animBone, guarded, rescale],
+    [model, fileName, kind, textureIndex, loadModel, runSave, selected, bones, history, anim, animBone, guarded, rescale, refuseLocked],
   )
 
   /* Keyboard. Anything typed into a field belongs to that field, so the
@@ -2508,6 +2890,7 @@ export function Editor({ segments }: { segments: string[] }) {
           time={time}
           selected={selected}
           onSelect={selectNode}
+          onDeselect={() => setSelected(null)}
           onPaint={mode === 'paint' ? paintOnModel : undefined}
           display={mode === 'display' ? displayState[slot] : null}
         />
@@ -2521,6 +2904,7 @@ export function Editor({ segments }: { segments: string[] }) {
                   onSlot={setSlot}
                   transform={displayState[slot]}
                   onTransform={(t) => setDisplayState((d) => ({ ...d, [slot]: t }))}
+                  all={displayState}
                   onReset={() => setDisplayState((d) => ({ ...d, [slot]: DEFAULT_DISPLAY[slot] }))}
                 >
                   {(rows) =>
@@ -2539,6 +2923,14 @@ export function Editor({ segments }: { segments: string[] }) {
                   <KeyframePanel anim={anim} />
                 </Panel>
               </>
+            ) : selectedBone ? (
+              <Panel title="Bone" count={selectedBone.name}>
+                <BonePanel
+                  bone={selectedBone}
+                  snap={snap}
+                  onChange={(patch) => editBone(selectedBone.id, patch)}
+                />
+              </Panel>
             ) : (
               <Panel title="Cube" count={cube?.name ?? 'none'}>
                 <CubePanel cube={cube} kind={kind} onChange={editCube} snap={snap} />
@@ -2609,6 +3001,8 @@ export function Editor({ segments }: { segments: string[] }) {
                   })
                 }
                 onModel={(label, fn) => history.commit(label, fn)}
+                onRename={rename}
+                onMove={move}
               />
             </Panel>
 
@@ -2677,7 +3071,7 @@ export function Editor({ segments }: { segments: string[] }) {
           {model.resolution.width} x {model.resolution.height}
         </span>
         <span className="ed-status__sel">
-          {saveNote ?? openError ?? `selected: ${cube?.name ?? 'none'} · ${tool}`}
+          {saveNote ?? openError ?? `selected: ${cube?.name ?? selectedBone?.name ?? 'none'} · ${tool}`}
         </span>
         <div className="ed-status__right">
           <span className={errors || warnings ? 'ed-status__bad' : undefined}>

@@ -15,7 +15,7 @@ import { boxUvFaces, makeRoom } from './uv-pack'
 import type { Rescale } from './uv-pack'
 import type { Bone, BoneChild, Cube, Face, FaceKey, Model, Texture, UVRect, Vec3 } from './model'
 
-export type NewModelKind = 'items' | 'mobs'
+export type NewModelKind = 'items' | 'mobs' | 'blocks'
 
 let counter = 0
 export const newId = () =>
@@ -94,7 +94,34 @@ export function makeBone(name: string, origin: Vec3, children: BoneChild[] = [])
 /* ---------------- starters ---------------- */
 
 export function createModel(kind: NewModelKind, name: string): Model {
-  return kind === 'mobs' ? mobStarter(name) : itemStarter(name)
+  if (kind === 'mobs') return mobStarter(name)
+  if (kind === 'blocks') return blockStarter(name)
+  return itemStarter(name)
+}
+
+/**
+ * A full 16-unit cube, which is what a block is before you carve it.
+ * The editor ships a whole block rule set - the -16..32 range, one
+ * rotated axis, the fixed angles - that no model a user could create
+ * was ever checked against, because there was no way to make one.
+ */
+function blockStarter(name: string): Model {
+  const texture = starterTexture(64, `${name}.png`)
+  const cube = makeCube('block', [0, 0, 0], [16, 16, 16], {
+    origin: [8, 8, 8],
+    uvAt: [0, 0],
+    texture: texture.id,
+  })
+  const root = makeBone(name, [0, 0, 0], [{ kind: 'cube', id: cube.id }])
+  return {
+    name,
+    kind: 'blocks',
+    resolution: { width: 64, height: 64 },
+    bones: [root],
+    cubes: [cube],
+    textures: [texture],
+    clips: [],
+  }
 }
 
 function itemStarter(name: string): Model {
@@ -275,6 +302,141 @@ export function deleteBone(model: Model, id: string): Model {
     // a clip driving a bone that no longer exists would fail validation
     clips: model.clips.map((clip) => ({ ...clip, tracks: clip.tracks.filter((t) => t.bone !== id) })),
   }
+}
+
+/** Rename a cube or a bone, whichever carries the id. */
+export function renameNode(model: Model, id: string, name: string): Model {
+  const clean = name.trim().slice(0, 64) || 'unnamed'
+  if (model.cubes.some((c) => c.id === id)) {
+    return { ...model, cubes: model.cubes.map((c) => (c.id === id ? { ...c, name: clean } : c)) }
+  }
+  const walk = (bones: Bone[]): Bone[] =>
+    bones.map((b) => ({
+      ...(b.id === id ? { ...b, name: clean } : b),
+      children: b.children.map((c) =>
+        c.kind === 'bone' ? { kind: 'bone' as const, bone: walk([c.bone])[0] } : c,
+      ),
+    }))
+  return { ...model, bones: walk(model.bones) }
+}
+
+/** A bone and everything under it, with fresh ids throughout. */
+export function duplicateBone(model: Model, id: string): { model: Model; id: string } | null {
+  const find = (bones: Bone[]): Bone | null => {
+    for (const b of bones) {
+      if (b.id === id) return b
+      const nested = find(b.children.filter((c) => c.kind === 'bone').map((c) => (c as { bone: Bone }).bone))
+      if (nested) return nested
+    }
+    return null
+  }
+  const source = find(model.bones)
+  if (!source) return null
+
+  const made: Cube[] = []
+  const copyBone = (bone: Bone, suffix: boolean): Bone => ({
+    ...bone,
+    id: newId(),
+    name: suffix ? `${bone.name}_copy` : bone.name,
+    children: bone.children.map((child) => {
+      if (child.kind === 'bone') return { kind: 'bone' as const, bone: copyBone(child.bone, false) }
+      const cube = model.cubes.find((c) => c.id === child.id)
+      if (!cube) return { kind: 'cube' as const, id: child.id }
+      const copy: Cube = {
+        ...cube,
+        id: newId(),
+        faces: Object.fromEntries(
+          FACES.map((k) => [k, { ...cube.faces[k], uv: [...cube.faces[k].uv] as UVRect }]),
+        ) as Record<FaceKey, Face>,
+      }
+      made.push(copy)
+      return { kind: 'cube' as const, id: copy.id }
+    }),
+  })
+
+  const copy = copyBone(source, true)
+  // beside the original, or at the root when the original is one
+  const place = (bones: Bone[]): Bone[] => {
+    if (bones.some((b) => b.id === id)) return [...bones, copy]
+    return bones.map((b) => ({
+      ...b,
+      children: b.children.some((c) => c.kind === 'bone' && c.bone.id === id)
+        ? [...b.children, { kind: 'bone' as const, bone: copy }]
+        : b.children.map((c) =>
+            c.kind === 'bone' ? { kind: 'bone' as const, bone: place([c.bone])[0] } : c,
+          ),
+    }))
+  }
+
+  return { model: { ...model, cubes: [...model.cubes, ...made], bones: place(model.bones) }, id: copy.id }
+}
+
+/** Edit a bone's own properties - its pivot and its rotation. */
+export function updateBone(model: Model, id: string, patch: Partial<Omit<Bone, 'id' | 'children'>>): Model {
+  const walk = (bones: Bone[]): Bone[] =>
+    bones.map((b) => ({
+      ...(b.id === id ? { ...b, ...patch } : b),
+      children: b.children.map((c) =>
+        c.kind === 'bone' ? { kind: 'bone' as const, bone: walk([c.bone])[0] } : c,
+      ),
+    }))
+  return { ...model, bones: walk(model.bones) }
+}
+
+/** Is `id` inside `bone`? A bone cannot be dropped into its own subtree. */
+function contains(bone: Bone, id: string): boolean {
+  return bone.children.some((c) =>
+    c.kind === 'cube' ? c.id === id : c.bone.id === id || contains(c.bone, id),
+  )
+}
+
+/**
+ * Move a cube or a bone under a new parent. Rebuilding the rig used to
+ * be impossible: a bone you added could never receive anything, so it
+ * was a permanent empty folder.
+ */
+export function reparent(model: Model, id: string, parentId: string | null): Model {
+  if (id === parentId) return model
+
+  let moving: BoneChild | null = null
+  const lift = (bones: Bone[]): Bone[] =>
+    bones.map((b) => ({
+      ...b,
+      children: b.children
+        .filter((c) => {
+          const match = c.kind === 'cube' ? c.id === id : c.bone.id === id
+          if (match) moving = c
+          return !match
+        })
+        .map((c) => (c.kind === 'bone' ? { kind: 'bone' as const, bone: lift([c.bone])[0] } : c)),
+    }))
+
+  const roots = model.bones.filter((b) => {
+    if (b.id !== id) return true
+    moving = { kind: 'bone', bone: b }
+    return false
+  })
+  const stripped = lift(roots)
+  if (!moving) return model
+
+  const node = moving as BoneChild
+  // dropping a bone into its own subtree would orphan the whole branch
+  if (node.kind === 'bone' && parentId && contains(node.bone, parentId)) return model
+
+  if (!parentId) return { ...model, bones: [...stripped, ...(node.kind === 'bone' ? [node.bone] : [])] }
+
+  const place = (bones: Bone[]): Bone[] =>
+    bones.map((b) => ({
+      ...b,
+      children:
+        b.id === parentId
+          ? [...b.children, node]
+          : b.children.map((c) =>
+              c.kind === 'bone' ? { kind: 'bone' as const, bone: place([c.bone])[0] } : c,
+            ),
+    }))
+
+  return { ...model, bones: place(stripped) }
 }
 
 export function duplicateCube(model: Model, id: string): { model: Model; id: string } | null {

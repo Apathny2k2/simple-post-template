@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import type { Vec3 } from '../../lib/model'
 import { Icon } from '../../lib/icons'
 
@@ -36,12 +37,23 @@ export const DEFAULT_DISPLAY: DisplayState = {
   fixed: { ...rest },
 }
 
+/** Minecraft writes 1/16 units and drops anything that matches vanilla. */
+function slotJson(t: SlotTransform) {
+  const out: Record<string, number[]> = {}
+  const same = (a: Vec3, b: Vec3) => a.every((v, i) => Math.abs(v - b[i]) < 1e-6)
+  if (!same(t.rotation, [0, 0, 0])) out.rotation = t.rotation
+  if (!same(t.translation, [0, 0, 0])) out.translation = t.translation
+  if (!same(t.scale, [1, 1, 1])) out.scale = t.scale
+  return out
+}
+
 export function DisplayPanel({
   slot,
   onSlot,
   transform,
   onTransform,
   onReset,
+  all,
   children,
 }: {
   slot: SlotId
@@ -49,6 +61,8 @@ export function DisplayPanel({
   transform: SlotTransform
   onTransform: (t: SlotTransform) => void
   onReset: () => void
+  /** every slot, so "copy all" can emit the whole display block */
+  all: DisplayState
   /** the numeric row component, passed in so it stays one implementation */
   children: (rows: {
     label: string
@@ -57,6 +71,32 @@ export function DisplayPanel({
     step?: number
   }[]) => React.ReactNode
 }) {
+  const [note, setNote] = useState<string | null>(null)
+
+  /* The panel used to be a preview you could not act on: you tuned eight
+     slots and then retyped the numbers into your pack by hand. */
+  const copy = (only: SlotId | null) => {
+    const display: Record<string, Record<string, number[]>> = {}
+    for (const s of DISPLAY_SLOTS) {
+      if (only && s.id !== only) continue
+      const json = slotJson(all[s.id])
+      if (Object.keys(json).length) display[s.id] = json
+    }
+    const text = JSON.stringify({ display }, null, 2)
+    const done = (msg: string) => {
+      setNote(msg)
+      window.setTimeout(() => setNote(null), 4000)
+    }
+    if (navigator.clipboard?.writeText) {
+      void navigator.clipboard
+        .writeText(text)
+        .then(() => done(only ? `Copied ${only}.` : `Copied ${Object.keys(display).length} slots.`))
+        .catch(() => done('This browser would not let the page use the clipboard.'))
+    } else {
+      done('This browser exposes no clipboard to the page.')
+    }
+  }
+
   return (
     <>
       <label className="field" style={{ marginBottom: 10 }}>
@@ -101,12 +141,20 @@ export function DisplayPanel({
         <button className="chip" onClick={onReset}>
           <Icon name="refresh" size={11} /> Reset slot
         </button>
+        <button className="chip" onClick={() => copy(slot)} title="This slot, as Minecraft expects it">
+          <Icon name="copy" size={11} /> Copy slot
+        </button>
+        <button className="chip" onClick={() => copy(null)} title="Every slot that differs from vanilla">
+          <Icon name="copy" size={11} /> Copy all
+        </button>
       </div>
+
+      {note ? <p className="ed-hint ed-hint--warn">{note}</p> : null}
 
       <p className="ed-hint" style={{ marginTop: 10 }}>
         <Icon name="info" size={11} />
         Display transforms belong to the resource pack, not the model, so these are a preview and
-        are not written into the .vellum.
+        are not written into the .vellum — copy them into your pack's item JSON.
       </p>
     </>
   )
