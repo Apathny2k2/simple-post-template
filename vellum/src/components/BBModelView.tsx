@@ -64,14 +64,23 @@ function Face({
     const [x1, y1, x2, y2] = face.uv
     const uw = Math.abs(x2 - x1) || 1
     const uh = Math.abs(y2 - y1) || 1
-    // Scale the whole sheet so the UV rectangle covers this face exactly,
-    // then slide the sheet so that rectangle's corner lands on the corner.
+    // Scale the sheet so the UV rectangle covers this face exactly, then slide
+    // it so the rectangle's corner lands on the face's corner. The sheet is
+    // measured in UV space, which is not always the PNG's pixel size.
     const sx = px.w / uw
     const sy = px.h / uh
     style.backgroundImage = `url(${texture.source})`
-    style.backgroundSize = `${texture.width * sx}px ${texture.height * sy}px`
+    style.backgroundSize = `${texture.uvWidth * sx}px ${texture.uvHeight * sy}px`
     style.backgroundPosition = `${-Math.min(x1, x2) * sx}px ${-Math.min(y1, y2) * sy}px`
     style.imageRendering = 'pixelated'
+    // A reversed UV coordinate is how Blockbench mirrors a face. Normalising
+    // the rectangle to min/max would silently throw that away, so the flip is
+    // re-applied to the plane instead.
+    const flipX = x2 < x1
+    const flipY = y2 < y1
+    if (flipX || flipY) {
+      style.transform = `${transform} scale(${flipX ? -1 : 1}, ${flipY ? -1 : 1})`
+    }
   } else {
     style.background = 'rgba(146, 165, 202, 0.25)'
   }
@@ -96,10 +105,12 @@ function ElementBox({
 }) {
   if (!element.visibility) return null
 
+  // the format does not guarantee to > from; a reversed box would render
+  // inside-out, so it is clamped here and flagged by the validator instead
   const inf = element.inflate || 0
-  const w = element.to[0] - element.from[0] + inf * 2
-  const h = element.to[1] - element.from[1] + inf * 2
-  const d = element.to[2] - element.from[2] + inf * 2
+  const w = Math.max(element.to[0] - element.from[0], 0) + inf * 2
+  const h = Math.max(element.to[1] - element.from[1], 0) + inf * 2
+  const d = Math.max(element.to[2] - element.from[2], 0) + inf * 2
   const centre: Vec3 = [
     (element.from[0] + element.to[0]) / 2,
     (element.from[1] + element.to[1]) / 2,

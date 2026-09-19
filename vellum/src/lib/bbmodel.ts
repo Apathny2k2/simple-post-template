@@ -63,8 +63,16 @@ export type Texture = {
   uuid: string
   id: string
   name: string
+  /** the PNG's own pixel dimensions */
   width: number
   height: number
+  /**
+   * The space face UVs are expressed in. NOT necessarily the PNG's size:
+   * Blockbench will happily paint a 64x64 model on a 512x512 sheet while
+   * keeping uv_width at 64. Divide UVs by this, never by `width`.
+   */
+  uvWidth: number
+  uvHeight: number
   /** data URI */
   source: string
 }
@@ -145,7 +153,8 @@ export function parseBBModel(raw: string | object): Model {
         const f = rawFaces[key]
         faces[key] = {
           uv: (Array.isArray(f?.uv) && f.uv.length === 4 ? f.uv : [0, 0, 0, 0]) as UVRect,
-          texture: typeof f?.texture === 'number' ? f.texture : null,
+          // an untextured face is null, but some versions write -1
+          texture: typeof f?.texture === 'number' && f.texture >= 0 ? f.texture : null,
           rotation: (f?.rotation ?? 0) as Face['rotation'],
         }
       }
@@ -211,6 +220,8 @@ export function parseBBModel(raw: string | object): Model {
       name: String(tex.name ?? `texture_${i}.png`),
       width: Number(tex.width ?? resolution.width),
       height: Number(tex.height ?? resolution.height),
+      uvWidth: Number(tex.uv_width ?? resolution.width),
+      uvHeight: Number(tex.uv_height ?? resolution.height),
       source: String(tex.source ?? ''),
     }
   })
@@ -229,11 +240,17 @@ export function parseBBModel(raw: string | object): Model {
         name: String(animator.name ?? ''),
         keyframes: ((animator.keyframes ?? []) as Record<string, unknown>[]).map((kf) => {
           const point = ((kf.data_points ?? []) as Record<string, unknown>[])[0] ?? {}
+          // values may be numbers or numeric strings; a real Molang expression
+          // is not something this editor evaluates, so it reads as zero
+          const axis = (v: unknown) => {
+            const n = Number(v ?? 0)
+            return Number.isFinite(n) ? n : 0
+          }
           return {
             uuid: String(kf.uuid ?? uuid()),
             channel: (kf.channel ?? 'rotation') as Channel,
             time: Number(kf.time ?? 0),
-            value: [Number(point.x ?? 0), Number(point.y ?? 0), Number(point.z ?? 0)] as Vec3,
+            value: [axis(point.x), axis(point.y), axis(point.z)] as Vec3,
             interpolation: (kf.interpolation ?? 'linear') as Interpolation,
           }
         }),
@@ -316,8 +333,8 @@ export function serializeBBModel(model: Model): string {
         id: t.id,
         width: t.width,
         height: t.height,
-        uv_width: model.resolution.width,
-        uv_height: model.resolution.height,
+        uv_width: t.uvWidth,
+        uv_height: t.uvHeight,
         particle: false,
         use_as_default: false,
         layers_enabled: false,
