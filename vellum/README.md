@@ -351,6 +351,76 @@ survives is what was doing work rather than decoration:
 There is no day/night any more, because there is no sky to change. Black is
 the dark theme: a glow reads as a glow without one.
 
+## Into the game
+
+A `.vellum` is not a Minecraft file and never was. The editor affords a bone
+tree, arbitrary rotations and a sheet of any size; a Minecraft model file
+affords none of those. `src/lib/mcmodel.ts` is where the two meet, and the
+more valuable half of it is not the conversion — it is the refusal.
+
+### What the model format will not let you say
+
+Four constraints, none of them ours:
+
+- **There is no hierarchy.** Elements are flat in model space. A bone is a
+  thing the editor has and the file does not.
+- **An element rotates once** — one axis, one origin, one of exactly five
+  angles: `-45, -22.5, 0, 22.5, 45`.
+- **There is no inflate.** A cube grown by 0.25 has to be grown in its
+  coordinates before anyone looks at them.
+- **Coordinates live in `-16..32`**, and that is after the inflate above.
+
+So a model can be perfectly good here and impossible to express there, and
+the honest thing is to say which cube and why *before* the pack is built
+rather than let the game reject the pack with no useful message.
+`checkTranslation(model, kind)` walks the model and reports:
+
+- `chainOf()` collects the non-zero rotations along a cube's bone chain. Two
+  pivots, or two axes, is an **error** naming the bone — not a silent flatten
+  that moves geometry somewhere the modeller did not put it.
+- An angle off the five is a **warning** carrying the nearest legal one, so
+  the fix is one click rather than a puzzle.
+- An element outside `-16..32` after inflate is an **error**, and it says so
+  in the axis that broke.
+
+One case earns its own branch: **a single bone rotation with no cube rotation
+under it is fine.** One pivot is exactly what an element affords, so that
+rotation becomes the element's own — `{"origin": [...], "axis": "y", "angle":
+22.5}` — instead of being reported as an impossibility. Anything the editor
+can legally draw that the format can legally hold, translates.
+
+The check runs in the Validation panel beside the model's other rules, so it
+is not something you go and ask for.
+
+**Mobs report that they are not a resource-pack thing at all.** A pack has no
+custom entity model; a mob is somebody's runtime, not a file under
+`models/`. Emitting one the server cannot use would be worse than saying
+nothing, so `buildPack()` leaves mobs out and names each one it left.
+
+### The zip
+
+`src/lib/zip.ts` writes a **store-only** archive — method 0, real CRC-32, DOS
+timestamps. Not laziness: a pack is mostly PNGs, which are already
+compressed, so deflate would buy a few percent and a dependency.
+
+`src/lib/pack.ts` lays out what goes in it:
+
+```
+pack.mcmeta
+assets/<namespace>/models/<folder>/<id>.json
+assets/<namespace>/textures/<folder>/<id>.png
+```
+
+`pretty()` is not cosmetic either. `JSON.stringify(v, null, 2)` puts every
+component of every vector on its own line, which turned the seven samples
+into 16 KB of column; keeping number arrays inline reads as coordinates and
+costs 8.8 KB instead.
+
+**`pack_format` defaults to 15 and the dialog says plainly that it is not
+guessed.** It is a single integer per Minecraft version and a wrong one fails
+the whole pack to load. The target version is the server's to state, not
+ours to infer, so the field is there, editable, and honest about why.
+
 ## What works, and what does not
 
 The editor edits. Geometry, textures, rigs, clips, behaviours, configs and the
@@ -363,6 +433,11 @@ cover all of it, and leaving a dirty editor asks first.
 New models are made from the library shelf — **New model**, beside the tabs and
 outside the pill — which picks a kind, then what it is for, and hands the editor
 a URL it can rebuild from. A reload does not lose it.
+
+A pack comes out of the same shelf — **Export pack**, beside it — as a real
+zip with real model JSON in it, and the editor refuses to build one out of a
+model Minecraft could not hold. That half is done end to end; what the plugin
+wants for *mobs* is not ours to invent, so nothing is emitted for them yet.
 
 The dashboard is fed rather than faked: it renders what a plugin has reported
 through the documented API and the built-in sample until one does. Everything a

@@ -47,29 +47,37 @@ export type TranslationIssue = {
 
 type Turn = { axis: Axis; angle: number; origin: Vec3; owner: string }
 
-/** Every non-zero rotation between the model root and this cube, in order. */
-function chainOf(model: Model, cube: Cube): { turns: Turn[]; multiAxis: string[] } {
-  const turns: Turn[] = []
-  const multiAxis: string[] = []
+/**
+ * What one rotation amounts to: nothing, a single turn, or a rotation
+ * on more than one axis - which an element cannot express at all.
+ */
+function turnOf(rotation: Vec3, origin: Vec3, owner: string): Turn | 'none' | 'multi' {
+  const live = rotation.map((v, i) => [i, v] as const).filter(([, v]) => v !== 0)
+  if (!live.length) return 'none'
+  if (live.length > 1) return 'multi'
+  return { axis: AXES[live[0][0]], angle: live[0][1], origin, owner }
+}
 
-  const add = (rotation: Vec3, origin: Vec3, owner: string) => {
-    const live = rotation.map((v, i) => [i, v] as const).filter(([, v]) => v !== 0)
-    if (!live.length) return
-    if (live.length > 1) {
-      multiAxis.push(owner)
-      return
-    }
-    turns.push({ axis: AXES[live[0][0]], angle: live[0][1], origin, owner })
-  }
+/**
+ * Every non-zero rotation between the model root and this cube, in order.
+ *
+ * Both lists are scoped to the path, not to the traversal: a bone in a
+ * branch this cube does not live in says nothing about this cube, and
+ * naming it here would send someone to look at geometry that is fine.
+ * Its own cubes report it themselves.
+ */
+function chainOf(model: Model, cube: Cube): { turns: Turn[]; multiAxis: string[] } {
+  type Path = { turns: Turn[]; multiAxis: string[] }
 
   /* Walk down rather than up: a cube knows nothing about its bone, so
      the tree is what says which bones are above it. */
-  const walk = (bones: Bone[], above: Turn[]): Turn[] | null => {
+  const walk = (bones: Bone[], above: Path): Path | null => {
     for (const bone of bones) {
-      const here = [...above]
-      const before = turns.length
-      add(bone.rotation, bone.origin, `bone "${bone.name}"`)
-      if (turns.length > before) here.push(turns[turns.length - 1])
+      const t = turnOf(bone.rotation, bone.origin, `bone "${bone.name}"`)
+      const here: Path = {
+        turns: t === 'none' || t === 'multi' ? above.turns : [...above.turns, t],
+        multiAxis: t === 'multi' ? [...above.multiAxis, `bone "${bone.name}"`] : above.multiAxis,
+      }
 
       for (const child of bone.children) {
         if (child.kind === 'cube' && child.id === cube.id) return here
@@ -82,13 +90,13 @@ function chainOf(model: Model, cube: Cube): { turns: Turn[]; multiAxis: string[]
     return null
   }
 
-  const above = walk(model.bones, []) ?? []
-  const mine: Turn[] = []
-  const before = turns.length
-  add(cube.rotation, cube.origin, `"${cube.name}"`)
-  if (turns.length > before) mine.push(turns[turns.length - 1])
+  const above = walk(model.bones, { turns: [], multiAxis: [] }) ?? { turns: [], multiAxis: [] }
+  const mine = turnOf(cube.rotation, cube.origin, `"${cube.name}"`)
 
-  return { turns: [...above, ...mine], multiAxis }
+  return {
+    turns: mine === 'none' || mine === 'multi' ? above.turns : [...above.turns, mine],
+    multiAxis: mine === 'multi' ? [...above.multiAxis, `"${cube.name}"`] : above.multiAxis,
+  }
 }
 
 const nearestLegal = (angle: number) =>
@@ -212,6 +220,27 @@ export type McModel = {
   display?: Record<string, { rotation?: Vec3; translation?: Vec3; scale?: Vec3 }>
 }
 
+/**
+ * A resource path Minecraft will accept: lowercase, digits, underscore,
+ * dot, dash.
+ *
+ * This lives here rather than beside the zip writer because it is not
+ * about zips - it is the rule the model file's texture references and
+ * the file names under `textures/` BOTH have to obey, and the one thing
+ * that must never happen is the two disagreeing. A model that points at
+ * `item/Blade Sheet` while the PNG sits at `item/blade_sheet.png` loads
+ * without complaint and renders the missing-texture checkerboard.
+ */
+export const safeId = (s: string) =>
+  s
+    .toLowerCase()
+    .replace(/[^a-z0-9_.-]+/g, '_')
+    .replace(/^_+|_+$/g, '') || 'model'
+
+/** What one texture is called inside the pack, from either side. */
+export const textureName = (texName: string, fallback: string) =>
+  safeId((texName || fallback).replace(/\.png$/i, ''))
+
 /** Texture pixels to the 0..16 space a model file measures UVs in. */
 const uvTo16 = (v: number, span: number) => Math.round((v / span) * 16 * 10000) / 10000
 
@@ -228,6 +257,8 @@ export function toMinecraftModel(
   namespace: string,
   folder: 'item' | 'block',
   display?: Record<string, { rotation: Vec3; translation: Vec3; scale: Vec3 }>,
+  /** the stem the pack files this model under - the fallback for an unnamed texture */
+  assetName?: string,
 ): { json: McModel; issues: TranslationIssue[] } {
   const issues = checkTranslation(model, folder === 'block' ? 'blocks' : 'items')
 
@@ -235,10 +266,10 @@ export function toMinecraftModel(
      model with two sheets does not silently paint everything from one. */
   const slot = new Map<string, string>()
   model.textures.forEach((t, i) => slot.set(t.id, String(i)))
-  const path = (name: string) => `${namespace}:${folder}/${name.replace(/\.png$/i, '')}`
+  const stem = assetName ?? safeId(model.name)
   const textures: Record<string, string> = {}
   model.textures.forEach((t, i) => {
-    textures[String(i)] = path(t.name || model.name)
+    textures[String(i)] = `${namespace}:${folder}/${textureName(t.name, stem)}`
   })
   if (model.textures.length) textures.particle = textures['0']
 

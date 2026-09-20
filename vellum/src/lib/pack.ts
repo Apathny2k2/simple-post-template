@@ -19,7 +19,7 @@
    goes stale and lies. It is asked for instead.
    --------------------------------------------------------------- */
 
-import { toMinecraftModel } from './mcmodel'
+import { safeId, textureName, toMinecraftModel } from './mcmodel'
 import type { TranslationIssue } from './mcmodel'
 import { dataUriBytes, makeZip } from './zip'
 import type { ZipEntry } from './zip'
@@ -79,12 +79,10 @@ function pretty(value: unknown, indent = ''): string {
 
 const json = (v: unknown) => utf8(pretty(v) + '\n')
 
-/** Minecraft wants lowercase, digits, underscore, dot, dash and slash. */
-export const safeId = (s: string) =>
-  s
-    .toLowerCase()
-    .replace(/[^a-z0-9_.-]+/g, '_')
-    .replace(/^_+|_+$/g, '') || 'model'
+/* `safeId` is defined next to the translation, not here: the model
+   file's texture references have to obey the same rule these file names
+   do, and two copies of it are two chances to drift apart. */
+export { safeId } from './mcmodel'
 
 export const isNamespace = (s: string) => /^[a-z0-9_.-]+$/.test(s)
 
@@ -131,7 +129,7 @@ export function buildPack(items: PackItem[], opts: PackOptions): PackReport {
     }
 
     const name = safeId(item.id)
-    const built = toMinecraftModel(item.model, ns, folder, item.display)
+    const built = toMinecraftModel(item.model, ns, folder, item.display, name)
     issues.push({ id: item.id, issues: built.issues })
 
     if (built.issues.some((i) => i.level === 'error')) {
@@ -146,8 +144,7 @@ export function buildPack(items: PackItem[], opts: PackOptions): PackReport {
     })
 
     for (const tex of item.model.textures) {
-      const texName = safeId((tex.name || name).replace(/\.png$/i, ''))
-      const path = `assets/${ns}/textures/${folder}/${texName}.png`
+      const path = `assets/${ns}/textures/${folder}/${textureName(tex.name, name)}.png`
       if (written.has(path)) continue
       const bytes = tex.source ? dataUriBytes(tex.source) : null
       if (!bytes) {
