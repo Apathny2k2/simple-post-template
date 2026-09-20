@@ -77,7 +77,7 @@ export function ExportPackDialog({
     save(`${stem}.zip`, packZip(report))
   }
 
-  const downloadConfigs = () => save(`${stem}-mythicmobs.zip`, packZip(configs))
+  const downloadConfigs = () => save(`${stem}-configs.zip`, packZip(configs))
 
   return (
     <div className="dlg" role="dialog" aria-modal="true" aria-label="Export a resource pack">
@@ -179,12 +179,14 @@ export function ExportPackDialog({
             {configs.files.length ? (
               <div className="pk__out">
                 <div className="pk__outhead">
-                  Also ready — {configs.files.length} MythicMobs config
+                  Also ready — {configs.files.length} config
                   {configs.files.length === 1 ? '' : 's'}
                 </div>
                 <p className="pk__outrow">
-                  <span className="mono">{configs.files.map((f) => f.path).join(', ')}</span> — these
-                  belong in the plugin&rsquo;s folder, not in the pack, so they download separately.
+                  <span className="mono">{configs.files.map((f) => f.path).join(', ')}</span> — what
+                  each one <em>is</em>, rather than what it looks like. These are read by the Vellum
+                  plugin, not by Minecraft, so they download separately rather than riding in the
+                  pack.
                 </p>
               </div>
             ) : null}
@@ -222,7 +224,7 @@ export function ExportPackDialog({
         <footer className="dlg__foot">
           <span className="cmp__hint mono">
             {items.filter((i) => !folderOf(i.kind)).length
-              ? 'A mob’s geometry stays in the .vellum — its config is in the second zip'
+              ? 'A mob’s geometry stays in the .vellum — its stats are in the second zip'
               : 'Drop the zip in resourcepacks/'}
           </span>
           <div className="row-actions">

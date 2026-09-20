@@ -3,22 +3,35 @@
 
    A `.vellum` says what something looks like and how it moves. None of
    that makes it a mob: a model with 400 health, an armour value, a
-   faction, a boss bar and a skill on a timer is a boss, and every one
-   of those lives in a MythicMobs config rather than in any geometry.
-   Modelling one here and then writing its config somewhere else by
-   hand is where the two drift apart - the model says `geyser_block`
-   and the config says `geyserblock`, and nothing tells you.
+   faction, a boss bar and a skill on a timer is a boss, and not one of
+   those is geometry. Modelling one here and then writing its stats
+   somewhere else by hand is where the two drift apart - the model says
+   `geyser_block` and the config says `geyserblock`, and nothing tells
+   you.
 
    So the config is authored beside the model and written out of it.
+
+   THIS IS OURS TO IMPLEMENT, NOT SOMEONE ELSE'S TO READ. Vellum
+   replicates this behaviour in-house; there is no third-party plugin
+   on the other end of it. That is not a naming detail - it decides who
+   owns every default and every range in SCHEMA below. Nothing here can
+   be justified with "that is what their docs say", because the
+   behaviour is ours: if a field reads 0 to 1 it is because our runtime
+   reads 0 to 1, and the plugin half has to implement it.
+
+   The SHAPE deliberately follows the MythicMobs convention - `Type`,
+   `Health`, `BossBar`, `AIGoalSelectors`, skill lines with `~onTimer`.
+   Server operators already know that vocabulary and a config they can
+   read on sight is worth more than one we invented. Borrowing the
+   spelling is not the same as borrowing the reader.
 
    One description drives everything. A field is declared once, in
    SCHEMA below, and the form, the rules and the YAML all read the same
    declaration - which is why a key cannot appear in the editor and be
    missing from the export, or be spelled two ways.
 
-   The keys and their shapes follow MythicMobs' own documentation. Where
-   it offers a vocabulary - entity types, AI selectors, bar colours -
-   the field carries it as suggestions rather than as a closed list,
+   Where a field offers a vocabulary - entity types, AI selectors, bar
+   colours - it carries it as suggestions rather than as a closed list,
    because a server with other plugins on it has more of them than we
    could know.
    --------------------------------------------------------------- */
@@ -29,7 +42,7 @@ import type { ProjectKind } from './model'
 
 export type ConfigValue = string | number | boolean | string[] | Row[]
 export type Row = Record<string, string>
-export type MythicConfig = Record<string, ConfigValue>
+export type Config = Record<string, ConfigValue>
 
 /* ---------------- the description ---------------- */
 
@@ -52,7 +65,7 @@ export type Field = {
   options?: readonly string[]
   /** columns for `rows` */
   columns?: readonly Column[]
-  /** what MythicMobs does when the key is absent; an equal value is not written */
+  /** what the runtime does when the key is absent; an equal value is not written */
   fallback?: ConfigValue
 }
 
@@ -128,14 +141,14 @@ const MOB_SECTIONS: Section[] = [
     fields: [
       { key: 'type', label: 'Base entity', kind: 'text', path: 'Type', options: ENTITY_TYPES,
         placeholder: 'ZOMBIE', fallback: '',
-        help: 'The vanilla mob MythicMobs starts from. Its AI, hitbox and sounds come from here.' },
+        help: 'The vanilla mob this one is built on. Its AI, hitbox and sounds come from here.' },
       { key: 'display', label: 'Display name', kind: 'text', path: 'Display',
         placeholder: '&cThe Warden', fallback: '',
         help: 'Colour codes with &. Shown on the name plate and, by default, on the boss bar.' },
       { key: 'faction', label: 'Faction', kind: 'text', path: 'Faction', fallback: '',
         help: 'Groups mobs so they can be targeted - or spared - as a side.' },
       { key: 'mount', label: 'Mount', kind: 'text', path: 'Mount', fallback: '',
-        help: 'Another MythicMob this one rides in on.' },
+        help: 'Another custom mob this one rides in on.' },
     ],
   },
   {
@@ -326,7 +339,7 @@ const ITEM_SECTIONS: Section[] = [
   },
 ]
 
-/** Blocks have no MythicMobs form; a block is a block. */
+/** Blocks have no stat form; a block is a block. */
 export const SCHEMA: Partial<Record<ProjectKind, Section[]>> = {
   mobs: MOB_SECTIONS,
   items: ITEM_SECTIONS,
@@ -339,16 +352,16 @@ export const fieldsOf = (kind: ProjectKind): Field[] =>
 
 /* ---------------- the value ---------------- */
 
-export function emptyConfig(kind: ProjectKind): MythicConfig {
-  const out: MythicConfig = {}
+export function emptyConfig(kind: ProjectKind): Config {
+  const out: Config = {}
   for (const f of fieldsOf(kind)) {
     out[f.key] = f.fallback ?? (f.kind === 'list' || f.kind === 'rows' ? [] : f.kind === 'bool' ? false : f.kind === 'number' ? 0 : '')
   }
   return out
 }
 
-/** Only what differs from the fallback, which is what MythicMobs reads anyway. */
-export function setFields(kind: ProjectKind, config: MythicConfig): Field[] {
+/** Only what differs from the fallback, which is all the runtime reads anyway. */
+export function setFields(kind: ProjectKind, config: Config): Field[] {
   return fieldsOf(kind).filter((f) => written(f, config[f.key]))
 }
 
@@ -368,7 +381,7 @@ function written(f: Field, v: ConfigValue | undefined): boolean {
 
 type Tree = { [k: string]: Tree | string | number | boolean | string[] }
 
-/** MythicMobs reads plain YAML, so this writes plain YAML and nothing clever. */
+/** The runtime reads plain YAML, so this writes plain YAML and nothing clever. */
 function scalar(v: string | number | boolean): string {
   if (typeof v === 'boolean') return v ? 'true' : 'false'
   if (typeof v === 'number') return String(v)
@@ -400,7 +413,7 @@ function emit(tree: Tree, indent: string, out: string[]) {
   }
 }
 
-/** A row becomes the space-separated line MythicMobs expects of a list entry. */
+/** A row becomes the space-separated line a list entry is written as. */
 function rowLine(f: Field, row: Row): string {
   const parts = (f.columns ?? [])
     .map((c) => (row[c.key] ?? '').trim())
@@ -414,10 +427,10 @@ function rowLine(f: Field, row: Row): string {
 }
 
 /**
- * The config as MythicMobs would read it, keyed by the model's own name
+ * The config as the runtime reads it, keyed by the model's own name
  * so that the file and the model cannot drift apart.
  */
-export function toYaml(id: string, kind: ProjectKind, config: MythicConfig): string {
+export function toYaml(id: string, kind: ProjectKind, config: Config): string {
   const tree: Tree = {}
   const put = (path: string, value: string | number | boolean | string[]) => {
     const parts = path.split('.')
@@ -435,7 +448,7 @@ export function toYaml(id: string, kind: ProjectKind, config: MythicConfig): str
     if (f.kind === 'rows') {
       const lines = (v as Row[]).map((r) => rowLine(f, r)).filter((l) => l.length > 0)
       /* Attributes are the one shape that is a map rather than a list:
-         MythicMobs groups them by the slot they apply in. */
+         they are grouped by the slot they apply in. */
       if (f.key === 'attributes') {
         const bySlot: Tree = {}
         for (const row of v as Row[]) {
@@ -483,7 +496,7 @@ const ID_RULE = /^[A-Za-z0-9_]+$/
 export function validateConfig(
   id: string,
   kind: ProjectKind | undefined,
-  config: MythicConfig | undefined,
+  config: Config | undefined,
 ): ConfigIssue[] {
   if (!kind || !config || !hasConfig(kind)) return []
   const out: ConfigIssue[] = []
@@ -495,12 +508,12 @@ export function validateConfig(
   if (!touched) return []
 
   if (!ID_RULE.test(id)) {
-    out.push({ level: 'error', message: `"${id}" cannot be a MythicMobs id - letters, digits and underscores only` })
+    out.push({ level: 'error', message: `"${id}" cannot be an id - letters, digits and underscores only` })
   }
 
   if (kind === 'mobs') {
     if (!str('type')) {
-      out.push({ level: 'error', message: 'No base entity: MythicMobs has nothing to build this mob on' })
+      out.push({ level: 'error', message: 'No base entity: there is nothing to build this mob on' })
     }
     if (num('health') <= 0) {
       out.push({ level: 'error', message: 'Health of 0 or less: it dies the moment it spawns' })
@@ -533,14 +546,14 @@ export function validateConfig(
     for (const r of rows('drops')) {
       const c = Number(r.chance)
       if (r.chance && (!Number.isFinite(c) || c < 0 || c > 1)) {
-        out.push({ level: 'warning', message: `A drop chance of ${r.chance}: MythicMobs reads this as 0 to 1, so 0.25 is a quarter` })
+        out.push({ level: 'warning', message: `A drop chance of ${r.chance}: a chance is 0 to 1, so 0.25 is a quarter` })
       }
     }
   }
 
   if (kind === 'items') {
     if (!str('material')) {
-      out.push({ level: 'error', message: 'No material: MythicMobs has no vanilla item to build this on' })
+      out.push({ level: 'error', message: 'No material: there is no vanilla item to build this on' })
     }
     if (num('model') <= 0 && str('material')) {
       out.push({
@@ -569,7 +582,7 @@ export function validateConfig(
       out.push({ level: 'warning', message: `"${r.skill}" has no trigger, so nothing sets it off` })
     }
     if (r.trigger && !r.trigger.startsWith('~')) {
-      out.push({ level: 'error', message: `"${r.trigger}" is not a trigger - MythicMobs triggers begin with ~` })
+      out.push({ level: 'error', message: `"${r.trigger}" is not a trigger - a trigger must begin with ~` })
     }
   }
 

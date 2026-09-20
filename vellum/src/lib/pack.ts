@@ -31,7 +31,7 @@ import { safeId, textureName, toMinecraftModel } from './mcmodel'
 import type { TranslationIssue } from './mcmodel'
 import { dataUriBytes, makeZip } from './zip'
 import type { ZipEntry } from './zip'
-import { toYaml } from './mythic'
+import { toYaml } from './config'
 import type { Model, ProjectKind, Vec3 } from './model'
 
 export type PackItem = {
@@ -195,15 +195,21 @@ export function buildPack(items: PackItem[], opts: PackOptions): PackReport {
 
 /* ---------------- the configs, which are not pack files ----------------
 
-   A MythicMobs config is how a mob becomes a thing in the game, and it
-   does NOT belong in a resource pack: it goes in the plugin's folder,
-   not in `resourcepacks/`. So it is a second archive rather than a
-   folder inside the first one - putting it in the pack would invite
-   someone to drop the whole thing in the wrong place, and Minecraft
-   would say nothing about the files it ignored.
+   A config is how a mob becomes a thing in the game, and it does NOT
+   belong in a resource pack. Minecraft never reads it; the Vellum
+   plugin does, and this behaviour is ours rather than a third party's,
+   so the file goes wherever that plugin keeps its definitions - not in
+   `resourcepacks/`.
+
+   Hence a second archive rather than a folder inside the first one:
+   putting it in the pack would invite someone to drop the whole thing
+   in the wrong place, and Minecraft would say nothing at all about the
+   files it ignored.
 
    The paths are the ones the Config tab already names, so what you
-   download matches what the panel told you it was.
+   download matches what the panel told you it was. Where they land on
+   a server is the plugin's convention to set, not ours to assume, so
+   they are written relative and nothing here prefixes them.
    --------------------------------------------------------------- */
 
 /** True once a config says anything - the writer emits a stub when it does not. */

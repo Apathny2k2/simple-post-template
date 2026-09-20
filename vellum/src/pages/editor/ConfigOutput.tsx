@@ -9,8 +9,8 @@
 
 import { useMemo, useState } from 'react'
 import { Icon } from '../../lib/icons'
-import { toYaml } from '../../lib/mythic'
-import type { MythicConfig } from '../../lib/mythic'
+import { toYaml } from '../../lib/config'
+import type { Config } from '../../lib/config'
 import { saveFile } from '../../lib/download'
 import type { ProjectKind } from '../../lib/model'
 
@@ -49,7 +49,7 @@ export function ConfigOutput({
 }: {
   id: string
   kind: ProjectKind
-  config: MythicConfig
+  config: Config
 }) {
   const [note, setNote] = useState<string | null>(null)
   const yaml = useMemo(() => toYaml(id, kind, config), [id, kind, config])

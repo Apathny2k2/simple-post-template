@@ -140,11 +140,22 @@ what it is doing, not by the blocks around it, so nothing would read it.
 
 A `.vellum` says what something looks like and how it moves. None of that
 makes it a mob: 420 health, an armour value, a faction, a boss bar and a skill
-on a timer is a boss, and every one of those lives in a
-[MythicMobs](https://mythiccraft.io) config rather than in any geometry.
-Modelling here and writing the config elsewhere is how the two drift apart —
-the model says `geyser_block`, the config says `geyserblock`, and nothing
-tells you.
+on a timer is a boss, and not one of those is geometry. Modelling here and
+writing the stats elsewhere is how the two drift apart — the model says
+`geyser_block`, the config says `geyserblock`, and nothing tells you.
+
+**This behaviour is ours to implement, not a third party's to read.** Vellum
+replicates it in-house; there is no external plugin on the other end. That is
+not a naming detail — it decides who owns every default and every range in the
+schema. Nothing in it can be justified with *"that is what their docs say"*:
+if a drop chance reads 0 to 1, it is because our runtime reads 0 to 1, and the
+plugin half has to implement it.
+
+What the config deliberately *borrows* is the **shape**, and the convention it
+follows is MythicMobs'. `Type`, `Health`, `BossBar`, `AIGoalSelectors`, skill
+lines with `~onTimer` — server operators already know that vocabulary, and a
+config they can read on sight is worth more than one we invented. Borrowing
+the spelling is not the same as borrowing the reader.
 
 So the config is authored beside the model, in a **Config** tab, and written
 out of it. The YAML sits live in the middle of the editor while you fill the
@@ -152,7 +163,7 @@ form in, keyed by the model's own name, and leaves as a `.yml` or on the
 clipboard.
 
 **One description drives everything.** A field is declared once, in `SCHEMA`
-(`src/lib/mythic.ts`), and the form, the rules and the YAML all read that same
+(`src/lib/config.ts`), and the form, the rules and the YAML all read that same
 declaration — which is why a key cannot appear in the editor and be missing
 from the export, or be spelled two ways. Adding a field is adding a line to
 the schema.
@@ -162,20 +173,19 @@ AI goal and target selectors, skills with triggers and chances, equipment,
 drops, damage modifiers, level modifiers and kill messages. An item covers
 material, display and lore, custom model data, amount, the options switches,
 durability, enchantments, per-slot attributes, use skills and drop options.
-Where MythicMobs offers a vocabulary — entity types, selectors, bar styles,
-enchantments — the field carries it as *suggestions* rather than a closed
-list, because a server with other plugins on it has more of them than we
-could know.
+Where a field offers a vocabulary — entity types, selectors, bar styles,
+enchantments — it carries it as *suggestions* rather than a closed list,
+because a server with other plugins on it has more of them than we could know.
 
-Only what differs from MythicMobs' own default is written. A config of forty
-defaults is forty lines of noise in every diff, and the plugin reads an absent
-key as the default anyway.
+Only what differs from the default is written. A config of forty defaults is
+forty lines of noise in every diff, and the runtime reads an absent key as the
+default anyway.
 
 The rules catch what a server would refuse before the server does: a mob with
 no base entity, health that kills it on spawn, a boss bar over 30 health, goal
 selectors that do not start with `clear` (and so add to the vanilla set rather
 than replacing it), an equipment slot that is not one, a drop chance written
-as 25 when MythicMobs reads 0 to 1, an enchantment with no level, an attribute
+as 25 when a chance is 0 to 1, an enchantment with no level, an attribute
 with no slot, a trigger that does not begin with `~`. An item with no custom
 model data is a warning, because that number is the only thing tying a config
 back to the model in the same file.
@@ -473,14 +483,15 @@ renders at raw model scale, which for a 16-unit item is a speck in the hand
 and a speck in the inventory. So the export writes Minecraft's own defaults
 rather than nothing, and the dialog says that is what it is doing.
 
-**MythicMobs configs go in a second zip, not in the pack.** A config is how a
-mob becomes a thing in the game, and it belongs in the plugin's folder rather
-than in `resourcepacks/`. Folding it into the pack would invite dropping the
-whole archive in the wrong place, and Minecraft would say nothing about the
-files it ignored. The paths inside it — `mobs/<id>.yml`, `items/<id>.yml` —
-are the ones the Config tab already names, so the download matches what the
-panel said it was. A model with nothing configured is left out rather than
-shipped as an empty stub.
+**Configs go in a second zip, not in the pack.** A config is how a mob becomes
+a thing in the game, and Minecraft never reads it — the Vellum plugin does.
+Folding it into the pack would invite dropping the whole archive in the wrong
+place, and Minecraft would say nothing at all about the files it ignored. The
+paths inside it — `mobs/<id>.yml`, `items/<id>.yml` — are the ones the Config
+tab already names, so the download matches what the panel said it was, and
+they are relative because where they land on a server is the plugin's
+convention to set rather than ours to assume. A model with nothing configured
+is left out rather than shipped as an empty stub.
 
 ## What works, and what does not
 

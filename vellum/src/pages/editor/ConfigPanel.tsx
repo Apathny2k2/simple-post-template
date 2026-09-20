@@ -1,7 +1,7 @@
 /* ---------------------------------------------------------------
    The config form.
 
-   Every control here is generated from `SCHEMA` in lib/mythic.ts -
+   Every control here is generated from `SCHEMA` in lib/config.ts -
    nothing below knows what a boss bar is. That is the point: a field
    added to the schema appears here, validates, and lands in the YAML
    without three places having to agree about how it is spelled.
@@ -9,8 +9,8 @@
 
 import { useState } from 'react'
 import { Icon } from '../../lib/icons'
-import { SCHEMA, setFields } from '../../lib/mythic'
-import type { Column, Field, MythicConfig, Row, Section } from '../../lib/mythic'
+import { SCHEMA, setFields } from '../../lib/config'
+import type { Column, Field, Config, Row, Section } from '../../lib/config'
 import type { ProjectKind } from '../../lib/model'
 
 function Suggest({ id, options }: { id: string; options: readonly string[] }) {
@@ -194,8 +194,8 @@ export function ConfigPanel({
   onChange,
 }: {
   kind: ProjectKind
-  config: MythicConfig
-  onChange: (next: MythicConfig) => void
+  config: Config
+  onChange: (next: Config) => void
 }) {
   const sections: Section[] = SCHEMA[kind] ?? []
   const [open, setOpen] = useState<string>(sections[0]?.id ?? '')
@@ -206,7 +206,7 @@ export function ConfigPanel({
     <>
       <p className="ed-hint cfg-lead">
         <Icon name="info" size={11} />
-        What this is, rather than what it looks like. Written as MythicMobs YAML, keyed by the
+        What this is, rather than what it looks like. Written as YAML, keyed by the
         model&rsquo;s own name so the two cannot drift apart.
       </p>
 

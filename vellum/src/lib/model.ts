@@ -19,8 +19,8 @@
 
 import { validateBehaviour } from './behaviour'
 import type { Behaviour } from './behaviour'
-import { validateConfig } from './mythic'
-import type { MythicConfig } from './mythic'
+import { validateConfig } from './config'
+import type { Config } from './config'
 
 export type Vec3 = [number, number, number]
 export type UVRect = [number, number, number, number]
@@ -182,8 +182,8 @@ export type Model = {
   subtype?: Subtype
   /** what makes it act on its own, where it does; see lib/behaviour.ts */
   behaviour?: Behaviour
-  /** the MythicMobs config authored beside it; see lib/mythic.ts */
-  config?: MythicConfig
+  /** the stats and behaviour authored beside it; see lib/config.ts */
+  config?: Config
   resolution: { width: number; height: number }
   bones: Bone[]
   cubes: Cube[]

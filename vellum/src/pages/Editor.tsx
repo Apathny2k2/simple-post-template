@@ -84,9 +84,9 @@ import { ScenePanel } from './editor/ScenePanel'
 import { BehaviourPanel } from './editor/BehaviourPanel'
 import { ConfigPanel } from './editor/ConfigPanel'
 import { ConfigOutput } from './editor/ConfigOutput'
-import { emptyConfig, hasConfig, setFields } from '../lib/mythic'
+import { emptyConfig, hasConfig, setFields } from '../lib/config'
 import { checkTranslation } from '../lib/mcmodel'
-import type { MythicConfig } from '../lib/mythic'
+import type { Config } from '../lib/config'
 import { EMPTY_BEHAVIOUR, cycleLength, geyserBehaviour, stageAt } from '../lib/behaviour'
 import type { Behaviour } from '../lib/behaviour'
 import { ConfirmDialog } from './editor/ConfirmDialog'
@@ -2541,7 +2541,7 @@ export function Editor({ segments }: { segments: string[] }) {
   )
 
   const setConfig = useCallback(
-    (next: MythicConfig) => history.commit('config', (m) => ({ ...m, config: next })),
+    (next: Config) => history.commit('config', (m) => ({ ...m, config: next })),
     [history],
   )
   const bones = useMemo(() => boneList(model.bones), [model.bones])

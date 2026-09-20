@@ -30,7 +30,7 @@
 
 import { FACES, subtypeFits } from './model'
 import type { Behaviour, BehaviourEffect, BehaviourRequirement, BehaviourStage, EffectKind } from './behaviour'
-import type { ConfigValue, MythicConfig, Row } from './mythic'
+import type { ConfigValue, Config, Row } from './config'
 import type {
   Bone,
   Channel,
@@ -175,7 +175,7 @@ export type VellumDocument = {
    */
   behaviour?: VellumBehaviour
   /**
-   * The MythicMobs config, as a flat map of the schema's own keys.
+   * The config, as a flat map of the schema's own keys.
    * Version 5 added it. Deliberately not the YAML: the YAML is derived,
    * and storing a derived form is storing something that can disagree
    * with what it was derived from.
@@ -321,7 +321,7 @@ export function toVellumDocument(model: Model): VellumDocument {
       : undefined
 
   /* Only what was set: a config of forty defaults is forty lines of
-     noise in every diff, and MythicMobs reads an absent key as the
+     noise in every diff, and the runtime reads an absent key as the
      default anyway. */
   const config = model.config && Object.keys(model.config).length ? model.config : undefined
 
@@ -392,9 +392,9 @@ function readBehaviour(raw: VellumBehaviour | undefined): Behaviour | undefined 
  * field can hold. Anything else is dropped rather than carried: a
  * number where the form wants a list is a value nothing could render.
  */
-function readConfig(raw: Record<string, unknown> | undefined): MythicConfig | undefined {
+function readConfig(raw: Record<string, unknown> | undefined): Config | undefined {
   if (!raw || typeof raw !== 'object') return undefined
-  const out: MythicConfig = {}
+  const out: Config = {}
   for (const [key, value] of Object.entries(raw)) {
     if (typeof value === 'string' || typeof value === 'boolean') {
       out[key] = value
