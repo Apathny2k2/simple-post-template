@@ -10,7 +10,7 @@
 import { useMemo, useRef, useState } from 'react'
 import { Icon } from '../../lib/icons'
 import { useModal } from '../../lib/a11y'
-import { buildPack, folderOf, isNamespace, packBytes, packZip, safeId } from '../../lib/pack'
+import { buildConfigs, buildPack, folderOf, isNamespace, packBytes, packZip, safeId } from '../../lib/pack'
 import type { PackItem } from '../../lib/pack'
 import { saveBlob } from '../../lib/download'
 
@@ -55,13 +55,24 @@ export function ExportPackDialog({
 
   const models = report?.files.filter((f) => f.path.endsWith('.json') && f.path !== 'pack.mcmeta').length ?? 0
 
+  /* The configs are a SEPARATE archive on purpose: they go in the
+     plugin's folder, not in resourcepacks/, and burying them inside
+     the pack would invite dropping the whole thing in the wrong place. */
+  const configs = useMemo(() => buildConfigs(items), [items])
+
+  const stem = safeId(suggestedName)
+
+  const save = (name: string, bytes: Uint8Array) =>
+    void saveBlob(name, new Blob([bytes as BlobPart], { type: 'application/zip' })).then((m) =>
+      setNote(m || `Saved ${name}`),
+    )
+
   const download = () => {
     if (!report) return
-    const bytes = packZip(report)
-    void saveBlob(`${safeId(suggestedName)}.zip`, new Blob([bytes as BlobPart], { type: 'application/zip' })).then(
-      (m) => setNote(m || `Saved ${safeId(suggestedName)}.zip`),
-    )
+    save(`${stem}.zip`, packZip(report))
   }
+
+  const downloadConfigs = () => save(`${stem}-mythicmobs.zip`, packZip(configs))
 
   return (
     <div className="dlg" role="dialog" aria-modal="true" aria-label="Export a resource pack">
@@ -159,6 +170,19 @@ export function ExportPackDialog({
               </div>
             ) : null}
 
+            {configs.files.length ? (
+              <div className="pk__out">
+                <div className="pk__outhead">
+                  Also ready — {configs.files.length} MythicMobs config
+                  {configs.files.length === 1 ? '' : 's'}
+                </div>
+                <p className="pk__outrow">
+                  <span className="mono">{configs.files.map((f) => f.path).join(', ')}</span> — these
+                  belong in the plugin&rsquo;s folder, not in the pack, so they download separately.
+                </p>
+              </div>
+            ) : null}
+
             {problems.length ? (
               <div className="pk__out pk__out--warn">
                 <div className="pk__outhead">Changed on the way in</div>
@@ -173,19 +197,31 @@ export function ExportPackDialog({
             ) : null}
           </div>
 
+          <p className="ed-hint">
+            Every model ships with Minecraft&rsquo;s default display transforms, because
+            <code className="mono"> .vellum</code> does not carry them — without a display block
+            and without a <code className="mono">parent</code>, a 16-unit item renders as a speck
+            in the hand and the inventory.
+          </p>
+
           {note ? <p className="ed-hint ed-hint--warn">{note}</p> : null}
         </div>
 
         <footer className="dlg__foot">
           <span className="cmp__hint mono">
             {items.filter((i) => !folderOf(i.kind)).length
-              ? 'Mobs stay in the .vellum — the plugin renders those'
+              ? 'A mob’s geometry stays in the .vellum — its config is in the second zip'
               : 'Drop the zip in resourcepacks/'}
           </span>
           <div className="row-actions">
             <button className="btn btn--ghost" onClick={onClose}>
               Cancel
             </button>
+            {configs.files.length ? (
+              <button className="btn" onClick={downloadConfigs}>
+                <Icon name="download" size={13} /> Configs .zip
+              </button>
+            ) : null}
             <button className="btn btn--primary" disabled={!nsOk || !models} onClick={download}>
               <Icon name="download" size={13} /> Download .zip
             </button>

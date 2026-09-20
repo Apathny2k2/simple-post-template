@@ -8,6 +8,7 @@ import { assetsFor, groupLabel, groupOf, scenes, shelfOf } from '../lib/data'
 import type { Asset, Shelf } from '../lib/data'
 import { NewModelDialog } from './editor/NewModelDialog'
 import { ExportPackDialog } from './editor/ExportPackDialog'
+import { DEFAULT_DISPLAY } from './editor/DisplayPanel'
 import type { Model, ProjectKind, Subtype } from '../lib/model'
 import { navigate, useTitle } from '../lib/router'
 import { saveDataUrl, saveFile } from '../lib/download'
@@ -396,9 +397,17 @@ function Library({ sceneId, shelf, openNew }: { sceneId: string; shelf: Shelf; o
 
       {packOpen ? (
         <ExportPackDialog
+          /* DEFAULT_DISPLAY is passed on purpose. `.vellum` carries no
+             display transforms - the Display tab says so - and a model
+             file with no display block and no `parent` renders at raw
+             model scale in the hand and the inventory, which for a
+             16-unit item means a speck. Minecraft's own defaults are
+             the right floor. */
           items={rows.flatMap((a) => {
             const sample = a.sampleId ? sampleById(a.sampleId) : null
-            return sample ? [{ id: sample.id, model: sample.model, kind: sample.kind }] : []
+            return sample
+              ? [{ id: sample.id, model: sample.model, kind: sample.kind, display: DEFAULT_DISPLAY }]
+              : []
           })}
           suggestedName={`${scene.id}-${shelf}`}
           onClose={() => setPackOpen(false)}

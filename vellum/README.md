@@ -421,6 +421,23 @@ guessed.** It is a single integer per Minecraft version and a wrong one fails
 the whole pack to load. The target version is the server's to state, not
 ours to infer, so the field is there, editable, and honest about why.
 
+Two things ship that a pack cannot hold, and both are deliberate.
+
+**Display transforms.** `.vellum` carries none — the Display tab is a preview
+and says so — but a model file with no `display` block and no `parent`
+renders at raw model scale, which for a 16-unit item is a speck in the hand
+and a speck in the inventory. So the export writes Minecraft's own defaults
+rather than nothing, and the dialog says that is what it is doing.
+
+**MythicMobs configs go in a second zip, not in the pack.** A config is how a
+mob becomes a thing in the game, and it belongs in the plugin's folder rather
+than in `resourcepacks/`. Folding it into the pack would invite dropping the
+whole archive in the wrong place, and Minecraft would say nothing about the
+files it ignored. The paths inside it — `mobs/<id>.yml`, `items/<id>.yml` —
+are the ones the Config tab already names, so the download matches what the
+panel said it was. A model with nothing configured is left out rather than
+shipped as an empty stub.
+
 ## What works, and what does not
 
 The editor edits. Geometry, textures, rigs, clips, behaviours, configs and the
@@ -436,8 +453,10 @@ a URL it can rebuild from. A reload does not lose it.
 
 A pack comes out of the same shelf — **Export pack**, beside it — as a real
 zip with real model JSON in it, and the editor refuses to build one out of a
-model Minecraft could not hold. That half is done end to end; what the plugin
-wants for *mobs* is not ours to invent, so nothing is emitted for them yet.
+model Minecraft could not hold, naming the cube and the reason. Configs come
+out beside it as their own archive. That is done end to end; what the plugin
+wants for a mob's *geometry* is not ours to invent, so no model file is
+emitted for one.
 
 The dashboard is fed rather than faked: it renders what a plugin has reported
 through the documented API and the built-in sample until one does. Everything a

@@ -23,6 +23,7 @@ import { safeId, textureName, toMinecraftModel } from './mcmodel'
 import type { TranslationIssue } from './mcmodel'
 import { dataUriBytes, makeZip } from './zip'
 import type { ZipEntry } from './zip'
+import { toYaml } from './mythic'
 import type { Model, ProjectKind, Vec3 } from './model'
 
 export type PackItem = {
@@ -164,6 +165,41 @@ export function buildPack(items: PackItem[], opts: PackOptions): PackReport {
   }
 
   return { files, issues, skipped }
+}
+
+/* ---------------- the configs, which are not pack files ----------------
+
+   A MythicMobs config is how a mob becomes a thing in the game, and it
+   does NOT belong in a resource pack: it goes in the plugin's folder,
+   not in `resourcepacks/`. So it is a second archive rather than a
+   folder inside the first one - putting it in the pack would invite
+   someone to drop the whole thing in the wrong place, and Minecraft
+   would say nothing about the files it ignored.
+
+   The paths are the ones the Config tab already names, so what you
+   download matches what the panel told you it was.
+   --------------------------------------------------------------- */
+
+/** True once a config says anything - the writer emits a stub when it does not. */
+const saysSomething = (yaml: string) =>
+  yaml.split('\n').some((line) => line.trim() && !line.trimStart().startsWith('#'))
+
+export function buildConfigs(items: PackItem[]): PackReport {
+  const files: PackFile[] = []
+  const skipped: PackReport['skipped'] = []
+
+  for (const item of items) {
+    if (item.kind !== 'mobs' && item.kind !== 'items') continue
+    const name = safeId(item.id)
+    const yaml = item.model.config ? toYaml(name, item.kind, item.model.config) : ''
+    if (!saysSomething(yaml)) {
+      skipped.push({ id: item.id, why: 'nothing configured on it yet' })
+      continue
+    }
+    files.push({ path: `${item.kind}/${name}.yml`, kind: 'text', bytes: utf8(yaml) })
+  }
+
+  return { files, issues: [], skipped }
 }
 
 /** The report as the archive itself. */
