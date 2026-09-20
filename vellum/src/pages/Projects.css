@@ -512,3 +512,10 @@
 @media (width <= 720px) {
   .library__new { order: 3; }
 }
+
+.library__pack { flex: none; }
+.library__pack:disabled { opacity: 0.45; cursor: not-allowed; }
+
+@media (width <= 720px) {
+  .library__pack { order: 4; }
+}

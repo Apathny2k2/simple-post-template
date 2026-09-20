@@ -1852,3 +1852,97 @@
   .yml { margin: 0; }
   .yml__no { display: none; }
 }
+
+/* "In a resource pack" — a different question from whether the file is
+   well formed, so it reads as its own section rather than more issues. */
+.ed-translate {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--glass-rim);
+}
+
+.ed-translate__head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+  font-size: var(--fs-2xs);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  font-weight: 600;
+  color: var(--ink-muted);
+}
+
+.ed-translate__head svg { color: var(--wax-400); }
+
+.ed-translate__n {
+  margin-left: auto;
+  padding: 1px 7px;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--glass-rim);
+  font-size: 9px;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--ink-faint);
+}
+
+.ed-translate__where {
+  color: var(--ink);
+  font-weight: 500;
+  margin-right: 5px;
+}
+
+/* ---------------- the pack, before it is a zip ---------------- */
+
+.pk {
+  margin-top: 16px;
+  border: 1px solid var(--glass-rim);
+  border-radius: var(--r-md);
+  background: var(--bg-sunken);
+  overflow: hidden;
+}
+
+.pk__head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--glass-rim);
+  background: rgba(32, 46, 84, 0.22);
+}
+
+.pk__head svg { color: var(--wax-300); }
+.pk__title { font-size: var(--fs-xs); color: var(--ink); }
+
+.pk__tree { margin: 0; padding: 6px 0; list-style: none; max-height: 232px; overflow: auto; }
+
+.pk__tree li {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: 3px 12px;
+  font-size: var(--fs-2xs);
+}
+
+.pk__tree li:hover { background: rgba(146, 165, 202, 0.05); }
+.pk__path { flex: 1; min-width: 0; color: var(--ink-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pk__tree li[data-kind='png'] .pk__path { color: var(--navy-100); }
+.pk__size { flex: none; color: var(--ink-faint); font-variant-numeric: tabular-nums; }
+
+.pk__out {
+  padding: 9px 12px;
+  border-top: 1px dashed var(--line-dashed);
+}
+
+.pk__outhead {
+  font-size: var(--fs-2xs);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  font-weight: 600;
+  color: var(--ink-faint);
+  margin-bottom: 5px;
+}
+
+.pk__out--warn .pk__outhead { color: var(--wax-300); }
+.pk__outrow { font-size: var(--fs-2xs); color: var(--ink-faint); line-height: 1.55; }
+.pk__outrow strong { color: var(--ink-muted); font-weight: 500; }

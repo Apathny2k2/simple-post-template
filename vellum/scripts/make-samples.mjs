@@ -215,6 +215,10 @@ const files = await p.evaluate(async () => {
     }
   }
 
+  /* Every cube angle below is one of Minecraft's five: -45, -22.5, 0,
+     22.5, 45. An element cannot rotate by anything else, so a sample
+     built at 18 degrees is a sample that cannot ship in a pack. */
+
   /* ================= 1. Runic Blade ================= */
   const steel  = { base: '#b9c4d6', sheen: true }
   const steel2 = { base: '#a3b0c6', sheen: true }
@@ -247,8 +251,8 @@ const files = await p.evaluate(async () => {
       { name: 'pommel',    from: [-2,-2,-2],      to: [2,1,2],        origin: [0,0,0],    look: gold },
       { name: 'grip',      from: [-1,1,-1],       to: [1,7,1],        origin: [0,1,0],    look: wrap },
       { name: 'guard',     from: [-5,7,-1.5],     to: [5,9,1.5],      origin: [0,7,0],    look: gold },
-      { name: 'guard_left',  from: [-6.5,7.5,-1], to: [-5,9,1],       origin: [-5,7.5,0], rotation: [0,0,-18], look: gold },
-      { name: 'guard_right', from: [5,7.5,-1],    to: [6.5,9,1],      origin: [5,7.5,0],  rotation: [0,0,18],  look: gold },
+      { name: 'guard_left',  from: [-6.5,7.5,-1], to: [-5,9,1],       origin: [-5,7.5,0], rotation: [0,0,-22.5], look: gold },
+      { name: 'guard_right', from: [5,7.5,-1],    to: [6.5,9,1],      origin: [5,7.5,0],  rotation: [0,0,22.5], look: gold },
       { name: 'blade_lower', from: [-2,9,-0.75],  to: [2,17,0.75],    origin: [0,9,0],    look: steel },
       { name: 'blade_upper', from: [-1.5,17,-0.75], to: [1.5,24,0.75],origin: [0,17,0],   look: steel },
       { name: 'blade_neck',  from: [-1,24,-0.5],  to: [1,28,0.5],     origin: [0,24,0],   look: steel2 },
@@ -297,7 +301,7 @@ const files = await p.evaluate(async () => {
       { name: 'tooth_low', from: [4.5,10,-0.5], to: [6,12,0.5],  origin: [4.5,10,0], look: iron },
       { name: 'tooth_mid', from: [4.5,14,-0.5], to: [6,16,0.5],  origin: [4.5,14,0], look: iron },
       { name: 'tooth_top', from: [4.5,18,-0.5], to: [6,20,0.5],  origin: [4.5,18,0], look: iron },
-      { name: 'tip',    from: [-1,26,-0.8],    to: [2.5,30,0.8], origin: [0,26,0], rotation: [0,0,-12], look: iron },
+      { name: 'tip',    from: [-1,26,-0.8],    to: [2.5,30,0.8], origin: [0,26,0], rotation: [0,0,-22.5], look: iron },
       { name: 'inlay',  from: [1.1,9,-1.0],    to: [2.1,23,1.0], origin: [1.6,9,0], look: emberc },
     ],
     bones: [{
@@ -427,16 +431,16 @@ const files = await p.evaluate(async () => {
       { name: 'pommel',      from: [-2,-2,-2],       to: [2,0,2],        origin: [0,0,0],     look: chitin2 },
       { name: 'grip',        from: [-1.25,0,-1.25],  to: [1.25,6.5,1.25],origin: [0,0,0],     look: voidwr },
       { name: 'guard',       from: [-4.5,6.5,-1.5],  to: [4.5,8.5,1.5],  origin: [0,6.5,0],   look: chitin },
-      { name: 'prong_left',  from: [-6.5,8,-1],      to: [-4.5,11.5,1],  origin: [-4.5,8,0],  rotation: [0,0,26],  look: chitin },
-      { name: 'prong_right', from: [4.5,8,-1],       to: [6.5,11.5,1],   origin: [4.5,8,0],   rotation: [0,0,-26], look: chitin },
+      { name: 'prong_left',  from: [-6.5,8,-1],      to: [-4.5,11.5,1],  origin: [-4.5,8,0],  rotation: [0,0,22.5], look: chitin },
+      { name: 'prong_right', from: [4.5,8,-1],       to: [6.5,11.5,1],   origin: [4.5,8,0],   rotation: [0,0,-22.5], look: chitin },
       { name: 'blade_base',  from: [-2,8.5,-0.9],    to: [2,17,0.9],     origin: [0,8.5,0],   look: crystal },
       { name: 'blade_mid',   from: [-1.5,17,-0.8],   to: [1.5,24,0.8],   origin: [0,17,0],    look: crystal },
       { name: 'blade_tip',   from: [-1,24,-0.6],     to: [1,28,0.6],     origin: [0,24,0],    look: crystal2 },
       { name: 'point',       from: [-0.5,28,-0.4],   to: [0.5,30,0.4],   origin: [0,28,0],    look: crystal2 },
       { name: 'core_low',    from: [-0.5,10,-1.1],   to: [0.5,16,1.1],   origin: [0,10,0],    look: core },
       { name: 'core_high',   from: [-0.5,18,-1],     to: [0.5,23,1],     origin: [0,18,0],    look: core },
-      { name: 'fin_left',    from: [-3.5,11.5,-0.5], to: [-2,16,0.5],    origin: [-2,11.5,0], rotation: [0,0,17],  look: crystal2 },
-      { name: 'fin_right',   from: [2,11.5,-0.5],    to: [3.5,16,0.5],   origin: [2,11.5,0],  rotation: [0,0,-17], look: crystal2 },
+      { name: 'fin_left',    from: [-3.5,11.5,-0.5], to: [-2,16,0.5],    origin: [-2,11.5,0], rotation: [0,0,22.5], look: crystal2 },
+      { name: 'fin_right',   from: [2,11.5,-0.5],    to: [3.5,16,0.5],   origin: [2,11.5,0],  rotation: [0,0,-22.5], look: crystal2 },
     ],
     bones: [{
       name: 'root', origin: [0,0,0], children: [

@@ -85,6 +85,7 @@ import { BehaviourPanel } from './editor/BehaviourPanel'
 import { ConfigPanel } from './editor/ConfigPanel'
 import { ConfigOutput } from './editor/ConfigOutput'
 import { emptyConfig, hasConfig, setFields } from '../lib/mythic'
+import { checkTranslation } from '../lib/mcmodel'
 import type { MythicConfig } from '../lib/mythic'
 import { EMPTY_BEHAVIOUR, cycleLength, geyserBehaviour, stageAt } from '../lib/behaviour'
 import type { Behaviour } from '../lib/behaviour'
@@ -2550,6 +2551,9 @@ export function Editor({ segments }: { segments: string[] }) {
   }, [pickedBone, bones, model.bones, selected])
 
   const issues = useMemo(() => validateModel(model, kind), [model, kind])
+  /* What a resource pack could not express, which is a different
+     question from what the codec would refuse. */
+  const translate = useMemo(() => checkTranslation(model, kind), [model, kind])
   const errors = issues.filter((i) => i.level === 'error').length
   /* A panel that says "clean" while holding a warning is worse than one
      that says nothing: it is the thing the user checks before shipping. */
@@ -3325,6 +3329,38 @@ export function Editor({ segments }: { segments: string[] }) {
                   <Icon name="check" size={11} /> Nothing the writer would refuse.
                 </p>
               )}
+
+              {/* A separate question from whether the FILE is well formed:
+                  a model can be perfectly good here and impossible to put
+                  in a resource pack, and the place to find that out is
+                  while you are still modelling. */}
+              <div className="ed-translate">
+                <div className="ed-translate__head">
+                  <Icon name="cube" size={11} />
+                  In a resource pack
+                  <span className="ed-translate__n mono">
+                    {translate.filter((i) => i.level !== 'note').length || 'exact'}
+                  </span>
+                </div>
+                {translate.length ? (
+                  <ul className="ed-issues">
+                    {translate.slice(0, 10).map((i, n) => (
+                      <li key={n} data-level={i.level}>
+                        <Icon
+                          name={i.level === 'error' ? 'warning' : i.level === 'warning' ? 'warning' : 'info'}
+                          size={11}
+                        />
+                        {i.where ? <strong className="ed-translate__where">{i.where}</strong> : null}
+                        {i.message}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="ed-hint">
+                    <Icon name="check" size={11} /> Translates exactly.
+                  </p>
+                )}
+              </div>
             </Panel>
           </div>
 

@@ -7,6 +7,7 @@ import { Icon } from '../lib/icons'
 import { assetsFor, groupLabel, groupOf, scenes, shelfOf } from '../lib/data'
 import type { Asset, Shelf } from '../lib/data'
 import { NewModelDialog } from './editor/NewModelDialog'
+import { ExportPackDialog } from './editor/ExportPackDialog'
 import type { Model, ProjectKind, Subtype } from '../lib/model'
 import { navigate, useTitle } from '../lib/router'
 import { saveDataUrl, saveFile } from '../lib/download'
@@ -249,6 +250,8 @@ function Library({ sceneId, shelf, openNew }: { sceneId: string; shelf: Shelf; o
      is where the editor's File > New sends you. */
   const [newOpen, setNewOpen] = useState(openNew)
   const newBtn = useRef<HTMLButtonElement>(null)
+  const [packOpen, setPackOpen] = useState(false)
+  const packBtn = useRef<HTMLButtonElement>(null)
 
   /* Navigating from this shelf to `/new` on the same shelf is a hash
      change, not a remount, so the initial state above never sees it. */
@@ -331,6 +334,17 @@ function Library({ sceneId, shelf, openNew }: { sceneId: string; shelf: Shelf; o
             <Icon name="plus" size={13} /> New model
           </button>
 
+          {/* A pack is a collection, so it is made from a shelf rather
+              than from one model in the editor. */}
+          <button
+            ref={packBtn}
+            className="btn btn--sm library__pack"
+            onClick={() => setPackOpen(true)}
+            disabled={!rows.length}
+          >
+            <Icon name="download" size={13} /> Export pack
+          </button>
+
           <div className="library__search">
             <Icon name="search" size={14} />
             <input
@@ -378,6 +392,18 @@ function Library({ sceneId, shelf, openNew }: { sceneId: string; shelf: Shelf; o
 
       {newOpen ? (
         <NewModelDialog onClose={() => setNewOpen(false)} onCreate={create} focusOnClose={newBtn} />
+      ) : null}
+
+      {packOpen ? (
+        <ExportPackDialog
+          items={rows.flatMap((a) => {
+            const sample = a.sampleId ? sampleById(a.sampleId) : null
+            return sample ? [{ id: sample.id, model: sample.model, kind: sample.kind }] : []
+          })}
+          suggestedName={`${scene.id}-${shelf}`}
+          onClose={() => setPackOpen(false)}
+          focusOnClose={packBtn}
+        />
       ) : null}
     </main>
   )
