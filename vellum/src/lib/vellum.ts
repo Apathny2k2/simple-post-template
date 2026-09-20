@@ -48,7 +48,7 @@ import type {
 } from './model'
 
 export const FORMAT = 'model'
-export const CURRENT_VERSION = 5
+export const CURRENT_VERSION = 6
 
 /** A well-formed `.vellum` begins with exactly these bytes. */
 export const HEADER_PREFIX = `{"vellum":{"format":"${FORMAT}","version":${CURRENT_VERSION}},`
@@ -73,6 +73,16 @@ type VellumCube = {
   rotation: Vec3
   inflate?: number
   box_uv?: boolean
+  /**
+   * The origin a box unwrap was generated from, and whether it is
+   * mirrored. Version 6 added both. The six face rects are written in
+   * full regardless, so these are what a reader needs only if it
+   * regenerates the unwrap rather than trusting the rects - which the
+   * plugin does, and which is why a box-UV model used to come back with
+   * nothing to regenerate from.
+   */
+  uv_offset?: [number, number]
+  mirror_uv?: boolean
   hidden?: boolean
   locked?: boolean
   faces: Record<string, VellumFace>
@@ -86,6 +96,8 @@ type VellumBone = {
   /** said once, as a parent id - rather than a tree duplicated beside a flat list */
   parent?: string
   cubes: string[]
+  /** mirrors every cube under it, rather than each one saying so */
+  mirror_uv?: boolean
   hidden?: boolean
   locked?: boolean
 }
@@ -200,6 +212,12 @@ export function toVellumDocument(model: Model): VellumDocument {
       rotation: c.rotation,
       inflate: c.inflate || undefined,
       box_uv: c.boxUv || undefined,
+      /* Written whenever it is known, not only when `box_uv` is set.
+         Gating it on the flag would drop the offset on exactly the
+         cube this field exists to preserve: one that arrived from a
+         reader that had it, on a model the editor then marked hand-UV. */
+      uv_offset: c.uvOffset,
+      mirror_uv: c.mirrorUv || undefined,
       hidden: c.visible ? undefined : true,
       locked: c.locked || undefined,
       // faces are emitted in sorted order so a reshuffle cannot churn the diff
@@ -228,6 +246,7 @@ export function toVellumDocument(model: Model): VellumDocument {
           rotation: b.rotation,
           parent,
           cubes: b.children.filter((c) => c.kind === 'cube').map((c) => (c as { id: string }).id),
+          mirror_uv: b.mirrorUv || undefined,
           hidden: b.visible ? undefined : true,
           locked: b.locked || undefined,
         }),
@@ -424,6 +443,13 @@ function upgrade(doc: VellumDocument): VellumDocument {
       case 4: // v5 added `config`, likewise
         version = 5
         break
+      case 5:
+        /* v6 added `uv_offset` and `mirror_uv`. Absent is correct for
+           anything written before: a document that never said is a
+           document with no mirror and an unwrap nobody recorded the
+           origin of, which is exactly the state v5 left them in. */
+        version = 6
+        break
       default:
         throw new VellumFormatError(`No upgrade path from .vellum version ${version}.`)
     }
@@ -441,6 +467,12 @@ const keyId = () => `k${(keyCounter += 1).toString(36)}`
  * reached the validator as `undefined` and took the whole editor down
  * with it. Nothing that comes off disk is trusted to have a shape.
  */
+/** The two-component sibling of `vec3`, and absent where it was absent. */
+const vec2 = (v: unknown): [number, number] | undefined =>
+  Array.isArray(v) && v.length === 2 && v.every((n) => typeof n === 'number' && Number.isFinite(n))
+    ? [v[0], v[1]]
+    : undefined
+
 const vec3 = (v: unknown, fallback: Vec3): Vec3 =>
   Array.isArray(v) && v.length === 3 && v.every((n) => typeof n === 'number' && Number.isFinite(n))
     ? [v[0], v[1], v[2]]
@@ -485,6 +517,12 @@ export function fromVellumDocument(doc: VellumDocument): Model {
       faces,
       inflate: c.inflate ?? 0,
       boxUv: c.box_uv ?? false,
+      /* Absent, never guessed. A box-UV cube written before v6 has no
+         recorded origin, and inventing [0,0] for it would claim the
+         unwrap starts at the corner of the sheet - which is a different
+         lie from saying nothing. */
+      uvOffset: vec2(c.uv_offset),
+      mirrorUv: c.mirror_uv || undefined,
       visible: !c.hidden,
       locked: Boolean(c.locked),
     }
@@ -501,6 +539,7 @@ export function fromVellumDocument(doc: VellumDocument): Model {
       rotation: vec3(b.rotation, [0, 0, 0]),
       visible: !b.hidden,
       locked: Boolean(b.locked),
+      mirrorUv: b.mirror_uv || undefined,
       children: (b.cubes ?? []).map((id) => ({ kind: 'cube' as const, id })),
     })
   }

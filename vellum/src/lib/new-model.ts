@@ -66,6 +66,7 @@ export function makeCube(
   opts: { origin?: Vec3; rotation?: Vec3; uvAt?: [number, number]; texture?: string | null } = {},
 ): Cube {
   const size: Vec3 = [to[0] - from[0], to[1] - from[1], to[2] - from[2]]
+  const uvAt = opts.uvAt ?? [0, 0]
   return {
     id: newId(),
     name,
@@ -73,9 +74,15 @@ export function makeCube(
     to,
     origin: opts.origin ?? [(from[0] + to[0]) / 2, from[1], (from[2] + to[2]) / 2],
     rotation: opts.rotation ?? [0, 0, 0],
-    faces: boxUvFaces(size, opts.uvAt ?? [0, 0], opts.texture ?? null),
+    faces: boxUvFaces(size, uvAt, opts.texture ?? null),
     inflate: 0,
+    /* The faces ARE a box unwrap, but the flag stays false: the editor
+       lets you drag a face anywhere, so the rects are the truth and
+       nothing should regenerate over them. The offset is recorded all
+       the same, so a reader that does regenerate has the origin these
+       rects came from. */
     boxUv: false,
+    uvOffset: [uvAt[0], uvAt[1]],
     visible: true,
     locked: false,
   }

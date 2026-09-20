@@ -101,6 +101,18 @@ export type Cube = {
   faces: Record<FaceKey, Face>
   inflate: number
   boxUv: boolean
+  /**
+   * Where a box unwrap starts on the sheet, when `boxUv` is set.
+   *
+   * The six face rects are always written out in full, so the UV
+   * *positions* survive a round trip on their own. What does not is the
+   * origin they were generated from - and a reader that regenerates the
+   * unwrap rather than trusting the rects has nothing to regenerate
+   * from. Absent on a cube that is not box-unwrapped.
+   */
+  uvOffset?: [number, number]
+  /** Mirrors the unwrap across the vertical axis. */
+  mirrorUv?: boolean
   visible: boolean
   locked: boolean
 }
@@ -114,6 +126,8 @@ export type Bone = {
   rotation: Vec3
   visible: boolean
   locked: boolean
+  /** Mirrors every cube under it, rather than each one saying so. */
+  mirrorUv?: boolean
   children: BoneChild[]
 }
 

@@ -46,7 +46,7 @@ with a Vellum-owned schema. The extension is ours; the encoding is JSON so
 `git diff` on a model keeps working.
 
 ```
-{"vellum":{"format":"model","version":5},"name":"voidling","kind":"mobs","subtype":"hostile","resolution":{…},"bones":[…],"cubes":[…],"textures":[…],"clips":[…],"behaviour":{…},"config":{…}}
+{"vellum":{"format":"model","version":6},"name":"voidling","kind":"mobs","subtype":"hostile","resolution":{…},"bones":[…],"cubes":[…],"textures":[…],"clips":[…],"behaviour":{…},"config":{…}}
 ```
 
 Four properties are load-bearing, and the round-trip test asserts each rather
@@ -65,6 +65,25 @@ Two refusals, both by name rather than by failing somewhere in the middle of a
 cube: a file from a **newer Vellum** than this one, which cannot be known to mean
 what this one would assume; and a **foreign file** — no `vellum` header, or a
 `format` that is not `model`.
+
+### Box UV — the origin, not just the rectangles
+
+Every cube writes all six face rects in full, so UV *positions* survive a round
+trip on their own. What v5 did not carry was the origin a box unwrap was
+generated from, nor whether it was mirrored — so a reader that regenerates the
+unwrap rather than trusting the rects got a box-UV cube with nothing to
+regenerate from. The plugin does regenerate, and found it.
+
+Version 6 adds three optional keys: `uv_offset` and `mirror_uv` on a cube, and
+`mirror_uv` on a bone. All three are absent unless set, and a v5 document
+upgrades without gaining any of them — absent means *nobody said*, and
+inventing `[0, 0]` would claim the unwrap starts at the corner of the sheet,
+which is a different lie from saying nothing.
+
+`uv_offset` is written whenever it is known, not only when `box_uv` is set.
+Gating it on the flag would drop the offset on exactly the cube the field
+exists for: one that arrived from a reader that had it, on a model the editor
+then marked hand-UV.
 
 ### What a model says it is
 
