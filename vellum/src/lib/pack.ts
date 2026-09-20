@@ -8,6 +8,7 @@
    than a model file and a hope.
 
        pack.mcmeta
+       assets/<namespace>/items/<name>.json          <- what points at it
        assets/<namespace>/models/item/<name>.json
        assets/<namespace>/textures/item/<name>.png
        assets/<namespace>/models/block/<name>.json
@@ -17,6 +18,13 @@
    loads, it is a single integer per Minecraft version, and it changes
    often enough that hard-coding a table here would be a table that
    goes stale and lies. It is asked for instead.
+
+   WHERE THIS BELONGS. A server running the plugin does not need any of
+   this: the plugin builds the pack itself and serves it at a URL with
+   the hash in it, so the client cache stays correct. Two pipelines that
+   can disagree would be worse than one. What this is for is the
+   standalone case - the free tier, no plugin, a browser and nothing
+   else - where there is otherwise no way to get a pack at all.
    --------------------------------------------------------------- */
 
 import { safeId, textureName, toMinecraftModel } from './mcmodel'
@@ -149,6 +157,24 @@ export function buildPack(items: PackItem[], opts: PackOptions): PackReport {
       path: `assets/${ns}/models/${folder}/${name}.json`,
       kind: 'json',
       bytes: json(built.json),
+    })
+
+    /* THE FILE THAT MAKES THE MODEL REACHABLE.
+       A model under `models/` is only geometry sitting on disk - nothing
+       in the game points at it. Since 1.21.4 the thing that does is an
+       item definition: an item whose `minecraft:item_model` component is
+       `<ns>:<id>` renders whatever this file names. Without it the pack
+       loads without complaint and the item keeps its vanilla look, which
+       is the failure that is hardest to tell from "the pack didn't
+       install". `overrides` on `custom_model_data` was the pre-1.21.4
+       way and is deliberately not written: the cutoff is sharp, and the
+       plugin's own generator targets the definition form. */
+    files.push({
+      path: `assets/${ns}/items/${name}.json`,
+      kind: 'json',
+      bytes: json({
+        model: { type: 'minecraft:model', model: `${ns}:${folder}/${name}` },
+      }),
     })
 
     for (const tex of item.model.textures) {

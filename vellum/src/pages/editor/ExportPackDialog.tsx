@@ -31,7 +31,12 @@ export function ExportPackDialog({
   useModal(panel, onClose, focusOnClose)
 
   const [namespace, setNamespace] = useState(() => safeId(suggestedName))
-  const [packFormat, setPackFormat] = useState(15)
+  /* 84 is what the plugin's own generator reads out of 26.1.2's
+     version.json - a measured number, not a guessed one. It is still a
+     field rather than a constant because the plugin flagged that 26.2
+     may declare higher, and a stale constant here would be a confident
+     lie rather than an open question. */
+  const [packFormat, setPackFormat] = useState(84)
   const [description, setDescription] = useState(`${suggestedName} — built in Vellum`)
   const [note, setNote] = useState<string | null>(null)
 
@@ -122,8 +127,9 @@ export function ExportPackDialog({
               {/* One integer per Minecraft version, and the wrong one
                   fails with no message worth reading. It is not guessed. */}
               <span className="field__hint">
-                Your server&rsquo;s Minecraft version decides this. Get it wrong and the pack will
-                not load, with nothing said about why.
+                84 is Minecraft 26.1.2. Your server&rsquo;s version decides it, and a newer one
+                declares higher — get it wrong and the pack will not load, with nothing said
+                about why.
               </span>
             </label>
 
@@ -196,6 +202,12 @@ export function ExportPackDialog({
               </div>
             ) : null}
           </div>
+
+          <p className="ed-hint">
+            This is the pack for a server with <strong>no Vellum plugin</strong>. With the plugin
+            linked, it builds and serves its own pack from the same models — two pipelines that
+            can disagree would be worse than one.
+          </p>
 
           <p className="ed-hint">
             Every model ships with Minecraft&rsquo;s default display transforms, because

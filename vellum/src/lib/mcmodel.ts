@@ -47,6 +47,9 @@ export type TranslationIssue = {
 
 type Turn = { axis: Axis; angle: number; origin: Vec3; owner: string }
 
+/** The rotations found along one route down the bone tree. */
+type Path = { turns: Turn[]; multiAxis: string[] }
+
 /**
  * What one rotation amounts to: nothing, a single turn, or a rotation
  * on more than one axis - which an element cannot express at all.
@@ -66,8 +69,7 @@ function turnOf(rotation: Vec3, origin: Vec3, owner: string): Turn | 'none' | 'm
  * naming it here would send someone to look at geometry that is fine.
  * Its own cubes report it themselves.
  */
-function chainOf(model: Model, cube: Cube): { turns: Turn[]; multiAxis: string[] } {
-  type Path = { turns: Turn[]; multiAxis: string[] }
+function chainOf(model: Model, cube: Cube): { bones: Path; own: Turn | 'multi' | null } {
 
   /* Walk down rather than up: a cube knows nothing about its bone, so
      the tree is what says which bones are above it. */
@@ -93,9 +95,15 @@ function chainOf(model: Model, cube: Cube): { turns: Turn[]; multiAxis: string[]
   const above = walk(model.bones, { turns: [], multiAxis: [] }) ?? { turns: [], multiAxis: [] }
   const mine = turnOf(cube.rotation, cube.origin, `"${cube.name}"`)
 
+  /* The two are kept apart because they are not the same constraint.
+     A cube's own rotation goes INTO the model file and is bound by what
+     an element can say. A bone's rotation never reaches the file at all:
+     on the pack path there is nowhere to put it, and on the plugin path
+     it becomes the bone's rest rotation, applied at runtime by the
+     display carrying it. Same geometry, different verdict. */
   return {
-    turns: mine === 'none' || mine === 'multi' ? above.turns : [...above.turns, mine],
-    multiAxis: mine === 'multi' ? [...above.multiAxis, `"${cube.name}"`] : above.multiAxis,
+    bones: above,
+    own: mine === 'none' ? null : mine,
   }
 }
 
@@ -105,12 +113,30 @@ const nearestLegal = (angle: number) =>
 /* ---------------- the check ---------------- */
 
 /**
+ * Where the model is going, because it decides what counts as a fault.
+ *
+ * `pack` is a resource pack and nothing else: a model file, alone, on a
+ * vanilla client. `any` is the editor's own view, which cannot know
+ * whether a server is linked, so it reports what a pack could not hold
+ * WITHOUT calling it broken - the plugin expresses several of these at
+ * runtime and refusing them outright would be wrong about half the time.
+ */
+export type Target = 'pack' | 'any'
+
+/**
  * What would go wrong, said before anyone exports. A model with no
  * errors here converts exactly; one with warnings converts into
  * something that loads but is not quite what is on screen.
  */
-export function checkTranslation(model: Model, kind: ProjectKind | undefined): TranslationIssue[] {
+export function checkTranslation(
+  model: Model,
+  kind: ProjectKind | undefined,
+  target: Target = 'any',
+): TranslationIssue[] {
   const out: TranslationIssue[] = []
+  /* Fatal to a pack, merely a fact on a linked server. */
+  const boneLevel = target === 'pack' ? 'error' : 'warning'
+  const carried = target === 'pack' ? '' : ' — the plugin carries it as the bone’s rest rotation'
 
   if (kind === 'mobs') {
     out.push({
@@ -135,33 +161,50 @@ export function checkTranslation(model: Model, kind: ProjectKind | undefined): T
 
   for (const cube of model.cubes) {
     const tag = cube.name || cube.id
-    const { turns, multiAxis } = chainOf(model, cube)
+    const { bones, own } = chainOf(model, cube)
 
-    for (const owner of multiAxis) {
+    /* ---- the cube's own rotation: a model-file limit on every path ----
+       "Cube rotations stay raw inside the model, exactly as authored",
+       so what an element can say is what a cube may be, linked or not. */
+    if (own === 'multi') {
       out.push({
         level: 'error',
         where: tag,
-        message: `${owner} turns on more than one axis — an element rotates on exactly one`,
+        message: `"${cube.name}" turns on more than one axis — an element rotates on exactly one`,
+      })
+    } else if (own && !(LEGAL_ANGLES as readonly number[]).includes(own.angle)) {
+      out.push({
+        level: 'warning',
+        where: tag,
+        message: `${own.owner} turns ${own.angle}°, which is not one of ${LEGAL_ANGLES.join(', ')} — it exports as ${nearestLegal(own.angle)}°`,
       })
     }
 
-    if (turns.length > 1) {
+    /* ---- the bones above it: nothing a model file can hold ---- */
+    for (const owner of bones.multiAxis) {
       out.push({
-        level: 'error',
+        level: boneLevel,
         where: tag,
-        message: `rotated about ${turns.length} different pivots (${turns
-          .map((t) => t.owner)
-          .join(', ')}) — an element has one`,
+        message: `${owner} turns on more than one axis, which no model file can hold${carried}`,
       })
-    } else if (turns.length === 1) {
-      const t = turns[0]
-      if (!(LEGAL_ANGLES as readonly number[]).includes(t.angle)) {
-        out.push({
-          level: 'warning',
-          where: tag,
-          message: `${t.owner} turns ${t.angle}°, which is not one of ${LEGAL_ANGLES.join(', ')} — it exports as ${nearestLegal(t.angle)}°`,
-        })
-      }
+    }
+
+    /* One bone turn and no cube turn is the one case a pack CAN express:
+       an element gets exactly one pivot, so that rotation becomes it. */
+    const pivots = bones.turns.length + (own && own !== 'multi' ? 1 : 0)
+    if (pivots > 1) {
+      const names = [...bones.turns.map((t) => t.owner), ...(own && own !== 'multi' ? [own.owner] : [])]
+      out.push({
+        level: boneLevel,
+        where: tag,
+        message: `rotated about ${pivots} pivots (${names.join(', ')}) — an element has one${carried}`,
+      })
+    } else if (bones.turns.length === 1 && !(LEGAL_ANGLES as readonly number[]).includes(bones.turns[0].angle)) {
+      out.push({
+        level: boneLevel === 'error' ? 'warning' : 'note',
+        where: tag,
+        message: `${bones.turns[0].owner} turns ${bones.turns[0].angle}°, which is not one of ${LEGAL_ANGLES.join(', ')} — it exports as ${nearestLegal(bones.turns[0].angle)}°${carried}`,
+      })
     }
 
     /* Inflate has no element field: it bakes into the corners, which is
@@ -172,9 +215,15 @@ export function checkTranslation(model: Model, kind: ProjectKind | undefined): T
     for (let i = 0; i < 3; i++) {
       if (from[i] < -16 || to[i] > 32) {
         out.push({
-          level: 'error',
+          /* A pack has nowhere to put this. A linked server does: the
+             plugin divides an over-reaching bone down and records the
+             divisor on it, multiplying it back into that one display's
+             scale. So it is fatal to a pack and a fact on a server. */
+          level: target === 'pack' ? 'error' : 'warning',
           where: tag,
-          message: `${AXES[i]} runs ${from[i]} to ${to[i]}${cube.inflate ? ' once inflated' : ''} — an element lives inside -16..32`,
+          message: `${AXES[i]} runs ${from[i]} to ${to[i]}${cube.inflate ? ' once inflated' : ''} — an element lives inside -16..32${
+            target === 'pack' ? '' : ' — the plugin scales the bone down to fit'
+          }`,
         })
       }
     }
@@ -260,7 +309,7 @@ export function toMinecraftModel(
   /** the stem the pack files this model under - the fallback for an unnamed texture */
   assetName?: string,
 ): { json: McModel; issues: TranslationIssue[] } {
-  const issues = checkTranslation(model, folder === 'block' ? 'blocks' : 'items')
+  const issues = checkTranslation(model, folder === 'block' ? 'blocks' : 'items', 'pack')
 
   /* One entry per texture, in order, so `#0` is the first sheet and a
      model with two sheets does not silently paint everything from one. */
@@ -274,7 +323,10 @@ export function toMinecraftModel(
   if (model.textures.length) textures.particle = textures['0']
 
   const elements: McElement[] = model.cubes.map((cube) => {
-    const { turns } = chainOf(model, cube)
+    const { bones, own } = chainOf(model, cube)
+    /* One pivot is all an element has. A model that reaches here has
+       already passed the pack check, so there is at most one. */
+    const turns = [...bones.turns, ...(own && own !== 'multi' ? [own] : [])]
     const el: McElement = {
       name: cube.name || undefined,
       from: cube.from.map((v) => round(v - cube.inflate)) as Vec3,
