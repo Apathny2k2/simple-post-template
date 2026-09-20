@@ -1,8 +1,7 @@
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
+import { useCallback, useEffect, useState, useSyncExternalStore } from 'react'
 import { Card } from '../components/Card'
 import { Menu } from '../components/Menu'
 import type { TriggerProps } from '../components/Menu'
-import { ApiReference as ApiSurface, EndpointBadge } from '../components/Endpoint'
 import { Icon } from '../lib/icons'
 import { useTitle } from '../lib/router'
 import {
@@ -13,15 +12,11 @@ import {
 } from '../lib/dash'
 import type { Health, Section } from '../lib/dash'
 import {
-  DASH_API_VERSION,
-  DASH_BASE,
   connect,
   dash,
-  dashEndpoints,
   disconnect,
   loadLink,
 } from '../lib/dash-api'
-import type { Link, LinkState } from '../lib/dash-api'
 import { saveBlob } from '../lib/download'
 import './Dashboard.css'
 
@@ -84,274 +79,6 @@ function SourceMark({ fed, section }: { fed: Section[]; section: Section }) {
   )
 }
 
-/* ---------------- the feed card ---------------- */
-
-const VIA_LABEL: Record<string, string> = {
-  bridge: 'window',
-  postMessage: 'frame',
-  http: 'http',
-  ui: 'here',
-}
-
-function FeedCard({
-  health,
-  meta,
-  log,
-  now,
-}: {
-  health: Health
-  meta: { agent: string | null; lastSeen: number | null; heartbeatSeconds: number }
-  log: Array<{ id: string; at: number; op: string; ok: boolean; problems: string[]; via: string }>
-  now: number
-}) {
-  /* which rows have their corrections open. They used to live in a
-     `title` attribute, which is a mouse-only tooltip: on a phone, and
-     for anyone driving this from the keyboard, the corrections Vellum
-     made to a plugin's payload were simply not readable. */
-  const [openProblems, setOpenProblems] = useState<string | null>(null)
-  const [link, setLink] = useState<Link>(
-    () => loadLink() ?? { baseUrl: '', token: '', intervalMs: 15000, stream: true },
-  )
-  const [state, setState] = useState<LinkState>({ link: null, status: 'idle', detail: null })
-  const [demo, setDemo] = useState(false)
-
-  // a saved link reconnects on load, so a reload does not drop the realm
-  useEffect(() => {
-    const saved = loadLink()
-    if (!saved?.baseUrl) return
-    const stop = connect(saved, setState)
-    return stop
-  }, [])
-
-  /* The simulator drives the real endpoints - the same validator, the
-     same log - so what you see here is exactly what a plugin gets. It
-     exists because without a plugin there is nothing to look at. */
-  useEffect(() => {
-    if (!demo) return
-    let n = 0
-    const names = ['keep_warden.vellum', 'brass_lantern.vellum', 'tide_compass.vellum', 'ember_hound.vellum']
-    const people = ['g.alex', 'kite', 'nine', 'm.ferris']
-    dash.heartbeat({ agent: 'Simulated plugin 0.1', everySeconds: 3 }, 'ui')
-    dash.server({ name: 'Vellum PvP', host: 'eu-west-2.vellum.gg', ip: '10.42.6.118', status: 'Connected', online: true }, 'ui')
-    const id = window.setInterval(() => {
-      n += 1
-      dash.heartbeat({ agent: 'Simulated plugin 0.1', everySeconds: 3 }, 'ui')
-      dash.report({ player: `player_${n % 19}`, packHash: n % 4 === 0 ? 'sha1:outdated' : dashStore.snapshot.pack.hash }, 'ui')
-      if (n % 4 === 0) {
-        dash.files(
-          {
-            name: names[n % names.length],
-            where: '/aurelian/mobs',
-            by: people[n % people.length],
-            sync: n % 8 === 0 ? 'outdated' : 'in-sync',
-            staleClients: n % 8 === 0 ? 3 : 0,
-          },
-          'ui',
-        )
-      }
-      if (n % 9 === 0) {
-        dash.pack(
-          { archive: 'current.zip', bytes: 43_834_572 + n * 2048, hash: `sha1:${(0x9f2c04e1 + n).toString(16)}` },
-          'ui',
-        )
-      }
-    }, 3000)
-    return () => window.clearInterval(id)
-  }, [demo])
-
-  const start = useCallback(
-    (next: Link = link) => {
-      if (!next.baseUrl.trim()) return
-      connect({ ...next, baseUrl: next.baseUrl.trim() }, setState)
-    },
-    [link],
-  )
-
-  /* Changing the interval used to update the select and nothing else -
-     the stored link kept the old value, requests kept the old cadence,
-     and Connect was disabled so there was no way to apply it. */
-  const relink = useCallback(
-    (patch: Partial<Link>) => {
-      setLink((l) => {
-        const next = { ...l, ...patch }
-        if (connectedRef.current) connect({ ...next, baseUrl: next.baseUrl.trim() }, setState)
-        return next
-      })
-    },
-    [],
-  )
-
-  const stop = useCallback(() => {
-    disconnect()
-    setState({ link: null, status: 'idle', detail: null })
-  }, [])
-
-  const connected = state.status === 'streaming' || state.status === 'polling'
-  const connectedRef = useRef(connected)
-  connectedRef.current = connected
-
-  return (
-    <Card
-      className="span-feed"
-      eyebrow="Plugin feed"
-      title="Where these numbers come from"
-      note={`${DASH_BASE}/dash · bearer token · JSON in, JSON out · schema v${DASH_API_VERSION}`}
-      dividedHead
-      actions={<HealthPill health={health} meta={meta} now={now} />}
-    >
-      <div className="feed">
-        <div className="feed__col">
-          <p className="feed__lead">
-            Point Vellum at a URL your plugin serves and it will read{' '}
-            <code>GET {DASH_BASE}/dash/snapshot</code> on an interval, or stream{' '}
-            <code>/dash/events</code> if you implement it. Your server has to allow this origin with CORS.
-          </p>
-
-          <label className="field">
-            <span className="field__label">Plugin base URL</span>
-            <input
-              className="field__input"
-              placeholder="http://realm.example:8123/api/v1"
-              value={link.baseUrl}
-              spellCheck={false}
-              onChange={(e) => setLink((l) => ({ ...l, baseUrl: e.target.value }))}
-            />
-          </label>
-
-          <div className="feed__row">
-            <label className="field">
-              <span className="field__label">Bearer token</span>
-              <input
-                className="field__input"
-                type="password"
-                placeholder="optional"
-                value={link.token}
-                onChange={(e) => setLink((l) => ({ ...l, token: e.target.value }))}
-              />
-            </label>
-            <label className="field field--narrow">
-              <span className="field__label">Poll</span>
-              <select
-                className="field__input"
-                value={link.intervalMs}
-                onChange={(e) => relink({ intervalMs: Number(e.target.value) })}
-              >
-                <option value={5000}>5s</option>
-                <option value={15000}>15s</option>
-                <option value={30000}>30s</option>
-                <option value={60000}>60s</option>
-              </select>
-            </label>
-          </div>
-
-          <label className="feed__check">
-            <input
-              type="checkbox"
-              checked={link.stream}
-              onChange={(e) => relink({ stream: e.target.checked })}
-            />
-            Try the event stream first, fall back to polling
-          </label>
-
-          <div className="chip-row">
-            <button className="btn btn--primary btn--sm" onClick={() => start()} disabled={!link.baseUrl.trim() || connected}>
-              <Icon name="cloud" size={13} /> Connect
-            </button>
-            <button className="btn btn--ghost btn--sm" onClick={stop} disabled={!connected && state.status !== 'error'}>
-              Disconnect
-            </button>
-            <button className="btn btn--ghost btn--sm" onClick={() => dash.reset()} title="Drop back to the built-in sample">
-              <Icon name="refresh" size={13} /> Reset to sample
-            </button>
-          </div>
-
-          <p className="feed__state" data-status={state.status}>
-            {state.status === 'idle' ? 'Not linked.' : state.status}
-            {state.detail ? ` — ${state.detail}` : ''}
-          </p>
-
-          <label className="feed__check feed__check--sim">
-            <input type="checkbox" checked={demo} onChange={(e) => setDemo(e.target.checked)} />
-            Simulate a plugin, so you can watch the cards move
-          </label>
-          <p className="feed__hint">
-            No plugin yet? Everything here is also on <code>window.Vellum.dash</code> — open the console and
-            call <code>Vellum.dash.pack({'{'} archive: 'x.zip', bytes: 1024, hash: 'sha1:abc' {'}'})</code>.
-          </p>
-        </div>
-
-        <div className="feed__col feed__col--log">
-          <div className="feed__logtitle">
-            <Icon name="server" size={12} /> Ingest log
-            <span className="feed__logmeta">
-              heartbeat every {meta.heartbeatSeconds}s{meta.agent ? ` · ${meta.agent}` : ''}
-            </span>
-          </div>
-          {log.length ? (
-            <ul className="feed__log">
-              {log.slice(0, 9).map((r) => (
-                <li key={r.id} data-ok={r.ok}>
-                  <span className="feed__logvia">{VIA_LABEL[r.via] ?? r.via}</span>
-                  <code>{r.op}</code>
-                  <span className="feed__logtime">{formatWhen(new Date(r.at).toISOString(), now)}</span>
-                  {r.problems.length ? (
-                    <button
-                      className="feed__problems"
-                      aria-expanded={openProblems === r.id}
-                      aria-label={`${r.problems.length} correction${r.problems.length === 1 ? '' : 's'} on ${r.op}`}
-                      onClick={() => setOpenProblems((id) => (id === r.id ? null : r.id))}
-                    >
-                      <Icon name="warning" size={10} /> {r.problems.length}
-                    </button>
-                  ) : null}
-                  {openProblems === r.id ? (
-                    <ul className="feed__problemlist">
-                      {r.problems.map((why, i) => (
-                        <li key={i}>{why}</li>
-                      ))}
-                    </ul>
-                  ) : null}
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="dash-hint">
-              Nothing has been fed yet. Every accepted and refused write lands here, with whatever Vellum had to
-              correct — so a plugin author finds out from the API rather than from a broken card.
-            </p>
-          )}
-        </div>
-      </div>
-    </Card>
-  )
-}
-
-/* ---------------- the reference ---------------- */
-
-function DashApiReference() {
-  return (
-    <ApiSurface
-      className="span-api"
-      title="Dashboard API"
-      note={`Base URL ${DASH_BASE} \u00b7 omitted fields keep their value \u00b7 corrections come back in problems[]`}
-      base={DASH_BASE}
-      endpoints={dashEndpoints}
-      initialOpen="POST /dash/snapshot"
-      actions={<EndpointBadge method="GET" path="/dash/schema" base={DASH_BASE} />}
-    >
-      <section className="api__group">
-        <h3 className="api__gname">Without a network</h3>
-        <p className="api__note">
-          Every endpoint above is also a method on <code className="mono">window.Vellum.dash</code>, and
-          the same calls arrive over <code className="mono">postMessage</code> from an allowlisted
-          origin as <code className="mono">{'{ vellum: 1, op: "dash.pack", body }'}</code>. All three
-          routes land in the same validator, so none of them can feed a card the others would refuse.
-        </p>
-      </section>
-    </ApiSurface>
-  )
-}
-
 /* ---------------- the page ---------------- */
 
 /**
@@ -366,12 +93,25 @@ function DashApiReference() {
  */
 export function Dashboard() {
   useTitle('Dashboard')
-  const { snapshot, meta, log, now, health } = useDash()
+  const { snapshot, meta, now, health } = useDash()
+
+  /* A SAVED LINK RECONNECTS ON LOAD — and this lives on the page rather than
+     inside a card, because the card it used to live in is gone. Served from the
+     plugin, studio-host.js has already written the link before this runs, so
+     this effect is the whole of how a plugin-served Studio reaches its server.
+     Deleting it with the card would have sent every card silently back to its
+     built-in sample. */
+  useEffect(() => {
+    const saved = loadLink()
+    if (!saved?.baseUrl) return
+    return connect(saved, () => {})
+  }, [])
+
   const { server, pack, players, subscription, files } = snapshot
 
   /* These are the two things the dashboard can genuinely do from a
-     card menu, and both go through the same API the reference
-     documents rather than a private path. */
+     card menu, and both go through the same API a plugin uses rather
+     than a private path. */
   const onUnlink = useCallback(() => {
     disconnect()
     dash.reset()
@@ -399,11 +139,7 @@ export function Dashboard() {
     <main className="page">
       <div className="page-head">
         <div>
-          <div className="eyebrow">Main</div>
           <h1 className="page-title">Dashboard</h1>
-          <p className="page-sub">
-            Overview of the linked realm, its resource pack and what the team touched last.
-          </p>
         </div>
         <HealthPill health={health} meta={meta} now={now} />
       </div>
@@ -412,9 +148,8 @@ export function Dashboard() {
         <div className="dash-banner">
           <Icon name="warning" size={16} />
           <span>
-            No plugin has reported yet, so every card below is the built-in sample. Point Vellum at your
-            server in <strong>Plugin feed</strong>, or push to{' '}
-            <code>{DASH_BASE}/dash/snapshot</code> — each card goes live on its own as soon as it is fed.
+            No server has reported yet, so every card below is the built-in sample. Each one goes
+            live on its own as soon as your server sends it.
           </span>
         </div>
       )}
@@ -433,13 +168,12 @@ export function Dashboard() {
           dividedHead
           actions={
             <>
-              <EndpointBadge method="PATCH" path="/dash/server" base={DASH_BASE} />
               <span className="server-tag" data-online={server.online}>
                 {server.status}
               </span>
               {/* Rename realm and Reconnect were inert: the realm's name
                   comes from the plugin, and there is nothing to reconnect
-                  to that the feed card does not already own. */}
+                  to that the link on this page does not already own. */}
               <Menu
                 align="end"
                 entries={[
@@ -480,13 +214,8 @@ export function Dashboard() {
             </>
           }
           title="Realm power"
-          actions={<EndpointBadge method="PATCH" path="/dash/subscription" base={DASH_BASE} />}
         >
           <div className="power">
-            <button className="power__btn" type="button" aria-disabled="true" tabIndex={-1}>
-              <Icon name="power" size={18} />
-              Turn Off Vellum
-            </button>
             <div className="kv">
               <div className="kv__row">
                 <span className="kv__k">Sub type</span>
@@ -514,7 +243,6 @@ export function Dashboard() {
           }
           title={pack.version ? `Build ${pack.version}` : 'Current build'}
           note={`Pushed ${formatWhen(pack.pushedAt, now)}`}
-          actions={<EndpointBadge method="PATCH" path="/dash/pack" base={DASH_BASE} />}
         >
           <div className="pack__file">
             <Icon name="file" size={18} />
@@ -524,19 +252,7 @@ export function Dashboard() {
                 {formatBytes(pack.bytes)} &middot; {pack.hash}
               </div>
             </div>
-            <button className="icon-btn" aria-label="Download archive" tabIndex={-1}>
-              <Icon name="download" size={16} />
-            </button>
           </div>
-          <button
-            className="btn btn--primary btn--block"
-            type="button"
-            aria-disabled="true"
-            tabIndex={-1}
-            style={{ marginTop: 'var(--sp-3)' }}
-          >
-            <Icon name="upload" size={14} /> Push fresh
-          </button>
         </Card>
 
         {/* ---------- player pack counts ---------- */}
@@ -548,7 +264,6 @@ export function Dashboard() {
             </>
           }
           title="Pack adoption"
-          actions={<EndpointBadge method="POST" path="/dash/players/report" base={DASH_BASE} />}
         >
           <div className="counts">
             <div className="count-tile count-tile--ok">
@@ -571,9 +286,6 @@ export function Dashboard() {
           </p>
         </Card>
 
-        {/* ---------- the feed itself ---------- */}
-        <FeedCard health={health} meta={meta} log={log} now={now} />
-
         {/* ---------- recent files ---------- */}
         <Card
           className="span-recent"
@@ -587,7 +299,6 @@ export function Dashboard() {
           dividedHead
           actions={
             <>
-              <EndpointBadge method="POST" path="/dash/files" base={DASH_BASE} />
               <Menu
                 align="end"
                 entries={[
@@ -642,8 +353,7 @@ export function Dashboard() {
                 {files.length ? null : (
                   <tr>
                     <td colSpan={5} className="dash-empty">
-                      No file touches reported. Call <code>POST {DASH_BASE}/dash/files</code> when your plugin
-                      sees one.
+                      Nothing touched yet. Saves to this pack show up here.
                     </td>
                   </tr>
                 )}
@@ -651,9 +361,6 @@ export function Dashboard() {
             </table>
           </div>
         </Card>
-
-        {/* ---------- the contract ---------- */}
-        <DashApiReference />
       </div>
 
       <div className="status-strip">
@@ -662,11 +369,10 @@ export function Dashboard() {
           &lt;{server.status}&gt;
         </span>
         <span>{server.ip}</span>
-        <span>dash api v{DASH_API_VERSION}</span>
         <span style={{ marginLeft: 'auto' }}>
           {live
-            ? `${meta.fed.length} of 5 cards fed · ${meta.agent ?? 'unnamed agent'}`
-            : 'Sample data — nothing has been fed yet.'}
+            ? (meta.agent ?? server.name)
+            : 'Sample data — nothing has reported yet.'}
         </span>
       </div>
     </main>

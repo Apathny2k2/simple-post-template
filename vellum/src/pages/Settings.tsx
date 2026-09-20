@@ -210,29 +210,6 @@ function ToggleRow({ id, title, desc, on }: { id: string; title: string; desc: s
   )
 }
 
-/** The dashed region from the sketch - the same card, drawn empty. */
-function SectionSlot({ title, note }: { title: string; note: string }) {
-  return (
-    <Card variant="dashed">
-      <div className="card__placeholder">
-        <Icon name="layers" size={22} />
-        <div className="card__title">{title}</div>
-        <p>{note}</p>
-      </div>
-    </Card>
-  )
-}
-
-function PaidGate({ label }: { label: string }) {
-  return (
-    <div className="tier-note">
-      <Icon name="lock" size={13} />
-      <span>
-        {label} sits behind a paid tier. The layout is shown; the controls are placeholders.
-      </span>
-    </div>
-  )
-}
 
 /* ---------------- about ---------------- */
 
@@ -320,44 +297,6 @@ function About() {
 
   return (
     <>
-      <Card
-        title="How Vellum ships"
-        note="One download. The studio is baked into the plugin."
-        dividedHead
-      >
-        <ul className="ships">
-          <li className="ships__row">
-            <Icon name="download" size={15} />
-            <div className="ships__text">
-              <div className="ships__t">One download, not two</div>
-              <div className="ships__d">
-                The studio is built into the plugin and versioned with it, so the editor you open is
-                always the one that server shipped.
-              </div>
-            </div>
-          </li>
-          <li className="ships__row">
-            <Icon name="cube" size={15} />
-            <div className="ships__text">
-              <div className="ships__t">Free tier &mdash; standalone</div>
-              <div className="ships__d">
-                Modelling, texturing, animation and .vellum export run entirely here, with nothing
-                linked and nothing to sign in to.
-              </div>
-            </div>
-          </li>
-          <li className="ships__row">
-            <Icon name="key" size={15} />
-            <div className="ships__text">
-              <div className="ships__t">Paid tiers &mdash; the same studio, as the gateway</div>
-              <div className="ships__d">
-                Link a plugin and this editor becomes the way in: the shared workspace, sync, seats
-                and the Master Console all open behind it.
-              </div>
-            </div>
-          </li>
-        </ul>
-      </Card>
 
       <Card title="Vellum" note={`Studio ${STUDIO_VERSION} \u00b7 plugin ${PLUGIN_VERSION}`} dividedHead>
         <div className="kv">
@@ -490,13 +429,11 @@ function Cloud() {
 
   return (
     <>
-      <PaidGate label="Cloud" />
 
       <Card
         title="Workspace"
         note={fed ? `Reported by the plugin \u00b7 ${health}` : 'No plugin has reported a workspace yet.'}
         dividedHead
-        actions={<span className="ep__m ep__m--patch">PATCH /cloud/workspace</span>}
       >
         <p className="verify" data-tone={tone.tone}>
           <Icon name="cloud" size={13} />
@@ -526,7 +463,6 @@ function Cloud() {
         title="Members"
         note={`${cloud.members.length} ${cloud.members.length === 1 ? 'identity' : 'identities'} on this workspace.`}
         dividedHead
-        actions={<span className="ep__m ep__m--put">PUT /cloud/members</span>}
       >
         <div className="dir-list">
           {cloud.members.map((m) => (
@@ -621,10 +557,6 @@ function Body({ section }: { section: Section }) {
             <ToggleRow id="crash" title="Send crash reports" desc="Anonymous stack traces only." on />
             <ToggleRow id="beta" title="Beta channel" desc="Opt into pre-release editor builds." on={false} />
           </Card>
-          <SectionSlot
-            title="Reusable card for section sectioning"
-            note="Every settings panel is composed from this one card. Drawn dashed where a region is reserved but not yet filled."
-          />
         </>
       )
 
@@ -647,7 +579,6 @@ function Body({ section }: { section: Section }) {
               </label>
             </div>
           </Card>
-          <SectionSlot title="Avatar & banner" note="Reserved for the upload region - same card, dashed." />
         </>
       )
 
@@ -690,7 +621,6 @@ function Body({ section }: { section: Section }) {
     case 'billing':
       return (
         <>
-          <PaidGate label="Billing" />
           <Card title="Plan" note="Free tier - no card on file." dividedHead>
             <div className="kv">
               <div className="kv__row"><span className="kv__k">Current plan</span><span className="kv__v">Free</span></div>
@@ -702,14 +632,12 @@ function Body({ section }: { section: Section }) {
               <button className="btn">Compare tiers</button>
             </div>
           </Card>
-          <SectionSlot title="Invoices" note="Reserved region - invoice history for paid tiers." />
         </>
       )
 
     case 'teams':
       return (
         <>
-          <PaidGate label="Teams" />
           <Card title="Seats" note="1 of 1 used on the free tier." dividedHead>
             <div className="dir-list">
               {[['g.alex', 'Owner'], ['kite', 'Invite pending'], ['nine', 'Invite pending']].map(([who, role]) => (
@@ -721,7 +649,6 @@ function Body({ section }: { section: Section }) {
               ))}
             </div>
           </Card>
-          <SectionSlot title="Shared scene access" note="Reserved region - per-scene role matrix." />
         </>
       )
 

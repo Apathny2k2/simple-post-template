@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Card } from '../components/Card'
 import { Icon } from '../lib/icons'
-import { API_BASE, api, endpoints, webhookEvents } from '../lib/api'
-import { ApiReference as ApiSurface, EndpointBadge } from '../components/Endpoint'
+import { api } from '../lib/api'
 import {
   categories,
   clockTime,
@@ -86,7 +85,6 @@ function TicketList({
             onChange={(e) => onQuery(e.target.value)}
           />
         </label>
-        <EndpointBadge method="GET" path="/tickets" base={API_BASE} />
       </div>
 
       <div className="tl__rows">
@@ -266,8 +264,6 @@ function Composer({
       </div>
 
       <div className="cmp__foot">
-        <EndpointBadge method="POST" path="/tickets/{id}/messages" base={API_BASE} />
-        <EndpointBadge method="POST" path="/tickets/{id}/typing" base={API_BASE} />
         <span className="cmp__hint mono">Enter sends &middot; Shift+Enter newline</span>
       </div>
     </div>
@@ -348,15 +344,10 @@ function Thread({
               ))}
             </select>
           </label>
-          <EndpointBadge method="PATCH" path="/tickets/{id}" base={API_BASE} />
         </div>
       </header>
 
       <div className="th__scroll" ref={scroller}>
-        <div className="th__stream">
-          <EndpointBadge method="GET" path="/tickets/{id}/events" base={API_BASE} />
-          <span className="th__streamnote">live &middot; server-sent events</span>
-        </div>
 
         {messages.map((m) => (
           <MessageBubble key={m.id} message={m} onRetry={onRetry} />
@@ -424,7 +415,6 @@ function NewTicket({ onClose, onCreate }: { onClose: () => void; onCreate: (t: T
             <div className="eyebrow">Support</div>
             <h2 className="card__title">Open a ticket</h2>
           </div>
-          <EndpointBadge method="POST" path="/tickets" base={API_BASE} />
           <button className="icon-btn" onClick={onClose} aria-label="Close">
             <Icon name="close" size={15} />
           </button>
@@ -454,7 +444,6 @@ function NewTicket({ onClose, onCreate }: { onClose: () => void; onCreate: (t: T
                   </option>
                 ))}
               </select>
-              <span className="field__hint">GET {API_BASE}/support/categories</span>
             </label>
 
             <label className="field">
@@ -494,36 +483,6 @@ function NewTicket({ onClose, onCreate }: { onClose: () => void; onCreate: (t: T
         </footer>
       </div>
     </div>
-  )
-}
-
-/* ---------------- API reference ---------------- */
-
-function ApiReference() {
-  return (
-    <ApiSurface
-      title="Support API"
-      note={`Base URL ${API_BASE} \u00b7 bearer token \u00b7 JSON in, JSON out`}
-      base={API_BASE}
-      endpoints={endpoints}
-      initialOpen="POST /tickets"
-    >
-      <section className="api__group">
-        <h3 className="api__gname">Webhooks</h3>
-        <p className="api__note">
-          Signed with <code className="mono">X-Vellum-Signature</code> (HMAC-SHA256 over the raw
-          body). Retried with backoff for 24h until a 2xx. Deduplicate on the event id.
-        </p>
-        <dl className="api__params">
-          {webhookEvents.map((w) => (
-            <div key={w.name}>
-              <dt className="mono">{w.name}</dt>
-              <dd>{w.note}</dd>
-            </div>
-          ))}
-        </dl>
-      </section>
-    </ApiSurface>
   )
 }
 
@@ -663,8 +622,7 @@ export function Support() {
       <p className="sup__note">
         <Icon name="info" size={13} />
         The ticketing and messaging here are live against an in-browser mock transport - open a
-        ticket, reply, and the thread answers back. Every call is named on the control that makes
-        it, and the full surface a real backend would implement is documented below.
+        ticket, reply, and the thread answers back.
       </p>
 
       <div className="sup__bar">
@@ -716,8 +674,6 @@ export function Support() {
           )}
         </div>
       </Card>
-
-      <ApiReference />
 
       {dialog ? (
         <NewTicket
