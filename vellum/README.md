@@ -373,7 +373,7 @@ Four constraints, none of them ours:
 So a model can be perfectly good here and impossible to express there, and
 the honest thing is to say which cube and why *before* the pack is built
 rather than let the game reject the pack with no useful message.
-`checkTranslation(model, kind)` walks the model and reports:
+`checkTranslation(model, kind, target)` walks the model and reports:
 
 - `chainOf()` collects the non-zero rotations along a cube's bone chain. Two
   pivots, or two axes, is an **error** naming the bone — not a silent flatten
@@ -389,13 +389,40 @@ rotation becomes the element's own — `{"origin": [...], "axis": "y", "angle":
 22.5}` — instead of being reported as an impossibility. Anything the editor
 can legally draw that the format can legally hold, translates.
 
+### Two destinations, two verdicts
+
+The same geometry is not equally impossible everywhere, and this took a
+correction from the plugin side to get right.
+
+A **group rotation never goes in the model file at all.** The plugin applies
+it as the bone's *rest rotation*, at runtime, on the display carrying that
+bone; cube rotations stay raw inside the model exactly as authored. Out-of-
+range geometry is the same story — an over-reaching bone is divided down and
+the divisor recorded on it, multiplied back into that one display's scale.
+
+So arbitrary bone rotation is expressible on a linked server and impossible
+in a pack. Reporting it as a flat error was wrong about half the time.
+`target` decides:
+
+- **`pack`** — a model file, alone, on a vanilla client. Every refusal
+  stands, and `buildPack` skips a model that earns one.
+- **`any`** — the editor's own view, which cannot know whether a server is
+  linked. A bone-level problem is a warning naming the mechanism that
+  handles it, not a fault.
+
+What does not move is the cube-level limit: one axis, one of five angles.
+That goes in the file on both paths.
+
 The check runs in the Validation panel beside the model's other rules, so it
 is not something you go and ask for.
 
 **Mobs report that they are not a resource-pack thing at all.** A pack has no
 custom entity model; a mob is somebody's runtime, not a file under
-`models/`. Emitting one the server cannot use would be worse than saying
-nothing, so `buildPack()` leaves mobs out and names each one it left.
+`models/`. `buildPack()` leaves mobs out and names each one it left — and the
+reason is stronger than "nothing to write": the plugin's own `RigBaker`
+already bakes a rigged project into one item model per bone plus the skeleton
+that positions them. A second exporter would produce a *conflicting* set, not
+a missing one.
 
 ### The zip
 
@@ -407,19 +434,36 @@ compressed, so deflate would buy a few percent and a dependency.
 
 ```
 pack.mcmeta
+assets/<namespace>/items/<id>.json          <- what points at it
 assets/<namespace>/models/<folder>/<id>.json
 assets/<namespace>/textures/<folder>/<id>.png
 ```
+
+The item definition is the file that makes the rest reachable. A model under
+`models/` is geometry nothing in the game references; since 1.21.4 an item
+whose `minecraft:item_model` component is `<ns>:<id>` renders whatever this
+file names. Without it the pack loads without complaint and the item keeps
+its vanilla look — the failure hardest to tell from "the pack didn't
+install". The pre-1.21.4 `overrides` array on `custom_model_data` is
+deliberately not written: the cutoff is sharp and the target is above it.
 
 `pretty()` is not cosmetic either. `JSON.stringify(v, null, 2)` puts every
 component of every vector on its own line, which turned the seven samples
 into 16 KB of column; keeping number arrays inline reads as coordinates and
 costs 8.8 KB instead.
 
-**`pack_format` defaults to 15 and the dialog says plainly that it is not
-guessed.** It is a single integer per Minecraft version and a wrong one fails
-the whole pack to load. The target version is the server's to state, not
-ours to infer, so the field is there, editable, and honest about why.
+**`pack_format` defaults to 84** — what the plugin's own generator reads out
+of 26.1.2's `version.json`, rather than a number from memory. It stays a
+field rather than a constant because a newer version declares higher and a
+stale constant here would be a confident lie instead of an open question. It
+is a single integer per Minecraft version and a wrong one fails the whole
+pack to load with nothing said about why.
+
+**This export is for the standalone case.** A server running the Vellum
+plugin has the plugin build and serve its own pack, with the hash in the URL
+so client caches stay correct; two pipelines that can disagree would be worse
+than one. The free tier has no plugin and no other way to get a pack at all,
+and that is who this is for. The dialog says so.
 
 Two things ship that a pack cannot hold, and both are deliberate.
 
