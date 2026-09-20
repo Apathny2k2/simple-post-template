@@ -132,8 +132,15 @@ export function buildPack(items: PackItem[], opts: PackOptions): PackReport {
     const built = toMinecraftModel(item.model, ns, folder, item.display, name)
     issues.push({ id: item.id, issues: built.issues })
 
-    if (built.issues.some((i) => i.level === 'error')) {
-      skipped.push({ id: item.id, why: 'it does not translate — see the problems on it' })
+    /* Carry the reason, not a pointer to it. "See the problems on it"
+       makes someone go looking for a message we already have. */
+    const fatal = built.issues.filter((i) => i.level === 'error')
+    if (fatal.length) {
+      const first = `${fatal[0].where ? `${fatal[0].where}: ` : ''}${fatal[0].message}`
+      skipped.push({
+        id: item.id,
+        why: fatal.length === 1 ? first : `${first} (and ${fatal.length - 1} more)`,
+      })
       continue
     }
 

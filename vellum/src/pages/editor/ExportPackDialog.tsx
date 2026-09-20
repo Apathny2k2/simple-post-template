@@ -42,10 +42,14 @@ export function ExportPackDialog({
     [items, namespace, packFormat, description, nsOk],
   )
 
+  /* Warnings only. An error is not a change on the way in - the model
+     was refused - and it says so under "Left out" with the reason on it. */
   const problems = useMemo(() => {
     if (!report) return []
+    const refused = new Set(report.skipped.map((s) => s.id))
     return report.issues
-      .map((r) => ({ id: r.id, list: r.issues.filter((i) => i.level !== 'note') }))
+      .filter((r) => !refused.has(r.id))
+      .map((r) => ({ id: r.id, list: r.issues.filter((i) => i.level === 'warning') }))
       .filter((r) => r.list.length)
   }, [report])
 
