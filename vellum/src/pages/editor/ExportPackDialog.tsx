@@ -176,6 +176,25 @@ export function ExportPackDialog({
               </div>
             ) : null}
 
+            {/* A config that is held back has to SAY so. Held silently, a
+                user who filled the form in sees no mention of it anywhere
+                and reasonably concludes it never existed - which is the
+                same silent-failure shape the flat path had. */}
+            {configs.skipped.some((s) => /root collection key/.test(s.why)) ? (
+              <div className="pk__out pk__out--warn">
+                <div className="pk__outhead">Configs held back</div>
+                {configs.skipped
+                  .filter((s) => /root collection key/.test(s.why))
+                  .map((s) => (
+                    <p key={s.id} className="pk__outrow">
+                      <strong>{s.id}</strong> — its root key is not confirmed yet. Shipping the
+                      wrong one is an error that blocks the server&rsquo;s whole content reload,
+                      not just this file, so it is shown in the Config tab and not written here.
+                    </p>
+                  ))}
+              </div>
+            ) : null}
+
             {configs.files.length ? (
               <div className="pk__out">
                 <div className="pk__outhead">
