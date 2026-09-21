@@ -30,7 +30,7 @@
 
 import { FACES, subtypeFits } from './model'
 import type { Behaviour, BehaviourEffect, BehaviourRequirement, BehaviourStage, EffectKind } from './behaviour'
-import { bodyOf, canonicalise, hasConfig, looksLegacy } from './config'
+import { bodyOf, canonicalise, fieldsOf, hasConfig, looksLegacy } from './config'
 import type { ConfigValue, Config, Row } from './config'
 import type {
   Bone,
@@ -437,7 +437,7 @@ function readBehaviour(raw: VellumBehaviour | undefined): Behaviour | undefined 
  * really is an `animations` branch with an `idle` in it. Anything whose
  * type is not one the block can hold is dropped rather than guessed.
  */
-function readConfig(raw: Record<string, unknown> | undefined): Config | undefined {
+function readConfig(raw: Record<string, unknown> | undefined, kind?: ProjectKind): Config | undefined {
   if (!raw || typeof raw !== 'object') return undefined
 
   const value = (v: unknown): ConfigValue | Config | undefined => {
@@ -469,6 +469,37 @@ function readConfig(raw: Record<string, unknown> | undefined): Config | undefine
     const read = value(v)
     if (read !== undefined) out[key] = read
   }
+
+  /* An unknown key is KEPT: the block is a body, and a body may
+     legitimately carry something this build's schema has not learned
+     about yet - dropping it would silently lose a user's config.
+     What is not kept is a BRANCH where the schema declares a leaf.
+     `health: {nonsense: true}` is not a forward-compatible key, it is a
+     scalar field holding an object, and nothing can ever mean that. */
+  if (kind && hasConfig(kind)) {
+    for (const f of fieldsOf(kind)) {
+      if (f.kind === 'rows' || f.kind === 'list') continue
+      const parts = f.path.split('.')
+      let at: Config | undefined = out
+      for (let i = 0; i < parts.length - 1 && at; i++) {
+        const next: unknown = at[parts[i]]
+        at = next && typeof next === 'object' && !Array.isArray(next) ? (next as Config) : undefined
+      }
+      const leaf = at?.[parts[parts.length - 1]]
+      if (leaf && typeof leaf === 'object' && !Array.isArray(leaf)) delete at![parts[parts.length - 1]]
+    }
+  }
+
+  const prune = (c: Config): Config => {
+    for (const [k, v] of Object.entries(c)) {
+      if (v && typeof v === 'object' && !Array.isArray(v)) {
+        prune(v as Config)
+        if (!Object.keys(v as Config).length) delete c[k]
+      }
+    }
+    return c
+  }
+  prune(out)
   return Object.keys(out).length ? out : undefined
 }
 
@@ -682,7 +713,7 @@ export function fromVellumDocument(doc: VellumDocument): Model {
     kind,
     subtype,
     behaviour: readBehaviour(doc.behaviour),
-    config: readConfig(doc.config),
+    config: readConfig(doc.config, kind),
     resolution,
     bones,
     cubes,
