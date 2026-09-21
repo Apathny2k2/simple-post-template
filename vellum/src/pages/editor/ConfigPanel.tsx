@@ -9,7 +9,7 @@
 
 import { useState } from 'react'
 import { Icon } from '../../lib/icons'
-import { SCHEMA, setFields } from '../../lib/config'
+import { SCHEMA, getAt, linesOf, rowsOf, setAt, setFields } from '../../lib/config'
 import type { Column, Field, Config, Row, Section } from '../../lib/config'
 import type { ProjectKind } from '../../lib/model'
 
@@ -199,7 +199,10 @@ export function ConfigPanel({
 }) {
   const sections: Section[] = SCHEMA[kind] ?? []
   const [open, setOpen] = useState<string>(sections[0]?.id ?? '')
-  const set = (key: string, v: unknown) => onChange({ ...config, [key]: v as never })
+  /* Bound by PATH, not by field key: the block is the runtime's own
+     body, so `movement-speed` is where the speed lives and `idle` sits
+     inside an `animations` branch. */
+  const set = (path: string, v: unknown) => onChange(setAt(config, path, v as never))
   const touched = setFields(kind, config)
 
   return (
@@ -231,7 +234,15 @@ export function ConfigPanel({
                 {sec.fields.map((f) => (
                   <div className="cfg-field" key={f.key} data-inline={INLINE.has(f.kind) || undefined}>
                     <span className="cfg-field__label">{f.label}</span>
-                    <Control field={f} value={config[f.key]} onChange={(v) => set(f.key, v)} />
+                    <Control
+                      field={f}
+                      /* A rows field is stored as the LINES the file holds;
+                         the row is only how they are edited. */
+                      value={f.kind === 'rows' ? rowsOf(f, getAt(config, f.path)) : getAt(config, f.path)}
+                      onChange={(v) =>
+                        set(f.path, f.kind === 'rows' ? linesOf(f, v as never) : v)
+                      }
+                    />
                     {f.help ? <span className="cfg-field__help">{f.help}</span> : null}
                   </div>
                 ))}

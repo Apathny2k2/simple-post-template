@@ -84,7 +84,7 @@ import { ScenePanel } from './editor/ScenePanel'
 import { BehaviourPanel } from './editor/BehaviourPanel'
 import { ConfigPanel } from './editor/ConfigPanel'
 import { ConfigOutput } from './editor/ConfigOutput'
-import { emptyConfig, hasConfig, setFields } from '../lib/config'
+import { hasConfig, setFields, withDefaults } from '../lib/config'
 import { checkTranslation } from '../lib/mcmodel'
 import type { Config } from '../lib/config'
 import { EMPTY_BEHAVIOUR, cycleLength, geyserBehaviour, stageAt } from '../lib/behaviour'
@@ -2507,7 +2507,7 @@ export function Editor({ segments }: { segments: string[] }) {
 
   const behaviour = model.behaviour ?? EMPTY_BEHAVIOUR
   const config = useMemo(
-    () => ({ ...(hasConfig(kind) ? emptyConfig(kind) : {}), ...(model.config ?? {}) }),
+    () => (hasConfig(kind) ? withDefaults(kind, model.config) : {}),
     [kind, model.config],
   )
   const bhvNow = useMemo(() => stageAt(behaviour, bhvTime), [behaviour, bhvTime])

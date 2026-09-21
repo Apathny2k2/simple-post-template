@@ -232,10 +232,10 @@ const files = await p.evaluate(async () => {
        just a shape. Custom model data is the line that ties this config
        back to the model in the same file. */
     config: {
-      display: '&bRunic Blade',
+      'display-name': '&bRunic Blade',
       model: 'vellum:runic_blade',
       lore: ['&7Cut from a stone that remembers.', '&8Hums when a rune is near.'],
-      stack: '1',
+      'max-stack-size': 1,
     },
     cubes: [
       { name: 'pommel',    from: [-2,-2,-2],      to: [2,1,2],        origin: [0,0,0],    look: gold },

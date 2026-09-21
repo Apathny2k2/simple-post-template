@@ -42,7 +42,54 @@ import type { ProjectKind } from './model'
 
 export type ConfigValue = string | number | boolean | string[] | Row[]
 export type Row = Record<string, string>
-export type Config = Record<string, ConfigValue>
+
+/**
+ * The config block, and it is NOT keyed by whatever the form calls a
+ * field - it is the `mob.yml` entity body, verbatim.
+ *
+ * That is a deliberate change of shape. It used to hold the form's own
+ * keys: `speed` where the runtime says `movement-speed`, `idle` and
+ * `walk` at the top level where the runtime nests them under
+ * `animations:`. Nobody could tell by looking whether a block was meant
+ * to load, and `speed` is not an unknown key that fails quietly - it is
+ * an ERROR, and one error holds back the content swap for every kind on
+ * the server at once.
+ *
+ * So the block reads exactly as the file it becomes. What it does NOT
+ * carry is `config-version`: that belongs to the FILE, beside the
+ * collection key, and the writer adds it. This is the body, not the
+ * document.
+ */
+export type Config = { [key: string]: ConfigValue | Config }
+
+/* ---------------- reading and writing by path ---------------- */
+
+const isBranch = (v: unknown): v is Config =>
+  !!v && typeof v === 'object' && !Array.isArray(v)
+
+/** The value at a dotted path, or undefined if any step is missing. */
+export function getAt(config: Config | undefined, path: string): ConfigValue | undefined {
+  let at: unknown = config
+  for (const part of path.split('.')) {
+    if (!isBranch(at)) return undefined
+    at = (at as Config)[part]
+  }
+  return isBranch(at) ? undefined : (at as ConfigValue | undefined)
+}
+
+/** A copy with `path` set. Branches are created as needed. */
+export function setAt(config: Config, path: string, value: ConfigValue): Config {
+  const parts = path.split('.')
+  const out: Config = { ...config }
+  let at = out
+  for (let i = 0; i < parts.length - 1; i++) {
+    const next = at[parts[i]]
+    at[parts[i]] = isBranch(next) ? { ...next } : {}
+    at = at[parts[i]] as Config
+  }
+  at[parts[parts.length - 1]] = value
+  return out
+}
 
 /* ---------------- the description ---------------- */
 
@@ -233,16 +280,50 @@ export const fieldsOf = (kind: ProjectKind): Field[] =>
 /* ---------------- the value ---------------- */
 
 export function emptyConfig(kind: ProjectKind): Config {
-  const out: Config = {}
+  let out: Config = {}
   for (const f of fieldsOf(kind)) {
-    out[f.key] = f.fallback ?? (f.kind === 'list' || f.kind === 'rows' ? [] : f.kind === 'bool' ? false : f.kind === 'number' ? 0 : '')
+    const seed =
+      f.fallback ??
+      (f.kind === 'list' || f.kind === 'rows' ? [] : f.kind === 'bool' ? false : f.kind === 'number' ? 0 : '')
+    out = setAt(out, f.path, seed)
+  }
+  return out
+}
+
+/**
+ * The stored body with every unset field seeded, for the form to bind to.
+ *
+ * A shallow spread cannot do this once the block nests: `{...empty,
+ * ...stored}` replaces the whole `animations` branch with the stored
+ * one, so a model that set only `idle` would lose the seeded `walk`
+ * beside it and the control would bind to undefined.
+ */
+export function withDefaults(kind: ProjectKind, config: Config | undefined): Config {
+  let out = emptyConfig(kind)
+  if (!config) return out
+  for (const f of fieldsOf(kind)) {
+    const v = getAt(config, f.path)
+    if (v !== undefined) out = setAt(out, f.path, v)
+  }
+  return out
+}
+
+/**
+ * Only the fields that say something, as the body they will be written
+ * as. This is what goes in the `.vellum` and what goes in the YAML -
+ * one shape, so the file cannot disagree with the preview.
+ */
+export function bodyOf(kind: ProjectKind, config: Config): Config {
+  let out: Config = {}
+  for (const f of setFields(kind, config)) {
+    out = setAt(out, f.path, coerce(f, getAt(config, f.path) as ConfigValue))
   }
   return out
 }
 
 /** Only what differs from the fallback, which is all the runtime reads anyway. */
 export function setFields(kind: ProjectKind, config: Config): Field[] {
-  return fieldsOf(kind).filter((f) => written(f, config[f.key]))
+  return fieldsOf(kind).filter((f) => written(f, getAt(config, f.path)))
 }
 
 function written(f: Field, v: ConfigValue | undefined): boolean {
@@ -295,84 +376,91 @@ function emit(tree: Tree, indent: string, out: string[]) {
 
 /** A row becomes the space-separated line a list entry is written as. */
 function rowLine(f: Field, row: Row): string {
-  const parts = (f.columns ?? [])
+  return (f.columns ?? [])
     .map((c) => (row[c.key] ?? '').trim())
     .filter((v) => v.length > 0)
-  if (f.key === 'enchants') return parts.join(':')
-  if (f.key === 'skills') {
-    const [skill, trigger, chance] = parts
-    return [skill, trigger, chance && `${chance}`].filter(Boolean).join(' ')
-  }
-  return parts.join(' ')
+    .join(' ')
 }
+
+/**
+ * A stored line back into the columns a form can edit.
+ *
+ * THE BLOCK HOLDS LINES, NOT ROWS, because `ai.goals` in a `mob.yml` is
+ * a list of strings - `- melee_attack 2 slam` - and the whole point of
+ * the canonical shape is that the block IS the body. The row is the
+ * editing view of the line, so the parse lives here rather than the
+ * storage bending to suit the form.
+ *
+ * Whitespace is a safe separator for exactly these columns: a goal is an
+ * identifier, a priority is a number and an animation is a clip name.
+ */
+export function rowsOf(f: Field, value: ConfigValue | undefined): Row[] {
+  if (!Array.isArray(value)) return []
+  const cols = f.columns ?? []
+  return value.map((entry) => {
+    if (entry && typeof entry === 'object') return entry as Row
+    const parts = String(entry).trim().split(/\s+/).filter(Boolean)
+    const row: Row = {}
+    cols.forEach((c, i) => { row[c.key] = parts[i] ?? '' })
+    return row
+  })
+}
+
+/** The editing view back to what the file holds. */
+export const linesOf = (f: Field, rows: Row[]): string[] =>
+  rows.map((r) => rowLine(f, r)).filter((l) => l.length > 0)
 
 /**
  * The config as the runtime reads it, keyed by the model's own name
  * so that the file and the model cannot drift apart.
  */
+/**
+ * One value, as the file will hold it.
+ *
+ * A tri-state is stored as '', 'true' or 'false' because a checkbox
+ * cannot say "unset" - but it has to reach the file as a real boolean.
+ * `scalar` cannot do this for us and is right not to: an unquoted lore
+ * line reading `no` would become a boolean too. The coercion belongs
+ * where we know the FIELD, not where only the value is visible.
+ */
+function coerce(f: Field, v: ConfigValue): ConfigValue {
+  if (f.kind === 'rows') return linesOf(f, rowsOf(f, v))
+  if (f.kind === 'list') return (v as string[]).map((l) => l.trim()).filter(Boolean)
+  if (f.kind === 'select' && f.options === TRISTATE) return v === 'true'
+  /* A number typed into a text field because its default is "inherit":
+     hold it as a number so the type is not left to YAML to guess. */
+  if (f.kind === 'text' && typeof v === 'string' && v.trim() !== '' && Number.isFinite(Number(v))) {
+    return Number(v)
+  }
+  return v
+}
+
+/**
+ * The config as the runtime reads it, keyed by the model's own name.
+ *
+ * THE ROOT IS NOT THE ID. A content file accepts exactly two root keys -
+ * `config-version` and that kind's collection key - and every other root
+ * key is an error. And for a mob the collection key is `entities`, NOT
+ * `mobs`: the directory is `mobs/`, the key is not.
+ *
+ * The body is `bodyOf()` and nothing else. Since the stored block is
+ * already the body in the runtime's own vocabulary, there is no
+ * translation step here to get wrong - which is the whole point of
+ * storing it that way.
+ */
 export function toYaml(id: string, kind: ProjectKind, config: Config): string {
-  const tree: Tree = {}
-  const put = (path: string, value: string | number | boolean | string[]) => {
-    const parts = path.split('.')
-    let at: Tree = tree
-    for (let i = 0; i < parts.length - 1; i++) {
-      const next = at[parts[i]]
-      if (next === undefined || typeof next !== 'object' || Array.isArray(next)) at[parts[i]] = {}
-      at = at[parts[i]] as Tree
-    }
-    at[parts[parts.length - 1]] = value
-  }
-
-  for (const f of setFields(kind, config)) {
-    const v = config[f.key]
-    if (f.kind === 'rows') {
-      const lines = (v as Row[]).map((r) => rowLine(f, r)).filter((l) => l.length > 0)
-      if (lines.length) put(f.path, lines)
-      continue
-    }
-    if (f.kind === 'list') {
-      const lines = (v as string[]).map((l) => l.trim()).filter(Boolean)
-      if (lines.length) put(f.path, lines)
-      continue
-    }
-    /* A tri-state is stored as '', 'true' or 'false' because a checkbox
-       cannot say "unset". By the time it reaches the writer it has to be
-       a real boolean, or `scalar` quotes it - and it is right to: an
-       unquoted lore line reading `no` would become a boolean too. So the
-       coercion belongs here, where we know the field, rather than there,
-       where only the value is visible. */
-    if (f.kind === 'select' && f.options === TRISTATE) {
-      put(f.path, v === 'true')
-      continue
-    }
-    /* Likewise a number typed into a text field because its default is
-       "inherit": write it as a number so the type is not left to YAML. */
-    if (f.kind === 'text' && typeof v === 'string' && v.trim() !== '' && Number.isFinite(Number(v))) {
-      put(f.path, Number(v))
-      continue
-    }
-    put(f.path, v as string | number | boolean)
-  }
-
-  /* THE ROOT IS NOT THE ID. A content file accepts exactly two root
-     keys - `config-version` and that kind's collection key - and every
-     other root key is an error. And for a mob the collection key is
-     `entities`, NOT `mobs`: the directory is `mobs/`, the key is not.
-     The directory moved at some point and the key did not. */
+  const body = bodyOf(kind, config)
   const out: string[] = []
-  emit({ 'config-version': 1, [collectionKey(kind)]: { [id]: tree } }, '', out)
-  const body = out.join('\n')
+  emit({ 'config-version': 1, [collectionKey(kind)]: { [id]: body } } as Tree, '', out)
   const caveat = keyConfirmed(kind)
     ? ''
     : `# NOTE: the root key "${collectionKey(kind)}" is not confirmed for this kind.\n` +
       `# A mob's directory is mobs/ but its key is "entities", so the directory\n` +
       `# name is not evidence. Check against the plugin before loading this.\n`
   return `# ${configPath(kind, id)} — written by Vellum\n${caveat}${
-    hasBody(tree) ? body : `config-version: 1\n# Nothing set yet.`
+    Object.keys(body).length ? out.join('\n') : `config-version: 1\n# Nothing set yet.`
   }\n`
 }
-
-const hasBody = (tree: Tree) => Object.keys(tree).length > 0
 
 /**
  * The root collection key for a kind.
@@ -407,6 +495,46 @@ export function configPath(kind: ProjectKind, id: string): string {
   return kind === 'mobs' ? `mobs/${id}/mob.yml` : `items/${id}/item.yml`
 }
 
+/* ---------------- the upgrade off the old shape ---------------- */
+
+/**
+ * A pre-v7 config block, keyed by the FORM's field names, read into the
+ * runtime's own vocabulary.
+ *
+ * Six of them differed and the rest were already right, which is what
+ * made the old shape so easy to miss: a block could look perfectly
+ * loadable and carry `speed`, which is not an unknown key that fails
+ * quietly - it is an error, and one error holds back the content swap
+ * for every kind on the server.
+ *
+ * Anything not in the schema is dropped rather than carried. There is
+ * nowhere legitimate for it to go: the block IS the body now, and a key
+ * the runtime does not know is the exact failure this change exists to
+ * prevent.
+ */
+export function canonicalise(kind: ProjectKind, flat: Record<string, unknown>): Config {
+  let out: Config = {}
+  for (const f of fieldsOf(kind)) {
+    const v = flat[f.key]
+    if (v === undefined) continue
+    /* Through `coerce`, so an old rows value becomes the LINES the file
+       holds rather than staying the shape the form happened to use. */
+    out = setAt(out, f.path, coerce(f, v as ConfigValue))
+  }
+  return out
+}
+
+/** True where a block is still keyed the way the form was, not the runtime. */
+export function looksLegacy(kind: ProjectKind, raw: Record<string, unknown>): boolean {
+  const paths = new Set(fieldsOf(kind).map((f) => f.path.split('.')[0]))
+  const keys = new Set(fieldsOf(kind).map((f) => f.key))
+  let legacy = 0
+  for (const k of Object.keys(raw)) {
+    if (!paths.has(k) && keys.has(k)) legacy++
+  }
+  return legacy > 0
+}
+
 /* ---------------- rules ---------------- */
 
 export type ConfigIssue = { level: 'error' | 'warning'; message: string }
@@ -424,8 +552,16 @@ export function validateConfig(
 ): ConfigIssue[] {
   if (!kind || !config || !hasConfig(kind)) return []
   const out: ConfigIssue[] = []
-  const str = (k: string) => String(config[k] ?? '').trim()
-  const rows = (k: string) => (Array.isArray(config[k]) ? (config[k] as Row[]) : [])
+  /* Read by PATH, because the block is keyed the way the runtime is. */
+  const at = (key: string) => {
+    const f = fieldsOf(kind).find((x) => x.key === key)
+    return f ? getAt(config, f.path) : undefined
+  }
+  const str = (k: string) => String(at(k) ?? '').trim()
+  const rows = (k: string) => {
+    const f = fieldsOf(kind).find((x) => x.key === k)
+    return f ? rowsOf(f, at(k)) : []
+  }
   const touched = setFields(kind, config).length > 0
   if (!touched) return []
 
@@ -450,7 +586,7 @@ export function validateConfig(
       out.push({ level: 'error', message: 'No base entity: there is nothing to build this mob on' })
     }
 
-    const hp = Number(config.health ?? 20)
+    const hp = Number(at('health') ?? 20)
     if (Number.isFinite(hp) && (hp < 0.5 || hp > 1024)) {
       out.push({ level: 'error', message: `Health is ${hp}; the runtime accepts 0.5 to 1024` })
     }

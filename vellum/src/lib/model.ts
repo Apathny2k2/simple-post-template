@@ -151,11 +151,29 @@ export type Texture = {
 export type Channel = 'rotation' | 'position' | 'scale'
 export type Interpolation = 'linear' | 'step' | 'catmullrom' | 'bezier'
 
+/**
+ * The bezier handles an author drew, all four arrays or none.
+ *
+ * This is AUTHORING STATE, in the same class as a clip's snapping and a
+ * cube's hidden flag - the runtime interpolates STEP, LINEAR and
+ * CATMULLROM and has no bezier at all, so nothing a player sees depends
+ * on it. What depends on it is the curve surviving a trip out of the
+ * editor and back.
+ */
+export type Handles = {
+  leftTime: Vec3
+  leftValue: Vec3
+  rightTime: Vec3
+  rightValue: Vec3
+}
+
 export type Key = {
   id: string
   time: number
   value: Vec3
   interp: Interpolation
+  /** absent unless the author drew one; three of four is not half a curve */
+  handles?: Handles
 }
 
 /** One bone, one channel. The timeline stacks exactly these as its rows. */

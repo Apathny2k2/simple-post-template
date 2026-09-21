@@ -30,6 +30,7 @@
 
 import { FACES, subtypeFits } from './model'
 import type { Behaviour, BehaviourEffect, BehaviourRequirement, BehaviourStage, EffectKind } from './behaviour'
+import { bodyOf, canonicalise, hasConfig, looksLegacy } from './config'
 import type { ConfigValue, Config, Row } from './config'
 import type {
   Bone,
@@ -38,6 +39,7 @@ import type {
   Cube,
   Face,
   FaceKey,
+  Handles,
   Interpolation,
   Model,
   ProjectKind,
@@ -48,7 +50,7 @@ import type {
 } from './model'
 
 export const FORMAT = 'model'
-export const CURRENT_VERSION = 6
+export const CURRENT_VERSION = 7
 
 /** A well-formed `.vellum` begins with exactly these bytes. */
 export const HEADER_PREFIX = `{"vellum":{"format":"${FORMAT}","version":${CURRENT_VERSION}},`
@@ -112,10 +114,26 @@ type VellumTexture = {
   source?: string
 }
 
+/**
+ * The four arrays a bezier keyframe needs, and it is ALL FOUR OR NONE.
+ *
+ * Three of four describes half a curve, which is worse than no curve at
+ * all because it would be drawn as though somebody meant it. A partial
+ * block is dropped whole rather than half-read.
+ */
+type WireHandles = {
+  left_time: Vec3
+  left_value: Vec3
+  right_time: Vec3
+  right_value: Vec3
+}
+
 type VellumKey = {
   time: number
   value: Vec3
   interp: Interpolation
+  /** written AFTER `interp`, because the handles mean nothing without it */
+  handles?: WireHandles
 }
 
 type VellumTrack = {
@@ -288,7 +306,19 @@ export function toVellumDocument(model: Model): VellumDocument {
           channel: t.channel,
           keys: [...t.keys]
             .sort((a, b) => a.time - b.time)
-            .map((k) => ({ time: k.time, value: k.value, interp: k.interp })),
+            .map((k) => ({
+              time: k.time,
+              value: k.value,
+              interp: k.interp,
+              /* After `interp`, because handles mean nothing without it.
+                 Wire is snake_case; the runtime is camelCase. */
+              handles: k.handles && {
+                left_time: k.handles.leftTime,
+                left_value: k.handles.leftValue,
+                right_time: k.handles.rightTime,
+                right_value: k.handles.rightValue,
+              },
+            })),
         })),
     }),
   )
@@ -320,10 +350,17 @@ export function toVellumDocument(model: Model): VellumDocument {
         }
       : undefined
 
-  /* Only what was set: a config of forty defaults is forty lines of
-     noise in every diff, and the runtime reads an absent key as the
-     default anyway. */
-  const config = model.config && Object.keys(model.config).length ? model.config : undefined
+  /* Only what was set - and this used to be a comment describing
+     something the code did not do. The whole form state went in,
+     defaults and all, so a model edited in the app carried forty keys
+     meaning nothing while one built by the sample script carried four.
+
+     `bodyOf` is the same function the YAML is written through, so the
+     block in the file and the block in the preview cannot disagree. */
+  const body = model.kind && hasConfig(model.kind) && model.config
+    ? bodyOf(model.kind, model.config)
+    : undefined
+  const config = body && Object.keys(body).length ? (body as Record<string, unknown>) : undefined
 
   // insertion order here IS the written key order
   return compact({
@@ -392,28 +429,45 @@ function readBehaviour(raw: VellumBehaviour | undefined): Behaviour | undefined 
  * field can hold. Anything else is dropped rather than carried: a
  * number where the form wants a list is a value nothing could render.
  */
+/**
+ * The config block off disk.
+ *
+ * It nests now, because it is the entity body in the runtime's own
+ * vocabulary rather than a flat bag of form keys - `animations.idle`
+ * really is an `animations` branch with an `idle` in it. Anything whose
+ * type is not one the block can hold is dropped rather than guessed.
+ */
 function readConfig(raw: Record<string, unknown> | undefined): Config | undefined {
   if (!raw || typeof raw !== 'object') return undefined
-  const out: Config = {}
-  for (const [key, value] of Object.entries(raw)) {
-    if (typeof value === 'string' || typeof value === 'boolean') {
-      out[key] = value
-    } else if (typeof value === 'number' && Number.isFinite(value)) {
-      out[key] = value
-    } else if (Array.isArray(value)) {
-      if (value.every((v) => typeof v === 'string')) {
-        out[key] = value as string[]
-      } else if (value.every((v) => v && typeof v === 'object' && !Array.isArray(v))) {
-        out[key] = value.map((v) => {
+
+  const value = (v: unknown): ConfigValue | Config | undefined => {
+    if (typeof v === 'string' || typeof v === 'boolean') return v
+    if (typeof v === 'number' && Number.isFinite(v)) return v
+    if (Array.isArray(v)) {
+      if (v.every((x) => typeof x === 'string')) return v as string[]
+      if (v.every((x) => x && typeof x === 'object' && !Array.isArray(x))) {
+        return v.map((x) => {
           const row: Row = {}
-          for (const [k, c] of Object.entries(v as Record<string, unknown>)) {
+          for (const [k, c] of Object.entries(x as Record<string, unknown>)) {
             if (typeof c === 'string') row[k] = c
             else if (typeof c === 'number' && Number.isFinite(c)) row[k] = String(c)
           }
           return row
         }) as ConfigValue
       }
+      return undefined
     }
+    if (v && typeof v === 'object') {
+      const branch = readConfig(v as Record<string, unknown>)
+      return branch && Object.keys(branch).length ? branch : undefined
+    }
+    return undefined
+  }
+
+  const out: Config = {}
+  for (const [key, v] of Object.entries(raw)) {
+    const read = value(v)
+    if (read !== undefined) out[key] = read
   }
   return Object.keys(out).length ? out : undefined
 }
@@ -450,11 +504,54 @@ function upgrade(doc: VellumDocument): VellumDocument {
            origin of, which is exactly the state v5 left them in. */
         version = 6
         break
+      case 6: {
+        /* v7 does two things.
+
+           One is a stamp: a keyframe may carry bezier `handles`, and a
+           document written before simply has none.
+
+           The other is NOT a stamp. The `config` block used to be keyed
+           by the FORM's field names - `speed`, and `idle`/`walk` at the
+           top level - where the runtime reads `movement-speed` and
+           nests the two under `animations:`. That is not a cosmetic
+           difference: `speed` is not an unknown key that fails quietly,
+           it is an error, and one error holds back the content swap for
+           every kind on that server. So an old block is read into the
+           runtime's vocabulary here, once, rather than translated on
+           every write. */
+        const raw = doc.config
+        if (raw && typeof raw === 'object' && doc.kind && looksLegacy(doc.kind as ProjectKind, raw as Record<string, unknown>)) {
+          doc = { ...doc, config: canonicalise(doc.kind as ProjectKind, raw as Record<string, unknown>) as Record<string, unknown> }
+        }
+        version = 7
+        break
+      }
       default:
         throw new VellumFormatError(`No upgrade path from .vellum version ${version}.`)
     }
   }
   return { ...doc, vellum: { format: doc.vellum.format, version } }
+}
+
+/**
+ * The four handle arrays, or nothing.
+ *
+ * ALL FOUR OR NONE, and a partial block is dropped whole rather than
+ * half-read: three of four describes half a curve, which is worse than
+ * no curve because it would be drawn as though somebody meant it.
+ */
+function readHandles(raw: unknown): Handles | undefined {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined
+  const r = raw as Record<string, unknown>
+  const trio = ['left_time', 'left_value', 'right_time', 'right_value'] as const
+  const got = trio.map((k) => {
+    const v = r[k]
+    return Array.isArray(v) && v.length === 3 && v.every((n) => typeof n === 'number' && Number.isFinite(n))
+      ? ([v[0], v[1], v[2]] as Vec3)
+      : undefined
+  })
+  if (got.some((v) => v === undefined)) return undefined
+  return { leftTime: got[0]!, leftValue: got[1]!, rightTime: got[2]!, rightValue: got[3]! }
 }
 
 let keyCounter = 0
@@ -567,6 +664,7 @@ export function fromVellumDocument(doc: VellumDocument): Model {
         time: Number.isFinite(k?.time) ? k.time : 0,
         value: vec3(k?.value, t.channel === 'scale' ? [1, 1, 1] : [0, 0, 0]),
         interp: k?.interp ?? 'linear',
+        handles: readHandles((k as { handles?: unknown } | undefined)?.handles),
       })),
     })),
   }))
