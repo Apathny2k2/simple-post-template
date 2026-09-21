@@ -151,11 +151,16 @@ schema. Nothing in it can be justified with *"that is what their docs say"*:
 if a drop chance reads 0 to 1, it is because our runtime reads 0 to 1, and the
 plugin half has to implement it.
 
-What the config deliberately *borrows* is the **shape**, and the convention it
-follows is MythicMobs'. `Type`, `Health`, `BossBar`, `AIGoalSelectors`, skill
-lines with `~onTimer` — server operators already know that vocabulary, and a
-config they can read on sight is worth more than one we invented. Borrowing
-the spelling is not the same as borrowing the reader.
+**The vocabulary is ours too.** An earlier pass here borrowed MythicMobs'
+spelling on the theory that operators would recognise it. That is settled the
+other way now: for a config only our own runtime reads, a borrowed spelling
+buys familiarity and costs a permanent translation layer, and it implies a
+compatibility we do not have.
+
+So `BossBar` and `~onTimer` skill lines are gone — not renamed, *gone*. They
+named features with no counterpart, and a form that writes a key nothing
+applies is worse than a form that omits it. What replaces them is what the
+runtime actually implements: six structural keys, nine flags, eight goals.
 
 So the config is authored beside the model, in a **Config** tab, and written
 out of it. The YAML sits live in the middle of the editor while you fill the
@@ -168,11 +173,19 @@ declaration — which is why a key cannot appear in the editor and be missing
 from the export, or be spelled two ways. Adding a field is adding a line to
 the schema.
 
-A mob covers identity and faction, stats, the options switches, the boss bar,
-AI goal and target selectors, skills with triggers and chances, equipment,
-drops, damage modifiers, level modifiers and kill messages. An item covers
-material, display and lore, custom model data, amount, the options switches,
-durability, enchantments, per-slot attributes, use skills and drop options.
+A mob covers identity (`base`, `display-name`, `model`), the nine flags
+(`health` 0.5–1024, `movement-speed`, `scale`, and six switches), the AI goals
+with their priorities and clips, and the two live animation states. An item
+covers `display-name`, `model`, `lore`, `max-stack-size` and `durability`.
+
+**A default is only real if something applies it**, so only two are claimed:
+`health` is 20, and `movement-speed` deliberately has *none* — unset must stay
+unset, or a bat-based mob and a golem-based mob stop keeping their own base
+speeds. Everything whose default is unknown can say nothing at all: those
+numbers are text fields where blank means inherit, and the switches are
+tri-state rather than checkboxes. A checkbox cannot express "unset", and
+guessing that unset means `false` would write `false` over a server default of
+`true`.
 Where a field offers a vocabulary — entity types, selectors, bar styles,
 enchantments — it carries it as *suggestions* rather than a closed list,
 because a server with other plugins on it has more of them than we could know.
@@ -182,16 +195,51 @@ forty lines of noise in every diff, and the runtime reads an absent key as the
 default anyway.
 
 The rules catch what a server would refuse before the server does: a mob with
-no base entity, health that kills it on spawn, a boss bar over 30 health, goal
-selectors that do not start with `clear` (and so add to the vanilla set rather
-than replacing it), an equipment slot that is not one, a drop chance written
-as 25 when a chance is 0 to 1, an enchantment with no level, an attribute
-with no slot, a trigger that does not begin with `~`. An item with no custom
-model data is a warning, because that number is the only thing tying a config
-back to the model in the same file.
+no base entity, health outside 0.5–1024, a speed outside 0–2 or one that is
+not a number at all, a goal that is not one of the eight, a priority of 0
+(excluded on purpose, so no config can outrank a mob's ability to swim) or
+above 32, a clip hung on `vellum:target_nearest` which is the one goal that
+carries none, goals with nothing to target, and an item `model` written as a
+number — which is the habit the old vocabulary taught and which now names
+nothing.
 
-`voidling.vellum` ships as the worked example: a 420-health boss with a purple
-segmented bar, fog, a threat table, three skills and a level curve.
+That last one matters more than it looks. On the server an unrecognised key is
+an **error**, not a warning, and content is swapped in only when the whole
+report is clean — one report spanning every kind. So a single bad mob holds
+back every item, block and furniture piece on that server. Catching it here is
+catching it before it becomes everyone's problem.
+
+`voidling.vellum` ships as the worked example: a 420-health `WITHER_SKELETON`
+that does not despawn, with four goals in priority order, a strike clip hung
+on its melee goal, and idle and walk bound to its own animations.
+
+### Where the file goes
+
+**One directory per thing, and the directory name *is* the id.**
+
+```
+plugins/Vellum/mobs/<id>/mob.yml
+plugins/Vellum/items/<id>/item.yml
+```
+
+This is not pedantry about layout. Discovery walks for *directories* and then
+opens one fixed filename inside each; nothing anywhere lists `.yml` files in a
+kind directory. So a flat `mobs/<id>.yml` — which is what this wrote until the
+plugin side described the loader — is not a wrong path that errors. It is a
+path no reader ever visits: copied to disk, never opened, never diagnosed.
+Silence is the worst failure mode available, and it is why that one was worth
+being told rather than guessed.
+
+Two more that bite. A content file's root takes **exactly two keys**,
+`config-version: 1` and that kind's collection key — every other root key is an
+error. And a mob's collection key is **`entities`, not `mobs`**: the directory
+moved at some point and the key did not.
+
+`entities` is confirmed. `items` is *not* — it is inferred from the directory
+name, and the mob case is the proof that inference is unsound. So an item
+config is previewed with the caveat written into the file and is held out of
+the export until the plugin confirms it, because a root key the parser refuses
+is exactly the error that holds back everything else on the server.
 
 ### What the shape buys
 

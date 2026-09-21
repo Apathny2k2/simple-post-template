@@ -31,7 +31,7 @@ import { safeId, textureName, toMinecraftModel } from './mcmodel'
 import type { TranslationIssue } from './mcmodel'
 import { dataUriBytes, makeZip } from './zip'
 import type { ZipEntry } from './zip'
-import { toYaml } from './config'
+import { configPath, keyConfirmed, toYaml } from './config'
 import type { Model, ProjectKind, Vec3 } from './model'
 
 export type PackItem = {
@@ -228,7 +228,18 @@ export function buildConfigs(items: PackItem[]): PackReport {
       skipped.push({ id: item.id, why: 'nothing configured on it yet' })
       continue
     }
-    files.push({ path: `${item.kind}/${name}.yml`, kind: 'text', bytes: utf8(yaml) })
+    /* Held back rather than guessed. A root key the parser does not
+       recognise is an error, and the reload swaps content only when the
+       whole report is clean - so one file with the wrong key holds back
+       every mob, item and block on the server, not just this one. */
+    if (!keyConfirmed(item.kind)) {
+      skipped.push({
+        id: item.id,
+        why: 'its root collection key is not confirmed yet — shipping the wrong one would block the server’s whole content reload, so it is previewed in the Config tab rather than written here',
+      })
+      continue
+    }
+    files.push({ path: configPath(item.kind, name), kind: 'text', bytes: utf8(yaml) })
   }
 
   return { files, issues: [], skipped }

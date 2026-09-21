@@ -9,7 +9,7 @@
 
 import { useMemo, useState } from 'react'
 import { Icon } from '../../lib/icons'
-import { toYaml } from '../../lib/config'
+import { configPath, toYaml } from '../../lib/config'
 import type { Config } from '../../lib/config'
 import { saveFile } from '../../lib/download'
 import type { ProjectKind } from '../../lib/model'
@@ -53,7 +53,10 @@ export function ConfigOutput({
 }) {
   const [note, setNote] = useState<string | null>(null)
   const yaml = useMemo(() => toYaml(id, kind, config), [id, kind, config])
-  const file = `${kind === 'mobs' ? 'mobs' : 'items'}/${id}.yml`
+  /* One directory per thing, and the directory name IS the id. A flat
+     `mobs/<id>.yml` is not a wrong path that errors - it is a path no
+     reader ever visits. */
+  const file = configPath(kind, id)
   const lines = yaml.replace(/\n$/, '').split('\n')
 
   const say = (m: string) => {
@@ -81,7 +84,7 @@ export function ConfigOutput({
         <button
           className="btn btn--sm btn--primary"
           onClick={() => {
-            void saveFile(`${id}.yml`, yaml).then((m) => say(m || `Saved ${id}.yml.`))
+            void saveFile(kind === 'mobs' ? 'mob.yml' : 'item.yml', yaml).then((m) => say(m || `Saved ${file}.`))
           }}
         >
           <Icon name="download" size={12} /> Save .yml

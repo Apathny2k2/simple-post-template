@@ -232,20 +232,10 @@ const files = await p.evaluate(async () => {
        just a shape. Custom model data is the line that ties this config
        back to the model in the same file. */
     config: {
-      material: 'DIAMOND_SWORD',
       display: '&bRunic Blade',
+      model: 'vellum:runic_blade',
       lore: ['&7Cut from a stone that remembers.', '&8Hums when a rune is near.'],
-      model: 1001,
-      unbreakable: true,
-      hideFlags: true,
-      glint: true,
-      enchants: [{ name: 'SHARPNESS', level: '4' }, { name: 'FIRE_ASPECT', level: '1' }],
-      attributes: [
-        { slot: 'MainHand', attribute: 'Damage', value: '11' },
-        { slot: 'MainHand', attribute: 'AttackSpeed', value: '1.5' },
-      ],
-      skills: [{ skill: 'skill{s=RunicArc}', trigger: '~onUse', chance: '0.35' }],
-      dropGlow: true,
+      stack: '1',
     },
     cubes: [
       { name: 'pommel',    from: [-2,-2,-2],      to: [2,1,2],        origin: [0,0,0],    look: gold },

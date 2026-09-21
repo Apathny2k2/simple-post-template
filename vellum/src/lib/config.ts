@@ -71,200 +71,129 @@ export type Field = {
 
 export type Section = { id: string; title: string; blurb: string; fields: Field[] }
 
-/* ---------------- vocabularies ---------------- */
+/* ---------------- vocabularies ----------------
 
-export const ENTITY_TYPES = [
+   These are the plugin's, not MythicMobs'. The operator settled it:
+   borrowing another plugin's spelling for a config only our own runtime
+   reads buys familiarity and costs a permanent translation layer, plus
+   it implies a compatibility we do not have.
+   --------------------------------------------------------------- */
+
+/**
+ * The vanilla entity a custom mob is built on.
+ *
+ * Suggestions, not a closed list - but note that the server refuses a
+ * base whose AI is Brain-driven, because such a mob would accept every
+ * goal below and silently ignore all of them. It checks the live entity
+ * registry at boot, so which ones those are is the server's answer and
+ * not a list worth freezing here.
+ */
+export const BASES = [
   'ZOMBIE', 'SKELETON', 'WITHER_SKELETON', 'CREEPER', 'SPIDER', 'CAVE_SPIDER', 'ENDERMAN',
   'BLAZE', 'GHAST', 'SLIME', 'MAGMA_CUBE', 'WITCH', 'VINDICATOR', 'EVOKER', 'PILLAGER',
-  'RAVAGER', 'PIGLIN', 'PIGLIN_BRUTE', 'HOGLIN', 'ZOGLIN', 'WARDEN', 'IRON_GOLEM',
-  'VILLAGER', 'WOLF', 'CAT', 'HORSE', 'BEE', 'ALLAY', 'ARMOR_STAND', 'WITHER', 'ENDER_DRAGON',
+  'RAVAGER', 'PIGLIN', 'PIGLIN_BRUTE', 'HOGLIN', 'ZOGLIN', 'IRON_GOLEM', 'WOLF', 'CAT',
+  'HORSE', 'BEE', 'BAT', 'ARMOR_STAND',
 ] as const
 
-export const BAR_COLORS = ['RED', 'BLUE', 'GREEN', 'YELLOW', 'PURPLE', 'PINK', 'WHITE'] as const
-
-export const BAR_STYLES = [
-  'SOLID', 'SEGMENTED_6', 'SEGMENTED_10', 'SEGMENTED_12', 'SEGMENTED_20',
+/** The eight goals the runtime implements. There is no ninth. */
+export const GOALS = [
+  'vellum:target_nearest', 'melee_attack', 'leap_at_target', 'circle_strafe',
+  'flee', 'wander', 'guard_area', 'look_at_target',
 ] as const
 
-export const AI_GOALS = [
-  'clear', 'meleeattack', 'randomstroll', 'lookatplayers', 'lookatentity', 'randomlookaround',
-  'opendoors', 'floatinwater', 'breakdoors', 'eatgrass', 'fleegolems', 'gotoowner',
-  'bowmaster', 'rangedattack', 'spiderattack', 'skeletonbowattack', 'leapattarget',
-] as const
+/**
+ * The animation states that are live.
+ *
+ * `attack` and `death` are Retired: accepted for compatibility, warned
+ * about once and dropped before the definition is built. A clip that is
+ * neither idle nor walk plays through a goal's own `animation` option.
+ */
+export const ANIMATION_STATES = ['idle', 'walk'] as const
 
-export const AI_TARGETS = [
-  'clear', 'players', 'nearestplayer', 'attacker', 'owner', 'monsters', 'villagers',
-  'otherfactions', 'specificfaction', 'nearestcreeper', 'golems', 'anyentity',
-] as const
+/** Tri-state. Blank is not false - it is "say nothing and inherit". */
+const TRISTATE = ['', 'true', 'false'] as const
 
-export const TRIGGERS = [
-  '~onTimer:100', '~onSpawn', '~onDeath', '~onDamaged', '~onAttack', '~onInteract',
-  '~onCombat', '~onKillPlayer', '~onPlayerKill', '~onSignal', '~onUse', '~onDrop',
-] as const
+/* ---------------- the schema ----------------
 
-export const DAMAGE_CAUSES = [
-  'FIRE', 'FIRE_TICK', 'LAVA', 'DROWNING', 'FALL', 'EXPLOSION', 'PROJECTILE', 'MAGIC',
-  'POISON', 'WITHER', 'FALLING_BLOCK', 'THORNS', 'LIGHTNING', 'ENTITY_ATTACK',
-] as const
+   WHERE THE DEFAULTS COME FROM. A `fallback` here means "equal to this
+   is not written", so a wrong one silently drops a choice the user made
+   on purpose. Only two are known from the runtime: `health` is 20, and
+   `movement-speed` deliberately has NONE - unset must stay unset, so a
+   bat-based mob and a golem-based mob each keep their own base speed.
 
-export const EQUIP_SLOTS = ['HEAD', 'CHEST', 'LEGS', 'FEET', 'HAND', 'OFFHAND'] as const
+   Everything else whose default we do not know is left able to say
+   nothing at all: the numbers are text (blank = inherit) and the flags
+   are tri-state rather than checkboxes. A checkbox cannot express
+   "unset", and guessing that unset means false would write `false` over
+   a server default of true.
+   --------------------------------------------------------------- */
 
-export const MATERIALS = [
-  'DIAMOND_SWORD', 'NETHERITE_SWORD', 'IRON_SWORD', 'STONE_SWORD', 'WOODEN_SWORD',
-  'DIAMOND_AXE', 'DIAMOND_PICKAXE', 'DIAMOND_SHOVEL', 'DIAMOND_HOE', 'BOW', 'CROSSBOW',
-  'TRIDENT', 'SHIELD', 'POTION', 'SPLASH_POTION', 'BREAD', 'GOLDEN_APPLE', 'COOKED_BEEF',
-  'STICK', 'BLAZE_ROD', 'PAPER', 'DIAMOND_HELMET', 'DIAMOND_CHESTPLATE', 'DIAMOND_LEGGINGS',
-  'DIAMOND_BOOTS', 'PLAYER_HEAD', 'STONE', 'MAGMA_BLOCK',
-] as const
-
-export const ENCHANTS = [
-  'SHARPNESS', 'SMITE', 'BANE_OF_ARTHROPODS', 'KNOCKBACK', 'FIRE_ASPECT', 'LOOTING',
-  'SWEEPING', 'EFFICIENCY', 'SILK_TOUCH', 'UNBREAKING', 'FORTUNE', 'POWER', 'PUNCH',
-  'FLAME', 'INFINITY', 'PROTECTION', 'FIRE_PROTECTION', 'BLAST_PROTECTION',
-  'PROJECTILE_PROTECTION', 'THORNS', 'DEPTH_STRIDER', 'MENDING', 'VANISHING_CURSE',
-] as const
-
-export const ATTRIBUTE_SLOTS = ['MainHand', 'OffHand', 'Head', 'Chest', 'Legs', 'Feet', 'All'] as const
-
-export const ATTRIBUTES = [
-  'Damage', 'AttackSpeed', 'Health', 'MovementSpeed', 'Armor', 'ArmorToughness',
-  'KnockbackResistance', 'Luck', 'FollowRange',
-] as const
-
-/* ---------------- the schema ---------------- */
+const flag = (key: string, label: string, help: string): Field => ({
+  key, label, kind: 'select', path: key, options: TRISTATE, fallback: '', help,
+})
 
 const MOB_SECTIONS: Section[] = [
   {
     id: 'identity',
     title: 'Identity',
-    blurb: 'What it is built on, and what a player sees above it.',
+    blurb: 'What it is built on, what renders, and what a player sees above it.',
     fields: [
-      { key: 'type', label: 'Base entity', kind: 'text', path: 'Type', options: ENTITY_TYPES,
+      { key: 'base', label: 'Base entity', kind: 'text', path: 'base', options: BASES,
         placeholder: 'ZOMBIE', fallback: '',
-        help: 'The vanilla mob this one is built on. Its AI, hitbox and sounds come from here.' },
-      { key: 'display', label: 'Display name', kind: 'text', path: 'Display',
-        placeholder: '&cThe Warden', fallback: '',
-        help: 'Colour codes with &. Shown on the name plate and, by default, on the boss bar.' },
-      { key: 'faction', label: 'Faction', kind: 'text', path: 'Faction', fallback: '',
-        help: 'Groups mobs so they can be targeted - or spared - as a side.' },
-      { key: 'mount', label: 'Mount', kind: 'text', path: 'Mount', fallback: '',
-        help: 'Another custom mob this one rides in on.' },
+        help: 'The vanilla mob this one is built on - its hitbox, sounds and swimming come from here. A Brain-driven base is refused by the server, because it would ignore every goal below.' },
+      { key: 'display', label: 'Display name', kind: 'text', path: 'display-name',
+        placeholder: '&5The Voidling', fallback: '',
+        help: 'Colour codes with &. Shown on the name plate.' },
+      { key: 'model', label: 'Model', kind: 'text', path: 'model',
+        placeholder: 'vellum:voidling', fallback: '',
+        help: 'A resource key, not a number. This is what the rig is baked under.' },
     ],
   },
   {
-    id: 'stats',
-    title: 'Stats',
-    blurb: 'The numbers that decide how long a fight lasts.',
+    id: 'flags',
+    title: 'Flags',
+    blurb: 'Nine values read straight off the server\u2019s catalogue. Leave one blank to inherit it.',
     fields: [
-      { key: 'health', label: 'Health', kind: 'number', path: 'Health', min: 1, step: 1, fallback: 20 },
-      { key: 'damage', label: 'Damage', kind: 'number', path: 'Damage', min: 0, step: 0.5, fallback: 0,
-        help: 'In half-hearts, before armour.' },
-      { key: 'armor', label: 'Armour', kind: 'number', path: 'Armor', min: 0, max: 30, step: 1, fallback: 0 },
-      { key: 'speed', label: 'Movement speed', kind: 'number', path: 'Options.MovementSpeed',
-        min: 0, max: 2, step: 0.01, fallback: 0.2, help: 'Vanilla walking speed is 0.2.' },
-      { key: 'follow', label: 'Follow range', kind: 'number', path: 'Options.FollowRange',
-        min: 0, max: 128, step: 1, fallback: 16, help: 'Blocks. How far it notices a target.' },
-      { key: 'knockback', label: 'Knockback resistance', kind: 'number',
-        path: 'Options.KnockbackResistance', min: 0, max: 1, step: 0.05, fallback: 0 },
-      { key: 'scale', label: 'Scale', kind: 'number', path: 'Options.Scale', min: 0.1, max: 16, step: 0.1,
-        fallback: 1, help: 'Multiplies the hitbox as well as the model.' },
-    ],
-  },
-  {
-    id: 'options',
-    title: 'Options',
-    blurb: 'The switches that decide how it behaves outside a fight.',
-    fields: [
-      { key: 'despawn', label: 'Despawn', kind: 'bool', path: 'Options.Despawn', fallback: true,
-        help: 'Off keeps a boss in the world when the last player walks away.' },
-      { key: 'showName', label: 'Always show name', kind: 'bool', path: 'Options.AlwaysShowName', fallback: false },
-      { key: 'collidable', label: 'Collidable', kind: 'bool', path: 'Options.Collidable', fallback: true },
-      { key: 'pickup', label: 'Prevent item pickup', kind: 'bool', path: 'Options.PreventItemPickup', fallback: false },
-      { key: 'otherDrops', label: 'Prevent vanilla drops', kind: 'bool', path: 'Options.PreventOtherDrops', fallback: false,
-        help: 'On means it drops what Drops says and nothing else.' },
-      { key: 'silent', label: 'Silent', kind: 'bool', path: 'Options.Silent', fallback: false },
-      { key: 'gravity', label: 'No gravity', kind: 'bool', path: 'Options.NoGravity', fallback: false },
-      { key: 'glowing', label: 'Glowing', kind: 'bool', path: 'Options.Glowing', fallback: false },
-      { key: 'invincible', label: 'Invincible', kind: 'bool', path: 'Options.Invincible', fallback: false },
-      { key: 'threat', label: 'Threat table', kind: 'bool', path: 'Modules.ThreatTable', fallback: false,
-        help: 'Targets by accumulated threat rather than by proximity - what makes a boss fight read as a boss fight.' },
-      { key: 'immunity', label: 'Immunity table', kind: 'bool', path: 'Modules.ImmunityTable', fallback: false,
-        help: 'Per-attacker damage cooldowns, so a crowd cannot stunlock it.' },
-    ],
-  },
-  {
-    id: 'bossbar',
-    title: 'Boss bar',
-    blurb: 'The bar across the top of the screen. This is most of what makes a mob read as a boss.',
-    fields: [
-      { key: 'barOn', label: 'Enabled', kind: 'bool', path: 'BossBar.Enabled', fallback: false },
-      { key: 'barTitle', label: 'Title', kind: 'text', path: 'BossBar.Title', fallback: '',
-        placeholder: 'defaults to the display name' },
-      { key: 'barRange', label: 'Range', kind: 'number', path: 'BossBar.Range', min: 1, max: 128, step: 1,
-        fallback: 64, help: 'Blocks. Who can see the bar.' },
-      { key: 'barColor', label: 'Colour', kind: 'select', path: 'BossBar.Color', options: BAR_COLORS, fallback: 'RED' },
-      { key: 'barStyle', label: 'Style', kind: 'select', path: 'BossBar.Style', options: BAR_STYLES, fallback: 'SOLID' },
-      { key: 'barFog', label: 'Create fog', kind: 'bool', path: 'BossBar.CreateFog', fallback: false },
-      { key: 'barDark', label: 'Darken sky', kind: 'bool', path: 'BossBar.DarkenSky', fallback: false },
-      { key: 'barMusic', label: 'Play boss music', kind: 'bool', path: 'BossBar.PlayMusic', fallback: false },
+      { key: 'health', label: 'Health', kind: 'number', path: 'health',
+        min: 0.5, max: 1024, step: 0.5, fallback: 20,
+        help: 'Half a heart to 1024. The default is 20, and writing 20 writes nothing.' },
+      { key: 'speed', label: 'Movement speed', kind: 'text', path: 'movement-speed',
+        placeholder: 'inherit', fallback: '',
+        help: '0 to 2. Blank inherits the base entity\u2019s own speed, which is why this is not a slider - there is no default to slide away from.' },
+      { key: 'scale', label: 'Scale', kind: 'text', path: 'scale',
+        placeholder: 'inherit', fallback: '',
+        help: '0.0625 to 16. Blank leaves it to the base entity.' },
+      flag('gravity', 'Gravity', 'Blank inherits. false makes it hover.'),
+      flag('invulnerable', 'Invulnerable', 'Blank inherits. true makes it immune to all damage.'),
+      flag('silent', 'Silent', 'Blank inherits. true suppresses its vanilla sounds.'),
+      flag('collides', 'Collides', 'Blank inherits. false lets entities walk through it.'),
+      flag('saved', 'Saved', 'Blank inherits. false means it is gone when the chunk unloads.'),
+      flag('despawns', 'Despawns', 'Blank inherits. false keeps it around away from players.'),
     ],
   },
   {
     id: 'ai',
     title: 'AI',
-    blurb: 'What it decides to do, and who it decides to do it to. Start with clear to drop the vanilla set.',
+    blurb: 'The eight goals the runtime implements, in priority order.',
     fields: [
-      { key: 'goals', label: 'Goal selectors', kind: 'list', path: 'AIGoalSelectors', options: AI_GOALS, fallback: [] },
-      { key: 'targets', label: 'Target selectors', kind: 'list', path: 'AITargetSelectors', options: AI_TARGETS, fallback: [] },
+      { key: 'goals', label: 'Goals', kind: 'rows', path: 'ai.goals',
+        columns: [
+          { key: 'goal', label: 'Goal', width: 3, suggest: GOALS },
+          { key: 'priority', label: 'Priority', width: 1 },
+          { key: 'animation', label: 'Animation', width: 2 },
+        ],
+        help: 'Priority runs 1 to 32, lower first. 0 is excluded on purpose, so no config can outrank a mob\u2019s ability to swim. Every goal but vellum:target_nearest can name a clip to play while it runs.' },
     ],
   },
   {
-    id: 'skills',
-    title: 'Skills',
-    blurb: 'A skill, and what sets it off. This is where a boss stops being a zombie with a lot of health.',
+    id: 'animations',
+    title: 'Animations',
+    blurb: 'Only two states are live. Everything else plays through a goal.',
     fields: [
-      { key: 'skills', label: 'Skills', kind: 'rows', path: 'Skills', fallback: [],
-        columns: [
-          { key: 'skill', label: 'Skill', width: 3 },
-          { key: 'trigger', label: 'Trigger', width: 2, suggest: TRIGGERS },
-          { key: 'chance', label: 'Chance', width: 1 },
-        ] },
-    ],
-  },
-  {
-    id: 'loot',
-    title: 'Equipment and drops',
-    blurb: 'What it wears, and what it leaves behind.',
-    fields: [
-      { key: 'equipment', label: 'Equipment', kind: 'rows', path: 'Equipment', fallback: [],
-        columns: [
-          { key: 'item', label: 'Item', width: 3 },
-          { key: 'slot', label: 'Slot', width: 2, suggest: EQUIP_SLOTS },
-        ] },
-      { key: 'drops', label: 'Drops', kind: 'rows', path: 'Drops', fallback: [],
-        columns: [
-          { key: 'item', label: 'Item', width: 3 },
-          { key: 'amount', label: 'Amount', width: 1 },
-          { key: 'chance', label: 'Chance', width: 1 },
-        ] },
-      { key: 'modifiers', label: 'Damage modifiers', kind: 'rows', path: 'DamageModifiers', fallback: [],
-        columns: [
-          { key: 'cause', label: 'Cause', width: 3, suggest: DAMAGE_CAUSES },
-          { key: 'multiplier', label: 'x', width: 1 },
-        ] },
-    ],
-  },
-  {
-    id: 'levels',
-    title: 'Levels',
-    blurb: 'What one level is worth, so the same mob can be scaled rather than copied.',
-    fields: [
-      { key: 'lvHealth', label: 'Health per level', kind: 'number', path: 'LevelModifiers.Health', step: 1, fallback: 0 },
-      { key: 'lvDamage', label: 'Damage per level', kind: 'number', path: 'LevelModifiers.Damage', step: 0.5, fallback: 0 },
-      { key: 'lvArmor', label: 'Armour per level', kind: 'number', path: 'LevelModifiers.Armor', step: 0.5, fallback: 0 },
-      { key: 'lvPower', label: 'Power per level', kind: 'number', path: 'LevelModifiers.Power', step: 0.1, fallback: 0,
-        help: 'Scales skill damage rather than melee.' },
-      { key: 'kills', label: 'Kill messages', kind: 'list', path: 'KillMessages', fallback: [] },
+      { key: 'idle', label: 'Idle clip', kind: 'text', path: 'animations.idle',
+        placeholder: 'idle', fallback: '', help: 'The clip that plays when it is doing nothing else.' },
+      { key: 'walk', label: 'Walk clip', kind: 'text', path: 'animations.walk',
+        placeholder: 'walk', fallback: '', help: 'The clip that plays while it moves.' },
     ],
   },
 ]
@@ -273,68 +202,19 @@ const ITEM_SECTIONS: Section[] = [
   {
     id: 'identity',
     title: 'Identity',
-    blurb: 'The vanilla item this is painted onto, and what it is called.',
+    blurb: 'What it is called, what it renders as, and how it stacks.',
     fields: [
-      { key: 'material', label: 'Material', kind: 'text', path: 'Id', options: MATERIALS,
-        placeholder: 'DIAMOND_SWORD', fallback: '',
-        help: 'The vanilla item. Its model is replaced by this one through the model data below.' },
-      { key: 'display', label: 'Display name', kind: 'text', path: 'Display',
-        placeholder: '&bRunic Blade', fallback: '' },
-      { key: 'lore', label: 'Lore', kind: 'list', path: 'Lore', fallback: [],
-        help: 'One line each, under the name. Colour codes with &.' },
-      { key: 'model', label: 'Custom model data', kind: 'number', path: 'Model', min: 0, step: 1, fallback: 0,
-        help: 'The number your resource pack maps to this model. Without it the item keeps the vanilla look.' },
-      { key: 'amount', label: 'Amount', kind: 'number', path: 'Amount', min: 1, step: 1, fallback: 1 },
-    ],
-  },
-  {
-    id: 'options',
-    title: 'Options',
-    blurb: 'How the item itself behaves in a hand and in a slot.',
-    fields: [
-      { key: 'unbreakable', label: 'Unbreakable', kind: 'bool', path: 'Options.Unbreakable', fallback: false },
-      { key: 'glint', label: 'Glint', kind: 'bool', path: 'Options.Glint', fallback: false,
-        help: 'The enchanted shimmer, without an enchantment.' },
-      { key: 'hideFlags', label: 'Hide flags', kind: 'bool', path: 'Options.HideFlags', fallback: false,
-        help: 'Hides the vanilla attribute and enchantment lines, so the lore is all a player reads.' },
-      { key: 'colour', label: 'Colour', kind: 'text', path: 'Options.Color', placeholder: '255,64,32', fallback: '',
-        help: 'Leather dye or potion tint, as R,G,B.' },
-      { key: 'repair', label: 'Repair cost', kind: 'number', path: 'Options.RepairCost', min: 0, step: 1, fallback: 0 },
-      { key: 'durability', label: 'Durability', kind: 'number', path: 'Durability', min: 0, step: 1, fallback: 0 },
-    ],
-  },
-  {
-    id: 'power',
-    title: 'Enchantments and attributes',
-    blurb: 'What it does to whoever holds it.',
-    fields: [
-      { key: 'enchants', label: 'Enchantments', kind: 'rows', path: 'Enchantments', fallback: [],
-        columns: [
-          { key: 'name', label: 'Enchantment', width: 3, suggest: ENCHANTS },
-          { key: 'level', label: 'Lv', width: 1 },
-        ] },
-      { key: 'attributes', label: 'Attributes', kind: 'rows', path: 'Attributes', fallback: [],
-        columns: [
-          { key: 'slot', label: 'Slot', width: 2, suggest: ATTRIBUTE_SLOTS },
-          { key: 'attribute', label: 'Attribute', width: 2, suggest: ATTRIBUTES },
-          { key: 'value', label: 'Value', width: 1 },
-        ] },
-    ],
-  },
-  {
-    id: 'skills',
-    title: 'Skills and drops',
-    blurb: 'What it does when used, and how it behaves on the floor.',
-    fields: [
-      { key: 'skills', label: 'Skills', kind: 'rows', path: 'Skills', fallback: [],
-        columns: [
-          { key: 'skill', label: 'Skill', width: 3 },
-          { key: 'trigger', label: 'Trigger', width: 2, suggest: TRIGGERS },
-          { key: 'chance', label: 'Chance', width: 1 },
-        ] },
-      { key: 'dropGlow', label: 'Glowing on the ground', kind: 'bool', path: 'DropOptions.Glowing', fallback: false },
-      { key: 'dropBeam', label: 'Beacon beam', kind: 'text', path: 'DropOptions.BeaconBeam', fallback: '',
-        placeholder: 'RED', help: 'A column of light over the drop, so a rare one is not missed.' },
+      { key: 'display', label: 'Display name', kind: 'text', path: 'display-name',
+        placeholder: '&bRunic Blade', fallback: '', help: 'Colour codes with &.' },
+      { key: 'model', label: 'Model', kind: 'text', path: 'model',
+        placeholder: 'vellum:runic_blade', fallback: '',
+        help: 'A resource key naming the item definition, NOT a custom-model-data number. The number was the other plugin\u2019s idea and has no counterpart here.' },
+      { key: 'lore', label: 'Lore', kind: 'list', path: 'lore',
+        help: 'One line per entry, shown under the name.' },
+      { key: 'stack', label: 'Max stack size', kind: 'text', path: 'max-stack-size',
+        placeholder: 'inherit', fallback: '', help: 'Blank leaves it to the base item.' },
+      { key: 'durability', label: 'Durability', kind: 'text', path: 'durability',
+        placeholder: 'inherit', fallback: '', help: 'Blank leaves it to the base item.' },
     ],
   },
 ]
@@ -447,22 +327,6 @@ export function toYaml(id: string, kind: ProjectKind, config: Config): string {
     const v = config[f.key]
     if (f.kind === 'rows') {
       const lines = (v as Row[]).map((r) => rowLine(f, r)).filter((l) => l.length > 0)
-      /* Attributes are the one shape that is a map rather than a list:
-         they are grouped by the slot they apply in. */
-      if (f.key === 'attributes') {
-        const bySlot: Tree = {}
-        for (const row of v as Row[]) {
-          const slot = (row.slot ?? '').trim()
-          const attr = (row.attribute ?? '').trim()
-          const val = (row.value ?? '').trim()
-          if (!slot || !attr || !val) continue
-          const group = (bySlot[slot] as Tree) ?? (bySlot[slot] = {})
-          const n = Number(val)
-          group[attr] = Number.isFinite(n) ? n : val
-        }
-        if (Object.keys(bySlot).length) put(f.path, bySlot as unknown as string[])
-        continue
-      }
       if (lines.length) put(f.path, lines)
       continue
     }
@@ -471,16 +335,76 @@ export function toYaml(id: string, kind: ProjectKind, config: Config): string {
       if (lines.length) put(f.path, lines)
       continue
     }
+    /* A tri-state is stored as '', 'true' or 'false' because a checkbox
+       cannot say "unset". By the time it reaches the writer it has to be
+       a real boolean, or `scalar` quotes it - and it is right to: an
+       unquoted lore line reading `no` would become a boolean too. So the
+       coercion belongs here, where we know the field, rather than there,
+       where only the value is visible. */
+    if (f.kind === 'select' && f.options === TRISTATE) {
+      put(f.path, v === 'true')
+      continue
+    }
+    /* Likewise a number typed into a text field because its default is
+       "inherit": write it as a number so the type is not left to YAML. */
+    if (f.kind === 'text' && typeof v === 'string' && v.trim() !== '' && Number.isFinite(Number(v))) {
+      put(f.path, Number(v))
+      continue
+    }
     put(f.path, v as string | number | boolean)
   }
 
+  /* THE ROOT IS NOT THE ID. A content file accepts exactly two root
+     keys - `config-version` and that kind's collection key - and every
+     other root key is an error. And for a mob the collection key is
+     `entities`, NOT `mobs`: the directory is `mobs/`, the key is not.
+     The directory moved at some point and the key did not. */
   const out: string[] = []
-  emit({ [id]: tree }, '', out)
+  emit({ 'config-version': 1, [collectionKey(kind)]: { [id]: tree } }, '', out)
   const body = out.join('\n')
-  const file = kind === 'mobs' ? 'mobs' : 'items'
-  return body
-    ? `# ${file}/${id}.yml — written by Vellum\n${body}\n`
-    : `# ${file}/${id}.yml — written by Vellum\n# Nothing set yet.\n`
+  const caveat = keyConfirmed(kind)
+    ? ''
+    : `# NOTE: the root key "${collectionKey(kind)}" is not confirmed for this kind.\n` +
+      `# A mob's directory is mobs/ but its key is "entities", so the directory\n` +
+      `# name is not evidence. Check against the plugin before loading this.\n`
+  return `# ${configPath(kind, id)} — written by Vellum\n${caveat}${
+    hasBody(tree) ? body : `config-version: 1\n# Nothing set yet.`
+  }\n`
+}
+
+const hasBody = (tree: Tree) => Object.keys(tree).length > 0
+
+/**
+ * The root collection key for a kind.
+ *
+ * `entities` for a mob is confirmed. `items` is NOT - it is inferred
+ * from the directory name, and the mob case is the proof that the
+ * inference is unsound: there the directory is `mobs/` and the key is
+ * `entities`. Until the plugin confirms it, an item file is previewed
+ * with the caveat on it and is not written into the export, because a
+ * root key the parser does not know is an error that holds back the
+ * content swap for every kind on the server at once.
+ */
+export const MOB_KEY = 'entities'
+export const ITEM_KEY_UNCONFIRMED = 'items'
+export const collectionKey = (kind: ProjectKind): string =>
+  kind === 'mobs' ? MOB_KEY : ITEM_KEY_UNCONFIRMED
+
+/** True where we know the root key, and so may safely write the file. */
+export const keyConfirmed = (kind: ProjectKind): boolean => kind === 'mobs'
+
+/**
+ * Where the file goes, relative to the plugin's data folder.
+ *
+ * ONE DIRECTORY PER THING, and the directory name IS the id - a
+ * definition declaring a different key is refused by name. Discovery
+ * walks for directories and then opens one fixed file name inside each;
+ * it never lists `.yml` files in a kind directory. So a flat
+ * `mobs/<id>.yml` is not a wrong path that errors, it is a path no
+ * reader ever visits: copied to disk, never opened, never diagnosed.
+ */
+export function configPath(kind: ProjectKind, id: string): string {
+  return kind === 'mobs' ? `mobs/${id}/mob.yml` : `items/${id}/item.yml`
 }
 
 /* ---------------- rules ---------------- */
@@ -501,9 +425,7 @@ export function validateConfig(
   if (!kind || !config || !hasConfig(kind)) return []
   const out: ConfigIssue[] = []
   const str = (k: string) => String(config[k] ?? '').trim()
-  const num = (k: string) => Number(config[k] ?? 0)
   const rows = (k: string) => (Array.isArray(config[k]) ? (config[k] as Row[]) : [])
-  const list = (k: string) => (Array.isArray(config[k]) ? (config[k] as string[]) : [])
   const touched = setFields(kind, config).length > 0
   if (!touched) return []
 
@@ -511,79 +433,94 @@ export function validateConfig(
     out.push({ level: 'error', message: `"${id}" cannot be an id - letters, digits and underscores only` })
   }
 
+  /** A blank stays blank: the runtime inherits it. Only a typed value is checked. */
+  const range = (key: string, label: string, lo: number, hi: number) => {
+    const raw = str(key)
+    if (!raw) return
+    const n = Number(raw)
+    if (!Number.isFinite(n)) {
+      out.push({ level: 'error', message: `${label} is "${raw}", which is not a number` })
+    } else if (n < lo || n > hi) {
+      out.push({ level: 'error', message: `${label} is ${n}; the runtime accepts ${lo} to ${hi}` })
+    }
+  }
+
   if (kind === 'mobs') {
-    if (!str('type')) {
+    if (!str('base')) {
       out.push({ level: 'error', message: 'No base entity: there is nothing to build this mob on' })
     }
-    if (num('health') <= 0) {
-      out.push({ level: 'error', message: 'Health of 0 or less: it dies the moment it spawns' })
+
+    const hp = Number(config.health ?? 20)
+    if (Number.isFinite(hp) && (hp < 0.5 || hp > 1024)) {
+      out.push({ level: 'error', message: `Health is ${hp}; the runtime accepts 0.5 to 1024` })
     }
-    if (config.barOn && !str('barTitle') && !str('display')) {
-      out.push({ level: 'warning', message: 'A boss bar with no title and no display name shows an empty bar' })
-    }
-    if (config.barOn && num('health') < 100) {
-      out.push({ level: 'warning', message: `A boss bar over ${num('health')} health: the bar will empty in a hit or two` })
-    }
-    const goals = list('goals')
-    const targets = list('targets')
-    if (goals.length && goals[0] !== 'clear') {
-      out.push({ level: 'warning', message: 'Goal selectors that do not start with "clear" are added to the vanilla set rather than replacing it' })
-    }
-    if (targets.length && targets[0] !== 'clear') {
-      out.push({ level: 'warning', message: 'Target selectors that do not start with "clear" are added to the vanilla set rather than replacing it' })
-    }
-    if (goals.length && !targets.length) {
-      out.push({ level: 'warning', message: 'Goals but no target selectors: it will decide how to attack and never decide whom' })
-    }
-    if (config.threat && !targets.length) {
-      out.push({ level: 'warning', message: 'A threat table with no target selectors has nothing to build threat against' })
-    }
-    for (const r of rows('equipment')) {
-      if (r.slot && !(EQUIP_SLOTS as readonly string[]).includes(r.slot.toUpperCase())) {
-        out.push({ level: 'error', message: `"${r.slot}" is not an equipment slot` })
+    range('speed', 'Movement speed', 0, 2)
+    range('scale', 'Scale', 0.0625, 16)
+
+    /* The goals are a closed list - there are eight and no ninth - so an
+       unknown one is an error rather than a suggestion. It matters more
+       than it looks: an unrecognised key is recorded as an ERROR on the
+       server, and the content swap only happens when the whole report
+       is clean, so one bad mob holds back every item and block on it. */
+    const goals = rows('goals')
+    const seen = new Set<string>()
+    for (const r of goals) {
+      const g = (r.goal ?? '').trim()
+      if (!g) continue
+      if (!(GOALS as readonly string[]).includes(g)) {
+        out.push({ level: 'error', message: `"${g}" is not a goal - the runtime implements ${GOALS.join(', ')}` })
+      }
+      if (seen.has(g)) out.push({ level: 'warning', message: `"${g}" is listed twice` })
+      seen.add(g)
+
+      const p = Number((r.priority ?? '').trim())
+      if ((r.priority ?? '').trim()) {
+        if (!Number.isInteger(p) || p < 1 || p > 32) {
+          out.push({
+            level: 'error',
+            message: p === 0
+              ? 'A priority of 0 is excluded on purpose, so no config can outrank a mob\u2019s ability to swim - 1 is the highest'
+              : `A priority of ${r.priority}: priorities run 1 to 32, lower first`,
+          })
+        }
+      }
+
+      if (g === 'vellum:target_nearest' && (r.animation ?? '').trim()) {
+        out.push({
+          level: 'warning',
+          message: 'vellum:target_nearest is the one goal that carries no animation - the clip here is ignored',
+        })
       }
     }
-    for (const r of rows('drops')) {
-      const c = Number(r.chance)
-      if (r.chance && (!Number.isFinite(c) || c < 0 || c > 1)) {
-        out.push({ level: 'warning', message: `A drop chance of ${r.chance}: a chance is 0 to 1, so 0.25 is a quarter` })
+
+    if (goals.length && !seen.has('vellum:target_nearest')) {
+      out.push({
+        level: 'warning',
+        message: 'Goals but no vellum:target_nearest: it will decide how to fight and never decide whom',
+      })
+    }
+
+    for (const state of ['idle', 'walk'] as const) {
+      const clip = str(state)
+      if (clip && /^(attack|death)$/i.test(clip)) {
+        out.push({
+          level: 'warning',
+          message: `"${clip}" as the ${state} clip looks like a retired state - attack and death are accepted and then dropped; a goal\u2019s own animation is how a clip like that plays`,
+        })
       }
     }
   }
 
   if (kind === 'items') {
-    if (!str('material')) {
-      out.push({ level: 'error', message: 'No material: there is no vanilla item to build this on' })
-    }
-    if (num('model') <= 0 && str('material')) {
+    const model = str('model')
+    if (model && /^[0-9]+$/.test(model)) {
       out.push({
-        level: 'warning',
-        message: 'No custom model data, so this item will use the vanilla model rather than the one being built here',
+        level: 'error',
+        message: `A model of "${model}": this is a resource key like vellum:${id}, not a custom-model-data number`,
       })
     }
-    for (const r of rows('enchants')) {
-      const lv = Number(r.level)
-      if (r.name && (!Number.isFinite(lv) || lv < 1)) {
-        out.push({ level: 'error', message: `"${r.name}" has no level` })
-      }
-    }
-    for (const r of rows('attributes')) {
-      if ((r.attribute || r.value) && !r.slot) {
-        out.push({ level: 'error', message: `The "${r.attribute || r.value}" attribute names no slot, so nothing applies it` })
-      }
-      if (r.value && !Number.isFinite(Number(r.value))) {
-        out.push({ level: 'error', message: `"${r.value}" is not a number` })
-      }
-    }
-  }
-
-  for (const r of rows('skills')) {
-    if (r.skill && !r.trigger) {
-      out.push({ level: 'warning', message: `"${r.skill}" has no trigger, so nothing sets it off` })
-    }
-    if (r.trigger && !r.trigger.startsWith('~')) {
-      out.push({ level: 'error', message: `"${r.trigger}" is not a trigger - a trigger must begin with ~` })
-    }
+    range('stack', 'Max stack size', 1, 99)
+    range('durability', 'Durability', 1, 32767)
   }
 
   return out
