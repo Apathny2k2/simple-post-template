@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState, useSyncExternalStore } from 'react'
 import { Card } from '../components/Card'
+import { ReloadControl } from '../components/ReloadControl'
 import { Menu } from '../components/Menu'
 import type { TriggerProps } from '../components/Menu'
 import { Icon } from '../lib/icons'
@@ -115,6 +116,7 @@ export function Dashboard() {
   const onUnlink = useCallback(() => {
     disconnect()
     dash.reset()
+    setLinked(false)
   }, [])
 
   const onCopyServer = useCallback(() => {
@@ -130,6 +132,12 @@ export function Dashboard() {
     )
     void saveBlob('recent-files.csv', new Blob([[head, ...rows].join('\n')], { type: 'text/csv' }))
   }, [])
+
+  /* Whether a server is linked at all, which is not the same as whether one
+     has fed a card yet: a freshly linked server can be reloaded before it has
+     reported anything. requestReload re-reads the link itself, so this only
+     decides the disabled state and the hint. */
+  const [linked, setLinked] = useState(() => !!loadLink()?.baseUrl)
 
   const total = players.correct + players.wrong
   const pct = total ? Math.round((players.correct / total) * 100) : 0
@@ -284,6 +292,17 @@ export function Dashboard() {
               ? `${pct}% of ${total} connected players are up to date · counted ${formatWhen(players.sampledAt, now)}`
               : 'Nobody is connected.'}
           </p>
+        </Card>
+
+        {/* ---------- apply on the server ---------- */}
+        <Card
+          className="span-apply"
+          eyebrow="Apply"
+          title="Push saved changes live"
+          note="A save writes the files. The server keeps serving the old set until it reloads."
+          dividedHead
+        >
+          <ReloadControl linked={linked} />
         </Card>
 
         {/* ---------- recent files ---------- */}

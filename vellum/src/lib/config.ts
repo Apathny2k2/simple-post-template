@@ -19,11 +19,15 @@
    behaviour is ours: if a field reads 0 to 1 it is because our runtime
    reads 0 to 1, and the plugin half has to implement it.
 
-   The SHAPE deliberately follows the MythicMobs convention - `Type`,
-   `Health`, `BossBar`, `AIGoalSelectors`, skill lines with `~onTimer`.
-   Server operators already know that vocabulary and a config they can
-   read on sight is worth more than one we invented. Borrowing the
-   spelling is not the same as borrowing the reader.
+   The SHAPE is ours as well, and this is the part that changed. An
+   earlier draft of this file borrowed another plugin's spelling -
+   `Type`, `Health`, `BossBar`, `AIGoalSelectors`, `~onTimer` - on the
+   grounds that operators already knew it. That was overturned: a
+   borrowed spelling for a config only our own runtime reads buys
+   familiarity and costs a permanent translation layer, and it implies
+   a compatibility we do not have. The keys in SCHEMA are the ones the
+   plugin's loader actually reads - `base`, `display-name`, `ai.goals`
+   - not a second spelling of them. See the vocabularies note below.
 
    One description drives everything. A field is declared once, in
    SCHEMA below, and the form, the rules and the YAML all read the same
@@ -331,9 +335,12 @@ function written(f: Field, v: ConfigValue | undefined): boolean {
   if (Array.isArray(v)) return v.length > 0
   /* A string has to be compared to its fallback like everything else.
      Checking only that it was non-empty meant a select sitting on its
-     own default - BossBar.Color: RED - counted as set, so an untouched
-     config wrote two keys and the rules then fired on a mob nobody had
-     started configuring. */
+     own default counted as set, so an untouched config wrote keys and
+     the rules then fired on a mob nobody had started configuring.
+     Every select in SCHEMA today falls back to '', which the emptiness
+     check already catches, so the fallback comparison is a guard for
+     the first field that defaults to a real value rather than a live
+     case. It stays: that field is what the bug was. */
   if (typeof v === 'string') return v.trim().length > 0 && v !== f.fallback
   return v !== f.fallback
 }

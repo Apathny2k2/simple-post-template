@@ -30,6 +30,7 @@
 .dash-grid > .span-pack { grid-column: span 4; }
 .dash-grid > .span-count { grid-column: span 4; }
 .dash-grid > .span-feed { grid-column: span 12; }
+.dash-grid > .span-apply { grid-column: span 12; }
 .dash-grid > .span-recent { grid-column: span 12; }
 .dash-grid > .span-api { grid-column: span 12; }
 
