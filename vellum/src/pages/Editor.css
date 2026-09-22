@@ -1946,3 +1946,27 @@
 .pk__out--warn .pk__outhead { color: var(--wax-300); }
 .pk__outrow { font-size: var(--fs-2xs); color: var(--ink-faint); line-height: 1.55; }
 .pk__outrow strong { color: var(--ink-muted); font-weight: 500; }
+
+/* The served-schema report: types the plugin declared that the form
+   could not draw, and states it declared as retired. Not an error - a
+   fact the author needs, because the alternative is a control that
+   offers a value the loader refuses. */
+.cfg-probs {
+  margin: 0 0 var(--sp-3);
+  padding: 9px 11px;
+  border: 1px dashed var(--line-dashed);
+  border-radius: var(--r-md);
+  background: rgba(205, 89, 78, 0.07);
+}
+
+.cfg-probs__head {
+  font-size: var(--fs-2xs);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  font-weight: 600;
+  color: var(--wax-300);
+  margin-bottom: 5px;
+}
+
+.cfg-probs__row { font-size: var(--fs-2xs); color: var(--ink-faint); line-height: 1.55; }
+.cfg-probs__row strong { color: var(--ink-muted); font-weight: 500; }

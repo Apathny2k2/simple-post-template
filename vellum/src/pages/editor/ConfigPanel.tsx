@@ -10,6 +10,7 @@
 import { useState } from 'react'
 import { Icon } from '../../lib/icons'
 import { SCHEMA, getAt, linesOf, rowsOf, setAt, setFields } from '../../lib/config'
+import { useMobSchema } from '../../lib/mob-schema'
 import type { Column, Field, Config, Row, Section } from '../../lib/config'
 import type { ProjectKind } from '../../lib/model'
 
@@ -197,7 +198,11 @@ export function ConfigPanel({
   config: Config
   onChange: (next: Config) => void
 }) {
-  const sections: Section[] = SCHEMA[kind] ?? []
+  /* The SERVED catalogue when a plugin answers, the built-in one when
+     not. The built-in is the standalone shape, not a stale copy: the
+     free tier has no plugin to ask. */
+  const served = useMobSchema(kind)
+  const sections: Section[] = served.sections ?? SCHEMA[kind] ?? []
   const [open, setOpen] = useState<string>(sections[0]?.id ?? '')
   /* Bound by PATH, not by field key: the block is the runtime's own
      body, so `movement-speed` is where the speed lives and `idle` sits
@@ -212,6 +217,38 @@ export function ConfigPanel({
         What this is, rather than what it looks like. Written as YAML, keyed by the
         model&rsquo;s own name so the two cannot drift apart.
       </p>
+
+      {/* WHERE THE FIELDS CAME FROM. A form that silently draws a stale
+          copy of the server's catalogue is the drift this exists to
+          prevent, so it says which one it is reading. */}
+      {served.from === 'plugin' ? (
+        <p className="ed-hint cfg-lead">
+          <Icon name="check" size={11} />
+          Fields declared by the linked plugin — <code className="mono">GET /api/mob/schema</code>.
+        </p>
+      ) : served.from === 'built-in' && kind === 'mobs' ? (
+        <p className="ed-hint cfg-lead">
+          <Icon name="info" size={11} />
+          Built-in schema. {served.reason}
+        </p>
+      ) : null}
+
+      {/* A TYPE THIS FORM CANNOT DRAW IS REPORTED, NOT APPROXIMATED.
+          Drawing a duration as a plain number would offer a control
+          whose value the loader then refuses. */}
+      {served.problems.length ? (
+        <div className="cfg-probs">
+          <div className="cfg-probs__head">
+            {served.problems.length} thing{served.problems.length === 1 ? '' : 's'} the server declared that this
+            form did not draw
+          </div>
+          {served.problems.map((p) => (
+            <p key={`${p.where}:${p.message}`} className="cfg-probs__row">
+              <strong>{p.where}</strong> — {p.message}
+            </p>
+          ))}
+        </div>
+      ) : null}
 
       {sections.map((sec) => {
         const isOpen = open === sec.id
