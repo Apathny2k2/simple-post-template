@@ -459,34 +459,52 @@ export function toYaml(id: string, kind: ProjectKind, config: Config): string {
   const body = bodyOf(kind, config)
   const out: string[] = []
   emit({ 'config-version': 1, [collectionKey(kind)]: { [id]: body } } as Tree, '', out)
-  const caveat = keyConfirmed(kind)
-    ? ''
-    : `# NOTE: the root key "${collectionKey(kind)}" is not confirmed for this kind.\n` +
-      `# A mob's directory is mobs/ but its key is "entities", so the directory\n` +
-      `# name is not evidence. Check against the plugin before loading this.\n`
-  return `# ${configPath(kind, id)} — written by Vellum\n${caveat}${
+  return `# ${configPath(kind, id)} — written by Vellum\n${
     Object.keys(body).length ? out.join('\n') : `config-version: 1\n# Nothing set yet.`
   }\n`
 }
 
 /**
- * The root collection key for a kind.
+ * The root collection key for a kind. BOTH ARE NOW CONFIRMED against
+ * the plugin's own `ContentLayout.Kind`, neither is inferred.
  *
- * `entities` for a mob is confirmed. `items` is NOT - it is inferred
- * from the directory name, and the mob case is the proof that the
- * inference is unsound: there the directory is `mobs/` and the key is
- * `entities`. Until the plugin confirms it, an item file is previewed
- * with the caveat on it and is not written into the export, because a
- * root key the parser does not know is an error that holds back the
- * content swap for every kind on the server at once.
+ * A mob is `mobs/<id>/mob.yml` keyed `entities`; an item is
+ * `items/<id>/item.yml` keyed `items`. So the two look like a rule with
+ * an exception, and it is worth saying which way round: MOB is the only
+ * kind whose collection key differs from its directory name. That is
+ * exactly why `items` was refused rather than inferred from `items/` -
+ * the one case where the directory would have been misleading is the
+ * one case we already had, so the inference had a counterexample before
+ * it had an instance.
+ *
+ * Getting this wrong is not a local error. A root key the parser does
+ * not know fails validation, and the reload swaps content only when the
+ * whole report is clean, so one file with the wrong key holds back
+ * every mob, item and block on the server at once.
  */
 export const MOB_KEY = 'entities'
-export const ITEM_KEY_UNCONFIRMED = 'items'
-export const collectionKey = (kind: ProjectKind): string =>
-  kind === 'mobs' ? MOB_KEY : ITEM_KEY_UNCONFIRMED
+export const ITEM_KEY = 'items'
 
-/** True where we know the root key, and so may safely write the file. */
-export const keyConfirmed = (kind: ProjectKind): boolean => kind === 'mobs'
+/**
+ * One entry per kind, or nothing. A kind we have no evidence for gets
+ * `undefined` rather than a neighbour's answer - the previous version
+ * of this returned the item key for anything that was not a mob, which
+ * would have handed a block the root key `items` the moment blocks grew
+ * a config, and written it into the export without a word.
+ */
+const LAYOUT: Partial<Record<ProjectKind, { dir: string; file: string; key: string }>> = {
+  mobs: { dir: 'mobs', file: 'mob.yml', key: MOB_KEY },
+  items: { dir: 'items', file: 'item.yml', key: ITEM_KEY },
+}
+
+export const collectionKey = (kind: ProjectKind): string => LAYOUT[kind]?.key ?? kind
+
+/**
+ * True where the plugin has told us the root key, and so we may safely
+ * write the file. Mobs and items are confirmed against `ContentLayout`;
+ * blocks are not, and stay out of the export until they are.
+ */
+export const keyConfirmed = (kind: ProjectKind): boolean => !!LAYOUT[kind]
 
 /**
  * Where the file goes, relative to the plugin's data folder.
@@ -499,7 +517,10 @@ export const keyConfirmed = (kind: ProjectKind): boolean => kind === 'mobs'
  * reader ever visits: copied to disk, never opened, never diagnosed.
  */
 export function configPath(kind: ProjectKind, id: string): string {
-  return kind === 'mobs' ? `mobs/${id}/mob.yml` : `items/${id}/item.yml`
+  const at = LAYOUT[kind]
+  /* No layout means no confirmed file name either, so this is only ever
+     reached for a kind `keyConfirmed` has already held back. */
+  return at ? `${at.dir}/${id}/${at.file}` : `${kind}/${id}/${kind}.yml`
 }
 
 /* ---------------- the upgrade off the old shape ---------------- */
