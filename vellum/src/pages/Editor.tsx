@@ -3,6 +3,7 @@ import type { ReactNode } from 'react'
 import { Menu } from '../components/Menu'
 import type { MenuEntry } from '../components/Menu'
 import { ModelView } from '../components/ModelView'
+import { addHitRegion, hitReport, isRegionBone, modeLine } from '../lib/hitregions'
 import { Icon, VellumMark } from '../lib/icons'
 import { arrowNav } from '../lib/a11y'
 import type { IconName } from '../lib/icons'
@@ -1227,12 +1228,14 @@ function Outliner({
         const node = isBone ? row.bone : row.cube
         const visible = node.visible
         const locked = node.locked
+        const region = isBone && isRegionBone(model, row.bone)
         return (
           <div
             key={node.id}
             role="treeitem"
             aria-selected={node.id === selected}
             data-hidden={!visible || undefined}
+            data-region={region || undefined}
             data-drop={over === node.id || undefined}
             data-dragged={dragId === node.id || undefined}
             data-node={node.id}
@@ -1290,6 +1293,42 @@ function Outliner({
                 {node.name}
               </span>
             )}
+
+            {/* HIT REGIONS, ON MOBS ONLY, AS INTENT. The mechanism under
+                this button is "a child bone holding one hidden cube",
+                which is not a thing to ask an author to assemble by
+                hand - and getting it wrong makes the whole mob
+                unhittable with nothing said out loud. The Check block
+                reports the mode; this is how to get there on purpose. */}
+            {isBone && model.kind === 'mobs' ? (
+              region ? (
+                <button
+                  className="tree__toggle"
+                  data-on
+                  data-region
+                  title={`${node.name} is a hit region — remove it`}
+                  aria-label={`Remove the hit region ${node.name}`}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onModel('remove hit region', (m) => deleteBone(m, node.id))
+                  }}
+                >
+                  <Icon name="shape" size={11} />
+                </button>
+              ) : (
+                <button
+                  className="tree__toggle"
+                  title={`Add a hit region on ${node.name}`}
+                  aria-label={`Add a hit region on ${node.name}`}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onModel('add hit region', (m) => addHitRegion(m, node.id)?.model ?? m)
+                  }}
+                >
+                  <Icon name="shape" size={11} />
+                </button>
+              )
+            ) : null}
 
             <button
               className="tree__toggle"
@@ -2554,6 +2593,8 @@ export function Editor({ segments }: { segments: string[] }) {
   /* What a resource pack could not express, which is a different
      question from what the codec would refuse. */
   const translate = useMemo(() => checkTranslation(model, kind), [model, kind])
+  /* Only a mob has hit regions, and only a mob's rig can lose them. */
+  const hit = useMemo(() => (kind === 'mobs' ? hitReport(model) : null), [model, kind])
   const errors = issues.filter((i) => i.level === 'error').length
   /* A panel that says "clean" while holding a warning is worse than one
      that says nothing: it is the thing the user checks before shipping. */
@@ -3291,6 +3332,64 @@ export function Editor({ segments }: { segments: string[] }) {
                 <CubePanel cube={cube} kind={kind} onChange={editCube} snap={snap} />
               </Panel>
             )}
+
+            {/* WHERE IT CAN BE HIT. Its own panel, not a line inside
+                Validation, for two reasons that both cost real time to
+                learn: Validation stays collapsed when a model is clean,
+                and a mob that has just become unhittable IS clean by
+                every other measure - so the warning would sit folded
+                away behind a header reading "clean". And the count
+                below shows the MODE rather than a number, so the answer
+                is readable with the panel shut, which is how it will
+                spend most of its life. */}
+            {hit ? (
+              <Panel
+                title="Where it can be hit"
+                count={
+                  hit.mode === 'explicit'
+                    ? `${hit.regions.length} marked`
+                    : hit.mode === 'derived'
+                      ? `${hit.regions.length} bones`
+                      : 'nothing'
+                }
+                defaultOpen={hit.mode !== 'derived'}
+                /* The moment a rig flips to explicit the panel opens
+                   itself, because the flip is usually an accident and
+                   an accident nobody sees is the whole problem. It
+                   opens once and can still be closed - a nudge, not a
+                   latch. */
+                forceOpen={hit.mode === 'explicit'}
+              >
+                <p className="ed-hint" data-warn={hit.mode !== 'derived' || undefined}>
+                  <Icon name={hit.mode === 'derived' ? 'check' : 'warning'} size={11} /> {modeLine(hit)}
+                </p>
+                {hit.mode === 'explicit' ? (
+                  <ul className="ed-issues">
+                    <li data-level="warning">
+                      <Icon name="warning" size={11} />A bone becomes a marked region by drawing nothing
+                      while holding a hidden cube — so hiding a cube for any reason at all can do this.
+                    </li>
+                    {hit.lost.slice(0, 8).map((l) => (
+                      <li key={l.boneId} data-level="warning">
+                        <Icon name="warning" size={11} />
+                        <strong className="ed-translate__where">{l.boneName}</strong>
+                        is drawn but cannot be hit
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+                {hit.unknowns.length ? (
+                  <ul className="ed-issues">
+                    {hit.unknowns.map((u, n) => (
+                      <li key={n} data-level="warning">
+                        <Icon name="warning" size={11} />
+                        {u}
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+              </Panel>
+            ) : null}
 
             <Panel title="UV" count={`${model.resolution.width} × ${model.resolution.height}`}>
               <UVPanel

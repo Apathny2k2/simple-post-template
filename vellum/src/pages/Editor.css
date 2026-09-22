@@ -1970,3 +1970,9 @@
 
 .cfg-probs__row { font-size: var(--fs-2xs); color: var(--ink-faint); line-height: 1.55; }
 .cfg-probs__row strong { color: var(--ink-muted); font-weight: 500; }
+
+/* A hit region reads as a marked bone rather than an ordinary one: it
+   draws nothing, so without a mark in the outliner it looks like an
+   empty folder somebody forgot to fill. */
+.tree__row[data-region] .tree__name { color: var(--warn); }
+.tree__toggle[data-region] { color: var(--warn); }

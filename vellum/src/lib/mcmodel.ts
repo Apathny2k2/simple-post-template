@@ -26,7 +26,6 @@
    *rotated* bone actually moves its children.
    --------------------------------------------------------------- */
 
-import { hitReport, modeLine } from './hitregions'
 import { FACES } from './model'
 import type { Bone, Cube, FaceKey, Model, ProjectKind, Vec3 } from './model'
 
@@ -146,31 +145,10 @@ export function checkTranslation(
         'A mob has no model file in vanilla Minecraft — entity models are not part of a resource pack. This is the plugin’s to render.',
     })
 
-    /* WHERE IT CAN BE HIT, said out loud, because the engine will not.
-       Explicit-beats-derived is one ternary in the plugin with whole-rig
-       consequences, and the thing that triggers it is hiding a cube -
-       something an author does for reasons that have nothing to do with
-       hit regions. See lib/hitregions.ts. */
-    const hit = hitReport(model)
-    out.push({ level: hit.mode === 'none' ? 'warning' : 'note', message: modeLine(hit) })
-
-    if (hit.mode === 'explicit') {
-      out.push({
-        level: 'warning',
-        message:
-          `Marked regions win outright: ${hit.regions.map((r) => `"${r.boneName}"`).join(', ')} ${hit.regions.length === 1 ? 'is' : 'are'} the only place this mob can be hit. ` +
-          'A bone becomes a marked region by drawing nothing while holding a hidden cube, so this can happen by hiding a cube for an unrelated reason.',
-      })
-      for (const l of hit.lost) {
-        out.push({
-          level: 'warning',
-          where: l.boneName,
-          message: `"${l.boneName}" is drawn but cannot be hit — ${l.why}`,
-        })
-      }
-    }
-
-    for (const u of hit.unknowns) out.push({ level: 'warning', message: u })
+    /* Where it can be hit is NOT a resource-pack question and does not
+       belong in a resource-pack answer - it is the plugin's rig, and it
+       gets its own always-visible readout. See lib/hitregions.ts, and
+       the "Where it can be hit" panel that renders it. */
     return out
   }
 

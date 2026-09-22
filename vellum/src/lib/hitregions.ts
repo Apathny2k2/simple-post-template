@@ -196,3 +196,99 @@ export function modeLine(r: HitReport): string {
   }
   return 'Nothing is hittable: this rig draws nothing and marks nothing.'
 }
+
+/* ---------------- authoring ----------------
+
+   SURFACE THE INTENT, NOT THE MECHANISM. "Make this a hit region"
+   really means "add a child bone, give it a cube, hide the cube, and
+   make sure that bone draws nothing else". Asked to do that by hand an
+   author gets it wrong once, and the mob is then unhittable everywhere
+   with nothing said out loud. Same relationship as a box unwrap, where
+   one origin becomes six face rects.
+   --------------------------------------------------------------- */
+
+import { makeBone, makeCube } from './new-model'
+import type { BoneChild } from './model'
+
+/** Named so the bone reads as what it is in the outliner. */
+export const REGION_PREFIX = 'hit_'
+
+/** A bone this module authored, by its shape rather than by its name. */
+export const isRegionBone = (model: Model, bone: Bone): boolean => {
+  const own = bone.children.filter(isCube)
+  if (!own.length) return false
+  const byId = new Map(model.cubes.map((c) => [c.id, c]))
+  return own.every((c) => byId.get(c.id)?.visible === false)
+}
+
+/** The model-space box a bone's visible cubes fill, or null. */
+function drawnBox(model: Model, bone: Bone): Box | null {
+  const byId = new Map(model.cubes.map((c) => [c.id, c]))
+  const shown = bone.children
+    .filter(isCube)
+    .map((c) => byId.get(c.id))
+    .filter((c): c is Cube => !!c && c.visible)
+  if (!shown.length) return null
+  const min: Vec3 = [Infinity, Infinity, Infinity]
+  const max: Vec3 = [-Infinity, -Infinity, -Infinity]
+  for (const c of shown) {
+    const b = corners(c)
+    for (let i = 0; i < 3; i++) {
+      min[i] = Math.min(min[i], b.min[i])
+      max[i] = Math.max(max[i], b.max[i])
+    }
+  }
+  return { min, max }
+}
+
+const attach = (bones: Bone[], parentId: string, child: BoneChild): Bone[] =>
+  bones.map((b) =>
+    b.id === parentId
+      ? { ...b, children: [...b.children, child] }
+      : {
+          ...b,
+          children: b.children.map((c) =>
+            c.kind === 'bone' ? { kind: 'bone' as const, bone: attach([c.bone], parentId, child)[0] } : c,
+          ),
+        },
+  )
+
+/**
+ * Mark a bone as hittable: a child bone holding one hidden cube.
+ *
+ * The box defaults to whatever the bone draws, so "a hit region on the
+ * head" starts the size of the head rather than at some arbitrary
+ * origin the author then has to find. A bone that draws nothing gets a
+ * modest cube at its pivot instead of nothing at all - a zero-size box
+ * measures to a point and would be a region that cannot be hit, which
+ * is the failure this whole area is about.
+ *
+ * It is a CHILD bone rather than the bone itself on purpose: the bone
+ * keeps drawing what it drew, and the region travels with it because
+ * it hangs off it.
+ */
+export function addHitRegion(model: Model, boneId: string): { model: Model; boneId: string; cubeId: string } | null {
+  const target = allBones(model.bones).find((b) => b.id === boneId)
+  if (!target) return null
+
+  const box = drawnBox(model, target)
+  const from: Vec3 = box ? box.min : [target.origin[0] - 4, target.origin[1], target.origin[2] - 4]
+  const to: Vec3 = box ? box.max : [target.origin[0] + 4, target.origin[1] + 8, target.origin[2] + 4]
+
+  /* Untextured and unmapped: it is never drawn, so a UV island for it
+     would be sheet space spent on nothing. */
+  const cube = { ...makeCube('region', from, to, { texture: null }), visible: false }
+  const bone = makeBone(`${REGION_PREFIX}${target.name}`, [...target.origin] as Vec3, [
+    { kind: 'cube', id: cube.id },
+  ])
+
+  return {
+    model: {
+      ...model,
+      cubes: [...model.cubes, cube],
+      bones: attach(model.bones, boneId, { kind: 'bone', bone }),
+    },
+    boneId: bone.id,
+    cubeId: cube.id,
+  }
+}
