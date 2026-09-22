@@ -35,7 +35,7 @@ export type ReloadOutcome =
   /** The request succeeded and the server declined to swap. Render `report`. */
   | { kind: 'refused'; report: string; stages: string[]; unreadable: string[] }
   /** The request did not produce a verdict at all. */
-  | { kind: 'error'; status: number | null; message: string }
+  | { kind: 'error'; status: number | null; message: string; url: string | null }
 
 const isObj = (v: unknown): v is Record<string, unknown> =>
   !!v && typeof v === 'object' && !Array.isArray(v)
@@ -104,19 +104,20 @@ function errorMessage(status: number, body: unknown): string {
 export async function requestReload(signal?: AbortSignal): Promise<ReloadOutcome> {
   const link = loadLink()
   if (!link?.baseUrl) {
-    return { kind: 'error', status: null, message: 'No server is linked, so there is nothing to reload.' }
+    return { kind: 'error', status: null, url: null, message: 'No server is linked, so there is nothing to reload.' }
   }
 
   const base = link.baseUrl.replace(/\/+$/, '')
+  const url = `${base}/api/reload`
   let res: Response
   try {
-    res = await fetch(`${base}/api/reload`, {
+    res = await fetch(url, {
       method: 'POST',
       headers: link.token ? { Authorization: `Bearer ${link.token}` } : {},
       signal,
     })
   } catch (e) {
-    return { kind: 'error', status: null, message: `Could not reach the server — ${(e as Error).message}` }
+    return { kind: 'error', status: null, url, message: `Could not reach the server — ${(e as Error).message}` }
   }
 
   let body: unknown
@@ -126,7 +127,7 @@ export async function requestReload(signal?: AbortSignal): Promise<ReloadOutcome
     body = undefined
   }
 
-  if (!res.ok) return { kind: 'error', status: res.status, message: errorMessage(res.status, body) }
+  if (!res.ok) return { kind: 'error', status: res.status, url, message: errorMessage(res.status, body) }
 
   if (!isObj(body) || typeof body.reloaded !== 'boolean') {
     /* A 200 that does not say whether it swapped is not a success we can
@@ -135,6 +136,7 @@ export async function requestReload(signal?: AbortSignal): Promise<ReloadOutcome
     return {
       kind: 'error',
       status: res.status,
+      url,
       message: 'The server answered 200 without saying whether it reloaded.',
     }
   }

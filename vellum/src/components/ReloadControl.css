@@ -129,3 +129,15 @@
   .rl__row { align-items: stretch; }
   .rl__go { width: 100%; }
 }
+
+/* The request as made, for reading back to whoever owns the server. */
+.rl__what {
+  margin: 0;
+  font-size: var(--fs-xs);
+  color: var(--ink-muted);
+}
+
+.rl__what code {
+  font-family: var(--font-mono);
+  overflow-wrap: anywhere;
+}

@@ -124,6 +124,16 @@ function Verdict({ outcome }: { outcome: ReloadOutcome }) {
             : `The server answered ${outcome.status}.`}
       </p>
       <p className="rl__msg">{outcome.message}</p>
+      {/* The exact request, because the two failures that matter look the
+          same from the server side: a 404 names an endpoint that does not
+          exist, and a 403 on the same path names an auth gate on one that
+          does. Whoever reads this is the only one who can tell them apart. */}
+      {outcome.url ? (
+        <p className="rl__what">
+          <code>POST {outcome.url}</code>
+          {outcome.status === null ? null : <> → <strong>{outcome.status}</strong></>}
+        </p>
+      ) : null}
     </div>
   )
 }
