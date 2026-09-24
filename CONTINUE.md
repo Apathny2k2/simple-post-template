@@ -19,38 +19,38 @@ Last commits:
 
 ---
 
-## 0. THE FIRST THING TO DO
+## 0. THE RELAY IS DEAD, AND SO IS THE PLUGIN IT SPOKE TO
 
-**Read the relay before writing any code.** The plugin half is another
-Claude session and it answers questions faster than the code does.
+**Do not go looking for the relay.** An earlier version of this file
+opened by telling you to read it first. That is now wrong.
 
-```
-ArtifactData action=query
-  url=https://claude.ai/artifact/LTHATyCb4D8Uevy7UsV3Hj
-  collection=channel          <- NOT "relay"; that name returns
-                                 "No documents matched", which reads
-                                 exactly like "nothing new"
-  query={"where": [["from", "eq", "terminal"]],
-         "order_by": {"field": "at", "direction": "desc"}, "limit": 4}
-  out_dir=<scratch>            <- or each check costs ~12k tokens
-```
+The plugin half of this project was another Claude session working in a
+separate repository. **That repository was deleted and restarted from
+scratch**, with the Studio as the primary objective and the plugin
+rewritten as a wrapper that supports it in game. The relay artifact
+still exists and its last entry is still `0049`, but nothing is on the
+other end.
 
-Odd ids are theirs, even are mine. **Compare ids, never timestamps** —
-their clock runs behind the `at` values I mint, and a watermark filter
-silently skipped a real entry once, costing a deadline.
+The hourly Routine that polled it (`trig_014mhCnhJUMZDq9YTcgPt7vR`) has
+been deleted. Nothing is scheduled any more.
 
-Newest as of writing: theirs `0049`, mine `0060`.
+**The consequence that costs real money if you miss it:** a large part
+of this codebase was written against facts read out of that now-deleted
+source. Those facts are not wrong so much as *unowned* — there is no
+longer anything they describe. §2 lists them. Treat every one as a
+decision to be made rather than a constraint to be obeyed, and check
+against the new plugin before trusting any of it.
 
-### Scheduled checks still running
-
-- `trig_014mhCnhJUMZDq9YTcgPt7vR` — hourly at :13, fires into this
-  session. **This one outlives the session and should be deleted or
-  repointed** (`delete_trigger` / `update_trigger`).
-- A 1-minute `send_later` chain. It self-terminates: each firing
-  re-arms only if a live session handles it, so once this session is
-  closed the last armed tick fires into nothing and the chain stops.
-
----
+**The architecture inverted.** Previously the plugin was the source of
+truth and the Studio read its served declarations — which is why
+`lib/mob-schema.ts` fetches a catalogue instead of holding one, why
+`keyConfirmed` refuses to guess a collection key, and why unknown wire
+types are named and left undrawn rather than approximated. That
+discipline was correct when the plugin owned the format. **If the
+Studio owns it now, several of those guards are asking permission from
+something that no longer exists.** Confirm the ownership question with
+the operator before building on either assumption; it was put to him
+and had not been answered when this was written.
 
 ## 1. THE STYLING FRAMEWORK FOR THE STUDIO — not started, scope undefined
 
@@ -89,47 +89,57 @@ or something else. Do not guess — the same instinct produced a
 
 ---
 
-## 2. WAITING ON THE PLUGIN SESSION
+## 2. NO LONGER ANSWERABLE — these are yours to decide
 
-1. **Does a hidden BONE holding visible cubes count as drawn?** The
-   `RigBaker` extract they sent reads cube-level visibility only.
-   `lib/hitregions.ts` reports this as an *unknown* rather than picking
-   a side — fold the answer in when it arrives.
-2. **`ContentLayout.Kind.BLOCK`** — the collection key and file name
-   for blocks. Until then `keyConfirmed('blocks')` is false and block
-   configs stay out of the pack export. Do not infer it from `blocks/`
-   (see the trap in §5).
-3. **`GET /api/item/schema`** — in adversarial review on their side.
-   They asked to be attacked before it is rendered. Agreed so far:
-   `OptionType` gains `CHOICE`; `OptionSpec` gains `choices` and
-   `required`; `list` declares `items: {type}` for scalars vs
-   `fields: [...]` for records; a `group` sibling exists; one level of
-   nesting, enforced; a `list` carries a required max count; and a
-   `consumable` group declares `implied_by: "food"` with the values the
-   implication produces.
+These were open questions to the plugin session. **Nobody is going to
+answer them.** Each is now a design decision.
 
----
+1. **Hit regions.** `lib/hitregions.ts` derives hittability from rules
+   reverse-engineered out of the old `RigBaker` and `HitRegions`: a
+   region is *a hidden cube in a bone that draws nothing else*, and one
+   such bone silently strips target status from every drawn bone on the
+   mob. The "Where it can be hit" panel exists **solely** to warn about
+   that footgun — hiding a cube for an unrelated reason flips the whole
+   rig. **That constraint came from code that no longer exists. If the
+   Studio owns the format, delete the constraint rather than defending
+   it:** put an explicit region flag on the bone in `.vellum`, and both
+   the trap and the warning go away. Keep the mode readout; it is still
+   worth showing. This is the highest-value cleanup on the list.
+2. **The collection keys and file layout.** `MOB_KEY = 'entities'`,
+   `ITEM_KEY = 'items'`, `config-version: 1`,
+   `mobs/<id>/mob.yml`, `items/<id>/item.yml`, one directory per thing,
+   discovery walking directories only. All of it described the old
+   plugin. `keyConfirmed('blocks')` is still false and blocks are still
+   excluded from the pack export, **waiting on an answer that is not
+   coming.** Decide it.
+3. **The served schemas.** `GET /api/mob/schema` and the never-built
+   `GET /api/item/schema`. `lib/mob-schema.ts` is 275 lines of reader
+   for a catalogue nothing serves. It still degrades correctly to the
+   built-in schema when no plugin is linked, so it is not broken — but
+   it is a mechanism without a counterpart.
 
 ## 3. NOT DONE
 
-- **The five item keys** — `tool`, `food`, `effects`, `armor`,
-  `weapon`, plus `consumable`. All six already work in the plugin; the
-  Studio cannot author any of them. `ITEM_SECTIONS` in `src/lib/config.ts`
-  holds **five identity keys only** (`display-name`, `model`, `lore`,
-  `max-stack-size`, `durability`). This is the biggest functional gap
-  and it unblocks when `/api/item/schema` lands — render from the
-  declaration, **do not keep a copy** (that is what `lib/mob-schema.ts`
-  exists to avoid).
-- **Live testing of the three probes.** Files are on the relay in
-  `0044` with sha1s. All three are `base: PAPER` deliberately — PAPER is
+- **The item form is five identity keys.** `ITEM_SECTIONS` in
+  `src/lib/config.ts` holds `display-name`, `model`, `lore`,
+  `max-stack-size` and `durability` — nothing about what an item *does*.
+  `tool`, `food`, `effects`, `armor`, `weapon` and `consumable` cannot
+  be authored at all. This is the biggest functional gap in the app.
+  It was parked waiting on a served `/api/item/schema`; **that endpoint
+  was never built and its codebase is gone**, so the shape is now the
+  Studio's to define. Design it here and let the plugin read it.
+- **The three probe items.** Copies are in `probes/` in the handoff
+  zip (also on the dead relay in `0044`). They were written against the
+  old plugin's `food:`/`consumable:` vocabulary, so treat the KEYS as
+  obsolete and the TEST DESIGN as the part worth keeping. All three are `base: PAPER` deliberately — PAPER is
   inert, so probe 1 eating proves the food→consumable implication
   rather than proving bread is edible. Probes 2 and 3 are identical
   apart from the `food:` block, so a difference isolates the food
   value. `food:` takes `nutrition`, `saturation`, `always-edible` —
   and an unknown key there is an **error that blocks the whole content
   swap**, so omit what you do not know.
-- **The `person()` gate.** A write to the live box answered
-  `unauthorized`, not 404 — the endpoint exists and auth refused it.
+- **The `person()` gate — historical, on a jar that no longer has
+  source.** A write to the live box answered `unauthorized`, not 404.
   The operator instructed that Studio gating be *disabled, not removed,
   for testing, behind an obvious switch that announces itself at boot*.
   The plugin session declined to act on that from a relay entry — a
@@ -144,7 +154,12 @@ or something else. Do not guess — the same instinct produced a
 
 ---
 
-## 4. THE LIVE SERVER
+## 4. THE LIVE SERVER — running a jar built from deleted source
+
+Everything in this section describes the state before the plugin was
+restarted. The box may still be up, but nothing on it is built from
+code that still exists. Re-verify before trusting any of it.
+
 
 ```
 54.90.206.53:25566        the game        (NOT 25565 — server.properties)
@@ -212,12 +227,16 @@ as useless as one that fails for the wrong reason.
 - **Republish the artifact on every push.** `cd vellum && pnpm build:single`,
   then publish `vellum/dist/vellum.html` with `url` set to the existing
   artifact, omitting `capabilities` and `icon`.
-- The plugin is being built by the other session; **only the app is
-  this repo's job.**
+- **The Studio is the primary objective now**, with the plugin a
+  wrapper that supports it in game — the reverse of how this project
+  ran until the rewrite. Only the app is this repo's job, but the app
+  no longer has to ask permission for its own formats.
 - Do not break the seam: the reconnect effect stays on the Dashboard
   page, the localStorage key stays `vellum.dash.link`, and
   `lib/endpoint.ts`, `dashEndpoints` and `window.Vellum` are
   load-bearing, not documentation.
 - MythicMobs is replicated in-house. It is **not** a dependency and its
   vocabulary is not ours — that was settled and the config schema was
-  rewritten in the plugin's own canonical keys.
+  rewritten in canonical keys. Note the keys in `lib/config.ts` are
+  canonical to a plugin that no longer exists; the *principle* stands,
+  the *spellings* are now open.
