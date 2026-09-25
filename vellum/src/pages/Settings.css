@@ -354,7 +354,7 @@
 }
 
 .mem__role[data-role='owner'] { border-color: var(--wax-500); color: var(--wax-200); }
-.mem__role[data-role='editor'] { border-color: var(--navy-400); color: var(--navy-100); }
+.mem__role[data-role='editor'] { border-color: var(--navy-400); color: var(--ink-muted); }
 
 .mem__seen {
   font-size: var(--fs-2xs);

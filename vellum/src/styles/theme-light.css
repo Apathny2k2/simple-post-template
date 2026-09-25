@@ -54,7 +54,10 @@
   /* --- ink ----------------------------------------------------- */
   --ink: #101c3a;
   --ink-muted: #3d5287;
-  --ink-faint: #5d6f9e;
+  /* 5d6f9e measured 4.07:1 against the translucent panels - the panel
+     is white over a tinted ground, not pure white, so the headroom a
+     swatch-against-#fff check suggests is not there. */
+  --ink-faint: #4a5c8a;
   --ink-invert: #f6f8fc;
 
   --line: var(--glass-rim);
@@ -94,6 +97,10 @@
   --chrome-strong: linear-gradient(to bottom, rgba(255, 255, 255, 0.94), rgba(255, 255, 255, 0.8));
   --chrome-soft: linear-gradient(to bottom, rgba(255, 255, 255, 0.8), rgba(255, 255, 255, 0.6));
   --chrome-status: linear-gradient(to top, rgba(255, 255, 255, 0.92), rgba(255, 255, 255, 0.74));
+  --well: rgba(16, 28, 60, 0.05);
+  --well-deep: rgba(16, 28, 60, 0.09);
+  /* deliberately NOT lightened - see tokens.css */
+  --uv-field: rgba(10, 16, 34, 0.86);
 
   /* --- the wax ramp, inverted ----------------------------------
      On navy the ramp runs dark-to-light and prominence goes UP with
@@ -108,6 +115,11 @@
   --wax-200: #8c2d29;
   --wax-300: #a3372f;
   --wax-400: #b4403a;
+
+  /* Same story as the wax ramp: the flame is a light amber meant to
+     glow on navy and it is used raw, not through --warn. On white it
+     reads 1.9:1 - the Support "pending" pill was illegible. */
+  --flame-400: #8f5310;
 
   /* DEFAULT: the stage stays dark under a light UI. A model lit for a
      black void loses its lightest faces against white, and the whole

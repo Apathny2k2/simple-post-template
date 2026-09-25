@@ -94,7 +94,7 @@
 .prio__dot { width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
 .prio--high { color: var(--wax-300); }
 .prio--urgent { color: var(--wax-200); }
-.prio--normal { color: var(--navy-200); }
+.prio--normal { color: var(--ink-faint); }
 
 .tag {
   display: inline-flex;
@@ -118,7 +118,7 @@
   flex-direction: column;
   min-height: 0;
   border-right: 1px solid var(--glass-rim);
-  background: rgba(7, 12, 25, 0.28);
+  background: var(--well);
 }
 
 .tl__head {
@@ -457,7 +457,7 @@
   flex: none;
   padding: 10px 14px 12px;
   border-top: 1px solid var(--glass-rim);
-  background: rgba(7, 12, 25, 0.34);
+  background: var(--well);
 }
 
 .cmp__atts { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 8px; }
@@ -502,7 +502,7 @@
 .dlg__scrim {
   position: absolute;
   inset: 0;
-  background: rgba(3, 6, 13, 0.62);
+  background: var(--well-deep);
   backdrop-filter: blur(6px);
   -webkit-backdrop-filter: blur(6px);
   animation: fade-in var(--dur) var(--ease);
@@ -550,7 +550,7 @@
   gap: var(--sp-3);
   padding: var(--sp-3) var(--sp-4);
   border-top: 1px solid var(--glass-rim);
-  background: rgba(7, 12, 25, 0.4);
+  background: var(--well);
 }
 
 /* ---------------- narrow ---------------- */

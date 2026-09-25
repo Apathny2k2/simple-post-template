@@ -660,7 +660,7 @@
   padding: 6px 8px;
   list-style: none;
   border-radius: var(--r-sm);
-  background: rgba(4, 8, 18, 0.5);
+  background: var(--well);
   border: 1px solid var(--glass-rim);
   color: var(--flame-400);
   font-family: var(--font-mono);
