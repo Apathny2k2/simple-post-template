@@ -115,6 +115,23 @@
 
   --grid-line: rgba(146, 165, 202, 0.08);
 
+  /* The chrome bars - top bar, menubar, editor toolbar. These were
+     rgba(7, 12, 25, x) typed in at each call site, which is why the
+     first light-theme attempt left three black strips across a white
+     app: a literal cannot be re-themed. */
+  --chrome: linear-gradient(to bottom, rgba(7, 12, 25, 0.72), rgba(7, 12, 25, 0.28));
+  --chrome-strong: linear-gradient(to bottom, rgba(7, 12, 25, 0.82), rgba(7, 12, 25, 0.62));
+  --chrome-soft: linear-gradient(to bottom, rgba(10, 16, 34, 0.66), rgba(10, 16, 34, 0.44));
+  --chrome-status: linear-gradient(to top, rgba(7, 12, 25, 0.86), rgba(7, 12, 25, 0.6));
+
+  /* The viewport behind the model. Its own token because whether the
+     stage follows the UI into the light is a design decision, not a
+     consequence of one - see theme-light.css. */
+  --stage-wash:
+    radial-gradient(90% 80% at 50% 0%, rgba(24, 36, 70, 0.72), transparent 70%),
+    radial-gradient(60% 50% at 78% 96%, rgba(118, 34, 36, 0.24), transparent 72%),
+    var(--navy-970);
+
   /* --- type -------------------------------------------------- */
   --font-sans: 'Vellum Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
   --font-mono: 'Vellum Mono', ui-monospace, 'SF Mono', Menlo, monospace;

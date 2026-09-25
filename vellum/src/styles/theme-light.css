@@ -1,0 +1,131 @@
+/* ---------------------------------------------------------------
+   Vellum, lit.
+
+   Not an inversion. The dark theme is glass over midnight navy - dark
+   translucent panels, a light rim along the top edge, a white specular
+   sheen, and shadows dark enough to read against near-black. Flip the
+   lightness on any of those and you get mud, so each one is rebuilt
+   for a white room:
+
+   - panels become WHITE translucency over a pale ground, not dark;
+   - the rim goes from light-on-dark to a dark hairline;
+   - the sheen is nearly deleted - a white gradient over white is haze;
+   - the bevel keeps a white top edge but its underside becomes a soft
+     navy line instead of black;
+   - every shadow loses about two thirds of its weight.
+
+   The status colours are re-picked rather than reused. On navy they
+   were chosen light so they would glow; on white every one of them
+   failed AA at small sizes (#6fae84 reads 2.2:1 on white, the amber
+   1.9:1). These are the darkened equivalents, all >= 4.5:1 on the
+   lightest panel.
+   --------------------------------------------------------------- */
+
+:root[data-theme='light'] {
+  color-scheme: light;
+
+  /* --- the room ---------------------------------------------- */
+  --bg: #f3f6fb;
+  /* The viewport is deliberately NOT white. A model floats off a white
+     page and its lightest faces disappear into it; this is the same
+     move the light themes of every other model editor make. */
+  --bg-deep: #e4e9f3;
+  --bg-sunken: rgba(16, 28, 60, 0.055);
+
+  /* --- glass, now white ---------------------------------------- */
+  --glass-sat: 1.08;
+  --glass-thin: rgba(255, 255, 255, 0.5);
+  --glass: rgba(255, 255, 255, 0.72);
+  --glass-thick: rgba(255, 255, 255, 0.87);
+  --glass-solid: rgba(255, 255, 255, 0.97);
+
+  --glass-rim: rgba(16, 28, 60, 0.13);
+  --glass-rim-lit: rgba(16, 28, 60, 0.24);
+  --glass-rim-wax: rgba(149, 47, 46, 0.34);
+
+  /* white on white is not a highlight; keep only a whisper */
+  --sheen: linear-gradient(152deg, rgba(255, 255, 255, 0.7) 0%, rgba(255, 255, 255, 0) 52%);
+  --sheen-strong: linear-gradient(150deg, rgba(255, 255, 255, 0.9) 0%, rgba(255, 255, 255, 0) 48%);
+
+  --surface: var(--glass);
+  --surface-2: var(--glass-thin);
+  --surface-raised: var(--glass-thick);
+
+  /* --- ink ----------------------------------------------------- */
+  --ink: #101c3a;
+  --ink-muted: #3d5287;
+  --ink-faint: #5d6f9e;
+  --ink-invert: #f6f8fc;
+
+  --line: var(--glass-rim);
+  --line-strong: rgba(16, 28, 60, 0.21);
+  --line-dashed: rgba(149, 47, 46, 0.36);
+
+  /* --- wax, darkened to carry text on white --------------------
+     wax-400 (#cd594e) is the dark theme's accent and reads 4.0:1 on
+     white - under AA for normal text, and it is the colour of every
+     active control label. wax-500 clears it at 5.6:1. The lighter
+     tone stays for fills, where the text on top is near-white. */
+  --accent: var(--wax-500);
+  --accent-ink: #fff4f1;
+  --accent-soft: rgba(180, 64, 58, 0.12);
+  --accent-softer: rgba(180, 64, 58, 0.06);
+  --highlight: var(--wax-600);
+  --highlight-soft: rgba(149, 47, 46, 0.13);
+
+  --ok: #2f7d4f;
+  --warn: #8f5310;
+  --danger: #a3342c;
+
+  /* --- depth, two thirds lighter -------------------------------- */
+  --shadow-sm: 0 1px 2px rgba(16, 28, 60, 0.1);
+  --shadow: 0 6px 18px -8px rgba(16, 28, 60, 0.22), 0 1px 2px rgba(16, 28, 60, 0.09);
+  --shadow-lg: 0 24px 50px -22px rgba(16, 28, 60, 0.3), 0 2px 10px rgba(16, 28, 60, 0.11);
+  --shadow-pop: 0 38px 78px -26px rgba(16, 28, 60, 0.34), 0 0 0 1px rgba(16, 28, 60, 0.13);
+
+  --bevel: inset 0 1px 0 rgba(255, 255, 255, 0.95), inset 0 -1px 0 rgba(16, 28, 60, 0.09);
+  --bevel-soft: inset 0 1px 0 rgba(255, 255, 255, 0.8);
+  --glow-wax: 0 0 0 1px rgba(180, 64, 58, 0.45), 0 10px 26px -10px rgba(180, 64, 58, 0.3);
+  --glow-wax-strong: 0 0 0 1px rgba(180, 64, 58, 0.72), 0 14px 34px -10px rgba(180, 64, 58, 0.42);
+
+  --grid-line: rgba(16, 28, 60, 0.1);
+
+  --chrome: linear-gradient(to bottom, rgba(255, 255, 255, 0.86), rgba(255, 255, 255, 0.62));
+  --chrome-strong: linear-gradient(to bottom, rgba(255, 255, 255, 0.94), rgba(255, 255, 255, 0.8));
+  --chrome-soft: linear-gradient(to bottom, rgba(255, 255, 255, 0.8), rgba(255, 255, 255, 0.6));
+  --chrome-status: linear-gradient(to top, rgba(255, 255, 255, 0.92), rgba(255, 255, 255, 0.74));
+
+  /* --- the wax ramp, inverted ----------------------------------
+     On navy the ramp runs dark-to-light and prominence goes UP with
+     the number: wax-200 is the brightest, used for the labels that
+     should catch the eye. On white that is exactly backwards - those
+     same tones read 1.8:1 and vanish. ~70 call sites use these
+     directly rather than through --accent, so rather than rewrite all
+     of them the ramp itself is re-pointed, keeping "higher number =
+     more prominent" true by making prominence mean darker. This is a
+     bridge, not an endorsement: the call sites should reach for a
+     semantic token, and then this block can go. */
+  --wax-200: #8c2d29;
+  --wax-300: #a3372f;
+  --wax-400: #b4403a;
+
+  /* DEFAULT: the stage stays dark under a light UI. A model lit for a
+     black void loses its lightest faces against white, and the whole
+     app is a window onto that model. Blender, Blockbench and Figma all
+     keep a dark or mid canvas in their light themes for the same
+     reason. Override to --stage-wash-light to see the alternative. */
+  --stage-wash:
+    radial-gradient(90% 80% at 50% 0%, rgba(24, 36, 70, 0.72), transparent 70%),
+    radial-gradient(60% 50% at 78% 96%, rgba(118, 34, 36, 0.24), transparent 72%),
+    var(--navy-970);
+
+  --stage-wash-light:
+    radial-gradient(90% 80% at 50% 0%, rgba(210, 220, 238, 0.9), transparent 70%),
+    radial-gradient(60% 50% at 78% 96%, rgba(226, 198, 194, 0.55), transparent 72%),
+    #eef1f7;
+}
+
+/* The fully-light variant, stage included. */
+:root[data-theme='light'][data-stage='light'] {
+  --stage-wash: var(--stage-wash-light);
+}

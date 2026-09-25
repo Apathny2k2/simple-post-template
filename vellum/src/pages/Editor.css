@@ -31,7 +31,7 @@
   gap: var(--sp-1);
   height: 36px;
   padding-inline: 10px;
-  background: linear-gradient(to bottom, rgba(7, 12, 25, 0.82), rgba(7, 12, 25, 0.62));
+  background: var(--chrome-strong);
   backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat));
   -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat));
   border-bottom: 1px solid var(--glass-rim);
@@ -101,7 +101,7 @@
   gap: var(--sp-3);
   height: 46px;
   padding-inline: 10px;
-  background: linear-gradient(to bottom, rgba(10, 16, 34, 0.66), rgba(10, 16, 34, 0.44));
+  background: var(--chrome-soft);
   backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat));
   -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat));
   border-bottom: 1px solid var(--glass-rim);
@@ -463,10 +463,7 @@
   z-index: 1;
   display: flex;
   flex-direction: column;
-  background:
-    radial-gradient(90% 80% at 50% 0%, rgba(24, 36, 70, 0.72), transparent 70%),
-    radial-gradient(60% 50% at 78% 96%, rgba(118, 34, 36, 0.24), transparent 72%),
-    var(--navy-970);
+  background: var(--stage-wash);
 }
 
 .ed-view__scene { position: relative; flex: 1; min-height: 0; }
@@ -994,7 +991,7 @@
   gap: var(--sp-4);
   height: 26px;
   padding-inline: 12px;
-  background: linear-gradient(to top, rgba(7, 12, 25, 0.86), rgba(7, 12, 25, 0.6));
+  background: var(--chrome-status);
   backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat));
   -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat));
   border-top: 1px solid var(--glass-rim);
