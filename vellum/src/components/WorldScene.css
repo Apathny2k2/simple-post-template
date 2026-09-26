@@ -1,0 +1,165 @@
+.world {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: grid;
+  place-items: center;
+  padding: clamp(8px, 2.4vw, 28px);
+}
+
+.world__scrim {
+  position: absolute;
+  inset: 0;
+  background: rgba(3, 6, 13, 0.76);
+  backdrop-filter: blur(3px);
+}
+
+.world__panel {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: min(1180px, 100%);
+  height: min(780px, 100%);
+  border-radius: var(--r-lg);
+  border: 1px solid var(--glass-rim);
+  background: linear-gradient(180deg, var(--navy-900), var(--navy-970));
+  box-shadow: var(--shadow-pop);
+  overflow: hidden;
+  animation: panel-open var(--dur) var(--spring-soft);
+}
+
+.world__head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: 11px 14px;
+  border-bottom: 1px solid var(--glass-rim);
+  flex: none;
+}
+
+.world__title { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; }
+.world__title svg { color: var(--wax-300); }
+.world__title h2 { margin: 0; }
+
+.world__stat {
+  padding: 3px 10px;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--glass-rim);
+  background: var(--bg-sunken);
+  font-size: var(--fs-2xs);
+  color: var(--ink-muted);
+  white-space: nowrap;
+}
+
+/* Flat black. There was a sky here - a blue with the fog lightening
+   toward the horizon, a square sun, clouds, stars - and all of it was
+   competing with the one thing anybody opened this to look at. Black
+   also means a glow reads as a glow without a night mode to switch to. */
+.world__stage {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  background: #050507;
+}
+
+.world__stage .scene3d { z-index: 1; }
+
+.world__hint {
+  position: absolute;
+  z-index: 2;
+  left: 14px;
+  bottom: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--glass-rim);
+  background: rgba(7, 12, 25, 0.72);
+  font-size: var(--fs-2xs);
+  color: var(--ink-muted);
+  pointer-events: none;
+}
+
+.world__bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: 9px 14px;
+  border-top: 1px solid var(--glass-rim);
+  background: rgba(7, 12, 25, 0.55);
+  flex: none;
+}
+
+.world__group { display: flex; align-items: center; gap: 4px; }
+.world__time { font-size: var(--fs-2xs); color: var(--ink-faint); margin-left: 4px; min-width: 96px; }
+
+.world__field { display: flex; align-items: center; gap: 7px; }
+.world__field > span { font-size: var(--fs-2xs); color: var(--ink-faint); white-space: nowrap; }
+.world__field .ed-select { min-width: 132px; }
+
+.world__note {
+  margin-left: auto;
+  font-size: var(--fs-2xs);
+  color: var(--ink-faint);
+}
+
+@media (max-width: 720px) {
+  .world__panel { height: 100%; }
+  .world__note { display: none; }
+  .world__field .ed-select { min-width: 104px; }
+}
+
+/* ---------------- behaviour effects ---------------- */
+
+/* The whole model shakes, which is what a block does when the ground
+   under it is moving - shaking each cube would read as it falling apart. */
+.world__shake { position: absolute; inset: 0; }
+.world__shake[data-shaking] { animation: world-shake 0.09s linear infinite; }
+
+@keyframes world-shake {
+  0%   { transform: translate(0, 0); }
+  25%  { transform: translate(var(--shake, 1px), calc(var(--shake, 1px) * -0.5)); }
+  50%  { transform: translate(calc(var(--shake, 1px) * -0.7), var(--shake, 1px)); }
+  75%  { transform: translate(calc(var(--shake, 1px) * 0.4), calc(var(--shake, 1px) * 0.6)); }
+  100% { transform: translate(0, 0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .world__shake[data-shaking] { animation: none; }
+}
+
+.world__fx {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.world__fxgroup { position: absolute; left: 50%; width: 0; height: 0; }
+
+.world__fxgroup > span {
+  position: absolute;
+  width: var(--sz, 4px);
+  height: var(--sz, 4px);
+  margin: calc(var(--sz, 4px) / -2);
+  border-radius: 1px;
+  opacity: 0;
+  animation-name: fx-rise;
+  animation-iteration-count: infinite;
+  animation-timing-function: ease-out;
+}
+
+@keyframes fx-rise {
+  0%   { opacity: 0;    transform: translate(0, 0) scale(0.5); }
+  12%  { opacity: 0.95; transform: translate(calc(var(--dx) * 0.2), calc(var(--dy) * 0.14)) scale(1); }
+  70%  { opacity: 0.7; }
+  100% { opacity: 0;    transform: translate(var(--dx), var(--dy)) scale(0.7); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .world__fxgroup > span { animation-duration: 3s !important; }
+}
