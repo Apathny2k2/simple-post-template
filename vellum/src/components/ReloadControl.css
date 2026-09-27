@@ -23,8 +23,14 @@
   cursor: pointer;
 }
 
-.rl__go:hover:not(:disabled) { filter: brightness(1.08); }
-.rl__go:disabled { opacity: 0.5; cursor: not-allowed; }
+.rl__go:hover:not(:disabled) { background: var(--highlight); }
+
+.rl__go:disabled {
+  cursor: not-allowed;
+  background: var(--bg-sunken);
+  border-color: var(--line);
+  color: var(--ink-faint);
+}
 .rl__go:focus-visible {
   outline: none;
   border-color: var(--glass-rim-lit);

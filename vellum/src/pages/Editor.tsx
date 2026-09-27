@@ -1532,8 +1532,8 @@ function Viewport({
 
         <div className="ed-view__corner ed-view__corner--bl">
           {onPaint
-            ? 'drag a face to paint · backdrop or right-drag orbits · shift-drag pans · scroll zooms at the cursor'
-            : 'drag to orbit · shift or middle-drag to pan · scroll to zoom at the cursor · click a cube'}
+            ? 'drag a face to paint · right-drag orbit · shift-drag pan · scroll zoom'
+            : 'drag orbit · shift-drag pan · scroll zoom'}
         </div>
 
         <svg className="ed-axis-gizmo" viewBox="0 0 60 60" aria-hidden="true">

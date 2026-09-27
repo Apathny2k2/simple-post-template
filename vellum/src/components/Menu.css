@@ -12,13 +12,13 @@
   /* Near-opaque on purpose. An ancestor with backdrop-filter (the menu bar,
      the library panel) becomes the backdrop root, so a popover inside one
      samples nothing and a thin tint would render see-through. */
-  background-color: rgba(9, 14, 30, 0.96);
+  background-color: var(--glass-solid);
   backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat));
   -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat));
   border: 1px solid var(--glass-rim);
   box-shadow: var(--bevel), var(--shadow-lg);
   isolation: isolate;
-  animation: menu-in var(--dur) var(--spring-lg);
+  animation: menu-in var(--dur) var(--ease);
   transform-origin: var(--origin-x, right) var(--origin-y, top);
 }
 
@@ -38,8 +38,8 @@
 .menu-pop--up { bottom: calc(100% + 8px); --origin-y: bottom; }
 
 @keyframes menu-in {
-  0% { opacity: 0; transform: scale(0.86) translateY(-6px); }
-  100% { opacity: 1; transform: scale(1) translateY(0); }
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: none; }
 }
 
 .menu-item {
@@ -53,8 +53,7 @@
   font-size: var(--fs-sm);
   color: var(--ink);
   text-align: left;
-  transition: background var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease),
-    transform var(--dur) var(--spring);
+  transition: background var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
 }
 
 .menu-item:hover,
@@ -62,14 +61,12 @@
   background: var(--accent-soft);
   border-color: var(--glass-rim-wax);
   outline: none;
-  transform: translateX(2px);
 }
 
-.menu-item:active { transform: scale(0.97); }
 .menu-item--danger { color: var(--wax-300); }
 
 .menu-item--danger:hover {
-  background: rgba(180, 64, 58, 0.2);
+  background: color-mix(in srgb, var(--accent) 20%, transparent);
   border-color: var(--wax-400);
 }
 

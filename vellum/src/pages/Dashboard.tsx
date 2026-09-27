@@ -156,8 +156,7 @@ export function Dashboard() {
         <div className="dash-banner">
           <Icon name="warning" size={16} />
           <span>
-            No server has reported yet, so every card below is the built-in sample. Each one goes
-            live on its own as soon as your server sends it.
+            No server connected. These cards show sample data.
           </span>
         </div>
       )}
@@ -218,17 +217,13 @@ export function Dashboard() {
           className="span-power"
           eyebrow={
             <>
-              Session <SourceMark fed={meta.fed} section="subscription" />
+              Plan <SourceMark fed={meta.fed} section="subscription" />
             </>
           }
-          title="Realm power"
+          title={subscription.type}
         >
           <div className="power">
             <div className="kv">
-              <div className="kv__row">
-                <span className="kv__k">Sub type</span>
-                <span className="kv__v">{subscription.type}</span>
-              </div>
               <div className="kv__row">
                 <span className="kv__k">Cloud</span>
                 <span className="kv__v">{subscription.cloud}</span>
@@ -246,7 +241,7 @@ export function Dashboard() {
           className="span-pack"
           eyebrow={
             <>
-              Resource pack info <SourceMark fed={meta.fed} section="pack" />
+              Resource pack <SourceMark fed={meta.fed} section="pack" />
             </>
           }
           title={pack.version ? `Build ${pack.version}` : 'Current build'}
@@ -289,7 +284,7 @@ export function Dashboard() {
           </div>
           <p className="card__note" style={{ marginTop: 'var(--sp-2)' }}>
             {total
-              ? `${pct}% of ${total} connected players are up to date · counted ${formatWhen(players.sampledAt, now)}`
+              ? `Counted ${formatWhen(players.sampledAt, now)}`
               : 'Nobody is connected.'}
           </p>
         </Card>
@@ -299,7 +294,7 @@ export function Dashboard() {
           className="span-apply"
           eyebrow="Apply"
           title="Push saved changes live"
-          note="A save writes the files. The server keeps serving the old set until it reloads."
+          note="The server keeps serving the old pack until it reloads."
           dividedHead
         >
           <ReloadControl linked={linked} />
@@ -314,7 +309,7 @@ export function Dashboard() {
             </>
           }
           title="Last touched"
-          note="Also flags players still holding a wrong or outdated pack."
+          note="Files edited since the pack was built."
           dividedHead
           actions={
             <>
@@ -391,7 +386,7 @@ export function Dashboard() {
         <span style={{ marginLeft: 'auto' }}>
           {live
             ? (meta.agent ?? server.name)
-            : 'Sample data — nothing has reported yet.'}
+            : 'Sample data.'}
         </span>
       </div>
     </main>

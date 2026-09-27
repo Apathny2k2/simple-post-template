@@ -12,7 +12,7 @@
   padding: clamp(24px, 4vw, 40px);
   border-radius: var(--r-xl, 18px);
   border: 1px solid var(--wax-500, #762224);
-  background-color: var(--glass, rgba(32, 46, 84, 0.3));
+  background-color: var(--glass, color-mix(in srgb, var(--ink) 30%, transparent));
   backdrop-filter: blur(var(--glass-blur, 16px)) saturate(var(--glass-sat, 1.4));
   -webkit-backdrop-filter: blur(var(--glass-blur, 16px)) saturate(var(--glass-sat, 1.4));
   box-shadow: var(--bevel), var(--shadow-lg);
@@ -31,7 +31,7 @@
   margin: 0 0 18px;
   padding: 12px 14px;
   border-radius: var(--r-md, 10px);
-  border: 1px solid var(--glass-rim, rgba(146, 165, 202, 0.18));
+  border: 1px solid var(--glass-rim, color-mix(in srgb, var(--ink-faint) 18%, transparent));
   background: var(--bg-sunken, rgba(10, 16, 34, 0.8));
   font-family: var(--font-mono, ui-monospace, monospace);
   font-size: 12px;

@@ -6,7 +6,7 @@
   margin-bottom: var(--sp-5);
   border: 1px dashed var(--line-dashed);
   border-radius: var(--r-md);
-  background: rgba(205, 89, 78, 0.07);
+  background: var(--well);
   backdrop-filter: blur(var(--glass-blur-sm));
   -webkit-backdrop-filter: blur(var(--glass-blur-sm));
   color: var(--ink-muted);
@@ -14,8 +14,7 @@
 }
 
 .dash-banner svg {
-  color: var(--wax-300);
-  filter: drop-shadow(0 0 6px rgba(205, 89, 78, 0.55));
+  color: var(--ink-faint);
 }
 
 .dash-grid {
@@ -77,11 +76,10 @@
 }
 
 .breakdown__dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--wax-400);
-  box-shadow: 0 0 8px rgba(205, 89, 78, 0.7);
+  width: 5px;
+  height: 5px;
+  border-radius: 1px;
+  background: var(--ink-faint);
   flex: none;
 }
 
@@ -107,21 +105,10 @@
   line-height: 1;
   letter-spacing: -0.03em;
   font-variant-numeric: tabular-nums;
-  background: linear-gradient(170deg, var(--navy-050), var(--wax-200));
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-}
-
-/* Forced-colours mode throws the gradient away and keeps `transparent`,
-   which leaves the number invisible - the one figure the card exists to
-   show. Paint it with a real colour there. */
-@media (forced-colors: active) {
-  .stat__value {
-    background: none;
-    color: CanvasText;
-    forced-color-adjust: none;
-  }
+  /* Was clipped out of a gradient. Once the ramp went neutral the top stop
+     was near-white, so the head of every figure vanished into the card. A
+     number is not a place for a gradient. */
+  color: var(--ink);
 }
 
 .stat__label {
@@ -135,29 +122,6 @@
 /* ---------------- power / subscription ---------------- */
 
 .power { display: grid; gap: var(--sp-4); height: 100%; align-content: space-between; }
-
-.power__btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: var(--sp-2);
-  width: 100%;
-  padding: clamp(18px, 2.6vw, 30px) var(--sp-4);
-  border: 1px solid var(--wax-500);
-  border-radius: var(--r-md);
-  background: linear-gradient(165deg, rgba(180, 64, 58, 0.22), rgba(118, 34, 36, 0.1));
-  color: var(--ink);
-  font-size: var(--fs-md);
-  font-weight: 500;
-  letter-spacing: -0.01em;
-  cursor: not-allowed;
-  box-shadow: var(--bevel-soft), 0 12px 30px -14px rgba(180, 64, 58, 0.6);
-}
-
-.power__btn svg {
-  color: var(--wax-300);
-  filter: drop-shadow(0 0 7px rgba(205, 89, 78, 0.7));
-}
 
 .kv { display: grid; gap: 9px; }
 
@@ -190,7 +154,7 @@
 .pack__name { font-family: var(--font-mono); font-size: var(--fs-sm); }
 .pack__meta { font-size: var(--fs-2xs); color: var(--ink-faint); font-family: var(--font-mono); }
 
-/* ---------------- buttons: wax-outlined, springy ---------------- */
+/* ---------------- buttons ---------------- */
 
 .btn {
   position: relative;
@@ -200,8 +164,8 @@
   gap: 7px;
   padding: 8px 16px;
   border-radius: var(--r-md);
-  border: 1px solid var(--wax-500);
-  background-color: rgba(205, 89, 78, 0.08);
+  border: 1px solid var(--line-strong);
+  background-color: var(--glass-thin);
   backdrop-filter: blur(var(--glass-blur-sm)) saturate(var(--glass-sat));
   -webkit-backdrop-filter: blur(var(--glass-blur-sm)) saturate(var(--glass-sat));
   color: var(--ink);
@@ -211,7 +175,7 @@
   box-shadow: var(--bevel-soft);
   isolation: isolate;
   transition: background var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease),
-    box-shadow var(--dur) var(--ease), transform var(--dur) var(--spring);
+    box-shadow var(--dur) var(--ease);
 }
 
 .btn::before {
@@ -224,25 +188,28 @@
   pointer-events: none;
 }
 
+/* No lift and no shrink. A button that rises off the page on hover
+   and shrinks when pressed is a toy; these just change weight. */
 .btn:hover {
-  background-color: rgba(205, 89, 78, 0.18);
-  border-color: var(--wax-400);
-  box-shadow: var(--bevel-soft), var(--glow-wax);
-  transform: translateY(-2px);
+  background-color: var(--bg-sunken);
+  border-color: var(--line-strong);
 }
 
-.btn:active { transform: scale(0.95) translateY(0); }
+.btn:active { background-color: var(--well-deep); }
 
+/* Solid. It was 34% red over white carrying near-white text, which
+   is a pale pink button with illegible text on it - the one control
+   on the page that has to be unmissable was the faintest thing on it. */
 .btn--primary {
-  background-color: rgba(180, 64, 58, 0.34);
-  border-color: var(--wax-300);
+  background-color: var(--accent);
+  border-color: var(--accent);
   color: var(--accent-ink);
-  box-shadow: var(--bevel-soft), var(--glow-wax);
+  box-shadow: none;
 }
 
 .btn--primary:hover {
-  background-color: rgba(205, 89, 78, 0.5);
-  box-shadow: var(--bevel-soft), var(--glow-wax-strong);
+  background-color: var(--highlight);
+  border-color: var(--highlight);
 }
 
 .btn--ghost {
@@ -261,8 +228,18 @@
 
 .btn--block { width: 100%; }
 .btn--sm { padding: 5px 11px; font-size: var(--fs-xs); }
-.btn:disabled, .btn[aria-disabled='true'] { cursor: not-allowed; opacity: 0.75; }
-.btn:disabled:hover, .btn[aria-disabled='true']:hover { transform: none; }
+/* Inert, not faded. Fading a solid red button with opacity drags its
+   white label down with the fill and leaves pale text on pale pink -
+   the least readable thing on the page. A disabled control should
+   read as switched off, which is grey. */
+.btn:disabled,
+.btn[aria-disabled='true'] {
+  cursor: not-allowed;
+  background-color: var(--bg-sunken);
+  border-color: var(--line);
+  color: var(--ink-faint);
+  box-shadow: none;
+}
 
 /* ---------------- counts ---------------- */
 
@@ -273,10 +250,10 @@
   border-radius: var(--r-md);
   border: 1px solid var(--glass-rim);
   background: var(--glass-thin);
-  transition: transform var(--dur-slow) var(--spring), border-color var(--dur) var(--ease);
+  transition: border-color var(--dur) var(--ease);
 }
 
-.count-tile:hover { transform: translateY(-3px) scale(1.02); border-color: var(--glass-rim-wax); }
+.count-tile:hover { border-color: var(--glass-rim-wax); }
 
 .count-tile__v {
   font-family: var(--font-mono);
@@ -287,7 +264,6 @@
 
 .count-tile--warn .count-tile__v {
   color: var(--wax-300);
-  text-shadow: 0 0 18px rgba(205, 89, 78, 0.55);
 }
 
 .count-tile--ok .count-tile__v { color: var(--ok); }
@@ -311,7 +287,7 @@
 }
 
 .meter__fill { background: linear-gradient(90deg, #5d9a74, var(--ok)); }
-.meter__rest { background: linear-gradient(90deg, var(--wax-600), var(--wax-400)); }
+.meter__rest { background: var(--accent); }
 
 /* ---------------- recent files ---------------- */
 
@@ -348,7 +324,7 @@
 }
 
 .table tbody tr { transition: background var(--dur-fast) var(--ease); }
-.table tbody tr:hover { background: rgba(205, 89, 78, 0.06); }
+.table tbody tr:hover { background: color-mix(in srgb, var(--accent) 6%, transparent); }
 .table tr:last-child td { border-bottom: none; }
 .table td:last-child, .table th:last-child { padding-right: 0; text-align: right; }
 .table .cell-name { color: var(--ink); font-family: var(--font-mono); white-space: nowrap; }
@@ -365,13 +341,13 @@
   white-space: nowrap;
 }
 
-.pack-chip--ok { color: var(--ok); background: rgba(111, 174, 132, 0.12); border-color: rgba(111, 174, 132, 0.4); }
+.pack-chip--ok { color: var(--ok); background: color-mix(in srgb, var(--ok) 12%, transparent); border-color: color-mix(in srgb, var(--ok) 40%, transparent); }
 
 .pack-chip--old {
   color: var(--wax-200);
-  background: rgba(180, 64, 58, 0.16);
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
   border-color: var(--wax-500);
-  box-shadow: 0 0 14px -4px rgba(205, 89, 78, 0.6);
+  box-shadow: none;
 }
 
 .status-strip {
@@ -392,7 +368,7 @@
   height: 7px;
   border-radius: 50%;
   background: var(--ok);
-  box-shadow: 0 0 0 3px rgba(111, 174, 132, 0.18);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--ok) 40%, transparent);
 }
 
 /* ============================================================
@@ -430,21 +406,20 @@
 .feed-pill__seen { text-transform: none; letter-spacing: 0; opacity: 0.6; }
 
 .feed-pill[data-health='live'] {
-  border-color: rgba(111, 174, 132, 0.5);
+  border-color: color-mix(in srgb, var(--ok) 50%, transparent);
   color: var(--ok);
-  background: rgba(111, 174, 132, 0.1);
+  background: color-mix(in srgb, var(--ok) 10%, transparent);
 }
 
 .feed-pill[data-health='live'] .feed-pill__dot {
   background: var(--ok);
-  box-shadow: 0 0 0 3px rgba(111, 174, 132, 0.18);
-  animation: ember 2.4s var(--ease) infinite alternate;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--ok) 40%, transparent);
 }
 
 .feed-pill[data-health='stale'] {
   border-color: var(--wax-500);
   color: var(--flame-400);
-  background: rgba(227, 169, 111, 0.1);
+  background: color-mix(in srgb, var(--warn) 10%, transparent);
 }
 
 .feed-pill[data-health='stale'] .feed-pill__dot { background: var(--flame-400); }
@@ -455,23 +430,27 @@
 }
 
 /* the badge on a card still showing the built-in sample */
+/* Quiet. This badge sits on every card at once, so in red it marked
+   nothing - it just made red the background colour of the page. Red
+   is for the one thing that is wrong; "this is sample data" is a
+   caption. */
 .src-mark {
   margin-left: 6px;
-  padding: 1px 7px;
-  border-radius: var(--r-pill);
-  border: 1px dashed var(--line-dashed);
-  background: rgba(205, 89, 78, 0.07);
+  padding: 1px 6px;
+  border-radius: var(--r-xs);
+  border: 1px solid var(--line);
+  background: none;
   font-family: var(--font-mono);
   font-size: 9px;
   letter-spacing: 0.04em;
   text-transform: none;
-  color: var(--wax-300);
+  color: var(--ink-faint);
 }
 
 .server-tag[data-online='false'] { color: var(--flame-400); border-color: var(--wax-500); }
 .status-strip__dot[data-online='false'] {
   background: var(--flame-400);
-  box-shadow: 0 0 0 3px rgba(227, 169, 111, 0.18);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--warn) 40%, transparent);
 }
 
 .dash-empty {
@@ -539,7 +518,7 @@
 .feed__check--sim {
   margin-top: var(--sp-2);
   padding-top: var(--sp-3);
-  border-top: 1px dashed var(--line-dashed);
+  border-top: 1px solid var(--line);
   color: var(--wax-200);
 }
 
@@ -578,7 +557,7 @@
   font-weight: 600;
 }
 
-.feed__logtitle svg { color: var(--wax-400); }
+.feed__logtitle svg { color: var(--ink-faint); }
 
 .feed__logmeta {
   margin-left: auto;
@@ -609,7 +588,7 @@
   min-width: 0;
 }
 
-.feed__log li:nth-child(odd) { background: rgba(146, 165, 202, 0.04); }
+.feed__log li:nth-child(odd) { background: color-mix(in srgb, var(--ink-faint) 4%, transparent); }
 .feed__log li[data-ok='false'] { border-color: var(--wax-500); color: var(--wax-200); }
 
 .feed__log code {
@@ -641,7 +620,7 @@
   flex: none;
   padding: 1px 6px;
   border-radius: var(--r-pill);
-  background: rgba(227, 169, 111, 0.16);
+  background: color-mix(in srgb, var(--warn) 16%, transparent);
   color: var(--flame-400);
   font-family: var(--font-mono);
   font-size: 9px;
@@ -665,7 +644,7 @@
   color: var(--flame-400);
   font-family: var(--font-mono);
   font-size: var(--fs-2xs);
-  animation: panel-open var(--dur) var(--spring-soft);
+  animation: panel-open var(--dur) var(--ease);
 }
 
 .feed__problemlist li { display: block; padding: 0; border: 0; background: none; }

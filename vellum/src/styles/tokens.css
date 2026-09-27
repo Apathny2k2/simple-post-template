@@ -1,146 +1,177 @@
 /* ---------------------------------------------------------------
    Vellum design tokens.
 
-   One surface only: midnight velvet navy. Everything on top of it is
-   glass - translucent, blurred, lit along its top edge - and every
-   outline that means "you can press this" is candle-wax red.
+   One scheme: paper and ink, cut with a knife. Per SPEC-light-theme.md
+   the white scheme replaces the navy one outright rather than sitting
+   behind a toggle, so the light values live here on :root and
+   theme-light.css is gone. The stage follows the UI into the light -
+   that was the one open decision in the spec and the operator picked
+   the fully-white variant.
+
+   Three rules hold the look together:
+
+   1. A line does the work a shadow used to. Shadows survive only
+      where something genuinely floats over the page: menus, popovers,
+      dialogs. Everything else is separated by one hairline.
+   2. Nothing is a pill. Radii top out at 8px and most controls sit at
+      3-4px, so edges read as cut rather than moulded.
+   3. Red is structural. It marks the one thing that is active or the
+      one thing that is wrong, and nothing else.
+
+   The neutrals are deliberately NOT blue. The previous ground was
+   #f3f6fb over navy ink, which tinted every panel, hairline and label
+   toward blue and left white cards on a blue-white page with almost
+   nothing between them. Neutral grey gives the hairlines somewhere to
+   register and lets the single red be the only colour in the room.
    --------------------------------------------------------------- */
 
 :root {
-  color-scheme: dark;
+  color-scheme: light;
 
-  /* --- midnight velvet navy ---------------------------------- */
-  --navy-990: #03060d;
-  --navy-970: #050912;
-  --navy-950: #070c19;
-  --navy-900: #0a1022;
-  --navy-850: #0d1427;
-  --navy-800: #101830;
-  --navy-750: #131d3a;
-  --navy-700: #182446;
-  --navy-600: #202e54;
-  --navy-500: #2b3d69;
-  --navy-400: #3d5287;
-  /* was #5d75a8, which read 4.1:1 on the app background and 3.3:1 on
-     the lightest panel - under AA for normal text everywhere it was
-     used, and it is used for every hint, caption and secondary label in
-     the app. This clears 4.5:1 against all five panel backgrounds. */
-  --navy-300: #7b90c0;
-  --navy-200: #92a5ca;
-  --navy-100: #c5d1e7;
-  --navy-050: #e9eefa;
+  /* --- the neutral ramp ----------------------------------------
+     Kept named `navy` because ~40 call sites use it directly, but
+     the hue is gone: these are true greys with a trace of warmth.
+     The dark end is still real - the UV sheet is painted from it on
+     purpose (see --uv-field). */
+  --navy-990: #0d0d0f;
+  --navy-970: #131315;
+  --navy-950: #191919;
+  --navy-900: #232326;
+  --navy-850: #2e2e31;
+  --navy-800: #3a3a3e;
+  --navy-750: #46464a;
+  --navy-700: #545458;
+  --navy-600: #65656a;
+  --navy-500: #7a7a80;
+  --navy-400: #94949a;
+  --navy-300: #b0b0b6;
+  --navy-200: #c9c9cd;
+  --navy-100: #e2e2e4;
+  --navy-050: #f2f2f1;
 
-  /* --- candle wax red ---------------------------------------- */
-  --wax-950: #260a0c;
-  --wax-900: #3c1013;
-  --wax-800: #58191b;
-  --wax-700: #762224;
-  --wax-600: #952f2e;
-  --wax-500: #b4403a;
-  --wax-400: #cd594e;
-  --wax-300: #de7d6d;
-  --wax-200: #eda99a;
+  /* --- red: one colour, fully saturated, spent rarely -----------
+     The old ramp was a dusty brick that went pink as it lightened,
+     so it read washed wherever it landed. This one holds its chroma.
+     --wax-500 carries text at 6.0:1 on paper. */
+  --wax-950: #2a0a06;
+  --wax-900: #3f0f09;
+  --wax-800: #5a160f;
+  --wax-700: #7a1e13;
+  --wax-600: #9a2718;
+  --wax-500: #bb2f1c;
+  --wax-400: #bb2f1c;
+  --wax-300: #a52a19;
+  --wax-200: #8f2416;
 
-  /* the flame above the wax - used sparingly, for live values */
-  --flame-400: #e3a96f;
+  /* The one warm signal that is not the accent, for live values.
+     Darkened for paper: the light amber it used to be read 1.9:1 and
+     made the Support "pending" pill illegible. */
+  --flame-400: #8a5209;
 
-  /* --- glass ------------------------------------------------- */
-  --glass-blur: 22px;
-  --glass-blur-sm: 14px;
-  --glass-blur-lg: 34px;
-  --glass-sat: 1.65;
+  /* --- glass ---------------------------------------------------
+     Still glass: translucent, blurred, saturating what it samples.
+     But thin and crisp. A heavy blur turns whatever is behind it to
+     fog, which is the opposite of sharp; at 14px you still read the
+     shape underneath, and the panel gets a real edge instead of a
+     glow to tell you where it stops. */
+  --glass-blur: 14px;
+  --glass-blur-sm: 9px;
+  --glass-blur-lg: 20px;
+  --glass-sat: 1.05;
 
   /* tints, thinnest to thickest */
-  --glass-thin: rgba(32, 46, 84, 0.34);
-  --glass: rgba(16, 24, 48, 0.55);
-  --glass-thick: rgba(10, 16, 34, 0.74);
-  --glass-solid: rgba(7, 12, 25, 0.9);
+  --glass-thin: rgba(255, 255, 255, 0.55);
+  --glass: rgba(255, 255, 255, 0.78);
+  --glass-thick: rgba(255, 255, 255, 0.91);
+  --glass-solid: rgba(255, 255, 255, 0.98);
 
-  /* the lit rim and the specular sheen that sell the material */
-  --glass-rim: rgba(183, 203, 245, 0.13);
-  --glass-rim-lit: rgba(226, 236, 255, 0.3);
-  --glass-rim-wax: rgba(205, 89, 78, 0.34);
-  --sheen: linear-gradient(
-    152deg,
-    rgba(255, 255, 255, 0.16) 0%,
-    rgba(255, 255, 255, 0.05) 24%,
-    rgba(255, 255, 255, 0) 54%
-  );
-  --sheen-strong: linear-gradient(
-    150deg,
-    rgba(255, 255, 255, 0.24) 0%,
-    rgba(255, 255, 255, 0.07) 22%,
-    rgba(255, 255, 255, 0) 50%
-  );
+  /* The edge. One crisp hairline, dark on paper, and it has to be
+     visible - it is carrying the whole job the shadows used to. */
+  --glass-rim: rgba(24, 24, 27, 0.14);
+  --glass-rim-lit: rgba(24, 24, 27, 0.22);
+  --glass-rim-wax: rgba(187, 47, 28, 0.55);
+  /* White over white is not a highlight. Kept defined so the tokens
+     still resolve at the ~20 call sites that paint them. */
+  --sheen: none;
+  --sheen-strong: none;
 
-  /* --- semantic ---------------------------------------------- */
-  --bg: var(--navy-900);
-  --bg-deep: var(--navy-990);
+  /* --- semantic ------------------------------------------------ */
+  --bg: #f4f4f3;
+  /* Deliberately not white. A panel needs a ground to sit on, and a
+     white panel on a white page has no edge at all. */
+  --bg-deep: #eaeae8;
   --surface: var(--glass);
   --surface-2: var(--glass-thin);
   --surface-raised: var(--glass-thick);
-  --bg-sunken: rgba(4, 8, 18, 0.5);
+  --bg-sunken: rgba(24, 24, 27, 0.042);
 
-  --ink: var(--navy-050);
-  --ink-muted: var(--navy-200);
-  --ink-faint: var(--navy-300);
-  --ink-invert: var(--navy-990);
+  --ink: #18181b;
+  --ink-muted: #52525b;
+  /* Measured against the TRANSLUCENT panel, not pure white: the panel
+     is white over a tinted ground, so a swatch check against #fff
+     overstates the headroom by about half a point. */
+  --ink-faint: #65656d;
+  --ink-invert: #fafafa;
 
   --line: var(--glass-rim);
-  --line-strong: rgba(183, 203, 245, 0.2);
-  --line-dashed: rgba(205, 89, 78, 0.34);
+  --line-strong: rgba(24, 24, 27, 0.24);
+  /* Dashed says provisional on its own; it does not also need to be
+     red. Red is reserved for the one thing active or the one wrong. */
+  --line-dashed: rgba(24, 24, 27, 0.26);
 
-  --accent: var(--wax-400);
-  --accent-ink: #fff2ee;
-  --accent-soft: rgba(205, 89, 78, 0.14);
-  --accent-softer: rgba(205, 89, 78, 0.08);
-  --highlight: var(--wax-300);
-  --highlight-soft: rgba(222, 125, 109, 0.16);
+  --accent: var(--wax-500);
+  --accent-ink: #fff4f2;
+  --accent-soft: rgba(187, 47, 28, 0.1);
+  --accent-softer: rgba(187, 47, 28, 0.05);
+  --highlight: var(--wax-600);
+  --highlight-soft: rgba(154, 39, 24, 0.11);
 
-  --ok: #6fae84;
-  --warn: var(--flame-400);
-  --danger: var(--wax-300);
+  --ok: #26714a;
+  --warn: #8a5209;
+  --danger: #a3281a;
 
-  /* --- shadows ----------------------------------------------- */
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.5);
-  --shadow: 0 6px 18px -8px rgba(0, 0, 0, 0.7), 0 1px 2px rgba(0, 0, 0, 0.4);
-  --shadow-lg: 0 24px 50px -22px rgba(0, 0, 0, 0.88), 0 2px 10px rgba(0, 0, 0, 0.45);
-  --shadow-pop: 0 38px 78px -26px rgba(0, 0, 0, 0.95), 0 0 0 1px var(--glass-rim);
+  /* --- depth ---------------------------------------------------
+     --shadow-sm and --shadow are deliberately almost nothing: the
+     ~70 call sites that reach for them now get a hairline's worth of
+     separation, which is the point. Only menus, popovers and dialogs
+     genuinely float, and they keep real depth. */
+  --shadow-sm: none;
+  --shadow: 0 1px 1px rgba(24, 24, 27, 0.05);
+  --shadow-lg: 0 10px 24px -14px rgba(24, 24, 27, 0.22), 0 0 0 1px rgba(24, 24, 27, 0.1);
+  --shadow-pop: 0 18px 40px -20px rgba(24, 24, 27, 0.26), 0 0 0 1px rgba(24, 24, 27, 0.12);
 
-  /* the inner bevel: lit along the top, shaded underneath */
-  --bevel: inset 0 1px 0 var(--glass-rim-lit), inset 0 -1px 0 rgba(0, 0, 0, 0.42);
-  --bevel-soft: inset 0 1px 0 rgba(226, 236, 255, 0.18);
-  --glow-wax: 0 0 0 1px rgba(205, 89, 78, 0.42), 0 10px 26px -10px rgba(180, 64, 58, 0.55);
-  --glow-wax-strong: 0 0 0 1px rgba(205, 89, 78, 0.7), 0 14px 34px -10px rgba(180, 64, 58, 0.75);
+  /* One lit hairline along the top edge. The old bevel drew a dark
+     line underneath as well, which at small sizes only muddied the
+     bottom border. */
+  --bevel: inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  --bevel-soft: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+  --glow-wax: 0 0 0 1px rgba(187, 47, 28, 0.55);
+  --glow-wax-strong: 0 0 0 1px rgba(187, 47, 28, 0.85);
 
-  --grid-line: rgba(146, 165, 202, 0.08);
+  --grid-line: rgba(24, 24, 27, 0.075);
 
-  /* The chrome bars - top bar, menubar, editor toolbar. These were
-     rgba(7, 12, 25, x) typed in at each call site, which is why the
-     first light-theme attempt left three black strips across a white
-     app: a literal cannot be re-themed. */
-  --chrome: linear-gradient(to bottom, rgba(7, 12, 25, 0.72), rgba(7, 12, 25, 0.28));
-  --chrome-strong: linear-gradient(to bottom, rgba(7, 12, 25, 0.82), rgba(7, 12, 25, 0.62));
-  --chrome-soft: linear-gradient(to bottom, rgba(10, 16, 34, 0.66), rgba(10, 16, 34, 0.44));
-  --chrome-status: linear-gradient(to top, rgba(7, 12, 25, 0.86), rgba(7, 12, 25, 0.6));
-  /* Sunken wells: search fields, log strips, the composer, tree gutters.
-     Every one of these was a navy literal at the call site. */
-  --well: rgba(7, 12, 25, 0.34);
-  --well-deep: rgba(10, 16, 34, 0.86);
-  /* The UV sheet's backdrop. Tokenised so it CAN be themed, but kept
-     dark in both: a texture is judged against a neutral dark field,
-     and a white one would wash out every pale texel. */
-  --uv-field: rgba(10, 16, 34, 0.86);
+  /* Chrome bars: top bar, menubar, editor toolbar, status bar. Flat
+     now. A vertical gradient across a 40px strip is a gradient nobody
+     can see, and it cost every bar a repaint. */
+  --chrome: rgba(255, 255, 255, 0.88);
+  --chrome-strong: rgba(255, 255, 255, 0.93);
+  --chrome-soft: rgba(255, 255, 255, 0.78);
+  --chrome-status: rgba(255, 255, 255, 0.88);
+  /* Sunken wells: search fields, log strips, the composer, tree
+     gutters. Every one of these was a navy literal at the call site. */
+  --well: rgba(24, 24, 27, 0.045);
+  --well-deep: rgba(24, 24, 27, 0.08);
+  /* The UV sheet's backdrop, and the one surface that does NOT follow
+     the UI into the light: a texture is judged against a neutral dark
+     field, and on white every pale texel disappears into the page. */
+  --uv-field: #17171a;
 
-  /* The viewport behind the model. Its own token because whether the
-     stage follows the UI into the light is a design decision, not a
-     consequence of one - see theme-light.css. */
-  --stage-wash:
-    radial-gradient(90% 80% at 50% 0%, rgba(24, 36, 70, 0.72), transparent 70%),
-    radial-gradient(60% 50% at 78% 96%, rgba(118, 34, 36, 0.24), transparent 72%),
-    var(--navy-970);
+  /* The viewport behind the model. Light, per the spec's one open
+     decision - the operator saw both and chose the fully-white app.
+     A shade below the page so the stage still reads as its own well. */
+  --stage-wash: #e7e7e5;
 
-  /* --- type -------------------------------------------------- */
+  /* --- type ---------------------------------------------------- */
   --font-sans: 'Vellum Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
   --font-mono: 'Vellum Mono', ui-monospace, 'SF Mono', Menlo, monospace;
 
@@ -149,22 +180,24 @@
   --fs-sm: 0.8125rem;
   --fs-base: 0.875rem;
   --fs-md: 1rem;
-  --fs-lg: 1.125rem;
-  --fs-xl: 1.375rem;
-  --fs-2xl: 1.75rem;
-  --fs-3xl: 2.25rem;
+  --fs-lg: 1.0625rem;
+  --fs-xl: 1.25rem;
+  --fs-2xl: 1.5rem;
+  --fs-3xl: 1.875rem;
 
-  --tracking-wide: 0.08em;
-  --tracking-caps: 0.14em;
+  --tracking-wide: 0.06em;
+  --tracking-caps: 0.11em;
 
-  /* --- geometry ---------------------------------------------- */
-  /* glass wants to be rounder than a flat panel does */
-  --r-xs: 4px;
-  --r-sm: 7px;
-  --r-md: 11px;
-  --r-lg: 17px;
-  --r-xl: 24px;
-  --r-pill: 999px;
+  /* --- geometry ------------------------------------------------
+     Sharp. Nothing is a pill: --r-pill resolves to a small radius
+     rather than 999px, so the toggles, chips and tab groups that
+     reach for it come out cut instead of moulded. */
+  --r-xs: 2px;
+  --r-sm: 3px;
+  --r-md: 4px;
+  --r-lg: 6px;
+  --r-xl: 8px;
+  --r-pill: 4px;
 
   --sp-1: 4px;
   --sp-2: 8px;
@@ -176,16 +209,16 @@
   --sp-10: 40px;
   --sp-12: 48px;
 
-  --gutter: clamp(16px, 3.2vw, 44px);
+  --gutter: clamp(16px, 2.6vw, 36px);
   --shell-max: 1680px;
-  --topbar-h: 60px;
+  --topbar-h: 52px;
 
-  /* --- motion: everything overshoots a little ----------------- */
-  --dur-fast: 150ms;
-  --dur: 280ms;
-  --dur-slow: 460ms;
-  --ease: cubic-bezier(0.22, 0.61, 0.36, 1);
-  --spring: cubic-bezier(0.34, 1.56, 0.64, 1);
-  --spring-lg: cubic-bezier(0.25, 1.72, 0.4, 1);
-  --spring-soft: cubic-bezier(0.32, 1.28, 0.5, 1);
+  /* --- motion --------------------------------------------------
+     One curve, short, no overshoot. The three spring tokens are gone
+     along with their callers: an overshoot reads as bounce, and every
+     hover that moved an element has been cut back to colour instead. */
+  --dur-fast: 90ms;
+  --dur: 140ms;
+  --dur-slow: 220ms;
+  --ease: cubic-bezier(0.2, 0, 0, 1);
 }

@@ -45,7 +45,7 @@ function useAssetActions() {
 const PER_PAGE = 12
 
 /** The two shelves, and what the tab on each says. */
-const shelfLabel: Record<Shelf, string> = { items: 'Items', mobs: 'Mobs & Anim.' }
+const shelfLabel: Record<Shelf, string> = { items: 'Items', mobs: 'Mobs' }
 
 /**
  * What a turning model needs to stay inside its tile: its height, or
@@ -242,7 +242,7 @@ function Pager({
   )
 }
 
-/** The shared library panel - identical for Items and for Mobs & Anim. */
+/** The shared library panel - identical for Items and for Mobs. */
 function Library({ sceneId, shelf, openNew }: { sceneId: string; shelf: Shelf; openNew?: boolean }) {
   useTitle(shelfLabel[shelf])
   const actions = useAssetActions()
@@ -427,14 +427,14 @@ function Gateway() {
     {
       kind: 'items',
       icon: 'cube',
-      desc: 'Hand-held and placed models. Block/item formats, static geometry.',
+      desc: 'Blocks and items. Static geometry.',
       count: assetsFor(scene.id, 'items').length,
       palette: ['#c8a96a', '#a8854a', '#7d6234'],
     },
     {
       kind: 'mobs',
       icon: 'anim',
-      desc: 'Rigged entities with their animation controllers and keyframes.',
+      desc: 'Rigged entities with animations.',
       count: assetsFor(scene.id, 'mobs').length,
       palette: ['#5c7d9c', '#43607a', '#2f455a'],
     },
@@ -447,8 +447,7 @@ function Gateway() {
           <div className="eyebrow">Projects</div>
           <h1 className="page-title">First scene</h1>
           <p className="page-sub">
-            Choose a scene, then a shelf. Both shelves open the same shared library panel - only the
-            heading changes.
+            Choose a scene, then a shelf.
           </p>
         </div>
       </div>

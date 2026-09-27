@@ -54,7 +54,7 @@ export function ReloadControl({ linked }: { linked: boolean }) {
         <p className="rl__hint">
           {linked
             ? 'Saving writes the files. This swaps them into the running server.'
-            : 'Link a server first — there is nothing to reload.'}
+            : 'No server linked.'}
         </p>
       </div>
 

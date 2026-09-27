@@ -330,30 +330,64 @@ endpoints above are expected to exchange.
 
 ## The material
 
-One surface: **midnight velvet navy**. There is no light theme and no theme
-toggle - the whole app lives on a single deep navy field, defined once in
-`src/styles/tokens.css`.
+One surface: **paper**. There is no dark theme and no theme toggle - the whole
+app lives on a single warm-grey field, defined once in `src/styles/tokens.css`.
+It replaced a midnight navy one outright rather than sitting behind a switch
+(see `SPEC-light-theme.md`), which is why the neutral ramp is still named
+`navy`: about forty call sites reach for it by name, but the hue is gone and
+the values are true greys.
 
-**Liquid glass.** Every surface above the background is the same three-part
+Three rules hold the look together, and they are written at the top of
+`tokens.css` because every decision below falls out of them:
+
+1. **A line does the work a shadow used to.** `--shadow-sm` resolves to
+   `none` and `--shadow` to a single hairline's worth of lift, so the ~70
+   call sites that reach for them get an edge instead of a bloom. Real depth
+   survives only where something genuinely floats: menus, popovers, dialogs.
+2. **Nothing is a pill.** Radii top out at 8px and most controls sit at 3-4px.
+   `--r-pill` resolves to 4px rather than 999px, so the toggles, chips and tab
+   groups that name it come out cut instead of moulded.
+3. **Red is structural.** It marks the one thing that is active or the one
+   thing that is wrong, and nothing else.
+
+**Liquid glass, thinned.** Every surface above the background is still the same
 recipe: a translucent tint, a `backdrop-filter` blur that saturates what it
-samples, and a rim lit along the top edge with a specular sheen laid over it
-(`.glass` in `base.css`, repeated inline where a component needs its own
-geometry). Glass over a flat fill reads as a grey box, so `body::before`
-carries a slow-drifting field of navy and wax light for the blurs to pick up,
-and `body::after` lays a fine grain over it for the velvet.
+samples, and a rim. But the blur is 14px rather than 28px - a heavy blur turns
+whatever is behind it to fog, which is the opposite of sharp - and the rim is a
+crisp dark hairline rather than a lit bevel with a specular sheen over it.
+`--sheen` resolves to `none`, so the ~20 call sites that paint it cost nothing.
+The one panel that is *not* glass is the config listing: it covers the viewport
+and you read it line by line, and at 98% the model behind it still ghosted
+through as a grey cloud over the code.
 
-**Candle wax red** carries every affordance. Buttons, the active nav lozenge,
-selected outliner rows, tool toggles, switches, focus rings and the dashed
-reserved regions are all outlined in wax (`--wax-400`), lit with a matching
-glow. It is the only saturated colour in the app, so anything you can press is
-the thing that glows.
+**The ground is ruled, not lit.** `body::before` was four radial gradients
+drifting on a 34-second loop; glass over a moving wash never settles, and at
+any moment it looked like a smear rather than a surface. It is now a flat field
+with one fine 64px grid ruled across it - the right texture for an app whose
+subject is built on a grid of 16 units to the block - and `body::after` lays a
+fainter grain over it.
 
-**Bouncy.** Motion runs on overshooting springs rather than ease curves:
-`--spring` for most transitions, `--spring-lg` where the overshoot should
-read. Buttons and tools compress on press and spring back, the nav lozenge and
-pagination pips pop into place, library cards bounce to 1.2x on hover, menus
-scale in from their anchor corner, panel chevrons swing, and the settings
-switch knob stretches as it throws.
+**Two vocabularies for "on".** A segment that is merely switched on (a mode
+tab, a view toggle, a UV face, a filter, a pager page) reads as a filled
+neutral segment: `--well-deep` behind `--ink`, on a `--line-strong` hairline.
+The accent is spent only on what you have *selected* - the outliner row, the
+texture, the open ticket - as one flat `--accent-soft` fill with a 2px accent
+rule down its left edge, and on the active tool and the one primary button per
+screen, which are solid `--accent`. Before this split, a default editor session
+lit eight things in red at once, which is the same as lighting none.
+
+**Short, no overshoot.** One curve, `cubic-bezier(0.2, 0, 0, 1)`, at 90/140/220
+ms. The three spring tokens are gone along with their callers: 59 decorative
+hover and press transforms were removed outright, because a button that rises
+off the page on hover and shrinks when pressed is a toy. Entrances fade rather
+than scale. What motion remains does work: the switch knob throws, the panel
+chevron swings, the world stage shakes.
+
+**Contrast is measured, not eyeballed**, and measured against the *translucent*
+panel rather than `#fff` - a swatch check against white overstates the headroom
+by about half a point, because the panel is white over a tinted ground.
+`scripts/contrast-audit.mjs` walks every route against a dev server and reports
+text runs under 4.5:1; it reads zero on all five.
 
 Two notes on `backdrop-filter`, both of which bit during the build:
 
@@ -406,8 +440,11 @@ survives is what was doing work rather than decoration:
   something is. It is rigged and walks at the same speed, solving the same
   equation for its own leg length.
 
-There is no day/night any more, because there is no sky to change. Black is
-the dark theme: a glow reads as a glow without one.
+There is no day/night any more, because there is no sky to change. The stage
+stays black even though the rest of the app is paper: a texture is judged
+against a neutral dark field, and on white every pale texel disappears into
+the page. Its frame does not - the dialog's chrome is light, and only the
+stage between the two bars is black.
 
 ## Into the game
 

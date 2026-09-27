@@ -13,8 +13,7 @@
   border: 1px solid var(--glass-rim);
   box-shadow: var(--bevel), var(--shadow);
   isolation: isolate;
-  transition: border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease),
-    transform var(--dur-slow) var(--spring);
+  transition: border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
 }
 
 /* the specular highlight that makes it read as glass, not as tint */
@@ -29,7 +28,7 @@
 }
 
 .card--dashed {
-  background-color: rgba(205, 89, 78, 0.04);
+  background-color: color-mix(in srgb, var(--accent) 4%, transparent);
   backdrop-filter: blur(var(--glass-blur-sm)) saturate(1.2);
   -webkit-backdrop-filter: blur(var(--glass-blur-sm)) saturate(1.2);
   border-style: dashed;
@@ -53,7 +52,6 @@
 .card--interactive:hover {
   border-color: var(--glass-rim-wax);
   box-shadow: var(--bevel), var(--shadow-lg);
-  transform: translateY(-2px);
 }
 
 .card__head {
@@ -108,8 +106,8 @@
 }
 
 .card__placeholder svg {
-  color: var(--wax-400);
-  filter: drop-shadow(0 0 10px rgba(205, 89, 78, 0.45));
+  color: var(--ink-faint);
+  opacity: 0.55;
 }
 
 .card__placeholder p { font-size: var(--fs-sm); max-width: 44ch; }
@@ -121,7 +119,7 @@
   padding: 3px 10px;
   border-radius: var(--r-pill);
   border: 1px solid var(--wax-400);
-  background: rgba(205, 89, 78, 0.12);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
   color: var(--wax-200);
   font-size: var(--fs-2xs);
   letter-spacing: var(--tracking-wide);

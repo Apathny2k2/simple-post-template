@@ -1,6 +1,5 @@
 @import './fonts.css';
 @import './tokens.css';
-@import './theme-light.css';
 
 *,
 *::before,
@@ -30,42 +29,40 @@ body {
 /* ---------------------------------------------------------------
    The room the glass sits in.
 
-   Glass over a flat fill reads as a grey box, so the page keeps a
-   slow-drifting field of navy light underneath for every blurred
-   surface to pick up. Navy only: the two wax-red pools that used to sit
-   in the corners cast an orange wash over half the page and fought
-   every screenshot taken of it.
+   Was four radial gradients drifting on a 34-second loop. Glass over
+   a moving wash never settles, and at any moment it looked like a
+   smear rather than a surface - which is most of what read as haze.
+
+   Now: a flat ground with one fine grid ruled across it. The grid is
+   the texture. It is the right texture for this app specifically,
+   because the thing being edited is built on a grid of 16 units to
+   the block, and it gives every translucent panel something with a
+   hard edge to sit against instead of a gradient.
    --------------------------------------------------------------- */
 
 body::before {
   content: '';
   position: fixed;
-  inset: -20%;
+  inset: 0;
   z-index: -2;
   background:
-    radial-gradient(42% 38% at 16% 10%, rgba(61, 82, 135, 0.6), transparent 66%),
-    radial-gradient(34% 30% at 84% 6%, rgba(45, 64, 110, 0.4), transparent 64%),
-    radial-gradient(46% 42% at 74% 86%, rgba(43, 61, 105, 0.62), transparent 68%),
-    radial-gradient(30% 28% at 26% 82%, rgba(32, 46, 84, 0.45), transparent 62%),
+    linear-gradient(to right, var(--grid-line) 1px, transparent 1px) 0 0 / 64px 64px,
+    linear-gradient(to bottom, var(--grid-line) 1px, transparent 1px) 0 0 / 64px 64px,
     var(--bg);
-  animation: ambient 34s var(--ease) infinite alternate;
 }
 
-/* velvet: a fine grain so the large flats are not perfectly clean */
+/* A fine grain, so the large flats are not perfectly clean. Finer and
+   fainter than before: at 0.35 opacity the old one was visible as
+   noise rather than felt as texture. */
 body::after {
   content: '';
   position: fixed;
   inset: 0;
   z-index: -1;
   pointer-events: none;
-  opacity: 0.35;
+  opacity: 0.2;
   mix-blend-mode: overlay;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)' opacity='0.5'/%3E%3C/svg%3E");
-}
-
-@keyframes ambient {
-  from { transform: translate3d(0, 0, 0) scale(1); }
-  to { transform: translate3d(2.5%, -2%, 0) scale(1.08); }
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='1.1' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)' opacity='0.42'/%3E%3C/svg%3E");
 }
 
 h1, h2, h3, h4, p, figure { margin: 0; }
@@ -96,20 +93,20 @@ svg { display: block; flex: none; }
 }
 
 ::selection {
-  background: rgba(205, 89, 78, 0.34);
+  background: color-mix(in srgb, var(--accent) 34%, transparent);
   color: var(--ink);
 }
 
 * {
   scrollbar-width: thin;
-  scrollbar-color: rgba(183, 203, 245, 0.22) transparent;
+  scrollbar-color: color-mix(in srgb, var(--ink-faint) 22%, transparent) transparent;
 }
 
 *::-webkit-scrollbar { width: 10px; height: 10px; }
 *::-webkit-scrollbar-track { background: transparent; }
 
 *::-webkit-scrollbar-thumb {
-  background: rgba(183, 203, 245, 0.22);
+  background: color-mix(in srgb, var(--ink-faint) 22%, transparent);
   border: 3px solid transparent;
   background-clip: content-box;
   border-radius: var(--r-pill);
@@ -139,6 +136,8 @@ svg { display: block; flex: none; }
   isolation: isolate;
 }
 
+/* The specular wipe. In the light theme --sheen resolves to none, so
+   this paints nothing there and costs nothing. */
 .glass::before {
   content: '';
   position: absolute;
@@ -172,7 +171,10 @@ svg { display: block; flex: none; }
   font-size: var(--fs-2xs);
   letter-spacing: var(--tracking-caps);
   text-transform: uppercase;
-  color: var(--highlight);
+  /* Was --highlight, i.e. red. Every card label in the app was an
+     accent colour, so red marked nothing in particular. Section
+     labels are structure, not signal. */
+  color: var(--ink-faint);
   font-weight: 600;
 }
 
@@ -224,19 +226,17 @@ svg { display: block; flex: none; }
   max-width: 62ch;
 }
 
-/* the page's own entrance - things arrive with a little overshoot */
+/* The page's entrance. Was a staggered rise with a scale and an
+   overshoot, which meant every navigation began with the layout
+   visibly assembling itself. One short fade, everything at once. */
 @keyframes rise-in {
-  from { opacity: 0; transform: translateY(10px) scale(0.985); }
-  to { opacity: 1; transform: none; }
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 .page > * {
-  animation: rise-in var(--dur-slow) var(--spring-soft) backwards;
+  animation: rise-in var(--dur) var(--ease) backwards;
 }
-
-.page > *:nth-child(2) { animation-delay: 40ms; }
-.page > *:nth-child(3) { animation-delay: 80ms; }
-.page > *:nth-child(4) { animation-delay: 120ms; }
 
 @media (prefers-reduced-motion: reduce) {
   *,

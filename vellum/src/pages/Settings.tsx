@@ -28,7 +28,7 @@ type SectionId =
 type Section = { id: SectionId; label: string; icon: IconName; paid?: boolean; blurb: string }
 
 const freeSections: Section[] = [
-  { id: 'account', label: 'Account', icon: 'user', blurb: 'Sign-in, sessions and how this machine is identified.' },
+  { id: 'account', label: 'Account', icon: 'user', blurb: 'Sign-in and sessions.' },
   { id: 'profile', label: 'Profile', icon: 'book', blurb: 'What collaborators see next to your uploads.' },
   { id: 'directory', label: 'Directory', icon: 'directory', blurb: 'Where Vellum reads and writes on disk.' },
   { id: 'report-a-bug', label: 'Report A Bug', icon: 'bug', blurb: 'Send a report with the current session log attached.' },
@@ -45,7 +45,7 @@ const paidSections: Section[] = [
   },
   { id: 'billing', label: 'Billing', icon: 'card', paid: true, blurb: 'Plan, payment method and invoice history.' },
   { id: 'teams', label: 'Teams', icon: 'users', paid: true, blurb: 'Seats, roles and shared scene access.' },
-  { id: 'support', label: 'Support', icon: 'support', paid: true, blurb: 'Priority queue and direct escalation.' },
+  { id: 'support', label: 'Support', icon: 'support', paid: true, blurb: 'Tickets you have opened.' },
 ]
 
 const allSections = [...freeSections, ...paidSections]
@@ -548,8 +548,7 @@ function Body({ section }: { section: Section }) {
                 exist here, so it is gone rather than looking live. The
                 switches below are per-device and are kept for real. */}
             <p className="field__hint" style={{ marginTop: 'var(--sp-4)' }}>
-              Account details are read-only in this build — the preferences below are the part
-              this device keeps.
+              Account details are read-only. The preferences below are kept on this device.
             </p>
           </Card>
           <Card title="This machine" dividedHead>

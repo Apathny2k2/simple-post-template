@@ -54,7 +54,7 @@
 .bbbox--selected .bbface {
   outline: 1px solid var(--wax-300);
   outline-offset: -1px;
-  box-shadow: inset 0 0 0 1px rgba(205, 89, 78, 0.55);
+  box-shadow: inset 0 0 0 1px var(--accent);
 }
 
 /* ---- on-canvas zoom cluster ----
@@ -87,11 +87,11 @@
   font-size: 13px;
   line-height: 1;
   cursor: pointer;
-  transition: background var(--spring-soft), color var(--spring-soft);
+  transition: background var(--ease), color var(--ease);
 }
 
 .scene3d__zoom button:hover {
-  background: rgba(205, 89, 78, 0.18);
+  background: var(--well-deep);
   color: var(--ink);
 }
 

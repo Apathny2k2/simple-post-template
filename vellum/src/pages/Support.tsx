@@ -621,8 +621,7 @@ export function Support() {
     <>
       <p className="sup__note">
         <Icon name="info" size={13} />
-        The ticketing and messaging here are live against an in-browser mock transport - open a
-        ticket, reply, and the thread answers back.
+        Tickets and replies run against a mock in this browser. Nothing is sent.
       </p>
 
       <div className="sup__bar">

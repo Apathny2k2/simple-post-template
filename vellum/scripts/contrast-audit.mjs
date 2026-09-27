@@ -14,10 +14,7 @@ for (const [name, hash] of screens) {
   const errs = []
   p.on('pageerror', e => errs.push(e.message))
   await p.goto('http://localhost:5199/' + hash, { waitUntil: 'networkidle' })
-  await p.evaluate(() => {
-    document.documentElement.setAttribute('data-theme', 'light')
-    document.documentElement.setAttribute('data-stage', 'light')
-  })
+  /* Light is the only scheme now, so there is nothing to opt into. */
   await p.waitForTimeout(1100)
   await p.screenshot({ path: `L-${name}.png`, fullPage: false })
 
