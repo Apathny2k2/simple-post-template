@@ -300,6 +300,8 @@ type Props = {
   spin?: boolean
   initialYaw?: number
   initialPitch?: number
+  /** Holds the view at this yaw, for a caller that turns the model itself. */
+  yaw?: number
   /** pull the camera back; negative moves away */
   zoom?: number
   /** false hides the on-canvas zoom cluster, for thumbnails */
@@ -343,6 +345,7 @@ export function ModelView({
   spin = false,
   initialYaw = -32,
   initialPitch = -18,
+  yaw: heldYaw,
   zoom = 0,
   zoomable = true,
   clip = null,
@@ -356,7 +359,8 @@ export function ModelView({
   anchorOn = null,
   className = '',
 }: Props) {
-  const [yaw, setYaw] = useState(initialYaw)
+  const [ownYaw, setYaw] = useState(initialYaw)
+  const yaw = heldYaw ?? ownYaw
   const [pitch, setPitch] = useState(initialPitch)
   const [factor, setFactor] = useState(1)
   /* Screen-space offset of the whole stage. Without it the scale is

@@ -282,3 +282,28 @@ svg { display: block; flex: none; }
   color: #fff;
   box-shadow: var(--shadow-pop);
 }
+
+/* ---------------- page transitions ----------------
+   The router wraps a route change in a view transition. The page fades
+   up into place while the top bar holds still and its marker slides. */
+
+::view-transition-old(root) {
+  animation: page-out 200ms cubic-bezier(0.4, 0, 1, 1) both;
+}
+
+::view-transition-new(root) {
+  animation: page-in 520ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+::view-transition-group(nav-mark) {
+  animation-duration: 480ms;
+  animation-timing-function: cubic-bezier(0.34, 1.4, 0.64, 1);
+}
+
+@keyframes page-out {
+  to { opacity: 0; transform: scale(0.985); }
+}
+
+@keyframes page-in {
+  from { opacity: 0; transform: translateY(14px); }
+}

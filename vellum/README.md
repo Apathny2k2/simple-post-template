@@ -330,8 +330,9 @@ endpoints above are expected to exchange.
 
 ## The material
 
-One surface: **paper**. There is no dark theme and no theme toggle - the whole
-app lives on a single warm-grey field, defined once in `src/styles/tokens.css`.
+One surface: **paper**. There is no theme toggle - the whole app lives on a
+single warm-grey field, defined once in `src/styles/tokens.css`. The Dash is
+the one exception, described at the end of this section.
 It replaced a midnight navy one outright rather than sitting behind a switch
 (see `SPEC-light-theme.md`), which is why the neutral ramp is still named
 `navy`: about forty call sites reach for it by name, but the hue is gone and
@@ -416,6 +417,32 @@ builds each box out of six transformed `div`s inside a `preserve-3d` scene:
 flat three-tone shading, a CSS grid floor, drag-to-orbit, and a keyframed spin
 for the library cards. There is no mesh, no camera and no raster pipeline - it
 is there so the viewport reads as a viewport.
+
+**The Dash is the dark room.** It takes after Blockbench: grey-blue panels, one
+bright blue, the axis colours, and the studio's own models turning on a disc at
+the top of the page. It has no second copy of the styles. While it is mounted it
+sets `data-surface="dark"` on `<html>`, and `src/pages/Dashboard.css` re-points
+the app's tokens under that selector, so the top bar, menus and buttons go dark
+with it and come back when you leave. The rules above bend here on purpose:
+panels are rounded, motion springs, and the turntable, the adoption ring, the
+file stacks and the plugin timeline all move. Under reduced motion every loop
+stops and nothing is staggered.
+
+White text on Blockbench's `#3e90ff` measures 3.2:1, so filled buttons use a
+deeper `#2a6ad8` and the bright blue is kept for light and lines. The contrast
+audit reads the Dash in its dark state.
+
+The turntable turns on a JavaScript clock, and the axis gizmo in its corner
+reads the same yaw, so the two cannot drift apart.
+`ModelView` takes a `yaw` prop for this. The clock stops while the hero is
+scrolled out of view.
+
+**Pages cross-fade.** `useRoute` wraps each route change in a view transition
+and flushes the update inside its callback. The page fades up into place, the
+top bar holds still, and the nav's active marker slides from one link to the
+next, because the marker is its own element with its own
+`view-transition-name`. Without the API, or with reduced motion on, the page
+simply swaps.
 
 ## The stage
 

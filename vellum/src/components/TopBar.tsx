@@ -51,6 +51,7 @@ export function TopBar({ segments }: { segments: string[] }) {
                 navigate(l.path)
               }}
             >
+              {active ? <span className="nav-pill__mark" aria-hidden="true" /> : null}
               {l.icon ? <Icon name={l.icon} size={14} /> : null}
               {l.label}
             </a>

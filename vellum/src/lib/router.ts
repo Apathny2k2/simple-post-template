@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { flushSync } from 'react-dom'
 
 export type Route = {
   /** path segments after the leading '#/', e.g. ['settings', 'billing'] */
@@ -51,6 +52,18 @@ export function navigate(path: string) {
   window.location.hash = `#${next}`
 }
 
+/* Pages cross-fade where the browser can, using a view transition. The
+   update has to land inside the transition's callback, so it is flushed
+   synchronously there. */
+function swap(apply: () => void) {
+  const still = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+  if (typeof document.startViewTransition !== 'function' || still) {
+    apply()
+    return
+  }
+  document.startViewTransition(() => flushSync(apply))
+}
+
 export function useRoute(): Route {
   const [route, setRoute] = useState<Route>(read)
   const current = useRef(route.path)
@@ -71,7 +84,7 @@ export function useRoute(): Route {
         return
       }
       current.current = next.path
-      setRoute(next)
+      swap(() => setRoute(next))
     }
     window.addEventListener('hashchange', onChange)
     return () => window.removeEventListener('hashchange', onChange)

@@ -1,9 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { dashStore } from '../../lib/dash'
-import { BEACON, CRATE, GRASS, LAMP_OFF, PAPER, headSprite, itemForPath } from './sprites'
-import type { Sprite } from './sprites'
+import type { IconName } from '../../lib/icons'
 
-export type Toast = { id: number; title: string; body: string; icon: Sprite; leaving?: boolean }
+export type Toast = {
+  id: number
+  title: string
+  body: string
+  icon: IconName
+  tone: 'info' | 'ok' | 'warn' | 'bad'
+  leaving?: boolean
+}
+
+let seq = 0
 
 /** At most three on screen. Each stays about four seconds. */
 export function useToasts() {
@@ -12,11 +20,11 @@ export function useToasts() {
   useEffect(() => () => timers.current.forEach((t) => window.clearTimeout(t)), [])
 
   const push = useCallback((t: Omit<Toast, 'id'>) => {
-    const id = Date.now() + Math.random()
+    const id = ++seq
     setItems((list) => [...list.slice(-2), { ...t, id }])
     timers.current.push(
       window.setTimeout(() => setItems((l) => l.map((x) => (x.id === id ? { ...x, leaving: true } : x))), 4200),
-      window.setTimeout(() => setItems((l) => l.filter((x) => x.id !== id)), 4600),
+      window.setTimeout(() => setItems((l) => l.filter((x) => x.id !== id)), 4700),
     )
   }, [])
 
@@ -62,33 +70,38 @@ export function useDashToasts(push: (t: Omit<Toast, 'id'>) => void) {
     const { snapshot } = dashStore
     const liveBefore = (s: string) => was.fed.includes(s)
 
-    if (!was.agent && now.agent) push({ title: 'Plugin connected', body: now.agent, icon: GRASS })
+    if (!was.agent && now.agent) push({ title: 'Plugin connected', body: now.agent, icon: 'power', tone: 'ok' })
 
     if (liveBefore('pack') && was.hash !== now.hash) {
       const name = snapshot.pack.version ? `Build ${snapshot.pack.version}` : snapshot.pack.archive
-      push({ title: 'New pack pushed', body: `${name}. Players are downloading it.`, icon: CRATE })
+      push({ title: 'New pack pushed', body: `${name}. Players are downloading it.`, icon: 'upload', tone: 'info' })
     }
 
     if (liveBefore('server') && was.online !== now.online) {
       push(
         now.online
-          ? { title: 'Server is back', body: 'Beacon relit.', icon: BEACON }
-          : { title: 'Server went offline', body: snapshot.server.status, icon: LAMP_OFF },
+          ? { title: 'Server is back', body: snapshot.server.status, icon: 'server', tone: 'ok' }
+          : { title: 'Server went offline', body: snapshot.server.status, icon: 'server', tone: 'bad' },
       )
     }
 
     if (liveBefore('players') && was.wrong > 0 && now.wrong === 0 && now.correct > 0) {
-      push({ title: "Everyone's on the new pack", body: `${now.correct} of ${now.correct} players. No stragglers.`, icon: headSprite(1) })
+      push({
+        title: "Everyone's on the new pack",
+        body: `${now.correct} of ${now.correct} players.`,
+        icon: 'users',
+        tone: 'ok',
+      })
     }
 
     const top = snapshot.files[0]
     if (liveBefore('files') && top && now.topFile !== was.topFile) {
-      push({ title: `${top.by} saved a file`, body: top.name, icon: itemForPath(top.where) })
+      push({ title: `${top.by} saved a file`, body: top.name, icon: 'save', tone: 'info' })
     }
 
     const rec = dashStore.log[0]
     if (rec && rec.id !== was.lastLog && !rec.ok) {
-      push({ title: 'The plugin sent a bad request', body: rec.op, icon: PAPER })
+      push({ title: 'The plugin sent a bad request', body: rec.op, icon: 'bug', tone: 'bad' })
     }
   }, [version, push])
 }

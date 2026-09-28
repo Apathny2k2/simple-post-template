@@ -1,6 +1,4 @@
-import { useCallback, useEffect, useState, useSyncExternalStore } from 'react'
-import type { CSSProperties } from 'react'
-import { Card } from '../components/Card'
+import { useCallback, useEffect, useLayoutEffect, useState, useSyncExternalStore } from 'react'
 import { ReloadControl } from '../components/ReloadControl'
 import type { ReloadPhase } from '../components/ReloadControl'
 import { Menu } from '../components/Menu'
@@ -11,10 +9,20 @@ import { dashStore, formatWhen, healthOf } from '../lib/dash'
 import type { Section } from '../lib/dash'
 import { connect, dash, disconnect, loadLink } from '../lib/dash-api'
 import { saveBlob } from '../lib/download'
-import { Scene } from './dash/scene'
-import { Hotbar, PackEntry, PlanTooltip, RedstoneLine, ServerConsole, Toasts, XpBar } from './dash/hud'
-import { PixelArt } from './dash/pixel'
-import { itemForPath } from './dash/sprites'
+import { Hero } from './dash/hero'
+import {
+  AdoptionRing,
+  ApplyLine,
+  Counter,
+  CubeStacks,
+  FileGlyph,
+  PackBox,
+  Person,
+  Plan,
+  Tile,
+  Toasts,
+} from './dash/cards'
+import { Timeline } from './dash/timeline'
 import { startDemo } from './dash/demo'
 import { useDashToasts, useToasts } from './dash/toasts'
 import './Dashboard.css'
@@ -52,13 +60,20 @@ function SampleBadge({ fed, section }: { fed: Section[]; section: Section }) {
   )
 }
 
-const order = (n: number) => ({ '--n': n }) as CSSProperties
-
 export function Dashboard() {
   useTitle('Dashboard')
-  const { snapshot, meta, log, now, health } = useDash()
+  const { snapshot, meta, now, health } = useDash()
   const [toasts, pushToast] = useToasts()
   useDashToasts(pushToast)
+
+  // The Dash is the one dark page. The top bar and menus read the same tokens, so they follow.
+  useLayoutEffect(() => {
+    const root = document.documentElement
+    root.dataset.surface = 'dark'
+    return () => {
+      delete root.dataset.surface
+    }
+  }, [])
 
   // A saved link reconnects on load. A Studio served by the plugin depends on this.
   useEffect(() => {
@@ -95,8 +110,6 @@ export function Dashboard() {
   }, [])
 
   const { server, pack, players, subscription, files } = snapshot
-  const total = players.correct + players.wrong
-  const live = meta.fed.length > 0
 
   // Rows that arrive after the page loaded are highlighted once.
   const fileIds = files.map((f) => f.id).join(',')
@@ -114,14 +127,15 @@ export function Dashboard() {
       <h1 className="vh">Dashboard</h1>
       <Toasts items={toasts} />
 
-      <Scene
+      <Hero
         server={server}
-        correct={players.correct}
-        wrong={players.wrong}
-        packHash={pack.hash}
-        health={health}
+        players={players}
         meta={meta}
+        health={health}
         now={now}
+        demo={demo}
+        linked={linked}
+        onDemo={setDemo}
         badge={<SampleBadge fed={meta.fed} section="server" />}
         menu={
           <Menu
@@ -136,112 +150,55 @@ export function Dashboard() {
         }
       />
 
-      {demo ? (
-        <div className="dash-note" data-demo>
-          <span className="dash-note__dot" aria-hidden="true" />
-          <span>Demo server running. It feeds this page through the same API a real plugin uses.</span>
-          <button className="btn btn--sm" onClick={() => setDemo(false)}>
-            Stop demo
-          </button>
-        </div>
-      ) : live ? null : (
-        <div className="dash-note">
-          <Icon name="info" size={15} />
-          <span>No server connected. These cards show sample data.</span>
-          {linked ? null : (
-            <button className="btn btn--sm btn--primary" onClick={() => setDemo(true)}>
-              <Icon name="play" size={12} /> Run a demo server
-            </button>
-          )}
-        </div>
-      )}
-
       <div className="dash-grid">
-        <Card
-          className="dash-files"
-          style={order(1)}
-          eyebrow={
-            <>
-              Server files <SampleBadge fed={meta.fed} section="server" />
-            </>
-          }
-          title={`${server.total} files synced`}
-        >
-          <Hotbar rows={server.breakdown} />
-        </Card>
-
-        <Card
+        <Tile
           className="dash-players"
-          style={order(2)}
-          eyebrow={
-            <>
-              Players <SampleBadge fed={meta.fed} section="players" />
-            </>
-          }
+          n={1}
+          label="Players"
+          badge={<SampleBadge fed={meta.fed} section="players" />}
           title="On the current pack"
         >
-          <XpBar correct={players.correct} wrong={players.wrong} />
-          <p className="dash-players__sum">
-            {total
-              ? `${players.correct} of ${total} on the current pack. ${
-                  players.wrong ? `${players.wrong} still on an old one.` : 'Nobody left behind.'
-                }`
-              : 'Nobody is online.'}
-          </p>
-          {total ? <p className="card__note">Counted {formatWhen(players.sampledAt, now)}</p> : null}
-        </Card>
+          <AdoptionRing players={players} now={now} />
+        </Tile>
 
-        <Card
-          className="dash-pack"
-          style={order(3)}
-          eyebrow={
+        <Tile
+          className="dash-files"
+          n={2}
+          label="Server files"
+          badge={<SampleBadge fed={meta.fed} section="server" />}
+          title={
             <>
-              Resource pack <SampleBadge fed={meta.fed} section="pack" />
+              <Counter value={server.total} /> files synced
             </>
           }
         >
-          <PackEntry pack={pack} now={now} />
-        </Card>
+          <CubeStacks rows={server.breakdown} />
+        </Tile>
 
-        <Card
-          className="dash-plan"
-          style={order(4)}
-          eyebrow={
-            <>
-              Plan <SampleBadge fed={meta.fed} section="subscription" />
-            </>
-          }
-        >
-          <PlanTooltip plan={subscription} />
-        </Card>
+        <Tile className="dash-pack" n={3} label="Resource pack" badge={<SampleBadge fed={meta.fed} section="pack" />}>
+          <PackBox pack={pack} now={now} />
+        </Tile>
 
-        <Card className="dash-console" style={order(5)} eyebrow="Server console" title="What the plugin sent">
-          <ServerConsole log={log} />
-        </Card>
+        <Tile className="dash-feed" n={4} label="Plugin activity" title="The last 90 seconds">
+          <Timeline now={now} />
+        </Tile>
 
-        <Card
-          className="dash-apply"
-          style={order(6)}
-          eyebrow="Apply"
-          title="Push saved changes live"
-          note="The server keeps serving the old pack until it reloads."
-          dividedHead
-        >
-          <RedstoneLine phase={phase} linked={linked} />
+        <Tile className="dash-apply" n={5} label="Apply" title="Push saved changes live">
+          <ApplyLine phase={phase} linked={linked} />
+          <p className="dash-apply__note">The server keeps serving the old pack until it reloads.</p>
           <ReloadControl linked={linked} onPhase={setPhase} />
-        </Card>
+        </Tile>
 
-        <Card
+        <Tile className="dash-plan" n={6} label="Plan" badge={<SampleBadge fed={meta.fed} section="subscription" />}>
+          <Plan plan={subscription} />
+        </Tile>
+
+        <Tile
           className="dash-recent"
-          style={order(7)}
-          eyebrow={
-            <>
-              Recent files <SampleBadge fed={meta.fed} section="files" />
-            </>
-          }
+          n={7}
+          label="Recent files"
+          badge={<SampleBadge fed={meta.fed} section="files" />}
           title="Last touched"
-          note="Files edited since the pack was built."
-          dividedHead
           actions={
             <Menu
               align="end"
@@ -270,13 +227,15 @@ export function Dashboard() {
                   <tr key={f.id} data-new={rows.fresh.has(f.id) || undefined}>
                     <td className="cell-name">
                       <span className="cell-name__in">
-                        <PixelArt sprite={itemForPath(f.where)} scale={1} outline="#4a4a4a" />
+                        <FileGlyph where={f.where} />
                         {f.name}
                       </span>
                     </td>
                     <td className="cell-dir">{f.where}</td>
                     <td className="mono">{formatWhen(f.touchedAt, now)}</td>
-                    <td>{f.by}</td>
+                    <td>
+                      <Person name={f.by} />
+                    </td>
                     <td>
                       {f.sync === 'outdated' ? (
                         <span className="pack-chip pack-chip--old">
@@ -303,7 +262,7 @@ export function Dashboard() {
               </tbody>
             </table>
           </div>
-        </Card>
+        </Tile>
       </div>
     </main>
   )
