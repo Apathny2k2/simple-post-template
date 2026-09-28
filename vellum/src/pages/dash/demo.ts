@@ -1,4 +1,5 @@
 import { dash } from '../../lib/dash-api'
+import type { ReloadOutcome } from '../../lib/reload'
 
 const via = 'ui' as const
 const NAMES = ['kite', 'nine', 'aurelia', 'juno', 'pike', 'moss', 'wren', 'ash', 'bram', 'ivy', 'quill', 'sable', 'tove', 'orrin', 'lark', 'fen']
@@ -95,4 +96,46 @@ export function startDemo(): () => void {
     timers.clear()
     dash.reset()
   }
+}
+
+const RELOADS: ReloadOutcome[] = [
+  { kind: 'swapped', counts: { mobs: 2, items: 9, blocks: 3 }, stages: ['validate', 'bake', 'swap'], unreadable: [] },
+  {
+    kind: 'refused',
+    report: [
+      'mobs/keep_warden.vellum',
+      '  config.health: expected a number, got "lots"',
+      'items/brass_lantern.vellum',
+      '  texture "lantern_glow" is used by 2 faces but is not in the file',
+    ].join('\n'),
+    stages: ['validate'],
+    unreadable: [],
+  },
+  {
+    kind: 'error',
+    status: 500,
+    message: 'The server was interrupted while applying the reload.',
+    url: 'https://play.demo.vellum.gg/api/reload',
+  },
+]
+
+let reloads = 0
+
+/**
+ * Stands in for POST /api/reload while the demo runs. It takes a few
+ * seconds, then swaps, refuses and fails in turn, so each answer can be seen.
+ */
+export function demoReload(signal?: AbortSignal): Promise<ReloadOutcome> {
+  const outcome = RELOADS[reloads++ % RELOADS.length]
+  return new Promise((resolve) => {
+    const id = window.setTimeout(() => resolve(outcome), 3200)
+    signal?.addEventListener(
+      'abort',
+      () => {
+        window.clearTimeout(id)
+        resolve(outcome)
+      },
+      { once: true },
+    )
+  })
 }

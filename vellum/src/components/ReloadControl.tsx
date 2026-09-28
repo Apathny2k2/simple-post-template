@@ -25,10 +25,13 @@ export type ReloadPhase = 'idle' | 'asking' | ReloadOutcome['kind']
 export function ReloadControl({
   linked,
   onPhase,
+  request = requestReload,
 }: {
   linked: boolean
   /** Told when the control moves between idle, asking and a verdict. */
   onPhase?: (phase: ReloadPhase) => void
+  /** The call that asks for the reload. The demo server swaps in its own. */
+  request?: (signal: AbortSignal) => Promise<ReloadOutcome>
 }) {
   const [state, setState] = useState<State>({ phase: 'idle' })
   const abort = useRef<AbortController | null>(null)
@@ -43,11 +46,11 @@ export function ReloadControl({
     const ctl = new AbortController()
     abort.current = ctl
     setState({ phase: 'asking' })
-    void requestReload(ctl.signal).then((outcome) => {
+    void request(ctl.signal).then((outcome) => {
       if (ctl.signal.aborted) return
       setState({ phase: 'done', outcome })
     })
-  }, [])
+  }, [request])
 
   const busy = state.phase === 'asking'
 

@@ -1,0 +1,16 @@
+.miner {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+  min-width: 0;
+}
+
+.miner__frame {
+  display: block;
+  max-width: 100%;
+  border-radius: 12px;
+  background: #080d22;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.07), 0 18px 40px -26px rgba(0, 0, 0, 0.85);
+  image-rendering: crisp-edges;
+  image-rendering: pixelated;
+}

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useState, useSyncExternalStore } from 'react'
+import { Miner } from '../components/Miner'
 import { ReloadControl } from '../components/ReloadControl'
 import type { ReloadPhase } from '../components/ReloadControl'
 import { Menu } from '../components/Menu'
@@ -12,7 +13,6 @@ import { saveBlob } from '../lib/download'
 import { Hero } from './dash/hero'
 import {
   AdoptionRing,
-  ApplyLine,
   Counter,
   CubeStacks,
   FileGlyph,
@@ -23,7 +23,7 @@ import {
   Toasts,
 } from './dash/cards'
 import { Timeline } from './dash/timeline'
-import { startDemo } from './dash/demo'
+import { demoReload, startDemo } from './dash/demo'
 import { useDashToasts, useToasts } from './dash/toasts'
 import './Dashboard.css'
 
@@ -110,6 +110,7 @@ export function Dashboard() {
   }, [])
 
   const { server, pack, players, subscription, files } = snapshot
+  const mood = phase === 'asking' ? 'working' : phase === 'swapped' ? 'done' : phase === 'idle' ? 'idle' : 'failed'
 
   // Rows that arrive after the page loaded are highlighted once.
   const fileIds = files.map((f) => f.id).join(',')
@@ -184,9 +185,18 @@ export function Dashboard() {
         </Tile>
 
         <Tile className="dash-apply" n={5} label="Apply" title="Push saved changes live">
-          <ApplyLine phase={phase} linked={linked} />
-          <p className="dash-apply__note">The server keeps serving the old pack until it reloads.</p>
-          <ReloadControl linked={linked} onPhase={setPhase} />
+          <Miner mood={mood} failure={phase === 'refused' ? 'wall' : 'lava'} />
+          <p className="dash-apply__note">
+            {demo
+              ? 'The demo server answers this too. Apply a few times to see it swap, refuse and fail.'
+              : 'The server keeps serving the old pack until it reloads.'}
+          </p>
+          <ReloadControl
+            key={demo ? 'demo' : 'live'}
+            linked={linked || demo}
+            request={demo ? demoReload : undefined}
+            onPhase={setPhase}
+          />
         </Tile>
 
         <Tile className="dash-plan" n={6} label="Plan" badge={<SampleBadge fed={meta.fed} section="subscription" />}>

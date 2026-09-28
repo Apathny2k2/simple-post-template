@@ -370,3 +370,5 @@
 .ships__text { min-width: 0; }
 .ships__t { font-size: var(--fs-sm); color: var(--ink); }
 .ships__d { margin-top: 3px; font-size: var(--fs-xs); color: var(--ink-faint); line-height: 1.55; }
+
+.bug-miner { max-width: 520px; margin-top: var(--sp-4); justify-content: flex-start; }

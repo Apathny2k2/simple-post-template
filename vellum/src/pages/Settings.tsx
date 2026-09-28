@@ -1,5 +1,7 @@
 import { useCallback, useMemo, useState, useSyncExternalStore } from 'react'
 import { Card } from '../components/Card'
+import { Miner } from '../components/Miner'
+import type { MinerMood } from '../components/Miner'
 import { Icon } from '../lib/icons'
 import type { IconName } from '../lib/icons'
 import { navigate, useTitle } from '../lib/router'
@@ -107,6 +109,7 @@ function ReportABug() {
   const [withLog, setWithLog] = useState(true)
   const [busy, setBusy] = useState(false)
   const [sent, setSent] = useState<string | null>(null)
+  const [run, setRun] = useState<MinerMood | null>(null)
 
   const valid = what.trim().length >= 12
 
@@ -122,6 +125,7 @@ function ReportABug() {
   const send = async () => {
     if (!valid || busy) return
     setBusy(true)
+    setRun('working')
     try {
       const ticket = await api.createTicket({
         subject: `[${area}] ${what.trim().slice(0, 96)}`,
@@ -132,6 +136,9 @@ function ReportABug() {
       })
       setSent(ticket.id)
       setWhat('')
+      setRun('done')
+    } catch {
+      setRun('failed')
     } finally {
       setBusy(false)
     }
@@ -190,10 +197,12 @@ function ReportABug() {
         </button>
         {sent ? (
           <button className="btn btn--ghost" onClick={() => navigate('/settings/support')}>
-            Opened {sent} \u2014 view the thread
+            Opened {sent}. View the thread
           </button>
         ) : null}
       </div>
+      {run === 'failed' ? <p className="field__hint">The report did not go through. Try again.</p> : null}
+      {run ? <Miner mood={run} maxScale={2} className="bug-miner" /> : null}
     </Card>
   )
 }

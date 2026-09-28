@@ -5,7 +5,7 @@ import { navigate } from '../../lib/router'
 import { samples } from '../../lib/samples'
 import type { Sample } from '../../lib/samples'
 import type { Clip, Model } from '../../lib/model'
-import { useClock, useInView, useReducedMotion } from './motion'
+import { useClock, useInView, useReducedMotion } from '../../lib/motion'
 
 const ORDER = ['voidling', 'geyser_block', 'emberfang', 'tide_flask', 'alien_sword', 'resonator_block', 'runic_blade', 'honeyed_loaf']
 const REEL = ORDER.map((id) => samples.find((s) => s.id === id)).filter((s): s is Sample => !!s)

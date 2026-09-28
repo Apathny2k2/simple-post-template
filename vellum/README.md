@@ -444,6 +444,24 @@ next, because the marker is its own element with its own
 `view-transition-name`. Without the API, or with reduced motion on, the page
 simply swaps.
 
+**Waiting has a miner.** `src/components/Miner.tsx` is the studio's loading
+scene: a small miner in a hard hat on a night-time strip of grass. While work
+runs he walks and mines the ore blocks he meets. When it succeeds a portal comes
+into view and he steps through it. When it fails he either runs into a wall and
+sits down under a rain cloud (a refusal: the request worked, the content did
+not pass) or runs off an edge into lava, leaving his pickaxe on the far bank (an
+error). It is on the Dash's Apply tile, under Report a bug in Settings, and on
+the crash screen. While the demo server runs it answers Apply as well, swapping,
+refusing and failing in turn.
+
+It is drawn by hand in `src/lib/miner/`: one canvas pixel per art pixel,
+scaled up by a whole number so pixels stay square, and limbs that swing by
+nearest-neighbour rotation so they never blur. The art is our own; block
+textures are generated per pixel from a hash of the block's position. The scene
+pauses when scrolled out of view, and under reduced motion each state is one
+still frame. It is decoration, so it is hidden from screen readers; the text
+beside it says what happened.
+
 ## The stage
 
 **View in the real world** used to be a world — a sky, a square sun, clouds,

@@ -1,5 +1,6 @@
 import { Component } from 'react'
 import type { ErrorInfo, ReactNode } from 'react'
+import { Miner } from './Miner'
 import './ErrorBoundary.css'
 
 /* ---------------------------------------------------------------
@@ -39,6 +40,7 @@ export class ErrorBoundary extends Component<Props, State> {
     return (
       <div className="crash">
         <div className="crash__card">
+          <Miner mood="failed" failure="lava" className="crash__miner" />
           <h1 className="crash__title">Vellum stopped rendering</h1>
           <p className="crash__lead">
             Something in the last action threw an error the editor could not recover from on its own.

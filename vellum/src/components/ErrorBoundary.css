@@ -18,6 +18,8 @@
   box-shadow: var(--bevel), var(--shadow-lg);
 }
 
+.crash__miner { margin-bottom: 22px; }
+
 .crash__title {
   margin: 0 0 10px;
   font-size: clamp(1.3rem, 3vw, 1.75rem);

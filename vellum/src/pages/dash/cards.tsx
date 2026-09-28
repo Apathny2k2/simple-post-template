@@ -4,8 +4,7 @@ import { Icon } from '../../lib/icons'
 import { navigate } from '../../lib/router'
 import { formatBytes, formatWhen } from '../../lib/dash'
 import type { BreakdownRow, PackState, PlayerCensus, SubscriptionState } from '../../lib/dash'
-import type { ReloadPhase } from '../../components/ReloadControl'
-import { trackPointer, useTween } from './motion'
+import { trackPointer, useTween } from '../../lib/motion'
 import type { Toast } from './toasts'
 
 const vars = (v: Record<string, string | number>) => v as CSSProperties
@@ -259,25 +258,6 @@ export function Plan({ plan }: { plan: SubscriptionState }) {
       <button className="btn btn--ghost btn--sm plan__go" onClick={() => navigate('/settings/billing')}>
         Billing <Icon name="arrowRight" size={12} />
       </button>
-    </div>
-  )
-}
-
-/* ---------------- apply ---------------- */
-
-/** Saved files on one end, the server on the other; the wire shows the last reload. */
-export function ApplyLine({ phase, linked }: { phase: ReloadPhase; linked: boolean }) {
-  return (
-    <div className="wire" data-phase={phase} data-linked={linked || undefined} aria-hidden="true">
-      <span className="wire__node">
-        <Icon name="save" size={16} />
-      </span>
-      <span className="wire__line">
-        <i />
-      </span>
-      <span className="wire__node" data-end>
-        <Icon name={phase === 'swapped' ? 'check' : phase === 'refused' || phase === 'error' ? 'warning' : 'server'} size={16} />
-      </span>
     </div>
   )
 }
