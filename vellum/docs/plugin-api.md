@@ -352,9 +352,11 @@ has, and the Dash does the rest.
 **Run a demo server** on the Dash starts a pretend server that feeds the page
 through these same endpoints, via the same validator and log. Players join,
 someone saves a file, a new pack goes out and players pick it up one by one,
-then the server restarts. **Stop demo** puts the sample back. You can also push
-your own payloads from the console through `window.Vellum.dash` before writing
-any Java.
+then the server restarts. While it runs, **Apply on the server** in the Players
+card answers as well, so the three reload outcomes can be seen: the first press
+swaps, the second is refused with a validation report, the third fails.
+**Stop demo** puts the sample back. You can also push your own payloads from the
+console through `window.Vellum.dash` before writing any Java.
 
 Until a card is fed it shows the built-in sample and says **sample** in its
 header. Each card goes live on its own: a plugin that only knows about the

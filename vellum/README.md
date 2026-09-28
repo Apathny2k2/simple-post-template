@@ -331,8 +331,9 @@ endpoints above are expected to exchange.
 ## The material
 
 One surface: **paper**. There is no theme toggle - the whole app lives on a
-single warm-grey field, defined once in `src/styles/tokens.css`. The Dash is
-the one exception, described at the end of this section.
+single warm-grey field, defined once in `src/styles/tokens.css`. That paper is
+now the editor's; the rest of the studio is a dark room, described at the end
+of this section.
 It replaced a midnight navy one outright rather than sitting behind a switch
 (see `SPEC-light-theme.md`), which is why the neutral ramp is still named
 `navy`: about forty call sites reach for it by name, but the hue is gone and
@@ -418,19 +419,23 @@ flat three-tone shading, a CSS grid floor, drag-to-orbit, and a keyframed spin
 for the library cards. There is no mesh, no camera and no raster pipeline - it
 is there so the viewport reads as a viewport.
 
-**The Dash is the dark room.** It takes after Blockbench: grey-blue panels, one
-bright blue, the axis colours, and the studio's own models turning on a disc at
-the top of the page. It has no second copy of the styles. While it is mounted it
-sets `data-surface="dark"` on `<html>`, and `src/pages/Dashboard.css` re-points
-the app's tokens under that selector, so the top bar, menus and buttons go dark
-with it and come back when you leave. The rules above bend here on purpose:
-panels are rounded, motion springs, and the turntable, the adoption ring, the
-file stacks and the plugin timeline all move. Under reduced motion every loop
-stops and nothing is staggered.
+**The studio is a dark room; the editor stays on paper.** The Dash, Projects and
+Settings take after Blockbench: grey-blue panels, one bright blue, the axis
+colours, and the studio's own models turning on a disc at the top of the Dash.
+There is no second copy of the styles. `App` sets `data-surface="dark"` on
+`<html>` for every route but the editor, and `src/styles/studio.css` re-points
+the app's tokens under that selector, so the top bar, cards, menus, fields and
+dialogs go dark and come back when you open a model. The paper's red accent
+becomes blue there, except where red meant something was wrong: destructive
+menu items, urgent tickets and failed messages keep a warning colour. The rules
+above bend in the dark on purpose: panels are rounded and lit under the pointer,
+titles drop in a letter at a time, motion springs, and on the Dash the
+turntable, the adoption ring, the file stacks and the plugin timeline all move.
+Under reduced motion every loop stops and nothing is staggered.
 
 White text on Blockbench's `#3e90ff` measures 3.2:1, so filled buttons use a
 deeper `#2a6ad8` and the bright blue is kept for light and lines. The contrast
-audit reads the Dash in its dark state.
+audit reads every page in the state it ships in.
 
 The turntable turns on a JavaScript clock, and the axis gizmo in its corner
 reads the same yaw, so the two cannot drift apart.
@@ -445,22 +450,32 @@ next, because the marker is its own element with its own
 simply swaps.
 
 **Waiting has a miner.** `src/components/Miner.tsx` is the studio's loading
-scene: a small miner in a hard hat on a night-time strip of grass. While work
-runs he walks and mines the ore blocks he meets. When it succeeds a portal comes
-into view and he steps through it. When it fails he either runs into a wall and
-sits down under a rain cloud (a refusal: the request worked, the content did
-not pass) or runs off an edge into lava, leaving his pickaxe on the far bank (an
-error). It is on the Dash's Apply tile, under Report a bug in Settings, and on
-the crash screen. While the demo server runs it answers Apply as well, swapping,
-refusing and failing in turn.
+scene, drawn in one colour after the offline dinosaur game: a horizon line, a
+couple of clouds, and a small miner in a hard hat. It is only on screen while
+something runs. While it runs he mines the block in front of him; when a block
+breaks the next one rises out of the ground a few steps on, and a counter in the
+corner keeps score. When the answer comes he lands the swing he is on, then:
 
-It is drawn by hand in `src/lib/miner/`: one canvas pixel per art pixel,
-scaled up by a whole number so pixels stay square, and limbs that swing by
-nearest-neighbour rotation so they never blur. The art is our own; block
-textures are generated per pixel from a hash of the block's position. The scene
-pauses when scrolled out of view, and under reduced motion each state is one
-still frame. It is decoration, so it is hidden from screen readers; the text
-beside it says what happened.
+- on success a portal rises ahead and he fades into it, leaving a check mark;
+- on a refusal (the request worked, the content did not pass) a wall rises, he
+  walks into it and sits down under a rain cloud;
+- on an error the ground opens into lava and he walks in; his pickaxe lands on
+  the far bank.
+
+The result is held back until the ending has played, then the scene goes and
+the message takes its place. It is used by Apply on the server, which sits in
+the Dash's Players card; by Report a bug in Settings; and by the pack builder in
+Export pack, where a cancelled save is the wall and a failed one is lava. While
+the demo server runs it answers Apply too, swapping, refusing and failing in
+turn.
+
+It is drawn by hand in `src/lib/miner/`: one canvas pixel per art pixel, scaled
+up by a whole number so pixels stay square, in the text colour of wherever it
+sits, and limbs that swing by nearest-neighbour rotation so they never blur. The
+art is our own. Under reduced motion there is no ending to wait for and the
+result shows at once, and a result is never held back more than six seconds. It
+is decoration, so it is hidden from screen readers; the text beside it says
+what happened.
 
 ## The stage
 

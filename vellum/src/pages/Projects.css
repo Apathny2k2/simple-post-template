@@ -485,3 +485,125 @@
 @media (width <= 720px) {
   .library__pack { order: 4; }
 }
+
+/* ---------------- in the dark studio ----------------
+   The shelf and its gateway take the Dash's panels: rounded, lit
+   under the pointer, and springing when touched. */
+
+html[data-surface='dark'] .gateway { gap: 18px; }
+
+html[data-surface='dark'] .gateway__tile {
+  min-height: clamp(260px, 32vh, 340px);
+  padding: 26px;
+  border-radius: 22px;
+  border-color: var(--line);
+  background:
+    radial-gradient(55% 60% at 50% 42%, rgba(62, 144, 255, 0.14), transparent 70%),
+    var(--panel);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  box-shadow: var(--panel-shadow);
+  transition: transform 520ms var(--ease-spring), border-color 300ms var(--ease-out);
+  animation: studio-rise 800ms var(--ease-out) backwards 160ms;
+}
+
+html[data-surface='dark'] .gateway__tile:nth-child(2) {
+  background:
+    radial-gradient(55% 60% at 50% 42%, rgba(155, 107, 255, 0.16), transparent 70%),
+    var(--panel);
+  animation-delay: 250ms;
+}
+
+html[data-surface='dark'] .gateway__tile:hover {
+  transform: translateY(-4px);
+  border-color: var(--line-strong);
+  box-shadow: var(--panel-shadow);
+}
+
+html[data-surface='dark'] .gateway__art {
+  opacity: 0.85;
+  transition: opacity 400ms var(--ease-out), transform 700ms var(--ease-spring);
+}
+
+html[data-surface='dark'] .gateway__tile:hover .gateway__art { opacity: 1; transform: scale(1.08); }
+html[data-surface='dark'] .gateway__icon { border-radius: 12px; background: rgba(0, 0, 0, 0.22); }
+html[data-surface='dark'] .gateway__name { font-size: clamp(26px, 2.6vw, 34px); font-weight: 700; letter-spacing: -0.035em; }
+
+html[data-surface='dark'] .gateway__tile .scene-chip__n {
+  padding: 3px 9px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  opacity: 1;
+  color: var(--ink-muted);
+}
+
+html[data-surface='dark'] .gateway__go { color: var(--ink-muted); transition: color 300ms var(--ease-out), gap 420ms var(--ease-spring); }
+html[data-surface='dark'] .gateway__tile:hover .gateway__go { color: var(--bb-blue-hi); gap: 12px; }
+
+html[data-surface='dark'] .library {
+  border-radius: 22px;
+  border-color: var(--line);
+  background: var(--panel);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  box-shadow: var(--panel-shadow);
+  animation: studio-rise 760ms var(--ease-out) backwards 120ms;
+}
+
+html[data-surface='dark'] .library__bar { padding: 14px 18px; border-bottom-color: var(--line); }
+html[data-surface='dark'] .library__back { border-radius: 10px; }
+html[data-surface='dark'] .library__tabs { border-radius: 12px; background: rgba(0, 0, 0, 0.22); }
+html[data-surface='dark'] .library__tab { border-radius: 9px; transition: color 200ms var(--ease-out), background 300ms var(--ease-out), box-shadow 300ms var(--ease-out); }
+
+html[data-surface='dark'] .library__tab[aria-selected='true'] {
+  background: var(--accent);
+  border-color: transparent;
+  color: #ffffff;
+  box-shadow: 0 6px 18px -8px rgba(62, 144, 255, 0.85);
+}
+
+html[data-surface='dark'] .library__search { border-radius: 12px; background: rgba(0, 0, 0, 0.22); }
+html[data-surface='dark'] .library__groupname { border-bottom-color: var(--line); }
+
+html[data-surface='dark'] .asset {
+  border-radius: 16px;
+  border-color: var(--line);
+  background: rgba(255, 255, 255, 0.03);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  box-shadow: none;
+  transition: transform 520ms var(--ease-spring), border-color 300ms var(--ease-out), box-shadow 300ms var(--ease-out),
+    background 300ms var(--ease-out);
+  animation: studio-rise 700ms var(--ease-out) backwards;
+  animation-delay: calc(220ms + min(var(--k, 0), 12) * 45ms);
+}
+
+html[data-surface='dark'] .asset:hover,
+html[data-surface='dark'] .asset:focus-within,
+html[data-surface='dark'] .asset[data-open='true'] {
+  transform: translateY(-4px);
+  border-color: rgba(90, 162, 255, 0.4);
+  background: rgba(255, 255, 255, 0.05);
+  box-shadow: 0 24px 40px -24px rgba(0, 0, 0, 0.9);
+}
+
+html[data-surface='dark'] .asset__head,
+html[data-surface='dark'] .asset__meta { border-color: var(--line); }
+
+html[data-surface='dark'] .asset__stage {
+  background:
+    radial-gradient(80% 70% at 50% 62%, rgba(62, 144, 255, 0.13), transparent 70%),
+    rgba(0, 0, 0, 0.2);
+}
+
+html[data-surface='dark'] .asset:hover .asset__badge,
+html[data-surface='dark'] .asset:hover .asset__renderlabel { color: var(--bb-blue-hi); }
+
+html[data-surface='dark'] .pager { border-top-color: var(--line); }
+html[data-surface='dark'] .pager__btn { border-radius: 9px; }
+
+html[data-surface='dark'] .pager__btn[aria-current='page'] {
+  background: var(--accent);
+  border-color: transparent;
+  color: #ffffff;
+}

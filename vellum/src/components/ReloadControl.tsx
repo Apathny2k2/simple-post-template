@@ -16,20 +16,25 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { requestReload, type ReloadOutcome } from '../lib/reload'
 import { Icon } from '../lib/icons'
+import { Miner } from './Miner'
 import './ReloadControl.css'
 
-type State = { phase: 'idle' } | { phase: 'asking' } | { phase: 'done'; outcome: ReloadOutcome }
-
-export type ReloadPhase = 'idle' | 'asking' | ReloadOutcome['kind']
+/* While the request runs the miner mines. When the answer is in he plays
+   it out, and only then does the verdict appear. */
+type State =
+  | { phase: 'idle' }
+  | { phase: 'asking' }
+  | { phase: 'landing'; outcome: ReloadOutcome }
+  | { phase: 'done'; outcome: ReloadOutcome }
 
 export function ReloadControl({
   linked,
-  onPhase,
+  hint,
   request = requestReload,
 }: {
   linked: boolean
-  /** Told when the control moves between idle, asking and a verdict. */
-  onPhase?: (phase: ReloadPhase) => void
+  /** replaces the line next to the button */
+  hint?: string
   /** The call that asks for the reload. The demo server swaps in its own. */
   request?: (signal: AbortSignal) => Promise<ReloadOutcome>
 }) {
@@ -37,9 +42,6 @@ export function ReloadControl({
   const abort = useRef<AbortController | null>(null)
 
   useEffect(() => () => abort.current?.abort(), [])
-  useEffect(() => {
-    onPhase?.(state.phase === 'done' ? state.outcome.kind : state.phase)
-  }, [state, onPhase])
 
   const onApply = useCallback(() => {
     abort.current?.abort()
@@ -48,11 +50,16 @@ export function ReloadControl({
     setState({ phase: 'asking' })
     void request(ctl.signal).then((outcome) => {
       if (ctl.signal.aborted) return
-      setState({ phase: 'done', outcome })
+      setState({ phase: 'landing', outcome })
     })
   }, [request])
 
-  const busy = state.phase === 'asking'
+  const onLanded = useCallback(() => {
+    setState((s) => (s.phase === 'landing' ? { phase: 'done', outcome: s.outcome } : s))
+  }, [])
+
+  const busy = state.phase === 'asking' || state.phase === 'landing'
+  const landing = state.phase === 'landing' ? state.outcome : null
 
   return (
     <div className="rl">
@@ -67,12 +74,20 @@ export function ReloadControl({
           {busy ? 'Applying…' : 'Apply on the server'}
         </button>
         <p className="rl__hint">
-          {linked
-            ? 'Saving writes the files. This swaps them into the running server.'
-            : 'No server linked.'}
+          {!linked
+            ? 'No server linked.'
+            : hint ?? 'Saving writes the files. This swaps them into the running server.'}
         </p>
       </div>
 
+      {busy ? (
+        <Miner
+          className="rl__miner"
+          mood={landing ? (landing.kind === 'swapped' ? 'done' : 'failed') : 'working'}
+          failure={landing?.kind === 'refused' ? 'wall' : 'lava'}
+          onFinish={onLanded}
+        />
+      ) : null}
       {state.phase === 'done' ? <Verdict outcome={state.outcome} /> : null}
     </div>
   )

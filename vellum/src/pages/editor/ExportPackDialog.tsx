@@ -13,6 +13,8 @@ import { useModal } from '../../lib/a11y'
 import { buildConfigs, buildPack, folderOf, isNamespace, packBytes, packZip, safeId } from '../../lib/pack'
 import type { PackItem } from '../../lib/pack'
 import { saveBlob } from '../../lib/download'
+import { Miner } from '../../components/Miner'
+import type { MinerFailure, MinerMood } from '../../components/Miner'
 
 const KB = (n: number) => (n < 1024 ? `${n} B` : `${(n / 1024).toFixed(1)} KB`)
 
@@ -67,17 +69,43 @@ export function ExportPackDialog({
 
   const stem = safeId(suggestedName)
 
-  const save = (name: string, bytes: Uint8Array) =>
-    void saveBlob(name, new Blob([bytes as BlobPart], { type: 'application/zip' })).then((m) =>
-      setNote(m || `Saved ${name}`),
-    )
+  /* The miner works while the zip is built and saved, then plays out how
+     it went; what happened is only said once he is done. A save the
+     person cancelled is a wall, one that broke is lava. */
+  const [run, setRun] = useState<{ mood: MinerMood; failure: MinerFailure; said: string | null } | null>(null)
 
-  const download = () => {
-    if (!report) return
-    save(`${stem}.zip`, packZip(report))
+  const save = (name: string, build: () => Uint8Array) => {
+    if (run) return
+    setNote(null)
+    setRun({ mood: 'working', failure: 'lava', said: null })
+    // one frame of him at work before the build holds the thread
+    window.setTimeout(() => {
+      let bytes: Uint8Array
+      try {
+        bytes = build()
+      } catch (e) {
+        setRun({ mood: 'failed', failure: 'lava', said: `Could not build the pack: ${(e as Error).message}` })
+        return
+      }
+      void saveBlob(name, new Blob([bytes as BlobPart], { type: 'application/zip' })).then((m) => {
+        const said = m || `Saved ${name}`
+        const cancelled = /cancel/i.test(said)
+        const broke = /could not/i.test(said)
+        setRun({ mood: cancelled || broke ? 'failed' : 'done', failure: cancelled ? 'wall' : 'lava', said })
+      })
+    }, 60)
   }
 
-  const downloadConfigs = () => save(`${stem}-configs.zip`, packZip(configs))
+  const landed = () => {
+    setNote(run?.said ?? null)
+    setRun(null)
+  }
+
+  const download = () => {
+    if (report) save(`${stem}.zip`, () => packZip(report))
+  }
+
+  const downloadConfigs = () => save(`${stem}-configs.zip`, () => packZip(configs))
 
   return (
     <div className="dlg" role="dialog" aria-modal="true" aria-label="Export a resource pack">
@@ -240,6 +268,12 @@ export function ExportPackDialog({
           {note ? <p className="ed-hint ed-hint--warn">{note}</p> : null}
         </div>
 
+        {run ? (
+          <div className="pk-run">
+            <Miner mood={run.mood} failure={run.failure} onFinish={landed} />
+          </div>
+        ) : null}
+
         <footer className="dlg__foot">
           <span className="cmp__hint mono">
             {items.filter((i) => !folderOf(i.kind)).length
@@ -251,11 +285,11 @@ export function ExportPackDialog({
               Cancel
             </button>
             {configs.files.length ? (
-              <button className="btn" onClick={downloadConfigs}>
+              <button className="btn" onClick={downloadConfigs} disabled={!!run}>
                 <Icon name="download" size={13} /> Configs .zip
               </button>
             ) : null}
-            <button className="btn btn--primary" disabled={!nsOk || !models} onClick={download}>
+            <button className="btn btn--primary" disabled={!nsOk || !models || !!run} onClick={download}>
               <Icon name="download" size={13} /> Download .zip
             </button>
           </div>

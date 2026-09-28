@@ -1,60 +1,37 @@
 /* A small pixel buffer drawn by hand and put on a canvas in one call.
-   Everything is whole pixels: sprites rotate by nearest-neighbour
-   sampling, so a swinging arm stays as crisp as a standing one. */
+
+   Everything is one ink colour on a transparent ground, the way the
+   offline dinosaur game is drawn. Shapes are masks: a pixel is inked or
+   it is not, and fainter things (the far arm, a cloud) are the same ink
+   at lower strength. Masks turn by nearest-neighbour sampling, so a
+   swinging arm stays as crisp as a standing one. */
 
 /** 0xRRGGBB */
 export type Rgb = number
 
-export type Sprite = { w: number; h: number; px: Int32Array }
+export type Mask = { w: number; h: number; on: Uint8Array }
 
-/** Transparent in a sprite's pixel list. */
-const CLEAR = -1
-
-/** Sprite rows as strings, one character per pixel; '.' and ' ' are transparent. */
-export function sprite(rows: string[], pal: Record<string, Rgb>): Sprite {
+/** Rows as strings: '#' is ink, anything else is empty. */
+export function mask(rows: string[]): Mask {
   const h = rows.length
   const w = Math.max(...rows.map((r) => r.length))
-  const px = new Int32Array(w * h).fill(CLEAR)
+  const on = new Uint8Array(w * h)
   rows.forEach((row, y) => {
-    for (let x = 0; x < row.length; x++) {
-      const ch = row[x]
-      if (ch === '.' || ch === ' ') continue
-      const c = pal[ch]
-      if (c === undefined) throw new Error(`no colour for '${ch}'`)
-      px[y * w + x] = c
-    }
+    for (let x = 0; x < row.length; x++) if (row[x] === '#') on[y * w + x] = 1
   })
-  return { w, h, px }
-}
-
-export function mix(a: Rgb, b: Rgb, t: number): Rgb {
-  const k = Math.max(0, Math.min(1, t))
-  const r = ((a >> 16) & 255) + (((b >> 16) & 255) - ((a >> 16) & 255)) * k
-  const g = ((a >> 8) & 255) + (((b >> 8) & 255) - ((a >> 8) & 255)) * k
-  const bl = (a & 255) + ((b & 255) - (a & 255)) * k
-  return (Math.round(r) << 16) | (Math.round(g) << 8) | Math.round(bl)
-}
-
-export function shade(c: Rgb, k: number): Rgb {
-  return k < 1 ? mix(c, 0x000000, 1 - k) : mix(c, 0xffffff, k - 1)
-}
-
-export type Ink = {
-  /** mixed into every pixel, for the hurt flash and the portal's purple */
-  tint?: Rgb
-  tintBy?: number
-  /** 0..1; below 1 the sprite is laid over what is there */
-  alpha?: number
-  flip?: boolean
+  return { w, h, on }
 }
 
 export class Pixels {
   w: number
   h: number
   data: Uint8ClampedArray<ArrayBuffer>
-  /** added to every draw that goes through put(), for a screen shake */
+  ink: Rgb = 0x535353
+  /** added to every draw, for a knock */
   ox = 0
   oy = 0
+  /** nothing is drawn at or below this row; lets a figure sink into lava */
+  clipY = Infinity
 
   constructor(w: number, h: number) {
     this.w = w
@@ -62,105 +39,89 @@ export class Pixels {
     this.data = new Uint8ClampedArray(w * h * 4)
   }
 
-  copyFrom(other: Pixels) {
-    this.data.set(other.data)
+  clear() {
+    this.data.fill(0)
   }
 
-  get(x: number, y: number): Rgb | null {
+  on(x: number, y: number): boolean {
     const X = Math.floor(x)
     const Y = Math.floor(y)
-    if (X < 0 || Y < 0 || X >= this.w || Y >= this.h) return null
-    const i = (Y * this.w + X) * 4
-    if (this.data[i + 3] === 0) return null
-    return (this.data[i] << 16) | (this.data[i + 1] << 8) | this.data[i + 2]
+    if (X < 0 || Y < 0 || X >= this.w || Y >= this.h) return false
+    return this.data[(Y * this.w + X) * 4 + 3] > 0
   }
 
-  put(x: number, y: number, c: Rgb, a = 1) {
+  /** Ink one pixel at strength a (0..1), laid over whatever is there. */
+  dot(x: number, y: number, a = 1) {
     const X = Math.floor(x + this.ox)
     const Y = Math.floor(y + this.oy)
-    if (X < 0 || Y < 0 || X >= this.w || Y >= this.h || a <= 0) return
+    if (X < 0 || Y < 0 || X >= this.w || Y >= this.h || a <= 0 || Y >= this.clipY) return
     const d = this.data
     const i = (Y * this.w + X) * 4
-    const r = (c >> 16) & 255
-    const g = (c >> 8) & 255
-    const b = c & 255
-    if (a >= 1 || d[i + 3] === 0) {
-      d[i] = r
-      d[i + 1] = g
-      d[i + 2] = b
-    } else {
-      d[i] += (r - d[i]) * a
-      d[i + 1] += (g - d[i + 1]) * a
-      d[i + 2] += (b - d[i + 2]) * a
+    const was = d[i + 3] / 255
+    const now = Math.min(1, a + was * (1 - a))
+    d[i] = (this.ink >> 16) & 255
+    d[i + 1] = (this.ink >> 8) & 255
+    d[i + 2] = this.ink & 255
+    d[i + 3] = Math.round(now * 255)
+  }
+
+  rect(x: number, y: number, w: number, h: number, a = 1) {
+    for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) this.dot(x + i, y + j, a)
+  }
+
+  /** A 1px outline. */
+  frame(x: number, y: number, w: number, h: number, a = 1) {
+    for (let i = 0; i < w; i++) {
+      this.dot(x + i, y, a)
+      this.dot(x + i, y + h - 1, a)
     }
-    d[i + 3] = 255
-  }
-
-  rect(x: number, y: number, w: number, h: number, c: Rgb, a = 1) {
-    for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) this.put(x + i, y + j, c, a)
-  }
-
-  /** Brighten towards a colour, strongest at the centre, in steps so it still reads as pixels. */
-  light(cx: number, cy: number, radius: number, c: Rgb, strength: number, squash = 1) {
-    const r2 = radius * radius
-    const ry = radius * squash
-    for (let y = Math.floor(cy - ry); y <= cy + ry; y++) {
-      for (let x = Math.floor(cx - radius); x <= cx + radius; x++) {
-        const d2 = (x + 0.5 - cx) ** 2 + ((y + 0.5 - cy) / squash) ** 2
-        if (d2 > r2) continue
-        const k = Math.round((1 - Math.sqrt(d2) / radius) ** 2 * 8) / 8
-        this.lighten(x, y, c, k * strength)
-      }
+    for (let j = 1; j < h - 1; j++) {
+      this.dot(x, y + j, a)
+      this.dot(x + w - 1, y + j, a)
     }
   }
 
-  lighten(x: number, y: number, c: Rgb, a: number) {
-    const X = Math.floor(x + this.ox)
-    const Y = Math.floor(y + this.oy)
-    if (X < 0 || Y < 0 || X >= this.w || Y >= this.h || a <= 0) return
-    const d = this.data
-    const i = (Y * this.w + X) * 4
-    d[i] += ((c >> 16) & 255) * a
-    d[i + 1] += ((c >> 8) & 255) * a
-    d[i + 2] += (c & 255) * a
+  line(x0: number, y0: number, x1: number, y1: number, a = 1) {
+    const n = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0), 1)
+    for (let i = 0; i <= n; i++) this.dot(Math.round(x0 + ((x1 - x0) * i) / n), Math.round(y0 + ((y1 - y0) * i) / n), a)
   }
 }
 
-function ink(c: Rgb, how: Ink): Rgb {
-  return how.tint !== undefined && how.tintBy ? mix(c, how.tint, how.tintBy) : c
-}
+export type Stamp = { a?: number; flip?: boolean; keep?: (x: number, y: number) => boolean }
 
-/** Draws a sprite with its top-left corner at x, y. */
-export function blit(p: Pixels, s: Sprite, x: number, y: number, how: Ink = {}) {
-  const a = how.alpha ?? 1
-  for (let j = 0; j < s.h; j++) {
-    for (let i = 0; i < s.w; i++) {
-      const c = s.px[j * s.w + (how.flip ? s.w - 1 - i : i)]
-      if (c !== CLEAR) p.put(x + i, y + j, ink(c, how), a)
+/** Inks a mask with its top-left corner at x, y. */
+export function stamp(p: Pixels, m: Mask, x: number, y: number, how: Stamp = {}) {
+  const a = how.a ?? 1
+  const X = Math.floor(x)
+  const Y = Math.floor(y)
+  for (let j = 0; j < m.h; j++) {
+    for (let i = 0; i < m.w; i++) {
+      if (!m.on[j * m.w + (how.flip ? m.w - 1 - i : i)]) continue
+      if (how.keep && !how.keep(X + i, Y + j)) continue
+      p.dot(X + i, Y + j, a)
     }
   }
 }
 
 /**
- * Draws a sprite turned by `angle` radians (clockwise on screen) about
- * a pivot given in the sprite's own pixels, with the pivot landing on
- * x, y. Each screen pixel samples the one sprite pixel under it, so
- * nothing is blurred.
+ * Inks a mask turned by `angle` radians (clockwise on screen) about a
+ * pivot given in the mask's own pixels, with the pivot landing on x, y.
+ * Each screen pixel samples the one mask pixel under it, so nothing blurs.
  */
-export function blitTurned(
+export function stampTurned(
   p: Pixels,
-  s: Sprite,
+  m: Mask,
   pivotX: number,
   pivotY: number,
   x: number,
   y: number,
   angle: number,
-  how: Ink = {},
+  how: Stamp = {},
 ) {
   const cos = Math.cos(angle)
   const sin = Math.sin(angle)
-  const reach = Math.ceil(Math.hypot(Math.max(pivotX, s.w - pivotX), Math.max(pivotY, s.h - pivotY))) + 1
-  const a = how.alpha ?? 1
+  const reach = Math.ceil(Math.hypot(Math.max(pivotX, m.w - pivotX), Math.max(pivotY, m.h - pivotY))) + 1
+  const a = how.a ?? 1
   const x0 = Math.floor(x)
   const y0 = Math.floor(y)
   for (let Y = y0 - reach; Y <= y0 + reach; Y++) {
@@ -169,9 +130,10 @@ export function blitTurned(
       const dy = Y + 0.5 - y
       const u = Math.floor(pivotX + dx * cos + dy * sin)
       const v = Math.floor(pivotY - dx * sin + dy * cos)
-      if (u < 0 || v < 0 || u >= s.w || v >= s.h) continue
-      const c = s.px[v * s.w + (how.flip ? s.w - 1 - u : u)]
-      if (c !== CLEAR) p.put(X, Y, ink(c, how), a)
+      if (u < 0 || v < 0 || u >= m.w || v >= m.h) continue
+      if (!m.on[v * m.w + (how.flip ? m.w - 1 - u : u)]) continue
+      if (how.keep && !how.keep(X, Y)) continue
+      p.dot(X, Y, a)
     }
   }
 }
@@ -187,9 +149,18 @@ export function seeded(seed: number) {
   }
 }
 
-/** A stable 0..1 value for a pair of integers, for texturing blocks without storing them. */
+/** A stable 0..1 value for a pair of integers, for placing ground specks without storing them. */
 export function hash2(x: number, y: number): number {
   let h = Math.imul(x | 0, 374761393) + Math.imul(y | 0, 668265263)
   h = Math.imul(h ^ (h >>> 13), 1274126177)
   return ((h ^ (h >>> 16)) >>> 0) / 4294967296
+}
+
+/** '#rrggbb' or 'rgb(r, g, b)' to 0xRRGGBB. */
+export function parseColour(css: string, fallback: Rgb): Rgb {
+  const hex = /^#([0-9a-f]{6})$/i.exec(css.trim())
+  if (hex) return parseInt(hex[1], 16)
+  const rgb = /rgba?\(\s*(\d+)[,\s]+(\d+)[,\s]+(\d+)/i.exec(css)
+  if (rgb) return (Number(rgb[1]) << 16) | (Number(rgb[2]) << 8) | Number(rgb[3])
+  return fallback
 }

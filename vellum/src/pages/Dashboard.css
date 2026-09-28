@@ -1,108 +1,12 @@
 /* ---------------------------------------------------------------
-   The Dash. A dark room with the models in the middle of it, after
-   Blockbench: grey-blue panels, one bright blue, the axis colours.
-
-   The rest of the app is paper. While this page is mounted it sets
-   data-surface="dark" on <html>, and the overrides below re-point the
-   app's own tokens, so the top bar, menus and buttons follow without
-   knowing anything about it.
+   The Dash. The dark room itself lives in styles/studio.css, shared
+   with Projects and Settings; this is what only the Dash has.
    --------------------------------------------------------------- */
-
-@property --tint {
-  syntax: '<color>';
-  inherits: true;
-  initial-value: #5aa2ff;
-}
 
 @property --sweep {
   syntax: '<angle>';
   inherits: false;
   initial-value: 0deg;
-}
-
-html[data-surface='dark'] {
-  color-scheme: dark;
-
-  --bb-blue: #3e90ff;
-  --bb-blue-hi: #5aa2ff;
-  --bb-violet: #b594ff;
-  --bb-teal: #2ec5b6;
-  --bb-amber: #ffb547;
-  --bb-pink: #ff7ab8;
-  --bb-green: #3ddc97;
-  --bb-red: #ff6b6b;
-  --axis-x: #ff5f6d;
-  --axis-y: #62dc7c;
-  --axis-z: #4f9dff;
-
-  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
-  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
-
-  --bg: #121419;
-  --bg-deep: #0e1014;
-  --bg-sunken: rgba(255, 255, 255, 0.04);
-  --grid-line: rgba(255, 255, 255, 0.026);
-
-  --glass-thin: rgba(36, 40, 49, 0.5);
-  --glass: rgba(27, 30, 36, 0.78);
-  --glass-thick: rgba(27, 30, 36, 0.9);
-  --glass-solid: rgba(29, 32, 39, 0.98);
-  --glass-rim: rgba(255, 255, 255, 0.08);
-  --glass-rim-lit: rgba(255, 255, 255, 0.16);
-  --glass-rim-wax: rgba(90, 162, 255, 0.5);
-
-  --ink: #eceef3;
-  --ink-muted: #b4bac6;
-  --ink-faint: #949bab;
-  --ink-invert: #0e1014;
-
-  --line: rgba(255, 255, 255, 0.08);
-  --line-strong: rgba(255, 255, 255, 0.16);
-  --line-dashed: rgba(255, 255, 255, 0.2);
-
-  /* White on #3e90ff is 3.2:1, so fills use a deeper blue and the bright one is kept for light. */
-  --wax-600: #2563cf;
-  --wax-500: #2a6ad8;
-  --wax-400: #5aa2ff;
-  --wax-300: #ff8a8a;
-  --wax-200: #ffb4b4;
-  --accent: #2a6ad8;
-  --accent-ink: #ffffff;
-  --accent-soft: rgba(62, 144, 255, 0.14);
-  --accent-softer: rgba(62, 144, 255, 0.07);
-  --highlight: #2563cf;
-  --highlight-soft: rgba(62, 144, 255, 0.16);
-
-  --ok: #3ddc97;
-  --warn: #ffb547;
-  --danger: #ff6b6b;
-
-  --shadow: 0 1px 0 rgba(0, 0, 0, 0.35);
-  --shadow-lg: 0 24px 48px -24px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(255, 255, 255, 0.07);
-  --shadow-pop: 0 24px 48px -20px rgba(0, 0, 0, 0.85), 0 0 0 1px rgba(255, 255, 255, 0.08);
-  --bevel: inset 0 1px 0 rgba(255, 255, 255, 0.06);
-  --bevel-soft: inset 0 1px 0 rgba(255, 255, 255, 0.04);
-
-  --chrome: rgba(14, 16, 20, 0.72);
-  --chrome-strong: rgba(14, 16, 20, 0.86);
-  --chrome-soft: rgba(14, 16, 20, 0.6);
-  --chrome-status: rgba(14, 16, 20, 0.72);
-  --well: rgba(255, 255, 255, 0.04);
-  --well-deep: rgba(255, 255, 255, 0.08);
-}
-
-html[data-surface='dark'] body::before {
-  background:
-    radial-gradient(1100px 620px at 10% -8%, rgba(62, 144, 255, 0.14), transparent 62%),
-    radial-gradient(900px 560px at 94% 2%, rgba(155, 107, 255, 0.1), transparent 60%),
-    linear-gradient(to right, var(--grid-line) 1px, transparent 1px) 0 0 / 64px 64px,
-    linear-gradient(to bottom, var(--grid-line) 1px, transparent 1px) 0 0 / 64px 64px,
-    var(--bg);
-}
-
-html[data-surface='dark'] .menu-item--danger:hover {
-  background: rgba(255, 107, 107, 0.14);
-  border-color: rgba(255, 107, 107, 0.5);
 }
 
 /* ---------------- the page ---------------- */
@@ -260,37 +164,6 @@ html[data-surface='dark'] .menu-item--danger:hover {
   color: var(--ink);
   overflow-wrap: anywhere;
 }
-
-.kinetic { display: block; }
-
-.kinetic__word {
-  display: inline-block;
-  white-space: nowrap;
-  perspective: 640px;
-}
-
-.kinetic__ch {
-  display: inline-block;
-  transform-origin: 50% 90%;
-  background: linear-gradient(180deg, #ffffff 35%, color-mix(in srgb, var(--tint) 45%, #ffffff) 110%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  transition: transform 560ms var(--ease-spring);
-  animation: letter-in 1100ms var(--ease-spring) backwards;
-  animation-delay: calc(160ms + min(var(--i), 24) * 42ms);
-}
-
-@keyframes letter-in {
-  0% { opacity: 0; transform: translateY(0.5em) rotateX(-95deg) scale(0.9); filter: blur(8px); }
-  55% { opacity: 1; filter: blur(0); }
-  100% { transform: none; }
-}
-
-.kinetic__ch:hover { transform: translateY(-0.14em) rotate(-5deg) scale(1.06); }
-
-.kinetic__ch:hover + .kinetic__ch,
-.kinetic__ch:has(+ .kinetic__ch:hover) { transform: translateY(-0.06em); }
 
 .hero__stats {
   display: flex;
@@ -673,9 +546,8 @@ html[data-surface='dark'] .menu-item--danger:hover {
 .dash-files { grid-column: span 8; }
 .dash-pack { grid-column: span 5; }
 .dash-feed { grid-column: span 7; }
-.dash-apply { grid-column: span 7; }
-.dash-plan { grid-column: span 5; }
-.dash-recent { grid-column: span 12; }
+.dash-plan { grid-column: span 4; }
+.dash-recent { grid-column: span 8; }
 
 @media (max-width: 1100px) {
   .dash-players { grid-column: span 5; }
@@ -683,7 +555,7 @@ html[data-surface='dark'] .menu-item--danger:hover {
   .dash-pack,
   .dash-plan { grid-column: span 6; }
   .dash-feed,
-  .dash-apply { grid-column: span 12; }
+  .dash-recent { grid-column: span 12; }
 }
 
 @media (max-width: 760px) {
@@ -1169,9 +1041,12 @@ html[data-surface='dark'] .menu-item--danger:hover {
 
 .plan__go { justify-self: start; }
 
-/* ---------------- apply ---------------- */
+/* ---------------- apply, from the players tile ---------------- */
 
-.dash-apply__note { font-size: var(--fs-sm); color: var(--ink-muted); }
+.dash-players .rl {
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
 
 .dash .rl__go {
   border-color: transparent;

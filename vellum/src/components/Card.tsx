@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { trackPointer } from '../lib/motion'
 import './Card.css'
 
 type CardProps = {
@@ -36,6 +37,7 @@ export function Card({
     <section
       className={`card${variantClass}${interactive ? ' card--interactive' : ''} ${className}`}
       style={style}
+      onPointerMove={trackPointer}
     >
       {(title || actions || eyebrow) && (
         <header className={`card__head${dividedHead ? ' card__head--bordered' : ''}`}>

@@ -1,30 +1,9 @@
-import { Fragment } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
 import { Icon } from '../../lib/icons'
+import { Kinetic } from '../../components/Kinetic'
 import type { DashMeta, Health, PlayerCensus, ServerState } from '../../lib/dash'
 import { Counter } from './cards'
 import { Showcase } from './showcase'
-
-/** The server's name, dropped in a letter at a time. Hovering a letter nudges it and its neighbours. */
-function Kinetic({ text }: { text: string }) {
-  let i = 0
-  return (
-    <span className="kinetic" aria-hidden="true">
-      {text.split(' ').map((word, w) => (
-        <Fragment key={w}>
-          {w > 0 ? ' ' : null}
-          <span className="kinetic__word">
-            {[...word].map((ch) => (
-              <span key={i} className="kinetic__ch" style={{ '--i': i++ } as CSSProperties}>
-                {ch}
-              </span>
-            ))}
-          </span>
-        </Fragment>
-      ))}
-    </span>
-  )
-}
 
 function ago(ms: number): string {
   const s = Math.max(0, Math.round(ms / 1000))
@@ -89,7 +68,6 @@ export function Hero({
         </div>
 
         <h2 className="hero__title" id="dash-server-name" style={{ '--len': server.name.length } as CSSProperties}>
-          <span className="vh">{server.name}</span>
           <Kinetic key={server.name} text={server.name} />
         </h2>
 

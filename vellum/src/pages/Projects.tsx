@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import type { CSSProperties } from 'react'
 import { Menu } from '../components/Menu'
 import { Model3D, blockModel, lanternModel } from '../components/Model3D'
 import { ModelView } from '../components/ModelView'
@@ -11,6 +12,8 @@ import { ExportPackDialog } from './editor/ExportPackDialog'
 import { DEFAULT_DISPLAY } from './editor/DisplayPanel'
 import type { Model, ProjectKind, Subtype } from '../lib/model'
 import { navigate, useTitle } from '../lib/router'
+import { trackPointer } from '../lib/motion'
+import { Kinetic } from '../components/Kinetic'
 import { saveDataUrl, saveFile } from '../lib/download'
 import { writeVellum } from '../lib/vellum'
 import './Projects.css'
@@ -132,10 +135,13 @@ function FlatRender({ palette }: { palette: [string, string, string] }) {
 
 function AssetCard({
   asset,
+  index,
   onDownload,
   onTexture,
 }: {
   asset: Asset
+  /** its place on the page, for the order the cards arrive in */
+  index: number
   onDownload: (a: Asset) => void
   onTexture: (a: Asset) => void
 }) {
@@ -145,7 +151,12 @@ function AssetCard({
   const real = asset.sampleId ? sampleById(asset.sampleId).model : null
 
   return (
-    <article className="asset" data-open={menuOpen || undefined}>
+    <article
+      className="asset lit"
+      data-open={menuOpen || undefined}
+      style={{ '--k': index } as CSSProperties}
+      onPointerMove={trackPointer}
+    >
       <header className="asset__head">
         <Icon name={asset.kind === 'mobs' ? 'anim' : 'cube'} size={14} className="asset__badge" />
         <h2 className="asset__name" title={asset.name}>
@@ -299,7 +310,9 @@ function Library({ sceneId, shelf, openNew }: { sceneId: string; shelf: Shelf; o
         <div>
           <div className="eyebrow">{scene.name}</div>
           {/* title follows whichever tile opened the library */}
-          <h1 className="page-title">{shelfLabel[shelf]}</h1>
+          <h1 className="page-title">
+            <Kinetic key={shelf} text={shelfLabel[shelf]} />
+          </h1>
           <p className="page-sub">{scene.blurb}</p>
         </div>
       </div>
@@ -378,8 +391,14 @@ function Library({ sceneId, shelf, openNew }: { sceneId: string; shelf: Shelf; o
               <div className="library__grid">
                 {slice
                   .filter((a) => groupOf(a) === g)
-                  .map((a) => (
-                    <AssetCard key={a.id} asset={a} onDownload={actions.onDownload} onTexture={actions.onTexture} />
+                  .map((a, i) => (
+                    <AssetCard
+                      key={a.id}
+                      asset={a}
+                      index={i}
+                      onDownload={actions.onDownload}
+                      onTexture={actions.onTexture}
+                    />
                   ))}
               </div>
             </section>
@@ -445,7 +464,9 @@ function Gateway() {
       <div className="page-head">
         <div>
           <div className="eyebrow">Projects</div>
-          <h1 className="page-title">First scene</h1>
+          <h1 className="page-title">
+            <Kinetic key="first-scene" text="First scene" />
+          </h1>
           <p className="page-sub">
             Choose a scene, then a shelf.
           </p>
@@ -456,7 +477,8 @@ function Gateway() {
         {tiles.map((t) => (
           <button
             key={t.kind}
-            className="gateway__tile"
+            className="gateway__tile lit"
+            onPointerMove={trackPointer}
             onClick={() => navigate(`/projects/${scene.id}/${t.kind}`)}
           >
             <div className="gateway__art">

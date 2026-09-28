@@ -536,6 +536,9 @@
 .dlg__head > div:first-child { flex: 1; min-width: 0; }
 .dlg__body { padding: var(--sp-4); overflow-y: auto; flex: 1; min-height: 0; }
 
+/* the pack builder's miner, between the scrolling body and the buttons */
+.pk-run { padding: var(--sp-3) var(--sp-4) 0; border-top: 1px solid var(--glass-rim); }
+
 .dlg__foot {
   display: flex;
   flex-wrap: wrap;
@@ -553,4 +556,16 @@
   .sup { grid-template-columns: minmax(0, 1fr); height: auto; }
   .tl { border-right: none; border-bottom: 1px solid var(--glass-rim); max-height: 340px; }
   .th__scroll { max-height: 460px; }
+}
+
+/* ---------------- in the dark studio ---------------- */
+
+html[data-surface='dark'] .sup {
+  border-radius: 18px;
+  border-color: var(--line);
+  background: var(--panel);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  box-shadow: var(--panel-shadow);
+  animation: studio-rise 760ms var(--ease-out) backwards 160ms;
 }

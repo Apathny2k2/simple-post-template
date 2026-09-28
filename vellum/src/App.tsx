@@ -1,3 +1,4 @@
+import { useLayoutEffect } from 'react'
 import { TopBar } from './components/TopBar'
 import { Dashboard } from './pages/Dashboard'
 import { Editor } from './pages/Editor'
@@ -39,6 +40,14 @@ function NotFound({ path }: { path: string }) {
 export default function App() {
   const { segments, path } = useRoute()
   const root = segments[0]
+
+  // Every page is the dark studio except the editor, which stays on paper.
+  const surface = root === 'editor' ? 'paper' : 'dark'
+  useLayoutEffect(() => {
+    const html = document.documentElement
+    if (surface === 'dark') html.dataset.surface = 'dark'
+    else delete html.dataset.surface
+  }, [surface])
 
   return (
     <div className="app-shell">

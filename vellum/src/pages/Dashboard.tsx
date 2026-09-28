@@ -1,7 +1,5 @@
-import { useCallback, useEffect, useLayoutEffect, useState, useSyncExternalStore } from 'react'
-import { Miner } from '../components/Miner'
+import { useCallback, useEffect, useState, useSyncExternalStore } from 'react'
 import { ReloadControl } from '../components/ReloadControl'
-import type { ReloadPhase } from '../components/ReloadControl'
 import { Menu } from '../components/Menu'
 import type { TriggerProps } from '../components/Menu'
 import { Icon } from '../lib/icons'
@@ -66,15 +64,6 @@ export function Dashboard() {
   const [toasts, pushToast] = useToasts()
   useDashToasts(pushToast)
 
-  // The Dash is the one dark page. The top bar and menus read the same tokens, so they follow.
-  useLayoutEffect(() => {
-    const root = document.documentElement
-    root.dataset.surface = 'dark'
-    return () => {
-      delete root.dataset.surface
-    }
-  }, [])
-
   // A saved link reconnects on load. A Studio served by the plugin depends on this.
   useEffect(() => {
     const saved = loadLink()
@@ -84,7 +73,6 @@ export function Dashboard() {
 
   const [linked, setLinked] = useState(() => !!loadLink()?.baseUrl)
   const [demo, setDemo] = useState(false)
-  const [phase, setPhase] = useState<ReloadPhase>('idle')
 
   // Stopping the demo, or leaving the page, puts the sample back.
   useEffect(() => (demo ? startDemo() : undefined), [demo])
@@ -110,7 +98,6 @@ export function Dashboard() {
   }, [])
 
   const { server, pack, players, subscription, files } = snapshot
-  const mood = phase === 'asking' ? 'working' : phase === 'swapped' ? 'done' : phase === 'idle' ? 'idle' : 'failed'
 
   // Rows that arrive after the page loaded are highlighted once.
   const fileIds = files.map((f) => f.id).join(',')
@@ -160,6 +147,12 @@ export function Dashboard() {
           title="On the current pack"
         >
           <AdoptionRing players={players} now={now} />
+          <ReloadControl
+            key={demo ? 'demo' : 'live'}
+            linked={linked || demo}
+            hint={demo ? 'The demo server answers too. Apply a few times to see it swap, refuse and fail.' : undefined}
+            request={demo ? demoReload : undefined}
+          />
         </Tile>
 
         <Tile
@@ -183,29 +176,13 @@ export function Dashboard() {
         <Tile className="dash-feed" n={4} label="Plugin activity" title="The last 90 seconds">
           <Timeline now={now} />
         </Tile>
-
-        <Tile className="dash-apply" n={5} label="Apply" title="Push saved changes live">
-          <Miner mood={mood} failure={phase === 'refused' ? 'wall' : 'lava'} />
-          <p className="dash-apply__note">
-            {demo
-              ? 'The demo server answers this too. Apply a few times to see it swap, refuse and fail.'
-              : 'The server keeps serving the old pack until it reloads.'}
-          </p>
-          <ReloadControl
-            key={demo ? 'demo' : 'live'}
-            linked={linked || demo}
-            request={demo ? demoReload : undefined}
-            onPhase={setPhase}
-          />
-        </Tile>
-
-        <Tile className="dash-plan" n={6} label="Plan" badge={<SampleBadge fed={meta.fed} section="subscription" />}>
+        <Tile className="dash-plan" n={5} label="Plan" badge={<SampleBadge fed={meta.fed} section="subscription" />}>
           <Plan plan={subscription} />
         </Tile>
 
         <Tile
           className="dash-recent"
-          n={7}
+          n={6}
           label="Recent files"
           badge={<SampleBadge fed={meta.fed} section="files" />}
           title="Last touched"

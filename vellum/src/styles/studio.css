@@ -1,0 +1,298 @@
+/* ---------------------------------------------------------------
+   The studio's dark room: the Dash, Projects and Settings. The editor
+   keeps the paper it was designed on.
+
+   App sets data-surface="dark" on <html> for every route but the
+   editor, and the overrides below re-point the app's own tokens, so
+   the top bar, cards, menus, fields and buttons follow without knowing.
+   After Blockbench: grey-blue panels, one bright blue, the axis
+   colours, and motion that springs.
+   --------------------------------------------------------------- */
+
+@property --tint {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #5aa2ff;
+}
+
+:root {
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+html[data-surface='dark'] {
+  color-scheme: dark;
+
+  --bb-blue: #3e90ff;
+  --bb-blue-hi: #5aa2ff;
+  --bb-violet: #b594ff;
+  --bb-teal: #2ec5b6;
+  --bb-amber: #ffb547;
+  --bb-pink: #ff7ab8;
+  --bb-green: #3ddc97;
+  --bb-red: #ff6b6b;
+  --axis-x: #ff5f6d;
+  --axis-y: #62dc7c;
+  --axis-z: #4f9dff;
+
+  --bg: #121419;
+  --bg-deep: #0e1014;
+  --bg-sunken: rgba(255, 255, 255, 0.04);
+  --grid-line: rgba(255, 255, 255, 0.026);
+
+  --glass-thin: rgba(36, 40, 49, 0.5);
+  --glass: rgba(27, 30, 36, 0.78);
+  --glass-thick: rgba(27, 30, 36, 0.9);
+  --glass-solid: rgba(29, 32, 39, 0.98);
+  --glass-rim: rgba(255, 255, 255, 0.08);
+  --glass-rim-lit: rgba(255, 255, 255, 0.16);
+  --glass-rim-wax: rgba(90, 162, 255, 0.5);
+
+  --ink: #eceef3;
+  --ink-muted: #b4bac6;
+  --ink-faint: #949bab;
+  --ink-invert: #0e1014;
+
+  --line: rgba(255, 255, 255, 0.08);
+  --line-strong: rgba(255, 255, 255, 0.16);
+  --line-dashed: rgba(255, 255, 255, 0.2);
+
+  /* The paper's red accent turns blue here. White on #3e90ff is 3.2:1,
+     so fills use a deeper blue and the bright one is kept for light. */
+  --wax-600: #2563cf;
+  --wax-500: #2a6ad8;
+  --wax-400: #5aa2ff;
+  --wax-300: #5aa2ff;
+  --wax-200: #a9ccff;
+  --accent: #2a6ad8;
+  --accent-ink: #ffffff;
+  --accent-soft: rgba(62, 144, 255, 0.14);
+  --accent-softer: rgba(62, 144, 255, 0.07);
+  --highlight: #2563cf;
+  --highlight-soft: rgba(62, 144, 255, 0.16);
+  --glow-wax: 0 0 0 1px rgba(90, 162, 255, 0.55);
+  --glow-wax-strong: 0 0 0 1px rgba(90, 162, 255, 0.85);
+
+  --ok: #3ddc97;
+  --warn: #ffb547;
+  --danger: #ff6b6b;
+
+  --shadow: 0 1px 0 rgba(0, 0, 0, 0.35);
+  --shadow-lg: 0 24px 48px -24px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(255, 255, 255, 0.07);
+  --shadow-pop: 0 24px 48px -20px rgba(0, 0, 0, 0.85), 0 0 0 1px rgba(255, 255, 255, 0.08);
+  --bevel: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  --bevel-soft: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+
+  --chrome: rgba(14, 16, 20, 0.72);
+  --chrome-strong: rgba(14, 16, 20, 0.86);
+  --chrome-soft: rgba(14, 16, 20, 0.6);
+  --chrome-status: rgba(14, 16, 20, 0.72);
+  --well: rgba(255, 255, 255, 0.04);
+  --well-deep: rgba(255, 255, 255, 0.08);
+
+  --panel: linear-gradient(180deg, rgba(34, 38, 46, 0.84), rgba(23, 26, 32, 0.84));
+  --panel-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05), 0 30px 60px -40px rgba(0, 0, 0, 0.9);
+}
+
+html[data-surface='dark'] body::before {
+  background:
+    radial-gradient(1100px 620px at 10% -8%, rgba(62, 144, 255, 0.14), transparent 62%),
+    radial-gradient(900px 560px at 94% 2%, rgba(155, 107, 255, 0.1), transparent 60%),
+    linear-gradient(to right, var(--grid-line) 1px, transparent 1px) 0 0 / 64px 64px,
+    linear-gradient(to bottom, var(--grid-line) 1px, transparent 1px) 0 0 / 64px 64px,
+    var(--bg);
+}
+
+/* Where red meant "wrong" rather than "active", it stays a warning here. */
+html[data-surface='dark'] .menu-item--danger { color: var(--danger); }
+
+html[data-surface='dark'] .menu-item--danger:hover {
+  background: rgba(255, 107, 107, 0.14);
+  border-color: rgba(255, 107, 107, 0.5);
+}
+
+html[data-surface='dark'] .menu-label,
+html[data-surface='dark'] .library__groupname { color: var(--bb-blue-hi); }
+html[data-surface='dark'] .prio--high { color: var(--warn); }
+html[data-surface='dark'] .prio--urgent { color: var(--danger); }
+html[data-surface='dark'] .bub__body--failed { border-color: var(--danger); background: rgba(255, 107, 107, 0.12); }
+html[data-surface='dark'] .verify[data-tone='warn'] svg { color: var(--warn); }
+html[data-surface='dark'] .dir-row__tag[data-sync='outdated'] { border-color: rgba(255, 181, 71, 0.5); color: var(--warn); }
+
+/* ---------------- titles that drop in ---------------- */
+
+.kinetic { display: block; }
+
+.kinetic__word {
+  display: inline-block;
+  white-space: nowrap;
+  perspective: 640px;
+}
+
+.kinetic__ch {
+  display: inline-block;
+  transform-origin: 50% 90%;
+  background: linear-gradient(180deg, #ffffff 35%, color-mix(in srgb, var(--tint) 45%, #ffffff) 110%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  transition: transform 560ms var(--ease-spring);
+  animation: letter-in 1100ms var(--ease-spring) backwards;
+  animation-delay: calc(160ms + min(var(--i), 24) * 42ms);
+}
+
+@keyframes letter-in {
+  0% { opacity: 0; transform: translateY(0.5em) rotateX(-95deg) scale(0.9); filter: blur(8px); }
+  55% { opacity: 1; filter: blur(0); }
+  100% { transform: none; }
+}
+
+.kinetic__ch:hover { transform: translateY(-0.14em) rotate(-5deg) scale(1.06); }
+
+.kinetic__ch:hover + .kinetic__ch,
+.kinetic__ch:has(+ .kinetic__ch:hover) { transform: translateY(-0.06em); }
+
+html[data-surface='dark'] .page-head { margin-bottom: clamp(24px, 3vw, 38px); }
+
+html[data-surface='dark'] .page-title {
+  margin-top: 6px;
+  font-size: clamp(34px, 4.2vw, 56px);
+  font-weight: 700;
+  line-height: 1.02;
+  letter-spacing: -0.04em;
+}
+
+html[data-surface='dark'] .page-sub { margin-top: 10px; font-size: var(--fs-md); color: var(--ink-muted); }
+
+/* ---------------- entrances ---------------- */
+
+@keyframes studio-rise {
+  from { opacity: 0; transform: translateY(18px) scale(0.99); filter: blur(6px); }
+}
+
+html[data-surface='dark'] .page:not(.dash) > * { animation: none; }
+html[data-surface='dark'] .page:not(.dash) > .page-head .eyebrow,
+html[data-surface='dark'] .page:not(.dash) > .page-head .page-sub { animation: studio-rise 700ms var(--ease-out) backwards; }
+html[data-surface='dark'] .page:not(.dash) > .page-head .page-sub { animation-delay: 260ms; }
+
+/* ---------------- cards become tiles ---------------- */
+
+html[data-surface='dark'] .card {
+  border-radius: 18px;
+  border-color: var(--line);
+  background: var(--panel);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  box-shadow: var(--panel-shadow);
+  transition: transform 520ms var(--ease-spring), border-color 300ms var(--ease-out);
+  animation: studio-rise 760ms var(--ease-out) backwards;
+  animation-delay: 120ms;
+}
+
+html[data-surface='dark'] .card:nth-child(2) { animation-delay: 190ms; }
+html[data-surface='dark'] .card:nth-child(3) { animation-delay: 260ms; }
+html[data-surface='dark'] .card:nth-child(4) { animation-delay: 330ms; }
+html[data-surface='dark'] .card:nth-child(n + 5) { animation-delay: 400ms; }
+
+html[data-surface='dark'] .card:hover { border-color: var(--line-strong); }
+
+/* A soft light under the pointer, and the rim lit where it is nearest.
+   The pointer position comes from trackPointer() as --mx and --my. */
+html[data-surface='dark'] .card::before,
+html[data-surface='dark'] .card::after,
+html[data-surface='dark'] .lit::before,
+html[data-surface='dark'] .lit::after {
+  content: '';
+  position: absolute;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 400ms var(--ease-out);
+}
+
+html[data-surface='dark'] .card::before,
+html[data-surface='dark'] .lit::before {
+  inset: 0;
+  z-index: -1;
+  background: radial-gradient(440px circle at var(--mx, 50%) var(--my, -300px), rgba(90, 162, 255, 0.08), transparent 60%);
+}
+
+html[data-surface='dark'] .card::after,
+html[data-surface='dark'] .lit::after {
+  inset: -1px;
+  padding: 1px;
+  background: radial-gradient(260px circle at var(--mx, 50%) var(--my, -300px), rgba(90, 162, 255, 0.7), transparent 70%);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+}
+
+html[data-surface='dark'] .card:hover::before,
+html[data-surface='dark'] .card:hover::after,
+html[data-surface='dark'] .lit:hover::before,
+html[data-surface='dark'] .lit:hover::after { opacity: 1; }
+
+html[data-surface='dark'] .card--dashed {
+  background: transparent;
+  border-style: dashed;
+  border-color: var(--line-dashed);
+  box-shadow: none;
+}
+
+html[data-surface='dark'] .card--flush {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+}
+
+html[data-surface='dark'] .card--flush::after { display: none; }
+html[data-surface='dark'] .card__head { padding: 20px 22px 0; }
+html[data-surface='dark'] .card__head--bordered { padding-bottom: 14px; border-bottom-color: var(--line); }
+html[data-surface='dark'] .card__body { padding: 18px 22px 22px; }
+html[data-surface='dark'] .card__title { font-size: var(--fs-lg); font-weight: 600; letter-spacing: -0.015em; }
+html[data-surface='dark'] .card__foot { padding: 14px 22px; border-top-color: var(--line); }
+
+/* ---------------- controls ---------------- */
+
+html[data-surface='dark'] .btn {
+  border-radius: 10px;
+  transition: transform 420ms var(--ease-spring), box-shadow 300ms var(--ease-out),
+    background-color 200ms var(--ease-out), border-color 200ms var(--ease-out), color 200ms var(--ease-out);
+}
+
+html[data-surface='dark'] .btn:hover:not(:disabled) { transform: translateY(-1px); }
+html[data-surface='dark'] .btn:active:not(:disabled) { transform: translateY(0) scale(0.97); }
+
+html[data-surface='dark'] .btn--primary:not(:disabled) {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2), 0 10px 26px -12px rgba(62, 144, 255, 0.85);
+}
+
+html[data-surface='dark'] .field__input,
+html[data-surface='dark'] .field textarea,
+html[data-surface='dark'] .field select { border-radius: 10px; }
+
+html[data-surface='dark'] .icon-btn { border-radius: 10px; }
+
+/* ---------------- dialogs ---------------- */
+
+html[data-surface='dark'] .dlg__scrim { background: rgba(6, 8, 12, 0.6); }
+
+html[data-surface='dark'] .dlg__panel {
+  border-radius: 20px;
+  border-color: var(--line-strong);
+  background: linear-gradient(180deg, rgba(34, 38, 46, 0.98), rgba(22, 25, 31, 0.98));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 40px 90px -30px rgba(0, 0, 0, 0.9);
+  animation: studio-dlg 520ms var(--ease-spring) both;
+}
+
+@keyframes studio-dlg {
+  from { opacity: 0; transform: translateY(16px) scale(0.96); }
+}
+
+html[data-surface='dark'] .dlg__foot { background: rgba(0, 0, 0, 0.18); }
+
+@media (prefers-reduced-motion: reduce) {
+  html[data-surface='dark'] .card,
+  html[data-surface='dark'] .dlg__panel,
+  html[data-surface='dark'] .page-head * { animation-delay: 0s !important; }
+}

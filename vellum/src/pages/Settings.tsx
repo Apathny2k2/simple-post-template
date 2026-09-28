@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useState, useSyncExternalStore } from 'react'
 import { Card } from '../components/Card'
+import { Kinetic } from '../components/Kinetic'
 import { Miner } from '../components/Miner'
 import type { MinerMood } from '../components/Miner'
 import { Icon } from '../lib/icons'
@@ -109,6 +110,9 @@ function ReportABug() {
   const [withLog, setWithLog] = useState(true)
   const [busy, setBusy] = useState(false)
   const [sent, setSent] = useState<string | null>(null)
+  const [failed, setFailed] = useState(false)
+  /* The miner runs while the report sends and plays out the answer; the
+     result below only shows once he is done. */
   const [run, setRun] = useState<MinerMood | null>(null)
 
   const valid = what.trim().length >= 12
@@ -123,8 +127,10 @@ function ReportABug() {
     ].join('\n')
 
   const send = async () => {
-    if (!valid || busy) return
+    if (!valid || busy || run) return
     setBusy(true)
+    setSent(null)
+    setFailed(false)
     setRun('working')
     try {
       const ticket = await api.createTicket({
@@ -138,6 +144,7 @@ function ReportABug() {
       setWhat('')
       setRun('done')
     } catch {
+      setFailed(true)
       setRun('failed')
     } finally {
       setBusy(false)
@@ -192,17 +199,17 @@ function ReportABug() {
       </label>
 
       <div className="row-actions" style={{ marginTop: 'var(--sp-4)' }}>
-        <button className="btn btn--primary" disabled={!valid || busy} onClick={send}>
+        <button className="btn btn--primary" disabled={!valid || busy || !!run} onClick={send}>
           <Icon name="bug" size={14} /> {busy ? 'Sending\u2026' : 'Send report'}
         </button>
-        {sent ? (
+        {sent && !run ? (
           <button className="btn btn--ghost" onClick={() => navigate('/settings/support')}>
             Opened {sent}. View the thread
           </button>
         ) : null}
       </div>
-      {run === 'failed' ? <p className="field__hint">The report did not go through. Try again.</p> : null}
-      {run ? <Miner mood={run} maxScale={2} className="bug-miner" /> : null}
+      {run ? <Miner mood={run} onFinish={() => setRun(null)} className="bug-miner" /> : null}
+      {failed && !run ? <p className="field__hint">The report did not go through. Try again.</p> : null}
     </Card>
   )
 }
@@ -696,7 +703,9 @@ export function Settings({ segments }: { segments: string[] }) {
       <div className="page-head">
         <div>
           <div className="eyebrow">Settings</div>
-          <h1 className="page-title">{section.label}</h1>
+          <h1 className="page-title">
+            <Kinetic key={section.id} text={section.label} />
+          </h1>
           <p className="page-sub">{section.blurb}</p>
         </div>
       </div>

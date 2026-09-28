@@ -1,6 +1,7 @@
 @import './fonts.css';
 @import './tokens.css';
 @import './controls.css';
+@import './studio.css';
 
 *,
 *::before,

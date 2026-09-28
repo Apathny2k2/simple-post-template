@@ -1,57 +1,56 @@
-/* A little night scene with a miner in it, used wherever the studio
-   waits on something.
+/* The studio's waiting scene, drawn in one colour after the offline
+   dinosaur game: a horizon line, a couple of clouds, and a miner.
 
-   working  he walks along with his pickaxe, stopping to mine the ore
-            blocks he meets
-   done     a portal comes into view and he walks through it
-   failed   he runs into a wall and sits down under a rain cloud, or
-            runs off the edge into lava; his pickaxe lands on the far bank
-   idle     he stands by a block, waiting
+   working  he mines the block in front of him; when it breaks, the next
+            one rises out of the ground a few steps on and he walks to it
+   done     he breaks the block he is on, a portal rises ahead of him and
+            he fades into it; a check mark is left behind
+   failed   the ground opens into lava and he walks in, or a wall rises
+            and he walks into it and sits down under a rain cloud
 
-   The miner stays near the right third of the frame and the ground
-   scrolls under him, so a wide frame just shows more of the walk. */
+   An outcome never cuts a swing short and he never walks past a block.
+   `finished` turns true once the ending has played, so whatever shows
+   the result can wait for it. */
 
-import { Pixels, blit, blitTurned, hash2, mix, seeded } from './pixels'
-import type { Ink, Rgb } from './pixels'
+import { Pixels, hash2, seeded, stamp, stampTurned } from './pixels'
+import type { Mask, Stamp } from './pixels'
 import {
   ARM,
-  C,
   CHECK,
   CLOUD,
+  CRACKS,
+  DIGITS,
+  FLAMES,
   GEM,
   HEAD,
+  HEAD_DAZED,
   LEG,
-  MOON,
+  ORE,
   PICK,
-  PORTAL,
+  PUFF,
+  RAIN_CLOUD,
+  RING,
   STAR,
   TORSO,
-  brickBlock,
-  fire,
-  grassBlock,
-  lava,
-  obsidianBlock,
-  oreBlock,
-  portal,
-  stoneBlock,
 } from './art'
 
 export type Mood = 'idle' | 'working' | 'done' | 'failed'
 export type Failure = 'lava' | 'wall'
 
-export const HEIGHT = 60
-const GROUND = 44
+export const HEIGHT = 40
+const GROUND = 31
 const LAVA_TOP = GROUND + 3
-const PIT = 24
-const WALK = 18
-const RUN = 46
+const PIT = 20
+const WALK = 22
+const STROLL = 28
 const GRAVITY = 300
-const LEG_LEN = 6
-const TAU = Math.PI * 2
-/** How far in front of a block the miner stands to mine it. */
+const LEG_LEN = 5
 const REACH = 9
+const TAU = Math.PI * 2
+/** Seconds a block, portal or wall takes to rise out of the ground. */
+const RISE = 0.3
 
-type Ore = { x: number; hits: number; broken: boolean; struck: number }
+type Ore = { x: number; hits: number; born: number; struck: number }
 
 type Bit = {
   x: number
@@ -60,18 +59,14 @@ type Bit = {
   vy: number
   age: number
   life: number
-  c: Rgb
-  size: number
   gravity: number
-  fade: boolean
-  bounce?: boolean
+  shape?: Mask
   rain?: boolean
+  bounce?: boolean
 }
 
 type Pose = {
-  /** feet, in world pixels */
   x: number
-  /** feet, in screen pixels */
   y: number
   vx: number
   vy: number
@@ -80,34 +75,21 @@ type Pose = {
   legFar: number
   armNear: number
   armFar: number
-  /** the pickaxe's angle while it is held, or null once it is dropped */
   pick: number | null
   sit: number
   bob: number
   dip: number
-  jitter: number
+  dazed: boolean
   hidden: boolean
 }
 
-type PhaseName =
-  | 'stand'
-  | 'walk'
-  | 'mine'
-  | 'approach'
-  | 'enter'
-  | 'gone'
-  | 'fall'
-  | 'burn'
-  | 'sunk'
-  | 'bonk'
-  | 'sit'
-  | 'respawn'
+type PhaseName = 'stand' | 'walk' | 'mine' | 'approach' | 'enter' | 'gone' | 'fall' | 'burn' | 'sunk' | 'bonk' | 'sit' | 'respawn'
 
-type Phase = { name: PhaseName; t: number; ore?: Ore; speed?: number }
+type Phase = { name: PhaseName; t: number; ore?: Ore }
 
-type Goal = { kind: 'portal' | 'pit' | 'wall'; x: number }
+type Goal = { kind: 'portal' | 'pit' | 'wall'; x: number; born: number }
 
-type Dropped = { x: number; y: number; vx: number; vy: number; angle: number; spin: number; landed: number | null; flat: number }
+type Dropped = { x: number; y: number; vx: number; vy: number; angle: number; spin: number; landed: number | null; rest: number }
 
 const lerp = (a: number, b: number, k: number) => a + (b - a) * Math.max(0, Math.min(1, k))
 const easeOut = (k: number) => 1 - (1 - Math.max(0, Math.min(1, k))) ** 3
@@ -127,7 +109,7 @@ function standing(x: number): Pose {
     sit: 0,
     bob: 0,
     dip: 0,
-    jitter: 0,
+    dazed: false,
     hidden: false,
   }
 }
@@ -137,8 +119,6 @@ export class MinerScene {
   readonly h = HEIGHT
   px: Pixels
   private scratch: Pixels
-  private sky: Pixels
-  private twinkles: { x: number; y: number; k: number }[] = []
   private rand = seeded(11)
   private time = 0
   private cam = 0
@@ -146,40 +126,51 @@ export class MinerScene {
   private failure: Failure = 'lava'
   private phase: Phase = { name: 'stand', t: 0 }
   private me: Pose
-  private ores: Ore[] = []
-  private nextOre = 0
+  private ore: Ore | null = null
+  /** an outcome is in: the block being mined breaks on the next strike */
+  private finishing = false
   private goal: Goal | null = null
   private dropped: Dropped | null = null
   private gem: { x: number; y: number; vx: number; vy: number; age: number } | null = null
   private bits: Bit[] = []
-  private hurt = 0
-  private shake = 0
+  private mined = 0
   private dizzy = 0
+  private knock = 0
   private flash = 0
+  private endedAt: number | null = null
 
   constructor(width = 128) {
     this.w = Math.max(96, Math.round(width))
     this.px = new Pixels(this.w, HEIGHT)
     this.scratch = new Pixels(this.w, HEIGHT)
-    this.sky = new Pixels(this.w, HEIGHT)
-    this.paintSky()
     this.me = standing(this.anchor)
-    this.resetOres()
+    this.ore = { x: Math.floor(this.me.x + REACH), hits: 0, born: -1, struck: -1 }
   }
 
-  /** Where the miner walks on screen: the right third, with room ahead for what is coming. */
+  /** He works near the right of the frame, so what comes next arrives in a few steps. */
   private get anchor() {
-    return Math.max(26, this.w - 92)
+    return Math.max(24, this.w - 44)
+  }
+
+  /** True once an outcome has played through. */
+  get finished() {
+    return this.endedAt !== null
+  }
+
+  /** The colour everything is drawn in. */
+  setInk(c: number) {
+    this.px.ink = c
+    this.scratch.ink = c
   }
 
   resize(width: number) {
     const w = Math.max(96, Math.round(width))
     if (w === this.w) return
+    const ink = this.px.ink
     this.w = w
     this.px = new Pixels(w, HEIGHT)
     this.scratch = new Pixels(w, HEIGHT)
-    this.sky = new Pixels(w, HEIGHT)
-    this.paintSky()
+    this.setInk(ink)
     const name = this.phase.name
     if (name === 'stand' || name === 'walk' || name === 'mine' || name === 'approach') this.cam = this.me.x - this.anchor
   }
@@ -188,16 +179,31 @@ export class MinerScene {
     if (mood === this.mood && failure === this.failure) return
     this.mood = mood
     this.failure = failure
+    this.endedAt = null
     const name = this.phase.name
     const ended = name === 'enter' || name === 'gone' || name === 'fall' || name === 'burn' || name === 'sunk' || name === 'bonk' || name === 'sit'
-    if (ended || (name === 'approach' && mood !== 'done' && mood !== 'failed')) this.go('respawn')
-    else if (name !== 'respawn') this.follow()
+    if (ended) return this.go('respawn')
+    if (name === 'respawn') return
+    if (mood === 'idle') return this.go('stand')
+    if (mood === 'working') {
+      this.finishing = false
+      if (name === 'stand' || name === 'approach') this.goal = null
+      if (name === 'stand' || name === 'approach') this.nextOre(true)
+      return
+    }
+    // An outcome. Let the swing land first; a block he has not reached yet is not worth the walk.
+    if (name === 'mine') this.finishing = true
+    else if (name === 'walk' && this.ore && this.ore.x - this.me.x > REACH + 6) {
+      this.ore = null
+      this.placeGoal()
+    } else if (name === 'walk') this.finishing = true
+    else this.placeGoal()
   }
 
-  /** Fast-forwards to a frame that sums the mood up, for a still picture. */
+  /** Skips to a frame that sums the mood up, for a still picture. */
   settle() {
-    const seconds = { idle: 0.5, working: 1.3, done: 6.5, failed: this.failure === 'wall' ? 4.5 : 8 }[this.mood]
-    for (let t = 0; t < seconds; t += 1 / 30) this.step(1 / 30)
+    const seconds = { idle: 0.2, working: 0.2, done: 4, failed: 4 }[this.mood]
+    for (let t = 0; t < seconds && !(this.mood !== 'working' && this.finished); t += 1 / 30) this.step(1 / 30)
     this.bits = this.bits.filter((b) => b.rain)
     this.gem = null
   }
@@ -205,38 +211,22 @@ export class MinerScene {
   /* ---------------- choreography ---------------- */
 
   private go(name: PhaseName, ore?: Ore) {
-    this.phase = { name, t: 0, ore, speed: name === 'approach' ? (this.phase.name === 'walk' ? WALK : 8) : undefined }
+    this.phase = { name, t: 0, ore }
   }
 
-  private follow() {
-    if (this.mood === 'idle') return this.go('stand')
-    if (this.mood === 'working') return this.go('walk')
-    if (this.phase.name === 'mine' && this.phase.ore) this.breakOre(this.phase.ore)
-    this.placeGoal()
-    this.go('approach')
+  /** The next block rises a few steps ahead. */
+  private nextOre(now = false) {
+    const gap = now ? REACH : 26 + Math.floor(this.rand() * 8)
+    this.ore = { x: Math.floor(this.me.x + gap), hits: 0, born: now ? -1 : this.time, struck: -1 }
+    this.go(now ? 'mine' : 'walk', now ? this.ore : undefined)
   }
 
   private placeGoal() {
+    this.ore = null
     const kind = this.mood === 'done' ? 'portal' : this.failure === 'wall' ? 'wall' : 'pit'
-    const x = Math.floor(this.cam + this.w + 6)
-    this.goal = { kind, x }
-    // nothing may stand on it or past it
-    this.ores = this.ores.filter((o) => o.broken || o.x + 8 < x - 6)
-    this.nextOre = Infinity
-  }
-
-  private resetOres() {
-    const first = Math.floor(this.me.x + 38)
-    this.ores = [{ x: first, hits: 0, broken: false, struck: -1 }]
-    this.nextOre = first + 70
-  }
-
-  private spawnOres() {
-    while (this.nextOre < this.cam + this.w + 10) {
-      this.ores.push({ x: Math.floor(this.nextOre), hits: 0, broken: false, struck: -1 })
-      this.nextOre += 60 + this.rand() * 44
-    }
-    this.ores = this.ores.filter((o) => o.x + 8 > this.cam - 16 && !(o.broken && this.time - o.struck > 1))
+    const ahead = kind === 'portal' ? 10 : kind === 'pit' ? 10 : 15
+    this.goal = { kind, x: Math.floor(this.me.x + ahead), born: this.time }
+    this.go('approach')
   }
 
   private respawn() {
@@ -245,22 +235,17 @@ export class MinerScene {
     this.gem = null
     this.bits = []
     this.dizzy = 0
-    this.hurt = 0
+    this.finishing = false
     this.me = standing(this.cam + this.anchor)
-    this.resetOres()
-    if (this.nextOre !== Infinity) this.nextOre = Math.max(this.nextOre, this.cam + this.w + 4)
-    for (let i = 0; i < 12; i++) {
+    for (let i = 0; i < 10; i++) {
       this.bits.push({
-        x: this.me.x - 4 + this.rand() * 8,
-        y: GROUND - 3 - this.rand() * 16,
-        vx: (this.rand() - 0.5) * 30,
-        vy: -8 - this.rand() * 18,
+        x: this.me.x - 5 + this.rand() * 10,
+        y: GROUND - 2 - this.rand() * 16,
+        vx: (this.rand() - 0.5) * 24,
+        vy: -6 - this.rand() * 14,
         age: 0,
-        life: 0.45 + this.rand() * 0.35,
-        c: this.rand() > 0.5 ? 0xe8ecf5 : 0xb8bfd0,
-        size: this.rand() > 0.6 ? 2 : 1,
-        gravity: -10,
-        fade: true,
+        life: 0.4 + this.rand() * 0.3,
+        gravity: 0,
       })
     }
   }
@@ -277,8 +262,8 @@ export class MinerScene {
         break
 
       case 'walk': {
-        const ore = this.ores.find((o) => !o.broken && o.x > me.x && o.x - me.x <= REACH + WALK * dt)
-        if (ore) {
+        const ore = this.ore
+        if (ore && ore.x - me.x <= REACH + WALK * dt) {
           me.x = ore.x - REACH
           this.cam = me.x - this.anchor
           this.go('mine', ore)
@@ -287,8 +272,7 @@ export class MinerScene {
         const step = WALK * dt
         this.cam += step
         me.x += step
-        me.stride += (step / 16) * TAU
-        this.spawnOres()
+        me.stride += (step / 12) * TAU
         break
       }
 
@@ -299,9 +283,13 @@ export class MinerScene {
           ore.hits += 1
           ore.struck = this.time
           this.chips(ore.x + 1, GROUND - 5, 3, 0.6)
-          if (ore.hits >= 3) {
+          if (ore.hits >= 3 || this.finishing) {
             this.breakOre(ore)
-            this.go('walk')
+            if (this.mood === 'working' || this.mood === 'idle') this.nextOre()
+            else {
+              this.finishing = false
+              this.placeGoal()
+            }
           }
         }
         break
@@ -309,22 +297,18 @@ export class MinerScene {
 
       case 'approach': {
         const g = this.goal!
-        ph.speed = Math.min(RUN, (ph.speed ?? WALK) + 120 * dt)
-        let v = ph.speed
-        const target = g.kind === 'portal' ? g.x + 16 : g.kind === 'pit' ? g.x + 1 : g.x - 4
+        const target = g.kind === 'portal' ? g.x + 9 : g.kind === 'pit' ? g.x + 1 : g.x - 4
         const left = target - me.x
-        if (g.kind === 'portal' && left < 16) v = Math.max(9, v * (left / 16))
-        const step = Math.min(v * dt, Math.max(0, left))
+        const step = Math.min(STROLL * dt, Math.max(0, left))
         this.cam += step
         me.x += step
-        me.stride += (step / 16) * TAU
-        for (const o of this.ores) if (!o.broken && o.x <= me.x + 5) this.breakOre(o)
-        if (left - step <= 0.001) {
+        me.stride += (step / 12) * TAU
+        if (left - step <= 0.001 && this.time - g.born >= RISE) {
           if (g.kind === 'portal') this.go('enter')
           else if (g.kind === 'pit') {
-            me.vx = ph.speed * 0.62
-            me.vy = -24
-            this.drop(g.x + PIT + 8, -84)
+            me.vx = STROLL * 0.8
+            me.vy = -30
+            this.drop(g.x + PIT + 7, -80)
             this.go('fall')
           } else this.bonk()
         }
@@ -332,26 +316,33 @@ export class MinerScene {
       }
 
       case 'enter': {
-        if (this.rand() < dt * 30) this.glint(me.x + (this.rand() - 0.5) * 14, GROUND - 4 - this.rand() * 18, true)
+        // bits of him drift into the middle of the portal as he fades
+        if (ph.t > 0.25 && this.rand() < dt * 45) {
+          const g = this.goal!
+          const x = me.x + (this.rand() - 0.5) * 10
+          const y = GROUND - 2 - this.rand() * 18
+          this.bits.push({ x, y, vx: (g.x + 9 - x) * 2.2, vy: (GROUND - 12 - y) * 2.2, age: 0, life: 0.35 + this.rand() * 0.3, gravity: 0 })
+        }
         if (ph.t >= 0.95) {
-          this.dissolve()
-          this.flash = 0.3
+          me.hidden = true
+          this.flash = 0.18
           this.go('gone')
         }
         break
       }
 
       case 'gone':
+        if (ph.t >= 0.95 && this.endedAt === null) this.endedAt = this.time
         break
 
       case 'fall': {
         me.vy += GRAVITY * dt
         me.x += me.vx * dt
         me.y += me.vy * dt
-        if (me.y >= LAVA_TOP + 5) {
+        if (me.y >= LAVA_TOP + 3) {
           me.vx = 0
           me.vy = 0
-          this.hurt = 0.25
+          this.knock = 0.2
           this.splash(me.x, LAVA_TOP)
           this.go('burn')
         }
@@ -359,23 +350,20 @@ export class MinerScene {
       }
 
       case 'burn': {
-        me.y += 5.5 * dt
-        if (Math.floor(ph.t / 0.55) !== Math.floor((ph.t - dt) / 0.55)) this.hurt = 0.2
-        if (this.rand() < dt * 9) this.smoke(me.x + (this.rand() - 0.5) * 8, LAVA_TOP - 6 - this.rand() * 8)
-        if (this.rand() < dt * 14) this.ember(me.x + (this.rand() - 0.5) * 10, LAVA_TOP - 2)
-        if (me.y - 20 > LAVA_TOP + 1) {
-          for (let i = 0; i < 4; i++) this.smoke(me.x + (this.rand() - 0.5) * 6, LAVA_TOP - 2 - i * 3)
+        me.y += 12 * dt
+        if (this.rand() < dt * 7) this.puff(me.x + (this.rand() - 0.5) * 8, LAVA_TOP - 8 - this.rand() * 6)
+        if (me.y - 21 > LAVA_TOP + 1) {
+          this.puff(me.x, LAVA_TOP - 4)
+          this.puff(me.x + 3, LAVA_TOP - 9)
           this.go('sunk')
         }
         break
       }
 
-      case 'sunk': {
-        const g = this.goal!
-        if (this.rand() < dt * 1.6) this.smoke(g.x + 4 + this.rand() * (PIT - 8), LAVA_TOP - 2)
-        if (this.rand() < dt * 5) this.ember(g.x + 2 + this.rand() * (PIT - 4), LAVA_TOP)
+      case 'sunk':
+        if (this.rand() < dt * 2) this.puff(this.goal!.x + 4 + this.rand() * (PIT - 8), LAVA_TOP - 3)
+        if (ph.t >= 0.55 && this.endedAt === null) this.endedAt = this.time
         break
-      }
 
       case 'bonk': {
         me.vy += GRAVITY * dt
@@ -385,23 +373,36 @@ export class MinerScene {
           me.y = GROUND
           me.vx = 0
           me.vy = 0
-          this.dust(me.x, GROUND - 1, 6)
+          this.dust(me.x, GROUND - 1)
           this.go('sit')
         }
         break
       }
 
       case 'sit': {
-        if (ph.t > 0.9 && this.rand() < dt * 22) {
-          const cx = me.x - 6 + Math.floor(this.rand() * 12)
-          this.bits.push({ x: cx, y: this.headTop() - 7, vx: 0, vy: 60, age: 0, life: 1.2, c: C.rain, size: 1, gravity: 0, fade: false, rain: true })
+        if (ph.t > 0.45 && this.rand() < dt * 18) {
+          this.bits.push({
+            x: me.x - 5 + Math.floor(this.rand() * 10),
+            y: this.headTop() - 6,
+            vx: 0,
+            vy: 55,
+            age: 0,
+            life: 1,
+            gravity: 0,
+            rain: true,
+          })
         }
+        if (ph.t >= 1.7 && this.endedAt === null) this.endedAt = this.time
         break
       }
 
       case 'respawn': {
-        if (ph.t === dt || ph.t <= dt + 1e-9) this.respawn()
-        if (ph.t >= 0.4) this.follow()
+        if (ph.t <= dt + 1e-9) this.respawn()
+        if (ph.t >= 0.35) {
+          if (this.mood === 'working') this.nextOre(true)
+          else if (this.mood === 'idle') this.go('stand')
+          else this.placeGoal()
+        }
         break
       }
     }
@@ -410,15 +411,16 @@ export class MinerScene {
     this.stepBits(dt)
     this.stepDropped(dt)
     this.stepGem(dt)
-    this.hurt = Math.max(0, this.hurt - dt)
-    this.shake = Math.max(0, this.shake - dt)
     this.dizzy = Math.max(0, this.dizzy - dt)
+    this.knock = Math.max(0, this.knock - dt)
     this.flash = Math.max(0, this.flash - dt)
-
-    // the portal breathes out sparks while it stands
-    if (this.goal?.kind === 'portal' && this.rand() < dt * 9) {
+    if (this.goal?.kind === 'portal' && this.rand() < dt * 6) {
       const g = this.goal
-      this.glint(g.x + 9 + this.rand() * 14, GROUND - 10 - this.rand() * 22, false)
+      this.bits.push({ x: g.x + 4 + this.rand() * 10, y: GROUND - 6 - this.rand() * 14, vx: (this.rand() - 0.5) * 6, vy: -8 - this.rand() * 8, age: 0, life: 0.6, gravity: 0 })
+    }
+    if (this.goal?.kind === 'pit' && this.rand() < dt * 3) {
+      const g = this.goal
+      this.bits.push({ x: g.x + 3 + this.rand() * (PIT - 6), y: LAVA_TOP + 4, vx: 0, vy: -9, age: 0, life: 0.55, gravity: 0, shape: RING })
     }
   }
 
@@ -426,29 +428,27 @@ export class MinerScene {
   private pose() {
     const me = this.me
     const ph = this.phase
-    me.jitter = 0
     me.dip = 0
     switch (ph.name) {
       case 'stand':
-      case 'respawn': {
+      case 'respawn':
         me.legNear = me.legFar = 0
         me.armNear = 0.15
         me.armFar = -0.05
         me.pick = 1.0
         me.bob = this.time % 2.6 < 0.5 ? 1 : 0
+        me.dazed = false
         me.hidden = ph.name === 'respawn' && Math.floor(ph.t * 16) % 2 === 0
         break
-      }
       case 'walk':
       case 'approach': {
-        const amp = ph.name === 'walk' ? 0.5 : lerp(0.5, 0.85, ((ph.speed ?? WALK) - WALK) / (RUN - WALK))
         const s = Math.sin(me.stride)
-        me.legNear = amp * s
-        me.legFar = -amp * s
-        me.armNear = -0.55 * amp * s
-        me.armFar = 0.7 * amp * s
+        me.legNear = 0.55 * s
+        me.legFar = -0.55 * s
+        me.armNear = -0.3 * s
+        me.armFar = 0.4 * s
         me.pick = -me.armNear + 1.0
-        me.bob = Math.round(LEG_LEN * (1 - Math.cos(amp * s)) * 0.8)
+        me.bob = Math.round(LEG_LEN * (1 - Math.cos(0.55 * s)) * 0.9)
         me.hidden = false
         break
       }
@@ -473,15 +473,13 @@ export class MinerScene {
         me.bob = 1
         break
       }
-      case 'enter': {
+      case 'enter':
         me.legNear = me.legFar = 0
-        me.armNear = 0.35
-        me.armFar = -0.25
+        me.armNear = 0.3
+        me.armFar = -0.2
         me.pick = 1.0
         me.bob = 0
-        me.jitter = ph.t > 0.25 && Math.floor(ph.t * 14) % 2 === 0 ? 1 : 0
         break
-      }
       case 'fall':
       case 'burn': {
         const f = this.time * (ph.name === 'fall' ? 30 : 16)
@@ -491,28 +489,29 @@ export class MinerScene {
         me.legFar = -0.5 * Math.sin(f * 0.8)
         me.pick = null
         me.bob = 0
+        me.dazed = true
         break
       }
-      case 'bonk': {
+      case 'bonk':
         me.armNear = 1.3
         me.armFar = 1.0
         me.legNear = 0.45
         me.legFar = -0.35
         me.pick = null
         me.bob = 0
+        me.dazed = true
         break
-      }
-      case 'sit': {
-        me.sit = easeOut(ph.t / 0.35)
+      case 'sit':
+        me.sit = easeOut(ph.t / 0.3)
         me.legNear = lerp(0.45, 1.5, me.sit)
         me.legFar = lerp(-0.35, 1.38, me.sit)
         me.armNear = lerp(1.3, 0.55, me.sit)
         me.armFar = lerp(1.0, 0.4, me.sit)
         me.pick = null
         me.bob = 0
-        me.dip = ph.t > 1.2 && (ph.t - 1.2) % 2.6 < 0.7 ? 1 : 0
+        me.dazed = ph.t < 0.9
+        me.dip = ph.t > 0.9 && (ph.t - 0.9) % 1.8 < 0.6 ? 1 : 0
         break
-      }
       case 'gone':
       case 'sunk':
         me.hidden = true
@@ -523,22 +522,21 @@ export class MinerScene {
   /* ---------------- events ---------------- */
 
   private breakOre(ore: Ore) {
-    if (ore.broken) return
-    ore.broken = true
     ore.struck = this.time
-    this.chips(ore.x + 4, GROUND - 4, 14, 1)
-    this.gem = { x: ore.x + 3, y: GROUND - 5, vx: -26, vy: -72, age: 0 }
+    this.mined += 1
+    this.chips(ore.x + 4, GROUND - 4, 12, 1)
+    this.gem = { x: ore.x + 3, y: GROUND - 5, vx: -26, vy: -70, age: 0 }
+    this.ore = null
   }
 
   private bonk() {
     const me = this.me
-    me.vx = -38
-    me.vy = -62
-    this.hurt = 0.3
-    this.shake = 0.28
-    this.dizzy = 3.2
-    this.dust(this.goal!.x, GROUND - 12, 7)
-    this.drop(this.goal!.x - 7, -70)
+    me.vx = -30
+    me.vy = -55
+    this.knock = 0.25
+    this.dizzy = 1.4
+    this.dust(this.goal!.x, GROUND - 10)
+    this.drop(this.goal!.x - 6, -65)
     this.go('bonk')
   }
 
@@ -546,9 +544,9 @@ export class MinerScene {
   private drop(x: number, vy: number) {
     const me = this.me
     const hand = this.hand()
-    const fallTo = GROUND - 5
-    const dy = fallTo - hand.y
-    const time = (-vy + Math.sqrt(vy * vy + 2 * GRAVITY * dy)) / GRAVITY
+    const rest = GROUND - 4
+    const dy = rest - hand.y
+    const time = (-vy + Math.sqrt(vy * vy + 2 * GRAVITY * Math.max(0, dy))) / GRAVITY
     this.dropped = {
       x: hand.x,
       y: hand.y,
@@ -557,140 +555,40 @@ export class MinerScene {
       angle: me.pick ?? 1,
       spin: x > hand.x ? 9 : -9,
       landed: null,
-      flat: x > hand.x ? 0.8 : -0.8,
+      rest: x > hand.x ? 0.8 : -0.8,
     }
     me.pick = null
   }
 
-  private dissolve() {
-    const s = this.scratch
-    s.data.fill(0)
-    const sx = Math.floor(this.me.x - this.cam)
-    this.drawMiner(s, sx, {})
-    const g = this.goal!
-    const cx = g.x + 16 - this.cam
-    const cy = GROUND - 20
-    for (let y = 0; y < s.h; y++) {
-      for (let x = Math.max(0, sx - 8); x < Math.min(s.w, sx + 12); x++) {
-        const c = s.get(x, y)
-        if (c === null) continue
-        const a = Math.atan2(y - cy, x - cx) + 1.4
-        this.bits.push({
-          x: x + this.cam,
-          y,
-          vx: (cx - x) * 1.6 + Math.cos(a) * 14,
-          vy: (cy - y) * 1.6 + Math.sin(a) * 14,
-          age: 0,
-          life: 0.45 + this.rand() * 0.55,
-          c: mix(c, PORTAL[3], 0.45),
-          size: 1,
-          gravity: 0,
-          fade: true,
-        })
-      }
-    }
-    this.me.hidden = true
-  }
-
   private chips(x: number, y: number, n: number, force: number) {
     for (let i = 0; i < n; i++) {
-      const c = [C.stone, C.stoneHi, C.stoneLo, C.ore, C.oreLo][Math.floor(this.rand() * 5)]
       this.bits.push({
         x: x + (this.rand() - 0.5) * 4,
         y: y + (this.rand() - 0.5) * 4,
         vx: (this.rand() - 0.5) * 70 * force,
         vy: (-40 - this.rand() * 60) * force,
         age: 0,
-        life: 0.5 + this.rand() * 0.4,
-        c,
-        size: this.rand() > 0.55 ? 2 : 1,
+        life: 0.45 + this.rand() * 0.35,
         gravity: GRAVITY,
-        fade: false,
         bounce: true,
       })
     }
   }
 
   private splash(x: number, y: number) {
-    for (let i = 0; i < 12; i++) {
-      this.bits.push({
-        x: x + (this.rand() - 0.5) * 6,
-        y,
-        vx: (this.rand() - 0.5) * 60,
-        vy: -50 - this.rand() * 60,
-        age: 0,
-        life: 0.6,
-        c: this.rand() > 0.5 ? C.lavaHi : C.lava,
-        size: 1,
-        gravity: GRAVITY,
-        fade: false,
-      })
+    for (let i = 0; i < 10; i++) {
+      this.bits.push({ x: x + (this.rand() - 0.5) * 6, y, vx: (this.rand() - 0.5) * 60, vy: -50 - this.rand() * 50, age: 0, life: 0.55, gravity: GRAVITY })
     }
   }
 
-  private smoke(x: number, y: number) {
-    this.bits.push({
-      x,
-      y,
-      vx: (this.rand() - 0.5) * 6,
-      vy: -10 - this.rand() * 8,
-      age: 0,
-      life: 1.1 + this.rand() * 0.6,
-      c: this.rand() > 0.5 ? 0x5d5d68 : 0x44444e,
-      size: 2,
-      gravity: -2,
-      fade: true,
-    })
+  private puff(x: number, y: number) {
+    this.bits.push({ x, y, vx: (this.rand() - 0.5) * 5, vy: -9 - this.rand() * 6, age: 0, life: 1 + this.rand() * 0.5, gravity: -2, shape: this.rand() > 0.5 ? PUFF : RING })
   }
 
-  private ember(x: number, y: number) {
-    this.bits.push({
-      x,
-      y,
-      vx: (this.rand() - 0.5) * 10,
-      vy: -22 - this.rand() * 26,
-      age: 0,
-      life: 0.5 + this.rand() * 0.5,
-      c: this.rand() > 0.5 ? C.lavaHot : C.lavaHi,
-      size: 1,
-      gravity: 0,
-      fade: true,
-    })
-  }
-
-  private dust(x: number, y: number, n: number) {
-    for (let i = 0; i < n; i++) {
-      this.bits.push({
-        x: x + (this.rand() - 0.5) * 4,
-        y: y + (this.rand() - 0.5) * 6,
-        vx: (this.rand() - 0.5) * 30,
-        vy: -6 - this.rand() * 14,
-        age: 0,
-        life: 0.5 + this.rand() * 0.3,
-        c: this.rand() > 0.5 ? 0xb9a58c : 0x8d7a64,
-        size: 1,
-        gravity: 0,
-        fade: true,
-      })
+  private dust(x: number, y: number) {
+    for (let i = 0; i < 6; i++) {
+      this.bits.push({ x: x + (this.rand() - 0.5) * 4, y: y + (this.rand() - 0.5) * 6, vx: (this.rand() - 0.5) * 30, vy: -6 - this.rand() * 12, age: 0, life: 0.45, gravity: 0 })
     }
-  }
-
-  private glint(x: number, y: number, inward: boolean) {
-    const g = this.goal
-    const cx = g ? g.x + 16 : x
-    const cy = GROUND - 20
-    this.bits.push({
-      x,
-      y,
-      vx: inward ? (cx - x) * 1.2 : (this.rand() - 0.5) * 8,
-      vy: inward ? (cy - y) * 1.2 : -6 - this.rand() * 10,
-      age: 0,
-      life: 0.6 + this.rand() * 0.6,
-      c: PORTAL[2 + Math.floor(this.rand() * 3)],
-      size: 1,
-      gravity: 0,
-      fade: true,
-    })
   }
 
   private stepBits(dt: number) {
@@ -713,28 +611,25 @@ export class MinerScene {
 
   private stepDropped(dt: number) {
     const d = this.dropped
-    if (!d) return
-    if (d.landed !== null) return
+    if (!d || d.landed !== null) return
     d.vy += GRAVITY * dt
     d.x += d.vx * dt
     d.y += d.vy * dt
     d.angle += d.spin * dt
     const g = this.goal
     const overLava = g?.kind === 'pit' && d.x > g.x && d.x < g.x + PIT
-    if (d.y >= GROUND - 5 && d.vy > 0 && !overLava) {
-      d.y = GROUND - 5
+    if (d.y >= GROUND - 4 && d.vy > 0 && !overLava) {
+      d.y = GROUND - 4
       d.landed = this.time
-      d.angle = d.flat
-    } else if (overLava && d.y > LAVA_TOP) {
-      this.dropped = null
-    }
+      d.angle = d.rest
+    } else if (overLava && d.y > LAVA_TOP) this.dropped = null
   }
 
   private stepGem(dt: number) {
     const gem = this.gem
     if (!gem) return
     gem.age += dt
-    if (gem.age < 0.5) {
+    if (gem.age < 0.45) {
       gem.vy += GRAVITY * dt
       gem.x += gem.vx * dt
       gem.y += gem.vy * dt
@@ -745,139 +640,103 @@ export class MinerScene {
       }
       return
     }
-    // pulled in to the miner
     const tx = this.me.x
     const ty = GROUND - 10
     gem.x += (tx - gem.x) * Math.min(1, dt * 12)
     gem.y += (ty - gem.y) * Math.min(1, dt * 12)
-    if (Math.abs(gem.x - tx) < 1.5 && Math.abs(gem.y - ty) < 1.5) {
-      for (let i = 0; i < 4; i++) {
-        this.bits.push({ x: tx, y: ty, vx: (this.rand() - 0.5) * 30, vy: -10 - this.rand() * 20, age: 0, life: 0.35, c: C.oreHi, size: 1, gravity: 0, fade: true })
-      }
-      this.gem = null
-    }
+    if (Math.abs(gem.x - tx) < 1.5 && Math.abs(gem.y - ty) < 1.5) this.gem = null
   }
 
   /* ---------------- drawing ---------------- */
-
-  private headTop() {
-    const me = this.me
-    const hip = this.hipY()
-    return hip - 6 - 8 + me.dip
-  }
 
   private hipY() {
     const me = this.me
     return Math.round(lerp(me.y - LEG_LEN + me.bob, me.y - 2, me.sit))
   }
 
-  private hand() {
-    const me = this.me
-    const shoulder = { x: me.x, y: this.hipY() - 6 + 1 }
-    return { x: shoulder.x + Math.sin(me.armNear) * 5.5, y: shoulder.y + Math.cos(me.armNear) * 5.5 }
+  private headTop() {
+    return this.hipY() - 6 - 10 + this.me.dip
   }
 
-  private paintSky() {
-    const s = this.sky
-    const rand = seeded(5)
-    for (let y = 0; y < s.h; y++) {
-      const k = Math.min(1, y / GROUND)
-      const stepK = Math.floor(k * 6) / 6
-      const c = stepK < 0.5 ? mix(C.skyTop, C.skyMid, stepK * 2) : mix(C.skyMid, C.skyLow, (stepK - 0.5) * 2)
-      for (let x = 0; x < s.w; x++) s.put(x, y, c)
-    }
-    this.twinkles = []
-    const count = Math.round(s.w * 0.14)
-    for (let i = 0; i < count; i++) {
-      const x = Math.floor(rand() * s.w)
-      const y = Math.floor(rand() * (GROUND - 18))
-      const k = rand()
-      s.put(x, y, mix(C.skyMid, C.star, 0.35 + k * 0.5))
-      if (k > 0.7) this.twinkles.push({ x, y, k: rand() * TAU })
-    }
-    const mx = Math.floor(s.w * 0.72)
-    s.light(mx + 3.5, 8.5, 9, 0x8090c0, 0.12)
-    blit(s, MOON, mx, 5)
+  private hand() {
+    const me = this.me
+    const shoulder = this.hipY() - 6 + 1
+    return { x: me.x + Math.sin(me.armNear) * 4.5, y: shoulder + Math.cos(me.armNear) * 4.5 }
   }
 
   render() {
     const p = this.px
-    p.copyFrom(this.sky)
-    for (const s of this.twinkles) {
-      if (Math.sin(this.time * 2.3 + s.k) > 0.55) p.put(s.x, s.y, C.star)
-    }
-
+    p.clear()
     const cam = Math.floor(this.cam)
-    this.drawHills(cam)
+    p.ox = this.knock > 0 ? Math.round((this.rand() - 0.5) * 2) : 0
+    p.oy = 0
 
-    p.ox = this.shake > 0 ? Math.round((this.rand() - 0.5) * 2) : 0
-    p.oy = this.shake > 0 ? Math.round((this.rand() - 0.5) * 2) : 0
+    this.drawClouds()
+    this.drawGround(cam)
 
     const g = this.goal
-    if (g?.kind === 'portal') this.drawPortal(g.x - cam)
-    this.drawGround(cam)
-    if (g?.kind === 'wall') this.drawWall(g.x - cam, g.x)
-    for (const o of this.ores) if (!o.broken) this.drawOre(o, o.x - cam)
+    const grown = g ? easeOut((this.time - g.born) / RISE) : 1
+    if (g?.kind === 'portal') this.drawPortal(g.x - cam, grown)
+    if (g?.kind === 'wall') this.drawWall(g.x - cam, grown)
+    if (g?.kind === 'pit') this.drawPit(g.x - cam, g.x, grown)
+    if (this.ore) this.drawOre(this.ore, this.ore.x - cam)
 
     const me = this.me
-    const sx = Math.floor(me.x - cam) + me.jitter
-    const ph = this.phase.name
+    const sx = Math.floor(me.x - cam)
+    const ph = this.phase
     if (!me.hidden) {
-      if (ph !== 'burn' && ph !== 'fall') this.drawLamp(sx)
-      const how: Ink = {}
-      if (this.hurt > 0) {
-        how.tint = 0xff2a2a
-        how.tintBy = 0.55
-      } else if (ph === 'enter') {
-        how.tint = PORTAL[3]
-        how.tintBy = Math.min(0.85, this.phase.t / 0.95)
+      const sinking = ph.name === 'burn' || (ph.name === 'fall' && me.y > GROUND)
+      if (sinking) p.clipY = LAVA_TOP + 1
+      const how: Stamp = {}
+      if (ph.name === 'enter' && ph.t > 0.25) {
+        const gone = (ph.t - 0.25) / 0.7
+        how.keep = (x, y) => hash2(x * 7 + 3, y * 13 + 1) > gone
       }
       this.drawMiner(p, sx, how)
-      if (ph === 'burn') this.drawFlames(sx)
+      p.clipY = Infinity
+      if (ph.name === 'burn') {
+        const f = FLAMES[Math.floor(this.time * 12) % FLAMES.length]
+        for (const dx of [-7, -2, 3]) stamp(p, f, sx + dx, LAVA_TOP - f.h + 1)
+      }
     }
 
-    if (g?.kind === 'pit') this.drawLava(g.x - cam, g.x)
     this.drawDropped(cam)
-    if (this.gem) blit(p, GEM, Math.floor(this.gem.x - cam) - 1, Math.floor(this.gem.y) - 1)
+    if (this.gem) stamp(p, GEM, Math.floor(this.gem.x - cam) - 1, Math.floor(this.gem.y) - 1)
 
     for (const b of this.bits) {
-      const a = b.fade ? 1 - (b.age / b.life) ** 2 : b.age > b.life * 0.7 ? 0.5 : 1
-      p.rect(Math.floor(b.x - cam), Math.floor(b.y), b.size, b.rain ? 2 : b.size, b.c, a)
+      const a = 1 - (b.age / b.life) ** 2
+      const x = Math.floor(b.x - cam)
+      const y = Math.floor(b.y)
+      if (b.shape) stamp(p, b.shape, x - 1, y - 1, { a })
+      else p.rect(x, y, 1, b.rain ? 2 : 1, a)
     }
 
-    if (ph === 'sit' && this.phase.t > 0.8) blit(p, CLOUD, sx - 6, this.headTop() - 11)
+    if (ph.name === 'sit' && ph.t > 0.4) stamp(p, RAIN_CLOUD, sx - 5, this.headTop() - 10)
     if (this.dizzy > 0 && !me.hidden) {
       for (let i = 0; i < 3; i++) {
-        const a = this.time * 5 + (i * TAU) / 3
-        blit(p, STAR, Math.round(sx + Math.cos(a) * 6) - 1, Math.round(this.headTop() - 3 + Math.sin(a) * 2) - 1)
+        const a = this.time * 6 + (i * TAU) / 3
+        stamp(p, STAR, Math.round(sx + Math.cos(a) * 6) - 1, Math.round(this.headTop() - 2 + Math.sin(a) * 2) - 1)
       }
     }
 
-    if (g?.kind === 'pit') p.light(g.x - cam + PIT / 2, LAVA_TOP, 30, 0xff5a10, 0.42, 0.8)
-    if (g?.kind === 'portal') {
-      const cx = g.x - cam + 16
-      p.light(cx, GROUND - 20, 30, 0x8a46ff, 0.3 + this.flash)
-      if (ph === 'gone' && this.phase.t > 0.35) {
-        const pop = this.phase.t < 0.47 ? -2 : 0
-        const cy = GROUND - 24 + pop
-        blit(p, CHECK, Math.round(cx) - 4, cy, { tint: C.checkShade, tintBy: 1 })
-        blit(p, CHECK, Math.round(cx) - 5, cy - 1)
-      }
+    if (g?.kind === 'portal' && ph.name === 'gone' && ph.t > 0.25) {
+      const pop = ph.t < 0.36 ? -1 : 0
+      stamp(p, CHECK, g.x - cam + 4, GROUND - 17 + pop)
     }
 
+    this.drawCount()
     p.ox = 0
-    p.oy = 0
   }
 
-  private drawHills(cam: number) {
+  private drawClouds() {
     const p = this.px
-    for (let x = 0; x < p.w; x++) {
-      const f = x + cam * 0.15
-      const far = GROUND - 13 + Math.round(2.5 * Math.sin(f * 0.05) + 1.5 * Math.sin(f * 0.13 + 1))
-      for (let y = far; y < GROUND; y++) p.put(x, y, C.hillFar)
-      const n = x + cam * 0.35
-      const near = GROUND - 7 + Math.round(2 * Math.sin(n * 0.08 + 2) + 1.2 * Math.sin(n * 0.21))
-      for (let y = near; y < GROUND; y++) p.put(x, y, C.hillNear)
+    const span = this.w + 40
+    for (const [x0, y, speed] of [
+      [this.w * 0.2, 1, 2.2],
+      [this.w * 0.62, 4, 1.4],
+    ]) {
+      const x = ((((x0 - this.time * speed) % span) + span) % span) - 20
+      stamp(p, CLOUD, Math.round(x), y, { a: 0.28 })
     }
   }
 
@@ -886,119 +745,118 @@ export class MinerScene {
     const g = this.goal
     for (let x = 0; x < p.w; x++) {
       const wx = cam + x
-      const u = ((wx % 8) + 8) % 8
-      const b = Math.floor(wx / 8)
-      if (g?.kind === 'pit' && wx >= g.x && wx < g.x + PIT) continue
-      for (let v = 0; GROUND + v < p.h; v++) p.put(x, GROUND + v, v < 8 ? grassBlock(u, v, b) : stoneBlock(u, v - 8, b))
-      // a tuft or a flower now and then
-      const h = hash2(b, 777)
-      const at = b * 8 + Math.floor(hash2(b, 778) * 6)
-      if (h < 0.34 && (wx === at || wx === at + 2)) p.put(x, GROUND - 1, C.grassHi)
-      if (h < 0.34 && wx === at + 1) p.put(x, GROUND - 2, C.grass)
-      if (h < 0.07 && wx === at + 1) p.put(x, GROUND - 3, hash2(b, 779) > 0.5 ? 0xff5d73 : 0xffd84a)
+      if (g?.kind === 'pit') {
+        const open = easeOut((this.time - g.born) / RISE) * PIT
+        const mid = g.x + PIT / 2
+        if (wx >= mid - open / 2 && wx < mid + open / 2) continue
+      }
+      p.dot(x, GROUND)
+      if (hash2(wx, 5) < 0.035) p.dot(x, GROUND - 1)
+      const h = hash2(wx, 9)
+      if (h < 0.1) p.dot(x, GROUND + 2 + Math.floor(hash2(wx, 10) * 7), 0.8)
+      if (h > 0.97) p.rect(x, GROUND + 3 + Math.floor(hash2(wx, 11) * 4), 2, 1, 0.8)
     }
   }
 
   private drawOre(o: Ore, x: number) {
     const p = this.px
-    const b = Math.floor(o.x / 8) + 1000
+    const rise = o.born < 0 ? 1 : easeOut((this.time - o.born) / RISE)
     const knock = this.time - o.struck < 0.06 ? 1 : 0
-    for (let v = 0; v < 8; v++) {
+    const y = GROUND - 8 + Math.round((1 - rise) * 8) - knock
+    p.clipY = GROUND
+    stamp(p, ORE, x, y)
+    const shown = [0, 3, 6, 9][Math.min(3, o.hits)]
+    for (let i = 0; i < shown; i++) p.dot(x + CRACKS[i][0], y + CRACKS[i][1])
+    p.clipY = Infinity
+  }
+
+  private drawWall(x: number, grown: number) {
+    const p = this.px
+    const top = GROUND - Math.round(16 * grown)
+    for (let y = top; y < GROUND; y++) {
+      const v = y - (GROUND - 16)
+      const row = Math.floor(v / 4)
       for (let u = 0; u < 8; u++) {
-        const c = oreBlock(u, v, b)
-        p.put(x + u, GROUND - 8 + v - knock, knock ? mix(c, 0xffffff, 0.25) : c)
-      }
-    }
-    const cracks = [
-      [3, 1], [3, 2], [4, 3], [2, 3],
-      [5, 4], [5, 5], [6, 6], [1, 4], [2, 6],
-      [4, 6], [6, 2], [1, 1], [3, 5],
-    ]
-    const shown = [0, 4, 9, 13][Math.min(3, o.hits)]
-    for (let i = 0; i < shown; i++) p.put(x + cracks[i][0], GROUND - 8 + cracks[i][1] - knock, C.crack, 0.85)
-  }
-
-  private drawWall(x: number, wx: number) {
-    const p = this.px
-    const b = Math.floor(wx / 8)
-    for (let v = 0; v < 24; v++) {
-      for (let u = 0; u < 8; u++) p.put(x + u, GROUND - 24 + v, brickBlock(u, v % 8, b + (v >> 3)))
-    }
-  }
-
-  private drawPortal(x: number) {
-    const p = this.px
-    const top = GROUND - 40
-    for (let v = 0; v < 40; v++) {
-      for (let u = 0; u < 32; u++) {
-        const inner = u >= 8 && u < 24 && v >= 8 && v < 32
-        const c = inner
-          ? portal(u - 16 + 0.5, v - 20 + 0.5, this.time)
-          : obsidianBlock(u & 7, v & 7, (u >> 3) * 7 + (v >> 3) + 300)
-        p.put(x + u, top + v, c)
+        const edge = u === 0 || u === 7 || y === top || v % 4 === 0
+        const joint = (u + (row % 2 ? 4 : 0)) % 8 === 4
+        if (edge || joint) p.dot(x + u, y)
       }
     }
   }
 
-  private drawLava(x: number, wx: number) {
+  private drawPortal(x: number, grown: number) {
     const p = this.px
-    for (let u = 0; u < PIT; u++) {
-      for (let y = GROUND; y < LAVA_TOP; y++) p.put(x + u, y, 0x24160f)
-      for (let y = LAVA_TOP; y < p.h; y++) {
-        const c = lava(wx + u, y, this.time)
-        p.put(x + u, y, y === LAVA_TOP ? mix(c, C.lavaHot, 0.35) : c)
+    const w = 18
+    const h = Math.round(24 * grown)
+    const top = GROUND - h
+    if (h < 2) return
+    p.frame(x, top, w, h + 1)
+    p.frame(x + 2, top + 2, w - 4, h - 3)
+    // rings drawn inward, over and over, like looking down a tunnel
+    const iw = w - 8
+    const ih = h - 7
+    if (ih > 2) {
+      for (let i = 0; i < 3; i++) {
+        const k = (this.time * 1.4 + i / 3) % 1
+        const rw = Math.max(1, Math.round(iw * (1 - k)))
+        const rh = Math.max(1, Math.round(ih * (1 - k)))
+        p.frame(x + 4 + Math.floor((iw - rw) / 2), top + 4 + Math.floor((ih - rh) / 2), rw, rh, 0.3 + 0.7 * (1 - k))
       }
+      if (this.flash > 0) p.rect(x + 4, top + 4, iw, ih, 0.6)
     }
   }
 
-  /** A faint beam from the hat, and the patch of grass it lights. */
-  private drawLamp(sx: number) {
+  private drawPit(x: number, wx: number, grown: number) {
     const p = this.px
-    const lx = sx + 4
-    const ly = this.headTop() + 2
-    for (let d = 2; d < 26; d++) {
-      const a = Math.round(0.07 * (1 - d / 28) * 50) / 50
-      for (let y = Math.floor(ly + d * 0.3); y <= Math.min(GROUND - 1, ly + d * 0.62); y++) p.lighten(lx + d, y, 0xffd98a, a)
+    if (grown < 0.2) return
+    const open = Math.round(PIT * grown)
+    const left = x + Math.floor((PIT - open) / 2)
+    for (let y = GROUND; y < p.h; y++) {
+      p.dot(left, y)
+      p.dot(left + open - 1, y)
     }
-    p.light(lx + 27, GROUND + 0.5, 13, 0xffd98a, 0.3, 0.3)
-  }
-
-  private drawFlames(sx: number) {
-    const p = this.px
-    const surface = LAVA_TOP
-    const head = this.headTop()
-    if (head > surface) return
-    for (let c = -5; c <= 5; c++) {
-      const wave = 0.5 + 0.5 * Math.sin(c * 1.9 + this.time * 13)
-      const tall = Math.min(surface - head + 2, 4 + Math.floor(9 * wave * (0.6 + 0.4 * hash2(c + 50, Math.floor(this.time * 10)))))
-      for (let i = 0; i < tall; i++) p.put(sx + c, surface - i, fire(1 - i / tall), 0.9)
+    for (let u = 1; u < open - 1; u++) {
+      const X = left + u
+      const w1 = LAVA_TOP + Math.round(Math.sin((wx + u) * 0.7 + this.time * 5))
+      const w2 = LAVA_TOP + 3 + Math.round(Math.sin((wx + u) * 0.5 - this.time * 4 + 1))
+      p.dot(X, w1)
+      p.dot(X, w2, 0.55)
+      if ((u + Math.floor(this.time * 6)) % 5 === 0) p.dot(X, LAVA_TOP + 5, 0.4)
     }
   }
 
   private drawDropped(cam: number) {
     const d = this.dropped
     if (!d) return
-    const bobbing = d.landed === null ? 0 : Math.round(Math.sin((this.time - d.landed) * 3))
-    blitTurned(this.px, PICK, 4.5, 5, d.x - cam, d.y + bobbing, d.angle)
+    const bob = d.landed === null ? 0 : Math.round(Math.sin((this.time - d.landed) * 3))
+    stampTurned(this.px, PICK, 4.5, 5, d.x - cam, d.y + bob, d.angle)
   }
 
-  private drawMiner(p: Pixels, sx: number, how: Ink) {
+  private drawCount() {
+    const p = this.px
+    const text = String(this.mined).padStart(5, '0')
+    const x0 = p.w - text.length * 4 - 2
+    for (let i = 0; i < text.length; i++) stamp(p, DIGITS[Number(text[i])], x0 + i * 4, 2, { a: 0.7 })
+  }
+
+  private drawMiner(p: Pixels, sx: number, how: Stamp) {
     const me = this.me
     const hip = this.hipY()
     const torsoTop = hip - 6
-    const head = torsoTop - 8 + me.dip
-    const far: Ink = how.tintBy ? how : { tint: 0x000000, tintBy: 0.3 }
-    blitTurned(p, LEG, 1.5, 0, sx, hip, -me.legFar, far)
-    blitTurned(p, ARM, 1.5, 0.5, sx, torsoTop + 1, -me.armFar, far)
-    blitTurned(p, LEG, 1.5, 0, sx, hip, -me.legNear, how)
-    blit(p, TORSO, sx - 2, torsoTop, how)
-    blit(p, HEAD, sx - 5, head, how)
-    if (this.time % 3.4 < 0.12) p.put(sx + 2, head + 5, how.tintBy ? mix(C.skin, how.tint!, how.tintBy) : C.skin)
+    const head = torsoTop - 10 + me.dip
+    const far: Stamp = { ...how, a: 0.45 }
+    stampTurned(p, LEG, 1.5, 0, sx, hip, -me.legFar, far)
+    stampTurned(p, ARM, 1.5, 0.5, sx, torsoTop + 1, -me.armFar, far)
+    stampTurned(p, LEG, 1.5, 0, sx, hip, -me.legNear, how)
+    stamp(p, TORSO, sx - 3, torsoTop, how)
+    const blink = !me.dazed && this.time % 3.4 < 0.12
+    stamp(p, me.dazed ? HEAD_DAZED : HEAD, sx - 5, head, how)
+    if (blink) p.dot(sx + 1, head + 5)
     if (me.pick !== null) {
-      const hx = sx + Math.sin(me.armNear) * 5.5
-      const hy = torsoTop + 1 + Math.cos(me.armNear) * 5.5
-      blitTurned(p, PICK, 4.5, 8.5, hx, hy, me.pick, how)
+      const hx = sx + Math.sin(me.armNear) * 4.5
+      const hy = torsoTop + 1 + Math.cos(me.armNear) * 4.5
+      stampTurned(p, PICK, 4.5, 8.5, hx, hy, me.pick, how)
     }
-    blitTurned(p, ARM, 1.5, 0.5, sx, torsoTop + 1, -me.armNear, how)
+    stampTurned(p, ARM, 1.5, 0.5, sx, torsoTop + 1, -me.armNear, how)
   }
 }

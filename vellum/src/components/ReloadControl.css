@@ -147,3 +147,11 @@
   font-family: var(--font-mono);
   overflow-wrap: anywhere;
 }
+
+.rl__miner { justify-content: flex-start; }
+
+.rl__out { animation: rl-in 360ms cubic-bezier(0.22, 1, 0.36, 1) both; }
+
+@keyframes rl-in {
+  from { opacity: 0; transform: translateY(6px); }
+}

@@ -1,29 +1,36 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { HEIGHT, MinerScene } from '../lib/miner/scene'
 import type { Failure, Mood } from '../lib/miner/scene'
+import { parseColour } from '../lib/miner/pixels'
 import { useReducedMotion } from '../lib/motion'
 import './Miner.css'
 
 export type MinerMood = Mood
 export type MinerFailure = Failure
 
+/** Longest an ending may take before the result is shown anyway. */
+const ENDING_LIMIT_MS = 6000
+
 /**
- * The studio's waiting scene: a miner who walks and mines while work
- * runs, steps through a portal when it succeeds, and either sits down
- * by a wall or ends up in lava when it fails. It is decoration; the
- * words next to it say what actually happened.
+ * The studio's waiting scene, in one colour after the offline dinosaur
+ * game: a miner who mines while work runs, then walks into a portal,
+ * into lava, or into a wall depending on how it went.
  *
- * The frame is drawn at one canvas pixel per art pixel and scaled up by
- * a whole number, so every pixel stays square.
+ * Mount it only while something is running. When the mood turns to done
+ * or failed it plays the ending and then calls `onFinish`, which is when
+ * the result should appear. It draws in the text colour of wherever it
+ * sits, at one canvas pixel per art pixel scaled up by a whole number.
  */
 export function Miner({
   mood,
   failure = 'lava',
+  onFinish,
   maxScale = 3,
   className = '',
 }: {
   mood: Mood
   failure?: Failure
+  onFinish?: () => void
   /** the largest whole-number zoom; the frame widens to fill its box */
   maxScale?: number
   className?: string
@@ -32,8 +39,13 @@ export function Miner({
   const canvas = useRef<HTMLCanvasElement>(null)
   const [scene] = useState(() => new MinerScene(128))
   const [fit, setFit] = useState({ scale: 2, width: 128 })
-  const [seen, setSeen] = useState(true)
   const reduced = useReducedMotion()
+  const finish = useRef(onFinish)
+  const told = useRef(false)
+
+  useEffect(() => {
+    finish.current = onFinish
+  }, [onFinish])
 
   useLayoutEffect(() => {
     const el = box.current
@@ -50,32 +62,39 @@ export function Miner({
   }, [maxScale])
 
   useEffect(() => {
-    const el = box.current
-    if (!el || typeof IntersectionObserver !== 'function') return
-    const io = new IntersectionObserver(([entry]) => setSeen(entry.isIntersecting))
-    io.observe(el)
-    return () => io.disconnect()
-  }, [])
-
-  useEffect(() => {
     scene.setMood(mood, failure)
+    told.current = false
+    if (mood !== 'done' && mood !== 'failed') return
+    // a result is never held back for long, whatever happens to the drawing
+    const id = window.setTimeout(() => {
+      if (told.current) return
+      told.current = true
+      finish.current?.()
+    }, ENDING_LIMIT_MS)
+    return () => window.clearTimeout(id)
   }, [scene, mood, failure])
 
   useEffect(() => {
+    const el = box.current
     const ctx = canvas.current?.getContext('2d')
-    if (!ctx) return
+    if (!el || !ctx) return
     scene.resize(fit.width)
+    scene.setInk(parseColour(getComputedStyle(el).color, 0x535353))
+    const ending = mood === 'done' || mood === 'failed'
     const paint = () => {
       scene.render()
       ctx.putImageData(new ImageData(scene.px.data, scene.w, HEIGHT), 0, 0)
     }
+    const tell = () => {
+      if (told.current) return
+      told.current = true
+      finish.current?.()
+    }
+    // with motion reduced there is nothing to wait for
     if (reduced) {
       scene.settle()
       paint()
-      return
-    }
-    if (!seen) {
-      paint()
+      if (ending) tell()
       return
     }
     let raf = 0
@@ -84,11 +103,12 @@ export function Miner({
       scene.step((now - last) / 1000)
       last = now
       paint()
+      if (ending && scene.finished) tell()
       raf = requestAnimationFrame(tick)
     }
     raf = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(raf)
-  }, [scene, fit.width, reduced, seen, mood, failure])
+  }, [scene, fit.width, reduced, mood, failure])
 
   return (
     <div className={`miner ${className}`} ref={box} aria-hidden="true">
