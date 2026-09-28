@@ -3,11 +3,12 @@ import { Card } from '../components/Card'
 import { Kinetic } from '../components/Kinetic'
 import { Miner } from '../components/Miner'
 import type { MinerMood } from '../components/Miner'
+import { TicketForm, ToggleChip } from '../components/TicketForm'
 import { Icon } from '../lib/icons'
 import type { IconName } from '../lib/icons'
 import { navigate, useTitle } from '../lib/router'
 import { api } from '../lib/api'
-import { categories } from '../lib/support'
+import { blankDraft, subjectOf } from '../lib/support'
 import { dashStore, formatBytes, formatWhen, healthOf } from '../lib/dash'
 import type { Member, Release, Workspace } from '../lib/dash'
 import { loadLink } from '../lib/dash-api'
@@ -20,7 +21,7 @@ import {
   verifyPlugin,
 } from '../lib/version'
 import type { VersionReport } from '../lib/version'
-import type { TicketCategory } from '../lib/support'
+import type { TicketDraft } from '../lib/support'
 import { Support } from './Support'
 import './Settings.css'
 
@@ -48,7 +49,13 @@ const paidSections: Section[] = [
   },
   { id: 'billing', label: 'Billing', icon: 'card', paid: true, blurb: 'Plan, payment method and invoice history.' },
   { id: 'teams', label: 'Teams', icon: 'users', paid: true, blurb: 'Seats, roles and shared scene access.' },
-  { id: 'support', label: 'Support', icon: 'support', paid: true, blurb: 'Tickets you have opened.' },
+  {
+    id: 'support',
+    label: 'Support',
+    icon: 'support',
+    paid: true,
+    blurb: 'Tickets you have opened. In this build they stay in your browser and a mock answers them.',
+  },
 ]
 
 const allSections = [...freeSections, ...paidSections]
@@ -98,24 +105,16 @@ function Switch({ id, on, label }: { id: string; on: boolean; label: string }) {
 }
 
 /**
- * A bug report is a support ticket - the app already has a ticketing
- * API, so the form that said "Goes straight to the tracker" now does.
- * It used to do nothing at all, and was happy to send an empty one.
+ * A bug report is a support ticket, written in the same form Support
+ * uses, with the session log as one more chip. The miner runs while it
+ * sends, and the result shows once he is done.
  */
 function ReportABug() {
-  // the areas ARE the ticket categories; one list, not two that drift
-  const [area, setArea] = useState<TicketCategory>('editor')
-  const [severity, setSeverity] = useState('normal')
-  const [what, setWhat] = useState('')
+  const [draft, setDraft] = useState<TicketDraft>(blankDraft)
   const [withLog, setWithLog] = useState(true)
-  const [busy, setBusy] = useState(false)
   const [sent, setSent] = useState<string | null>(null)
   const [failed, setFailed] = useState(false)
-  /* The miner runs while the report sends and plays out the answer; the
-     result below only shows once he is done. */
   const [run, setRun] = useState<MinerMood | null>(null)
-
-  const valid = what.trim().length >= 12
 
   const sessionLog = () =>
     [
@@ -127,89 +126,70 @@ function ReportABug() {
     ].join('\n')
 
   const send = async () => {
-    if (!valid || busy || run) return
-    setBusy(true)
+    const subject = subjectOf(draft.text)
+    if (subject.length < 3 || run) return
     setSent(null)
     setFailed(false)
     setRun('working')
+    const area = draft.category ?? 'other'
+    const what = draft.text.trim()
     try {
       const ticket = await api.createTicket({
-        subject: `[${area}] ${what.trim().slice(0, 96)}`,
+        subject,
         category: area,
-        priority: severity === 'high' ? 'high' : severity === 'low' ? 'low' : 'normal',
-        description: withLog ? `${what.trim()}\n\n---\nSession log\n${sessionLog()}` : what.trim(),
-        tags: ['bug', area, severity],
+        priority: draft.blocking ? 'high' : 'normal',
+        description: withLog ? `${what}\n\n---\nSession log\n${sessionLog()}` : what,
+        tags: ['bug', area],
       })
       setSent(ticket.id)
-      setWhat('')
+      setDraft(blankDraft)
       setRun('done')
     } catch {
       setFailed(true)
       setRun('failed')
-    } finally {
-      setBusy(false)
     }
   }
 
   return (
-    <Card title="Report a bug" note="Opens a support ticket you can follow up on." dividedHead>
-      <div className="field-grid">
-        <label className="field">
-          <span className="field__label">Area</span>
-          <select value={area} onChange={(e) => setArea(e.target.value as TicketCategory)}>
-            {categories.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="field">
-          <span className="field__label">Severity</span>
-          <select value={severity} onChange={(e) => setSeverity(e.target.value)}>
-            <option value="low">Cosmetic</option>
-            <option value="normal">Normal</option>
-            <option value="high">Blocks my work</option>
-          </select>
-        </label>
-        <label className="field field--wide">
-          <span className="field__label">What happened</span>
-          <textarea
-            value={what}
-            placeholder="Steps, what you expected, what you got instead."
-            onChange={(e) => setWhat(e.target.value)}
-          />
-          <span className="field__hint">
-            {valid ? 'Ready to send.' : `${Math.max(0, 12 - what.trim().length)} more characters needed.`}
-          </span>
-        </label>
-      </div>
-
-      <label className="toggle-row" style={{ cursor: 'pointer' }}>
-        <div className="toggle-row__text">
-          <div className="toggle-row__t">Include a session log</div>
-          <div className="toggle-row__d">Route, viewport, pixel ratio and browser. No model data.</div>
+    <Card
+      title="Report a bug"
+      note="Opens a support ticket. The session log holds the route, viewport, pixel ratio and browser, and no model data."
+      dividedHead
+    >
+      {run ? (
+        <div className="bug-run">
+          <Miner mood={run} onFinish={() => setRun(null)} className="bug-miner" />
         </div>
-        <input
-          type="checkbox"
-          checked={withLog}
-          aria-label="Include a session log"
-          onChange={(e) => setWithLog(e.target.checked)}
-        />
-      </label>
-
-      <div className="row-actions" style={{ marginTop: 'var(--sp-4)' }}>
-        <button className="btn btn--primary" disabled={!valid || busy || !!run} onClick={send}>
-          <Icon name="bug" size={14} /> {busy ? 'Sending\u2026' : 'Send report'}
-        </button>
-        {sent && !run ? (
-          <button className="btn btn--ghost" onClick={() => navigate('/settings/support')}>
-            Opened {sent}. View the thread
-          </button>
-        ) : null}
-      </div>
-      {run ? <Miner mood={run} onFinish={() => setRun(null)} className="bug-miner" /> : null}
-      {failed && !run ? <p className="field__hint">The report did not go through. Try again.</p> : null}
+      ) : (
+        <>
+          {sent ? (
+            <p className="bug-sent">
+              <Icon name="check" size={14} />
+              <span>
+                Opened <span className="mono">{sent}</span>.
+              </span>
+              <button className="btn btn--ghost btn--sm" onClick={() => navigate('/settings/support')}>
+                View the thread
+              </button>
+            </p>
+          ) : null}
+          <TicketForm
+            draft={draft}
+            onDraft={(d) => {
+              setDraft(d)
+              setFailed(false)
+            }}
+            onSend={() => void send()}
+            failed={failed}
+            placeholder={'What went wrong?\nThe first line becomes the subject. Then what you did, what you expected and what happened.'}
+            toggles={
+              <ToggleChip on={withLog} onToggle={() => setWithLog(!withLog)} icon="file">
+                Attach session log
+              </ToggleChip>
+            }
+          />
+        </>
+      )}
     </Card>
   )
 }

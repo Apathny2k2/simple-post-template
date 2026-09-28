@@ -265,19 +265,38 @@ function scheduleAgentReply(ticket: Ticket) {
   }, 900)
 
   window.setTimeout(() => {
+    const live = store.tickets.find((x) => x.id === ticket.id)
+    const at = new Date().toISOString()
+
+    // whoever answers an unassigned ticket takes it
+    if (live && !live.assignee) {
+      live.assignee = agent
+      const taken: Message = {
+        id: nextId('msg'),
+        ticketId: ticket.id,
+        author: { id: 'sys', name: 'Vellum', role: 'system' },
+        body: `Assigned to ${agent.name}`,
+        createdAt: at,
+        attachments: [],
+        delivery: 'read',
+        event: 'assignment',
+      }
+      store.messages.push(taken)
+      store.emit({ type: 'message.created', message: taken })
+    }
+
     const reply: Message = {
       id: nextId('msg'),
       ticketId: ticket.id,
       author: agent,
       body: replies[replyIdx++ % replies.length],
-      createdAt: new Date().toISOString(),
+      createdAt: at,
       attachments: [],
       delivery: 'delivered',
     }
     store.messages.push(reply)
     store.emit({ type: 'message.created', message: reply })
 
-    const live = store.tickets.find((x) => x.id === ticket.id)
     if (live) {
       live.unread += 1
       live.updatedAt = reply.createdAt

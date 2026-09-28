@@ -371,7 +371,22 @@
 .ships__t { font-size: var(--fs-sm); color: var(--ink); }
 .ships__d { margin-top: 3px; font-size: var(--fs-xs); color: var(--ink-faint); line-height: 1.55; }
 
-.bug-miner { max-width: 420px; margin-top: var(--sp-4); justify-content: flex-start; }
+/* while a report sends, the miner takes the form's place at about its height */
+.bug-run { display: grid; place-items: center; min-height: 260px; }
+.bug-miner { max-width: 420px; }
+
+.bug-sent {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: var(--sp-4);
+  font-size: var(--fs-sm);
+  color: var(--ink-muted);
+}
+
+.bug-sent svg { color: var(--ok); }
+.bug-sent .btn { margin-left: 4px; }
 
 /* ---------------- in the dark studio ---------------- */
 

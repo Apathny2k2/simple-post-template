@@ -4,7 +4,9 @@
    working  he mines the block in front of him; when it breaks, the next
             one rises out of the ground a few steps on and he walks to it
    done     he breaks the block he is on, a portal rises ahead of him and
-            he fades into it; a check mark is left behind
+            he fades into it; a check mark is left behind. For short waits
+            he can stop instead, and the gem from his last block floats up
+            over his hat
    failed   the ground opens into lava and he walks in, or a wall rises
             and he walks into it and sits down under a rain cloud
 
@@ -36,6 +38,7 @@ import {
 
 export type Mood = 'idle' | 'working' | 'done' | 'failed'
 export type Failure = 'lava' | 'wall'
+export type Success = 'portal' | 'gem'
 
 export const HEIGHT = 40
 const GROUND = 31
@@ -83,7 +86,7 @@ type Pose = {
   hidden: boolean
 }
 
-type PhaseName = 'stand' | 'walk' | 'mine' | 'approach' | 'enter' | 'gone' | 'fall' | 'burn' | 'sunk' | 'bonk' | 'sit' | 'respawn'
+type PhaseName = 'stand' | 'walk' | 'mine' | 'approach' | 'enter' | 'gone' | 'fall' | 'burn' | 'sunk' | 'bonk' | 'sit' | 'cheer' | 'respawn'
 
 type Phase = { name: PhaseName; t: number; ore?: Ore }
 
@@ -124,6 +127,7 @@ export class MinerScene {
   private cam = 0
   private mood: Mood = 'idle'
   private failure: Failure = 'lava'
+  private success: Success = 'portal'
   private phase: Phase = { name: 'stand', t: 0 }
   private me: Pose
   private ore: Ore | null = null
@@ -132,6 +136,8 @@ export class MinerScene {
   private goal: Goal | null = null
   private dropped: Dropped | null = null
   private gem: { x: number; y: number; vx: number; vy: number; age: number } | null = null
+  /** seconds the gem has floated over his hat, once it got there */
+  private holding: number | null = null
   private bits: Bit[] = []
   private mined = 0
   private dizzy = 0
@@ -175,13 +181,14 @@ export class MinerScene {
     if (name === 'stand' || name === 'walk' || name === 'mine' || name === 'approach') this.cam = this.me.x - this.anchor
   }
 
-  setMood(mood: Mood, failure: Failure = 'lava') {
-    if (mood === this.mood && failure === this.failure) return
+  setMood(mood: Mood, failure: Failure = 'lava', success: Success = 'portal') {
+    if (mood === this.mood && failure === this.failure && success === this.success) return
     this.mood = mood
     this.failure = failure
+    this.success = success
     this.endedAt = null
     const name = this.phase.name
-    const ended = name === 'enter' || name === 'gone' || name === 'fall' || name === 'burn' || name === 'sunk' || name === 'bonk' || name === 'sit'
+    const ended = name === 'enter' || name === 'gone' || name === 'fall' || name === 'burn' || name === 'sunk' || name === 'bonk' || name === 'sit' || name === 'cheer'
     if (ended) return this.go('respawn')
     if (name === 'respawn') return
     if (mood === 'idle') return this.go('stand')
@@ -193,6 +200,7 @@ export class MinerScene {
     }
     // An outcome. Let the swing land first; a block he has not reached yet is not worth the walk.
     if (name === 'mine') this.finishing = true
+    else if (mood === 'done' && success === 'gem') this.cheer()
     else if (name === 'walk' && this.ore && this.ore.x - this.me.x > REACH + 6) {
       this.ore = null
       this.placeGoal()
@@ -221,6 +229,27 @@ export class MinerScene {
     this.go(now ? 'mine' : 'walk', now ? this.ore : undefined)
   }
 
+  /** Plays the ending the mood asks for, from where he stands. */
+  private conclude() {
+    this.finishing = false
+    if (this.mood === 'done' && this.success === 'gem') this.cheer()
+    else this.placeGoal()
+  }
+
+  /** He stops and the gem floats up over his head: the last block's if
+      it is still in the air, or one kicked up from the ground. */
+  private cheer() {
+    const me = this.me
+    this.goal = null
+    this.finishing = false
+    this.holding = null
+    if (!this.gem) {
+      this.gem = { x: me.x + 8, y: GROUND - 2, vx: -8, vy: -62, age: 0 }
+      this.dust(me.x + 8, GROUND - 1)
+    }
+    this.go('cheer')
+  }
+
   private placeGoal() {
     this.ore = null
     const kind = this.mood === 'done' ? 'portal' : this.failure === 'wall' ? 'wall' : 'pit'
@@ -236,6 +265,7 @@ export class MinerScene {
     this.bits = []
     this.dizzy = 0
     this.finishing = false
+    this.holding = null
     this.me = standing(this.cam + this.anchor)
     for (let i = 0; i < 10; i++) {
       this.bits.push({
@@ -286,10 +316,7 @@ export class MinerScene {
           if (ore.hits >= 3 || this.finishing) {
             this.breakOre(ore)
             if (this.mood === 'working' || this.mood === 'idle') this.nextOre()
-            else {
-              this.finishing = false
-              this.placeGoal()
-            }
+            else this.conclude()
           }
         }
         break
@@ -396,12 +423,17 @@ export class MinerScene {
         break
       }
 
+      case 'cheer':
+        if (this.holding !== null) this.holding += dt
+        if ((this.holding ?? 0) >= 0.6 && this.endedAt === null) this.endedAt = this.time
+        break
+
       case 'respawn': {
         if (ph.t <= dt + 1e-9) this.respawn()
         if (ph.t >= 0.35) {
           if (this.mood === 'working') this.nextOre(true)
           else if (this.mood === 'idle') this.go('stand')
-          else this.placeGoal()
+          else this.conclude()
         }
         break
       }
@@ -511,6 +543,16 @@ export class MinerScene {
         me.bob = 0
         me.dazed = ph.t < 0.9
         me.dip = ph.t > 0.9 && (ph.t - 0.9) % 1.8 < 0.6 ? 1 : 0
+        break
+      case 'cheer':
+        // he stands easy, and hops when the gem arrives over his head
+        me.armNear = 0.15
+        me.armFar = -0.05
+        me.pick = 1.0
+        me.legNear = me.legFar = 0
+        me.bob = this.holding !== null && this.holding < 0.16 ? -1 : 0
+        me.dazed = false
+        me.hidden = false
         break
       case 'gone':
       case 'sunk':
@@ -640,11 +682,15 @@ export class MinerScene {
       }
       return
     }
-    const tx = this.me.x
-    const ty = GROUND - 10
-    gem.x += (tx - gem.x) * Math.min(1, dt * 12)
-    gem.y += (ty - gem.y) * Math.min(1, dt * 12)
-    if (Math.abs(gem.x - tx) < 1.5 && Math.abs(gem.y - ty) < 1.5) this.gem = null
+    // it flies to him, or while he cheers, up over his head
+    const cheering = this.phase.name === 'cheer'
+    const to = cheering ? this.prize() : { x: this.me.x, y: GROUND - 10 }
+    gem.x += (to.x - gem.x) * Math.min(1, dt * 12)
+    gem.y += (to.y - gem.y) * Math.min(1, dt * 12)
+    if (Math.abs(gem.x - to.x) < 1.5 && Math.abs(gem.y - to.y) < 1.5) {
+      this.gem = null
+      if (cheering) this.holding = 0
+    }
   }
 
   /* ---------------- drawing ---------------- */
@@ -662,6 +708,11 @@ export class MinerScene {
     const me = this.me
     const shoulder = this.hipY() - 6 + 1
     return { x: me.x + Math.sin(me.armNear) * 4.5, y: shoulder + Math.cos(me.armNear) * 4.5 }
+  }
+
+  /** Where the gem floats while he cheers, just over his hat. */
+  private prize() {
+    return { x: this.me.x, y: this.headTop() - 4 }
   }
 
   render() {
@@ -702,6 +753,20 @@ export class MinerScene {
 
     this.drawDropped(cam)
     if (this.gem) stamp(p, GEM, Math.floor(this.gem.x - cam) - 1, Math.floor(this.gem.y) - 1)
+    if (this.holding !== null && !me.hidden) {
+      const at = this.prize()
+      const gx = Math.floor(at.x - cam)
+      const gy = Math.floor(at.y) + Math.round(Math.sin(this.holding * 7))
+      stamp(p, GEM, gx - 1, gy - 1)
+      // a glint that hops around it
+      const spots = [
+        [-4, -3],
+        [4, -4],
+        [5, 2],
+      ]
+      const [dx, dy] = spots[Math.floor(this.holding * 7) % spots.length]
+      stamp(p, STAR, gx + dx - 1, gy + dy - 1, { a: 0.8 })
+    }
 
     for (const b of this.bits) {
       const a = 1 - (b.age / b.life) ** 2

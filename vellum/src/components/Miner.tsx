@@ -1,12 +1,13 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { HEIGHT, MinerScene } from '../lib/miner/scene'
-import type { Failure, Mood } from '../lib/miner/scene'
+import type { Failure, Mood, Success } from '../lib/miner/scene'
 import { parseColour } from '../lib/miner/pixels'
 import { useReducedMotion } from '../lib/motion'
 import './Miner.css'
 
 export type MinerMood = Mood
 export type MinerFailure = Failure
+export type MinerSuccess = Success
 
 /** Longest an ending may take before the result is shown anyway. */
 const ENDING_LIMIT_MS = 6000
@@ -14,7 +15,9 @@ const ENDING_LIMIT_MS = 6000
 /**
  * The studio's waiting scene, in one colour after the offline dinosaur
  * game: a miner who mines while work runs, then walks into a portal,
- * into lava, or into a wall depending on how it went.
+ * into lava, or into a wall depending on how it went. Where the wait is
+ * short and the answer should not be held up, `success="gem"` swaps the
+ * portal for a quicker ending: the gem floats up over his hat.
  *
  * Mount it only while something is running. When the mood turns to done
  * or failed it plays the ending and then calls `onFinish`, which is when
@@ -24,12 +27,14 @@ const ENDING_LIMIT_MS = 6000
 export function Miner({
   mood,
   failure = 'lava',
+  success = 'portal',
   onFinish,
   maxScale = 3,
   className = '',
 }: {
   mood: Mood
   failure?: Failure
+  success?: Success
   onFinish?: () => void
   /** the largest whole-number zoom; the frame widens to fill its box */
   maxScale?: number
@@ -62,7 +67,7 @@ export function Miner({
   }, [maxScale])
 
   useEffect(() => {
-    scene.setMood(mood, failure)
+    scene.setMood(mood, failure, success)
     told.current = false
     if (mood !== 'done' && mood !== 'failed') return
     // a result is never held back for long, whatever happens to the drawing
@@ -72,7 +77,7 @@ export function Miner({
       finish.current?.()
     }, ENDING_LIMIT_MS)
     return () => window.clearTimeout(id)
-  }, [scene, mood, failure])
+  }, [scene, mood, failure, success])
 
   useEffect(() => {
     const el = box.current
@@ -108,7 +113,7 @@ export function Miner({
     }
     raf = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(raf)
-  }, [scene, fit.width, reduced, mood, failure])
+  }, [scene, fit.width, reduced, mood, failure, success])
 
   return (
     <div className={`miner ${className}`} ref={box} aria-hidden="true">

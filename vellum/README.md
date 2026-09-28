@@ -279,26 +279,45 @@ rotation limit.
 
 ## Support: ticketing and messaging
 
-`#/settings/support` is a working ticket system, not a form. It runs against an
-in-browser mock transport (`src/lib/api.ts` over the store in `src/lib/support.ts`),
-so you can open a ticket, reply, and watch the thread answer back.
+`#/settings/support` is a working ticket system. It runs against an in-browser
+mock transport (`src/lib/api.ts` over the store in `src/lib/support.ts`), so you
+can open a ticket, reply, and watch the thread answer back. The page says so
+under its title.
 
-- **Tickets** - filter by status, full-text search over subjects, tags and message
-  bodies, priority stripe and SLA countdown, status and priority editable from the
-  thread header (each change appends a system message to the thread).
-- **Messaging engine** - optimistic send (the bubble appears immediately as
-  *sending*, then *sent* -> *delivered* -> *read*), delivery ticks, agent typing
-  indicator, unread badges cleared on read, attachments, and retry on failure.
-  Thread updates arrive over an event stream rather than by refetching.
-- **New ticket** - subject, category, priority (urgent gated to paid tiers) and a
-  description that becomes message #1.
+It is kept to what someone filing a ticket needs. An earlier version carried a
+notice banner, a stats row, a tier chip, filter tabs for all four statuses, tags,
+an SLA chip and status and priority selects on every thread, and opened new
+tickets in a dialog with four fields. All of that is gone or folded into the
+pieces below.
+
+- **The list** - Open (open and pending) and Closed (resolved and closed) tabs
+  with their counts, and a search that also reaches message text. A row is two
+  lines: the subject, then the status, the priority when it is high or urgent,
+  who has it and when it last moved. Unread replies show as a count.
+- **A thread** - the subject, a line of status, id and assignee, and one action:
+  Mark resolved, or Reopen. Messages are grouped by author, with the time under
+  the last of each run; system events are a small centred line. The reply box
+  grows with its text, Enter sends, and the clip opens a real file picker (the
+  mock keeps the name and size). A closed ticket has to be reopened to reply.
+- **Messaging engine** - optimistic send (the bubble appears at once as
+  *sending*, then *sent*, *delivered* and *read*), unread counts cleared while a
+  thread is open, retry on failure. Updates arrive over the event stream rather
+  than by refetching. Whoever answers an unassigned ticket takes it.
+- **New ticket** - one text box. Its first line, up to the first full stop, is
+  the subject, and the header and the list's draft row show it as you type.
+  Chips say what it is about, and Blocking my work files it as high. Closing the
+  form keeps the draft. The form is `src/components/TicketForm.tsx`, and Report
+  A Bug uses the same one with a chip for the session log.
+- **On a phone** the list and the thread take turns, with a back arrow.
+- **The miner** digs while a new ticket is on its way and goes through the
+  portal before the thread opens, and digs where the reply will appear while
+  someone on the team is writing (see *Waiting has a miner* below).
 
 ### API
 
 Base URL `/api/v1`, bearer token, JSON in and out. Every endpoint is declared in
-`endpoints` in `src/lib/api.ts` — the in-app reference renders from that array, so
-the docs cannot drift from what the client calls. Each control is also badged with
-the endpoint it hits.
+`endpoints` in `src/lib/api.ts`, beside the client method that calls it, and each
+method names its endpoint in a comment.
 
 | Method | Path | |
 | --- | --- | --- |
@@ -451,8 +470,8 @@ simply swaps.
 
 **Waiting has a miner.** `src/components/Miner.tsx` is the studio's loading
 scene, drawn in one colour after the offline dinosaur game: a horizon line, a
-couple of clouds, and a small miner in a hard hat. It is only on screen while
-something runs. While it runs he mines the block in front of him; when a block
+couple of clouds, and a small miner in a hard hat. He is Vellum's mascot, and
+he is only on screen while something runs. While it runs he mines the block in front of him; when a block
 breaks the next one rises out of the ground a few steps on, and a counter in the
 corner keeps score. When the answer comes he lands the swing he is on, then:
 
@@ -462,12 +481,19 @@ corner keeps score. When the answer comes he lands the swing he is on, then:
 - on an error the ground opens into lava and he walks in; his pickaxe lands on
   the far bank.
 
+Where the wait is short and holding the answer back would be a nuisance,
+`success="gem"` swaps the portal for a quicker ending: he stops, the gem from
+the block he just broke floats up over his hat, and he hops. It takes a second
+or two.
+
 The result is held back until the ending has played, then the scene goes and
 the message takes its place. It is used by Apply on the server, which sits in
-the Dash's Players card; by Report a bug in Settings; and by the pack builder in
-Export pack, where a cancelled save is the wall and a failed one is lava. While
-the demo server runs it answers Apply too, swapping, refusing and failing in
-turn.
+the Dash's Players card; by Report a bug in Settings; by the pack builder in
+Export pack, where a cancelled save is the wall and a failed one is lava; and
+by Support, where he digs while a new ticket is sent and goes through the
+portal before its thread opens, and digs in the thread while someone on the
+team is writing, their reply appearing once the gem is up. While the demo
+server runs it answers Apply too, swapping, refusing and failing in turn.
 
 It is drawn by hand in `src/lib/miner/`: one canvas pixel per art pixel, scaled
 up by a whole number so pixels stay square, in the text colour of wherever it

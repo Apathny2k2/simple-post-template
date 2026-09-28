@@ -1,164 +1,204 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { Card } from '../components/Card'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import type { FormEvent } from 'react'
+import { Miner } from '../components/Miner'
+import type { MinerMood } from '../components/Miner'
+import { TicketForm } from '../components/TicketForm'
 import { Icon } from '../lib/icons'
 import { api } from '../lib/api'
-import {
-  categories,
-  clockTime,
-  formatBytes,
-  priorities,
-  relativeTime,
-  statuses,
-} from '../lib/support'
-import type {
-  Attachment,
-  Message,
-  Ticket,
-  TicketCategory,
-  TicketPriority,
-  TicketStatus,
-} from '../lib/support'
+import { blankDraft, clockTime, formatBytes, me, relativeTime, subjectOf } from '../lib/support'
+import type { Attachment, Message, Ticket, TicketDraft, TicketStatus } from '../lib/support'
 import './Support.css'
 
-/* ---------------- shared bits ---------------- */
+/* Support is your tickets, one thread at a time, and a form that is one
+   text box. The miner shows up while something is on its way: he digs
+   while a new ticket is sent and while someone on the team is writing
+   back, and what he was waiting for appears once he is done. */
 
-function StatusPill({ status }: { status: TicketStatus }) {
-  return <span className={`pill pill--${status}`}>{status}</span>
+type View = 'open' | 'closed'
+
+const viewOf = (status: TicketStatus): View => (status === 'open' || status === 'pending' ? 'open' : 'closed')
+
+const statusWord: Record<TicketStatus, string> = {
+  open: 'Open',
+  pending: 'Pending',
+  resolved: 'Resolved',
+  closed: 'Closed',
 }
 
-function PriorityMark({ priority }: { priority: TicketPriority }) {
-  return (
-    <span className={`prio prio--${priority}`} title={`Priority: ${priority}`}>
-      {priority === 'urgent' || priority === 'high' ? (
-        <Icon name="warning" size={10} />
-      ) : (
-        <span className="prio__dot" />
-      )}
-      {priority}
-    </span>
-  )
+/** Someone on the team typing into the open thread. `done` once their reply is in. */
+type Writing = { ticketId: string; name: string; mood: 'working' | 'done' }
+
+function upsert(rows: Message[], m: Message) {
+  const i = rows.findIndex((x) => x.id === m.id)
+  if (i === -1) return [...rows, m]
+  const next = [...rows]
+  next[i] = m
+  return next
 }
 
-/* ---------------- ticket list ---------------- */
+/* ---------------- the list ---------------- */
 
 function TicketList({
   tickets,
-  loading,
-  activeId,
-  filter,
+  loaded,
+  view,
   query,
-  onFilter,
+  activeId,
+  composing,
+  draft,
+  fresh,
+  onView,
   onQuery,
   onPick,
+  onNew,
 }: {
   tickets: Ticket[]
-  loading: boolean
-  activeId: string | null
-  filter: TicketStatus | 'all'
+  loaded: boolean
+  view: View
   query: string
-  onFilter: (f: TicketStatus | 'all') => void
+  activeId: string | null
+  composing: boolean
+  draft: TicketDraft
+  fresh: string | null
+  onView: (v: View) => void
   onQuery: (q: string) => void
   onPick: (id: string) => void
+  onNew: () => void
 }) {
+  const count = (v: View) => tickets.filter((t) => viewOf(t.status) === v).length
+  const rows = tickets
+    .filter((t) => viewOf(t.status) === view)
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+  const drafted = view === 'open' && (composing || draft.text.trim() !== '')
+
   return (
-    <div className="tl">
-      <div className="tl__head">
-        <div className="tl__filters" role="tablist" aria-label="Filter tickets by status">
-          {(['all', ...statuses] as const).map((f) => (
+    <div className="sl">
+      <div className="sl__head">
+        <div className="sl__tabs" role="tablist" aria-label="Tickets">
+          {(['open', 'closed'] as const).map((v) => (
             <button
-              key={f}
+              key={v}
               role="tab"
-              className="tl__filter"
-              aria-selected={f === filter}
-              onClick={() => onFilter(f)}
+              className="sl__tab"
+              aria-selected={v === view}
+              aria-controls="sup-rows"
+              onClick={() => onView(v)}
             >
-              {f}
+              {v === 'open' ? 'Open' : 'Closed'}
+              <span className="sl__count">{count(v)}</span>
             </button>
           ))}
         </div>
-        <label className="tl__search">
-          <Icon name="search" size={13} />
-          <input
-            value={query}
-            placeholder="Search tickets"
-            aria-label="Search tickets"
-            onChange={(e) => onQuery(e.target.value)}
-          />
-        </label>
+        <button className="btn btn--primary btn--sm sl__new" onClick={onNew} aria-label="New ticket">
+          <Icon name="plus" size={13} /> New
+        </button>
       </div>
 
-      <div className="tl__rows">
-        {loading && !tickets.length ? (
-          <p className="tl__empty">Loading&hellip;</p>
-        ) : !tickets.length ? (
-          <p className="tl__empty">No tickets match this filter.</p>
-        ) : (
-          tickets.map((t) => (
-            <button
-              key={t.id}
-              className="tl__row"
-              aria-current={t.id === activeId ? 'true' : undefined}
-              onClick={() => onPick(t.id)}
-            >
-              <span className={`tl__stripe tl__stripe--${t.priority}`} aria-hidden="true" />
-              <span className="tl__body">
-                <span className="tl__top">
-                  <span className="tl__id mono">{t.id}</span>
-                  <StatusPill status={t.status} />
-                  {t.unread ? <span className="tl__unread">{t.unread}</span> : null}
-                  <span className="tl__when mono">{relativeTime(t.updatedAt)}</span>
+      <label className="sl__search">
+        <Icon name="search" size={13} />
+        <input
+          type="search"
+          value={query}
+          placeholder="Search"
+          aria-label="Search tickets"
+          onChange={(e) => onQuery(e.target.value)}
+        />
+      </label>
+
+      <div className="sl__rows" id="sup-rows" role="tabpanel">
+        {drafted ? (
+          <button className="sl__row sl__row--draft" aria-current={composing ? 'true' : undefined} onClick={onNew}>
+            <span className="sl__line">
+              <Icon name="pencil" size={12} />
+              <span className="sl__subject">{subjectOf(draft.text) || 'New ticket'}</span>
+            </span>
+            <span className="sl__meta">Draft</span>
+          </button>
+        ) : null}
+
+        {rows.map((t) => (
+          <button
+            key={t.id}
+            className="sl__row"
+            aria-current={!composing && t.id === activeId ? 'true' : undefined}
+            data-unread={t.unread > 0 || undefined}
+            data-fresh={t.id === fresh || undefined}
+            onClick={() => onPick(t.id)}
+          >
+            <span className="sl__line">
+              <span className="sl__subject">{t.subject}</span>
+              {t.unread ? (
+                <span className="sl__unread">
+                  {t.unread}
+                  <span className="vh"> unread</span>
                 </span>
-                <span className="tl__subject">{t.subject}</span>
-                <span className="tl__meta">
-                  <PriorityMark priority={t.priority} />
-                  <span className="tl__assignee">
-                    <Icon name="user" size={10} />
-                    {t.assignee ? t.assignee.name : 'Unassigned'}
-                  </span>
-                </span>
+              ) : null}
+            </span>
+            <span className="sl__meta">
+              <span className="sl__status" data-status={t.status}>
+                {statusWord[t.status]}
               </span>
-            </button>
-          ))
-        )}
+              {t.priority === 'high' || t.priority === 'urgent' ? (
+                <span className="sl__prio" data-priority={t.priority}>
+                  {t.priority}
+                </span>
+              ) : null}
+              <span className="sl__who">{t.assignee ? t.assignee.name : 'Unassigned'}</span>
+              <span className="sl__when">{relativeTime(t.updatedAt)}</span>
+            </span>
+          </button>
+        ))}
+
+        {loaded && !rows.length && !drafted ? (
+          <p className="sl__empty">
+            {query.trim() ? 'Nothing matches that search.' : view === 'open' ? 'Nothing open.' : 'Nothing closed yet.'}
+          </p>
+        ) : null}
       </div>
     </div>
   )
 }
 
-/* ---------------- message thread ---------------- */
+/* ---------------- a thread ---------------- */
 
-function DeliveryTick({ state }: { state: Message['delivery'] }) {
-  if (state === 'failed') return <Icon name="warning" size={11} />
+function Delivery({ state }: { state: Message['delivery'] }) {
+  if (state === 'failed') return null
   if (state === 'sending') return <Icon name="clock" size={11} />
   return (
-    <span className={`tick${state === 'read' ? ' tick--read' : ''}`}>
+    <span className="tick" data-read={state === 'read' || undefined}>
       <Icon name="check" size={11} />
       {state === 'delivered' || state === 'read' ? <Icon name="check" size={11} /> : null}
+      <span className="vh">{state}</span>
     </span>
   )
 }
 
-function MessageBubble({ message, onRetry }: { message: Message; onRetry: (m: Message) => void }) {
+function Bubble({
+  message,
+  lead,
+  tail,
+  onRetry,
+}: {
+  message: Message
+  lead: boolean
+  tail: boolean
+  onRetry: (m: Message) => void
+}) {
   if (message.author.role === 'system') {
     return (
-      <div className="ev">
-        <span className="ev__line" />
-        <span className="ev__text">
-          {message.body}
-          <span className="mono"> &middot; {clockTime(message.createdAt)}</span>
-        </span>
-        <span className="ev__line" />
-      </div>
+      <p className="ev">
+        {message.body} <span className="mono">{clockTime(message.createdAt)}</span>
+      </p>
     )
   }
 
   const mine = message.author.role === 'requester'
+  const failed = message.delivery === 'failed'
   return (
-    <div className={`bub${mine ? ' bub--mine' : ''}`}>
-      {!mine ? <span className="bub__who">{message.author.name}</span> : null}
-      <div className={`bub__body${message.delivery === 'failed' ? ' bub__body--failed' : ''}`}>
+    <div className={`bub${mine ? ' bub--mine' : ''}`} data-lead={lead || undefined}>
+      {lead && !mine ? <span className="bub__who">{message.author.name}</span> : null}
+      <div className="bub__body" data-failed={failed || undefined}>
         <p>{message.body}</p>
-
         {message.attachments.length ? (
           <div className="bub__atts">
             {message.attachments.map((a) => (
@@ -170,59 +210,73 @@ function MessageBubble({ message, onRetry }: { message: Message; onRetry: (m: Me
             ))}
           </div>
         ) : null}
-
+      </div>
+      {failed ? (
+        <button className="bub__retry" onClick={() => onRetry(message)}>
+          <Icon name="refresh" size={11} /> Not sent. Try again
+        </button>
+      ) : tail ? (
         <span className="bub__foot mono">
           {clockTime(message.createdAt)}
-          {mine ? <DeliveryTick state={message.delivery} /> : null}
+          {mine ? <Delivery state={message.delivery} /> : null}
         </span>
-      </div>
-      {message.delivery === 'failed' ? (
-        <button className="bub__retry" onClick={() => onRetry(message)}>
-          <Icon name="refresh" size={11} /> Retry
-        </button>
       ) : null}
     </div>
   )
 }
 
 function Composer({
+  ticketId,
+  to,
   onSend,
-  onTyping,
-  disabled,
 }: {
+  ticketId: string
+  to: string | null
   onSend: (body: string, attachments: Attachment[]) => void
-  onTyping: () => void
-  disabled: boolean
 }) {
   const [value, setValue] = useState('')
   const [attachments, setAttachments] = useState<Attachment[]>([])
   const box = useRef<HTMLTextAreaElement>(null)
+  const picker = useRef<HTMLInputElement>(null)
 
-  const submit = () => {
+  /* The box grows with what is typed, up to a few lines. Empty, it keeps
+     its one-row height, which also holds while a narrow screen hides it. */
+  useLayoutEffect(() => {
+    const el = box.current
+    if (!el) return
+    el.style.height = ''
+    if (value) el.style.height = `${Math.min(el.scrollHeight, 168)}px`
+  }, [value])
+
+  const submit = (e?: FormEvent) => {
+    e?.preventDefault()
     const body = value.trim()
-    if (!body || disabled) return
+    if (!body) return
     onSend(body, attachments)
     setValue('')
     setAttachments([])
     box.current?.focus()
   }
 
-  // stands in for a file picker - POST /uploads returns the id we attach
-  const attach = async () => {
-    const stub = { name: `capture-${attachments.length + 1}.png`, bytes: 148_000, mime: 'image/png' }
-    const att = await api.upload(stub)
-    setAttachments((a) => [...a, att])
+  // POST /uploads with what the picker chose; the mock keeps the name and size
+  const attach = async (files: FileList | null) => {
+    for (const f of Array.from(files ?? [])) {
+      const att = await api.upload({ name: f.name, bytes: f.size, mime: f.type || 'application/octet-stream' })
+      setAttachments((a) => [...a, att])
+    }
+    if (picker.current) picker.current.value = ''
   }
 
   return (
-    <div className="cmp">
+    <form className="cmp" onSubmit={submit}>
       {attachments.length ? (
         <div className="cmp__atts">
           {attachments.map((a) => (
             <span className="att att--draft" key={a.id}>
-              <Icon name="image" size={12} />
+              <Icon name={a.mime.startsWith('image/') ? 'image' : 'file'} size={12} />
               <span className="att__name">{a.name}</span>
               <button
+                type="button"
                 aria-label={`Remove ${a.name}`}
                 onClick={() => setAttachments((x) => x.filter((y) => y.id !== a.id))}
               >
@@ -233,359 +287,467 @@ function Composer({
         </div>
       ) : null}
 
-      <div className="cmp__row">
+      <div className="cmp__field">
         <textarea
           ref={box}
           className="cmp__box"
-          rows={2}
+          rows={1}
           value={value}
-          placeholder={disabled ? 'This ticket is closed.' : 'Write a reply…'}
-          disabled={disabled}
+          placeholder={to ? `Reply to ${to}` : 'Write a reply'}
           aria-label="Reply"
           onChange={(e) => {
             setValue(e.target.value)
-            onTyping()
+            void api.sendTyping(ticketId)
           }}
           onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
+            if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
               e.preventDefault()
               submit()
             }
           }}
         />
-        <div className="cmp__side">
-          <button className="icon-btn" onClick={attach} disabled={disabled} aria-label="Attach a file">
-            <Icon name="upload" size={15} />
-          </button>
-          <button className="btn btn--primary btn--sm" onClick={submit} disabled={disabled || !value.trim()}>
-            <Icon name="arrowRight" size={13} /> Send
-          </button>
-        </div>
+        <input ref={picker} type="file" multiple hidden onChange={(e) => void attach(e.target.files)} />
+        <button
+          type="button"
+          className="cmp__tool"
+          aria-label="Attach files"
+          title="Attach files"
+          onClick={() => picker.current?.click()}
+        >
+          <Icon name="clip" size={16} />
+        </button>
+        <button type="submit" className="cmp__send" aria-label="Send" title="Send (Enter)" disabled={!value.trim()}>
+          <Icon name="arrowUp" size={16} strokeWidth={2} />
+        </button>
       </div>
-
-      <div className="cmp__foot">
-        <span className="cmp__hint mono">Enter sends &middot; Shift+Enter newline</span>
-      </div>
-    </div>
+    </form>
   )
 }
 
 function Thread({
   ticket,
   messages,
-  typing,
+  writing,
+  onWritten,
   onSend,
   onRetry,
-  onPatch,
+  onStatus,
+  onBack,
 }: {
   ticket: Ticket
   messages: Message[]
-  typing: string | null
+  writing: Writing | null
+  onWritten: () => void
   onSend: (body: string, attachments: Attachment[]) => void
   onRetry: (m: Message) => void
-  onPatch: (patch: { status?: TicketStatus; priority?: TicketPriority }) => void
+  onStatus: (status: TicketStatus) => void
+  onBack: () => void
 }) {
   const scroller = useRef<HTMLDivElement>(null)
+  const last = messages[messages.length - 1]?.id
 
-  useEffect(() => {
+  // new messages, and the miner, arrive at the bottom
+  useLayoutEffect(() => {
     const el = scroller.current
     if (el) el.scrollTop = el.scrollHeight
-  }, [messages.length, typing])
+  }, [ticket.id, last, writing])
 
-  const typingRef = useRef<() => void>(() => {})
-  typingRef.current = () => {
-    void api.sendTyping(ticket.id)
-  }
+  // a narrow screen mounts the thread hidden, so it looks again once it shows
+  useEffect(() => {
+    const el = scroller.current
+    if (!el) return
+    let height = el.clientHeight
+    const ro = new ResizeObserver(() => {
+      if (height === 0 && el.clientHeight > 0) el.scrollTop = el.scrollHeight
+      height = el.clientHeight
+    })
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+
+  const open = viewOf(ticket.status) === 'open'
+  const said = (m: Message | undefined) => (m && m.author.role !== 'system' ? m.author.id : null)
 
   return (
-    <div className="th">
+    <section className="th" aria-labelledby="sup-subject">
       <header className="th__head">
+        <button className="icon-btn th__back" onClick={onBack} aria-label="Back to your tickets">
+          <Icon name="chevronLeft" size={16} />
+        </button>
         <div className="th__title">
-          <span className="mono th__id">{ticket.id}</span>
-          <h2 className="th__subject">{ticket.subject}</h2>
-          <div className="th__tags">
-            {ticket.tags.map((tag) => (
-              <span className="tag" key={tag}>
-                #{tag}
-              </span>
-            ))}
-            {ticket.slaMinutes !== null ? (
-              <span className="tag tag--sla">
-                <Icon name="clock" size={10} /> first response in {ticket.slaMinutes}m
-              </span>
-            ) : null}
-          </div>
+          <h2 className="th__subject" id="sup-subject">
+            {ticket.subject}
+          </h2>
+          <p className="th__meta">
+            <span className="sl__status" data-status={ticket.status}>
+              {statusWord[ticket.status]}
+            </span>
+            <span className="mono">{ticket.id}</span>
+            <span>{ticket.assignee ? ticket.assignee.name : 'Not picked up yet'}</span>
+          </p>
         </div>
-
-        <div className="th__controls">
-          <label className="ctl">
-            <span className="ctl__k">Status</span>
-            <select
-              value={ticket.status}
-              onChange={(e) => onPatch({ status: e.target.value as TicketStatus })}
-            >
-              {statuses.map((s) => (
-                <option key={s} value={s}>
-                  {s}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="ctl">
-            <span className="ctl__k">Priority</span>
-            <select
-              value={ticket.priority}
-              onChange={(e) => onPatch({ priority: e.target.value as TicketPriority })}
-            >
-              {priorities.map((p) => (
-                <option key={p} value={p}>
-                  {p}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
+        <button className="btn btn--sm th__act" onClick={() => onStatus(open ? 'resolved' : 'open')}>
+          <Icon name={open ? 'check' : 'undo'} size={13} />
+          <span className="th__actlabel">{open ? 'Mark resolved' : 'Reopen'}</span>
+        </button>
       </header>
 
       <div className="th__scroll" ref={scroller}>
+        <div className="th__stream">
+          {messages.map((m, i) => (
+            <Bubble
+              key={m.id}
+              message={m}
+              lead={said(messages[i - 1]) !== said(m)}
+              tail={said(messages[i + 1]) !== said(m)}
+              onRetry={onRetry}
+            />
+          ))}
 
-        {messages.map((m) => (
-          <MessageBubble key={m.id} message={m} onRetry={onRetry} />
-        ))}
-
-        {typing ? (
-          <div className="bub">
-            <span className="bub__who">{typing}</span>
-            <div className="bub__body bub__body--typing">
-              <span className="dot" />
-              <span className="dot" />
-              <span className="dot" />
+          {writing ? (
+            <div className="th__writer">
+              <span className="bub__who" role="status">
+                {writing.name} is writing
+              </span>
+              <Miner mood={writing.mood} success="gem" maxScale={2} onFinish={onWritten} className="th__miner" />
             </div>
-          </div>
-        ) : null}
+          ) : null}
+        </div>
       </div>
 
-      <Composer
-        onSend={onSend}
-        onTyping={() => typingRef.current()}
-        disabled={ticket.status === 'closed'}
-      />
-    </div>
+      {ticket.status === 'closed' ? (
+        <p className="th__closed">This ticket is closed. Reopen it to reply.</p>
+      ) : (
+        <Composer key={ticket.id} ticketId={ticket.id} to={ticket.assignee?.name ?? null} onSend={onSend} />
+      )}
+    </section>
   )
 }
 
-/* ---------------- new ticket ---------------- */
+/* ---------------- a new ticket ---------------- */
 
-function NewTicket({ onClose, onCreate }: { onClose: () => void; onCreate: (t: Ticket) => void }) {
-  const [subject, setSubject] = useState('')
-  const [category, setCategory] = useState<TicketCategory>('editor')
-  const [priority, setPriority] = useState<TicketPriority>('normal')
-  const [description, setDescription] = useState('')
-  const [busy, setBusy] = useState(false)
-  const first = useRef<HTMLInputElement>(null)
-
-  useEffect(() => {
-    first.current?.focus()
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
-    }
-    document.addEventListener('keydown', onKey)
-    return () => document.removeEventListener('keydown', onKey)
-  }, [onClose])
-
-  const valid = subject.trim().length >= 3 && description.trim().length > 0
-
-  const submit = async () => {
-    if (!valid || busy) return
-    setBusy(true)
-    try {
-      const ticket = await api.createTicket({ subject, category, priority, description })
-      onCreate(ticket)
-    } finally {
-      setBusy(false)
-    }
-  }
+function Compose({
+  draft,
+  sending,
+  failed,
+  replyHours,
+  onDraft,
+  onSend,
+  onSent,
+  onClose,
+}: {
+  draft: TicketDraft
+  sending: MinerMood | null
+  failed: boolean
+  replyHours: number | null
+  onDraft: (d: TicketDraft) => void
+  onSend: () => void
+  onSent: () => void
+  onClose: () => void
+}) {
+  const subject = subjectOf(draft.text)
 
   return (
-    <div className="dlg" role="dialog" aria-modal="true" aria-label="Open a ticket">
-      <div className="dlg__scrim" onClick={onClose} />
-      <div className="dlg__panel">
-        <header className="dlg__head">
-          <div>
-            <div className="eyebrow">Support</div>
-            <h2 className="card__title">Open a ticket</h2>
-          </div>
-          <button className="icon-btn" onClick={onClose} aria-label="Close">
+    <section className="th nt" aria-labelledby="sup-subject">
+      <header className="th__head">
+        <button className="icon-btn th__back" onClick={onClose} aria-label="Back to your tickets">
+          <Icon name="chevronLeft" size={16} />
+        </button>
+        <div className="th__title">
+          <h2 className="th__subject" id="sup-subject" data-empty={!subject || undefined}>
+            {subject || 'New ticket'}
+          </h2>
+          <p className="th__meta">
+            {sending
+              ? 'On its way to the Vellum team'
+              : replyHours
+                ? `The Vellum team replies within ${replyHours} hours on the free tier.`
+                : 'Goes to the Vellum team.'}
+          </p>
+        </div>
+        {sending ? null : (
+          <button className="icon-btn" onClick={onClose} aria-label="Close and keep the draft" title="Close and keep the draft">
             <Icon name="close" size={15} />
           </button>
-        </header>
+        )}
+      </header>
 
-        <div className="dlg__body">
-          <div className="field-grid">
-            <label className="field field--wide">
-              <span className="field__label">Subject</span>
-              <input
-                ref={first}
-                className="field__input"
-                value={subject}
-                maxLength={140}
-                placeholder="One line on what went wrong"
-                onChange={(e) => setSubject(e.target.value)}
-              />
-              <span className="field__hint">{subject.length}/140 &middot; 3 characters minimum</span>
-            </label>
-
-            <label className="field">
-              <span className="field__label">Category</span>
-              <select value={category} onChange={(e) => setCategory(e.target.value as TicketCategory)}>
-                {categories.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label className="field">
-              <span className="field__label">Priority</span>
-              <select value={priority} onChange={(e) => setPriority(e.target.value as TicketPriority)}>
-                {priorities.map((p) => (
-                  <option key={p} value={p} disabled={p === 'urgent'}>
-                    {p}
-                    {p === 'urgent' ? ' — paid tiers' : ''}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label className="field field--wide">
-              <span className="field__label">What happened</span>
-              <textarea
-                value={description}
-                placeholder="Steps, what you expected, what you got instead."
-                onChange={(e) => setDescription(e.target.value)}
-              />
-              <span className="field__hint">Becomes the first message on the thread.</span>
-            </label>
-          </div>
+      {sending ? (
+        <div className="nt__run">
+          <Miner mood={sending} onFinish={onSent} className="nt__miner" />
         </div>
-
-        <footer className="dlg__foot">
-          <span className="cmp__hint mono">Free tier &middot; first response target 8h</span>
-          <div className="row-actions">
-            <button className="btn btn--ghost" onClick={onClose}>
-              Cancel
-            </button>
-            <button className="btn btn--primary" onClick={submit} disabled={!valid || busy}>
-              {busy ? 'Opening…' : 'Open ticket'}
-            </button>
-          </div>
-        </footer>
-      </div>
-    </div>
+      ) : (
+        <TicketForm draft={draft} onDraft={onDraft} onSend={onSend} failed={failed} autoFocus className="nt__form" />
+      )}
+    </section>
   )
 }
 
-/* ---------------- section root ---------------- */
+/* ---------------- the section ---------------- */
 
 export function Support() {
   const [tickets, setTickets] = useState<Ticket[]>([])
-  const [loading, setLoading] = useState(true)
-  const [activeId, setActiveId] = useState<string | null>(null)
-  const [filter, setFilter] = useState<TicketStatus | 'all'>('all')
+  const [loaded, setLoaded] = useState(false)
+  const [view, setView] = useState<View>('open')
   const [query, setQuery] = useState('')
+  const [found, setFound] = useState<{ q: string; ids: Set<string> } | null>(null)
+  const [activeId, setActiveId] = useState<string | null>(null)
+  const [composing, setComposing] = useState(false)
+  // on a narrow screen the list and the thread take turns
+  const [pane, setPane] = useState<'list' | 'detail'>('list')
   const [messages, setMessages] = useState<Message[]>([])
-  const [typing, setTyping] = useState<string | null>(null)
-  const [dialog, setDialog] = useState(false)
+  const [writing, setWritingState] = useState<Writing | null>(null)
+  const [draft, setDraft] = useState<TicketDraft>(blankDraft)
+  const [sending, setSending] = useState<MinerMood | null>(null)
+  const [sendFailed, setSendFailed] = useState(false)
+  const [fresh, setFresh] = useState<string | null>(null)
+  const [replyHours, setReplyHours] = useState<number | null>(null)
 
-  // GET /tickets
-  const load = useCallback(async () => {
-    setLoading(true)
-    const page = await api.listTickets({
-      status: filter === 'all' ? undefined : [filter],
-      q: query || undefined,
-    })
-    setTickets(page.data)
-    setLoading(false)
-    setActiveId((cur) => (cur && page.data.some((t) => t.id === cur) ? cur : page.data[0]?.id ?? null))
-  }, [filter, query])
+  /* What the event stream needs to know when a message lands. Kept in a
+     ref so the one subscription always sees the current thread. */
+  const live = useRef<{ activeId: string | null; composing: boolean; writing: Writing | null }>({
+    activeId: null,
+    composing: false,
+    writing: null,
+  })
+  /** replies that came in while the miner was still digging for them */
+  const held = useRef<Message[]>([])
+  /** who is typing where, and until when */
+  const typing = useRef(new Map<string, { name: string; until: number }>())
+  const quiet = useRef(0)
+  const created = useRef<Ticket | null>(null)
+
+  const setWriting = (w: Writing | null) => {
+    live.current.writing = w
+    setWritingState(w)
+  }
+
+  /** What came in while the miner was digging goes into the thread. */
+  const release = () => {
+    const replies = held.current
+    held.current = []
+    if (replies.length) setMessages((rows) => replies.reduce(upsert, rows))
+  }
 
   useEffect(() => {
-    let cancelled = false
-    const run = async () => {
-      const page = await api.listTickets({
-        status: filter === 'all' ? undefined : [filter],
-        q: query || undefined,
-      })
-      if (cancelled) return
+    live.current.activeId = activeId
+  }, [activeId])
+
+  useEffect(() => () => window.clearTimeout(quiet.current), [])
+
+  // GET /tickets, once; the stream keeps it current after that
+  useEffect(() => {
+    let stop = false
+    void api.listTickets({ limit: 100 }).then((page) => {
+      if (stop) return
       setTickets(page.data)
-      setLoading(false)
-      setActiveId((cur) =>
-        cur && page.data.some((t) => t.id === cur) ? cur : page.data[0]?.id ?? null,
-      )
-    }
-    void run()
+      setLoaded(true)
+      setActiveId((cur) => cur ?? page.data.find((t) => viewOf(t.status) === 'open')?.id ?? page.data[0]?.id ?? null)
+    })
+    void api.getSla().then((sla) => {
+      if (!stop) setReplyHours(Math.round(sla.firstResponseMinutes / 60))
+    })
     return () => {
-      cancelled = true
+      stop = true
     }
-  }, [filter, query])
+  }, [])
+
+  // GET /tickets?q= - the server searches message text too, so it answers with ids
+  useEffect(() => {
+    const q = query.trim()
+    if (!q) return
+    let stop = false
+    void api.listTickets({ q, limit: 100 }).then((page) => {
+      if (!stop) setFound({ q, ids: new Set(page.data.map((t) => t.id)) })
+    })
+    return () => {
+      stop = true
+    }
+  }, [query])
 
   // GET /tickets/{id}/messages + POST /tickets/{id}/read
   useEffect(() => {
-    if (!activeId) {
-      setMessages([])
+    if (!activeId) return
+    let stop = false
+    void api.listMessages(activeId).then((page) => {
+      if (stop) return
+      const waiting = new Set(held.current.map((m) => m.id))
+      setMessages(page.data.filter((m) => !waiting.has(m.id)))
+      void api.markRead(activeId)
+    })
+    return () => {
+      stop = true
+    }
+  }, [activeId])
+
+  /** The miner, for someone typing into the open thread. He goes if they stop without sending. */
+  const watchWriter = (ticketId: string) => {
+    const t = typing.current.get(ticketId)
+    if (!t) return
+    if (live.current.writing?.ticketId !== ticketId) setWriting({ ticketId, name: t.name, mood: 'working' })
+    window.clearTimeout(quiet.current)
+    quiet.current = window.setTimeout(
+      () => {
+        const w = live.current.writing
+        const still = typing.current.get(ticketId)
+        if (w?.ticketId !== ticketId || w.mood !== 'working') return
+        if (still && still.until > Date.now()) return
+        typing.current.delete(ticketId)
+        release()
+        setWriting(null)
+      },
+      Math.max(0, t.until - Date.now()) + 1500,
+    )
+  }
+
+  // GET /tickets/{id}/events - one subscription for the list's badges and the open thread
+  useEffect(
+    () =>
+      api.streamAll((e) => {
+        if (e.type === 'ticket.updated') {
+          // a ticket being read has nothing unread
+          const reading = e.ticket.id === live.current.activeId && !live.current.composing
+          const ticket = reading && e.ticket.unread ? { ...e.ticket, unread: 0 } : e.ticket
+          setTickets((rows) => rows.map((t) => (t.id === ticket.id ? ticket : t)))
+          if (ticket !== e.ticket) void api.markRead(ticket.id)
+          return
+        }
+        if (e.type === 'agent.typing') {
+          typing.current.set(e.ticketId, { name: e.actor.name, until: e.until })
+          if (e.ticketId === live.current.activeId && !live.current.composing) watchWriter(e.ticketId)
+          return
+        }
+        const m = e.message
+        const reply = e.type === 'message.created' && m.author.role === 'agent'
+        if (reply) typing.current.delete(m.ticketId)
+        if (m.ticketId !== live.current.activeId) return
+        const w = live.current.writing
+        if (e.type === 'message.created' && m.author.role !== 'requester' && w?.ticketId === m.ticketId) {
+          // he finishes first, and what came in shows when he is done
+          held.current.push(m)
+          if (reply) setWriting({ ...w, mood: 'done' })
+          return
+        }
+        setMessages((rows) => upsert(rows, m))
+      }),
+    // the handler reads everything that changes through refs
+    [],
+  )
+
+  const written = () => {
+    release()
+    setWriting(null)
+  }
+
+  /** A new ticket that is in goes into the list. */
+  const file = (ticket: Ticket) => {
+    setDraft(blankDraft)
+    setTickets((rows) => [ticket, ...rows.filter((r) => r.id !== ticket.id)])
+    setFresh(ticket.id)
+    window.setTimeout(() => setFresh((f) => (f === ticket.id ? null : f)), 2400)
+  }
+
+  /** Leaving the form while a ticket is still on its way files it without the ending. */
+  const leaveForm = () => {
+    live.current.composing = false
+    setComposing(false)
+    if (sending && created.current) {
+      file(created.current)
+      created.current = null
+      setSending(null)
+    }
+  }
+
+  const select = (id: string) => {
+    const same = id === live.current.activeId
+    if (same && !live.current.composing) {
+      setPane('detail')
       return
     }
-    let cancelled = false
-    void (async () => {
-      const page = await api.listMessages(activeId)
-      if (cancelled) return
-      setMessages(page.data)
-      await api.markRead(activeId)
-    })()
-    return () => {
-      cancelled = true
-    }
-  }, [activeId])
+    leaveForm()
+    release()
+    live.current.activeId = id
+    setActiveId(id)
+    setPane('detail')
+    // back from the form to the same thread, nothing reloads it, so it is marked read here
+    if (same) void api.markRead(id)
+    const t = typing.current.get(id)
+    if (t && t.until > Date.now()) watchWriter(id)
+    else setWriting(null)
+  }
 
-  // GET /tickets/{id}/events - the messaging engine
-  useEffect(() => {
-    return api.streamAll((e) => {
-      if (e.type === 'ticket.updated') {
-        setTickets((rows) => rows.map((t) => (t.id === e.ticket.id ? e.ticket : t)))
-        return
-      }
-      if (e.type === 'agent.typing') {
-        if (e.ticketId !== activeId) return
-        setTyping(e.actor.name)
-        window.setTimeout(() => setTyping(null), Math.max(0, e.until - Date.now()))
-        return
-      }
-      if (e.message.ticketId !== activeId) return
-      setTyping(null)
-      setMessages((rows) => {
-        const i = rows.findIndex((m) => m.id === e.message.id)
-        if (i === -1) return [...rows, e.message]
-        const next = [...rows]
-        next[i] = e.message
-        return next
+  const startNew = () => {
+    live.current.composing = true
+    setComposing(true)
+    setView('open')
+    setPane('detail')
+    release()
+    setWriting(null)
+  }
+
+  const closeNew = () => {
+    leaveForm()
+    setPane('list')
+    const id = live.current.activeId
+    if (id) void api.markRead(id)
+    const t = id ? typing.current.get(id) : undefined
+    if (id && t && t.until > Date.now()) watchWriter(id)
+  }
+
+  // POST /tickets
+  const sendNew = async () => {
+    const subject = subjectOf(draft.text)
+    if (subject.length < 3 || sending) return
+    setSendFailed(false)
+    setSending('working')
+    created.current = null
+    try {
+      const ticket = await api.createTicket({
+        subject,
+        category: draft.category ?? 'other',
+        priority: draft.blocking ? 'high' : 'normal',
+        description: draft.text.trim(),
       })
-      if (e.type === 'message.created' && e.message.author.role === 'agent') {
-        void api.markRead(e.message.ticketId)
+      if (live.current.composing) {
+        created.current = ticket
+        setSending('done')
+      } else {
+        // they moved on while it was sending
+        file(ticket)
+        setSending(null)
       }
-    })
-  }, [activeId])
+    } catch {
+      if (live.current.composing) setSending('failed')
+      else {
+        setSending(null)
+        setSendFailed(true)
+      }
+    }
+  }
 
-  const active = tickets.find((t) => t.id === activeId) ?? null
+  /** The miner is through the portal, or in the lava. */
+  const sent = () => {
+    const ticket = created.current
+    created.current = null
+    setSending(null)
+    if (!ticket) {
+      setSendFailed(true)
+      return
+    }
+    file(ticket)
+    setQuery('')
+    select(ticket.id)
+  }
 
-  // POST /tickets/{id}/messages, rendered optimistically
+  // POST /tickets/{id}/messages, shown before the server has it
   const send = async (body: string, attachments: Attachment[]) => {
-    if (!active) return
+    const ticketId = live.current.activeId
+    if (!ticketId) return
     const clientId = `msg_${Date.now().toString(36)}`
     const optimistic: Message = {
       id: clientId,
-      ticketId: active.id,
-      author: { id: 'usr_galex', name: 'g.alex', role: 'requester' },
+      ticketId,
+      author: me,
       body,
       createdAt: new Date().toISOString(),
       attachments,
@@ -593,11 +755,9 @@ export function Support() {
     }
     setMessages((rows) => [...rows, optimistic])
     try {
-      await api.sendMessage(active.id, { body, clientId, attachments })
+      await api.sendMessage(ticketId, { body, clientId, attachments })
     } catch {
-      setMessages((rows) =>
-        rows.map((m) => (m.id === clientId ? { ...m, delivery: 'failed' as const } : m)),
-      )
+      setMessages((rows) => rows.map((m) => (m.id === clientId ? { ...m, delivery: 'failed' as const } : m)))
     }
   }
 
@@ -606,86 +766,76 @@ export function Support() {
     void send(m.body, m.attachments)
   }
 
-  const patch = async (p: { status?: TicketStatus; priority?: TicketPriority }) => {
-    if (!active) return
-    const updated = await api.updateTicket(active.id, p)
+  // PATCH /tickets/{id}
+  const setStatus = async (status: TicketStatus) => {
+    const id = live.current.activeId
+    if (!id) return
+    const updated = await api.updateTicket(id, { status })
     setTickets((rows) => rows.map((t) => (t.id === updated.id ? updated : t)))
     const page = await api.listMessages(updated.id)
-    setMessages(page.data)
+    const waiting = new Set(held.current.map((m) => m.id))
+    if (live.current.activeId === updated.id) setMessages(page.data.filter((m) => !waiting.has(m.id)))
   }
 
-  const open = tickets.filter((t) => t.status === 'open').length
-  const unread = tickets.reduce((n, t) => n + t.unread, 0)
+  const q = query.trim()
+  const shown = q && found?.q === q ? tickets.filter((t) => found.ids.has(t.id)) : tickets
+  const active = tickets.find((t) => t.id === activeId) ?? null
+  const thread = messages.filter((m) => m.ticketId === activeId)
 
   return (
-    <>
-      <p className="sup__note">
-        <Icon name="info" size={13} />
-        Tickets and replies run against a mock in this browser. Nothing is sent.
-      </p>
+    <div className="sup" data-pane={pane}>
+      <TicketList
+        tickets={shown}
+        loaded={loaded}
+        view={view}
+        query={query}
+        activeId={activeId}
+        composing={composing}
+        draft={draft}
+        fresh={fresh}
+        onView={setView}
+        onQuery={setQuery}
+        onPick={select}
+        onNew={startNew}
+      />
 
-      <div className="sup__bar">
-        <div className="sup__stats">
-          <span className="sup__stat">
-            <strong className="mono">{tickets.length}</strong> tickets
-          </span>
-          <span className="sup__stat">
-            <strong className="mono">{open}</strong> open
-          </span>
-          <span className="sup__stat">
-            <strong className="mono">{unread}</strong> unread
-          </span>
-          <span className="sup__stat sup__stat--tier">
-            <Icon name="lock" size={11} /> Free tier &middot; 8h first response &middot; queue 12
-          </span>
-        </div>
-        <button className="btn btn--primary" onClick={() => setDialog(true)}>
-          <Icon name="plus" size={14} /> New ticket
-        </button>
-      </div>
-
-      <Card variant="flush" className="sup__wrap">
-        <div className="sup">
-          <TicketList
-            tickets={tickets}
-            loading={loading}
-            activeId={activeId}
-            filter={filter}
-            query={query}
-            onFilter={setFilter}
-            onQuery={setQuery}
-            onPick={setActiveId}
-          />
-          {active ? (
-            <Thread
-              ticket={active}
-              messages={messages}
-              typing={typing}
-              onSend={send}
-              onRetry={retry}
-              onPatch={patch}
-            />
-          ) : (
-            <div className="th th--empty">
-              <Icon name="support" size={22} />
-              <p>Pick a ticket, or open a new one.</p>
-            </div>
-          )}
-        </div>
-      </Card>
-
-      {dialog ? (
-        <NewTicket
-          onClose={() => setDialog(false)}
-          onCreate={(t) => {
-            setDialog(false)
-            setFilter('all')
-            setQuery('')
-            void load()
-            setActiveId(t.id)
+      {composing ? (
+        <Compose
+          draft={draft}
+          sending={sending}
+          failed={sendFailed}
+          replyHours={replyHours}
+          onDraft={(d) => {
+            setDraft(d)
+            setSendFailed(false)
           }}
+          onSend={() => void sendNew()}
+          onSent={sent}
+          onClose={closeNew}
         />
-      ) : null}
-    </>
+      ) : active ? (
+        <Thread
+          ticket={active}
+          messages={thread}
+          writing={writing?.ticketId === active.id ? writing : null}
+          onWritten={written}
+          onSend={(body, atts) => void send(body, atts)}
+          onRetry={retry}
+          onStatus={(s) => void setStatus(s)}
+          onBack={() => setPane('list')}
+        />
+      ) : (
+        <div className="th th--empty">
+          {loaded ? (
+            <>
+              <p>No tickets yet.</p>
+              <button className="btn btn--primary btn--sm" onClick={startNew}>
+                <Icon name="plus" size={13} /> New ticket
+              </button>
+            </>
+          ) : null}
+        </div>
+      )}
+    </div>
   )
 }

@@ -83,3 +83,73 @@
 .kv__row:last-child { border-bottom: none; padding-bottom: 0; }
 .kv__k { color: var(--ink-faint); }
 .kv__v { font-family: var(--font-mono); color: var(--ink); }
+
+/* ---------------- dialogs ----------------
+   The scrim, the panel and its head, body and foot. Every dialog in the
+   app is built from these. */
+
+.dlg {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: grid;
+  place-items: center;
+  padding: var(--sp-4);
+}
+
+.dlg__scrim {
+  position: absolute;
+  inset: 0;
+  background: var(--well-deep);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  animation: fade-in var(--dur) var(--ease);
+}
+
+@keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+
+.dlg__panel {
+  position: relative;
+  width: min(680px, 100%);
+  max-height: min(86vh, 760px);
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--r-xl);
+  border: 1px solid var(--glass-rim);
+  background-color: var(--glass-solid);
+  backdrop-filter: blur(var(--glass-blur-lg)) saturate(var(--glass-sat));
+  -webkit-backdrop-filter: blur(var(--glass-blur-lg)) saturate(var(--glass-sat));
+  box-shadow: var(--bevel), var(--shadow-pop);
+  overflow: hidden;
+  animation: dlg-in var(--dur-slow) var(--ease);
+}
+
+@keyframes dlg-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+
+.dlg__head {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-3);
+  padding: var(--sp-4) var(--sp-4) var(--sp-3);
+  border-bottom: 1px solid var(--glass-rim);
+}
+
+.dlg__head > div:first-child { flex: 1; min-width: 0; }
+.dlg__body { padding: var(--sp-4); overflow-y: auto; flex: 1; min-height: 0; }
+
+/* the pack builder's miner, between the scrolling body and the buttons */
+.pk-run { padding: var(--sp-3) var(--sp-4) 0; border-top: 1px solid var(--glass-rim); }
+
+.dlg__foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+  border-top: 1px solid var(--glass-rim);
+  background: var(--well);
+}

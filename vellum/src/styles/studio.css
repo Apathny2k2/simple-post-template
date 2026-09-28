@@ -113,9 +113,6 @@ html[data-surface='dark'] .menu-item--danger:hover {
 
 html[data-surface='dark'] .menu-label,
 html[data-surface='dark'] .library__groupname { color: var(--bb-blue-hi); }
-html[data-surface='dark'] .prio--high { color: var(--warn); }
-html[data-surface='dark'] .prio--urgent { color: var(--danger); }
-html[data-surface='dark'] .bub__body--failed { border-color: var(--danger); background: rgba(255, 107, 107, 0.12); }
 html[data-surface='dark'] .verify[data-tone='warn'] svg { color: var(--warn); }
 html[data-surface='dark'] .dir-row__tag[data-sync='outdated'] { border-color: rgba(255, 181, 71, 0.5); color: var(--warn); }
 

@@ -54,17 +54,35 @@ export type Ticket = {
   slaMinutes: number | null
 }
 
-export const categories: Array<{ id: TicketCategory; label: string }> = [
-  { id: 'editor', label: 'Editor / viewport' },
-  { id: 'library', label: 'Library' },
-  { id: 'pack-sync', label: 'Resource pack sync' },
-  { id: 'billing', label: 'Billing' },
-  { id: 'account', label: 'Account' },
-  { id: 'other', label: 'Something else' },
+/** `short` is what fits on a chip in the ticket form. */
+export const categories: Array<{ id: TicketCategory; label: string; short: string }> = [
+  { id: 'editor', label: 'Editor / viewport', short: 'Editor' },
+  { id: 'library', label: 'Library', short: 'Library' },
+  { id: 'pack-sync', label: 'Resource pack sync', short: 'Pack sync' },
+  { id: 'billing', label: 'Billing', short: 'Billing' },
+  { id: 'account', label: 'Account', short: 'Account' },
+  { id: 'other', label: 'Something else', short: 'Other' },
 ]
 
 export const priorities: TicketPriority[] = ['low', 'normal', 'high', 'urgent']
 export const statuses: TicketStatus[] = ['open', 'pending', 'resolved', 'closed']
+
+/** What the ticket form holds before it is sent. */
+export type TicketDraft = { text: string; category: TicketCategory | null; blocking: boolean }
+
+export const blankDraft: TicketDraft = { text: '', category: null, blocking: false }
+
+/** A ticket's subject is the first line of what was written, up to its
+    first full stop, cut at a word if it still runs long. */
+export function subjectOf(text: string) {
+  const line = text.trim().split('\n')[0].trim()
+  const stop = line.search(/[.!?](\s|$)/)
+  const sentence = stop > 0 ? line.slice(0, line[stop] === '.' ? stop : stop + 1) : line
+  if (sentence.length <= 80) return sentence
+  const cut = sentence.slice(0, 80)
+  const space = cut.lastIndexOf(' ')
+  return `${cut.slice(0, space > 40 ? space : 80).trimEnd()}\u2026`
+}
 
 export const me: Actor = { id: 'usr_galex', name: 'g.alex', role: 'requester' }
 
