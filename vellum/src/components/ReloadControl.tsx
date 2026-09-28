@@ -20,11 +20,23 @@ import './ReloadControl.css'
 
 type State = { phase: 'idle' } | { phase: 'asking' } | { phase: 'done'; outcome: ReloadOutcome }
 
-export function ReloadControl({ linked }: { linked: boolean }) {
+export type ReloadPhase = 'idle' | 'asking' | ReloadOutcome['kind']
+
+export function ReloadControl({
+  linked,
+  onPhase,
+}: {
+  linked: boolean
+  /** Told when the control moves between idle, asking and a verdict. */
+  onPhase?: (phase: ReloadPhase) => void
+}) {
   const [state, setState] = useState<State>({ phase: 'idle' })
   const abort = useRef<AbortController | null>(null)
 
   useEffect(() => () => abort.current?.abort(), [])
+  useEffect(() => {
+    onPhase?.(state.phase === 'done' ? state.outcome.kind : state.phase)
+  }, [state, onPhase])
 
   const onApply = useCallback(() => {
     abort.current?.abort()

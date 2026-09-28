@@ -349,10 +349,12 @@ has, and the Dash does the rest.
 
 ## Trying it without a plugin
 
-The Dash's **Plugin feed** card has a *Simulate a plugin* switch. It drives
-the real endpoints through the real validator and the real log — it is not
-a mock — so you can watch the cards move, then open the console and push
-your own payload through `window.Vellum.dash` before writing any Java.
+**Run a demo server** on the Dash starts a pretend server that feeds the page
+through these same endpoints, via the same validator and log. Players join,
+someone saves a file, a new pack goes out and players pick it up one by one,
+then the server restarts. **Stop demo** puts the sample back. You can also push
+your own payloads from the console through `window.Vellum.dash` before writing
+any Java.
 
 Until a card is fed it shows the built-in sample and says **sample** in its
 header. Each card goes live on its own: a plugin that only knows about the

@@ -1,24 +1,22 @@
 import { useCallback, useEffect, useState, useSyncExternalStore } from 'react'
+import type { CSSProperties } from 'react'
 import { Card } from '../components/Card'
 import { ReloadControl } from '../components/ReloadControl'
+import type { ReloadPhase } from '../components/ReloadControl'
 import { Menu } from '../components/Menu'
 import type { TriggerProps } from '../components/Menu'
 import { Icon } from '../lib/icons'
 import { useTitle } from '../lib/router'
-import {
-  dashStore,
-  formatBytes,
-  formatWhen,
-  healthOf,
-} from '../lib/dash'
-import type { Health, Section } from '../lib/dash'
-import {
-  connect,
-  dash,
-  disconnect,
-  loadLink,
-} from '../lib/dash-api'
+import { dashStore, formatWhen, healthOf } from '../lib/dash'
+import type { Section } from '../lib/dash'
+import { connect, dash, disconnect, loadLink } from '../lib/dash-api'
 import { saveBlob } from '../lib/download'
+import { Scene } from './dash/scene'
+import { Hotbar, PackEntry, PlanTooltip, RedstoneLine, ServerConsole, Toasts, XpBar } from './dash/hud'
+import { PixelArt } from './dash/pixel'
+import { itemForPath } from './dash/sprites'
+import { startDemo } from './dash/demo'
+import { useDashToasts, useToasts } from './dash/toasts'
 import './Dashboard.css'
 
 const dotsTrigger = ({ props }: { props: TriggerProps }) => (
@@ -27,17 +25,10 @@ const dotsTrigger = ({ props }: { props: TriggerProps }) => (
   </button>
 )
 
-/* ---------------- reading the store ---------------- */
-
 const subscribe = (fn: () => void) => dashStore.subscribe(fn)
 const getVersion = () => dashStore.version
 
-/**
- * The snapshot is mutated in place by the ingest layer, so its identity
- * never changes - the version counter is what React watches. The clock
- * tick is separate: health decays with wall time, not with writes, so a
- * plugin that goes quiet has to be noticed without an event to notice.
- */
+/** Re-renders on every store change, and once a second so ages and health stay current. */
 function useDash() {
   useSyncExternalStore(subscribe, getVersion)
   const [now, setNow] = useState(() => Date.now())
@@ -51,68 +42,38 @@ function useDash() {
   return { snapshot, meta, log, now, health: healthOf(meta, now) }
 }
 
-/* ---------------- shared bits ---------------- */
-
-const HEALTH_LABEL: Record<Health, string> = {
-  live: 'Live',
-  stale: 'Stale',
-  offline: 'No feed',
-}
-
-function HealthPill({ health, meta, now }: { health: Health; meta: { agent: string | null; lastSeen: number | null }; now: number }) {
-  const seen = meta.lastSeen === null ? null : formatWhen(new Date(meta.lastSeen).toISOString(), now)
-  return (
-    <span className="feed-pill" data-health={health} title={meta.agent ?? 'No plugin has reported yet'}>
-      <span className="feed-pill__dot" />
-      {HEALTH_LABEL[health]}
-      {seen ? <span className="feed-pill__seen">{seen}</span> : null}
-    </span>
-  )
-}
-
 /** Marks a card whose numbers are still the built-in sample. */
-function SourceMark({ fed, section }: { fed: Section[]; section: Section }) {
+function SampleBadge({ fed, section }: { fed: Section[]; section: Section }) {
   if (fed.includes(section)) return null
   return (
-    <span className="src-mark" title={`No plugin has fed this card - showing the built-in sample`}>
+    <span className="src-mark" title="No plugin has sent this yet">
       sample
     </span>
   )
 }
 
-/* ---------------- the page ---------------- */
+const order = (n: number) => ({ '--n': n }) as CSSProperties
 
-/**
- * Main / Dash.
- *
- * Every number on this page describes a Minecraft realm that Vellum does
- * not run, so none of it is knowable from inside the tab - it is fed in
- * through the ingest API by a server plugin. Until one reports, each
- * card shows the built-in sample and says so; the moment a card is fed
- * it goes live independently of the others, because a plugin that only
- * knows about the pack should not have to invent a player count.
- */
 export function Dashboard() {
   useTitle('Dashboard')
-  const { snapshot, meta, now, health } = useDash()
+  const { snapshot, meta, log, now, health } = useDash()
+  const [toasts, pushToast] = useToasts()
+  useDashToasts(pushToast)
 
-  /* A SAVED LINK RECONNECTS ON LOAD — and this lives on the page rather than
-     inside a card, because the card it used to live in is gone. Served from the
-     plugin, studio-host.js has already written the link before this runs, so
-     this effect is the whole of how a plugin-served Studio reaches its server.
-     Deleting it with the card would have sent every card silently back to its
-     built-in sample. */
+  // A saved link reconnects on load. A Studio served by the plugin depends on this.
   useEffect(() => {
     const saved = loadLink()
     if (!saved?.baseUrl) return
     return connect(saved, () => {})
   }, [])
 
-  const { server, pack, players, subscription, files } = snapshot
+  const [linked, setLinked] = useState(() => !!loadLink()?.baseUrl)
+  const [demo, setDemo] = useState(false)
+  const [phase, setPhase] = useState<ReloadPhase>('idle')
 
-  /* These are the two things the dashboard can genuinely do from a
-     card menu, and both go through the same API a plugin uses rather
-     than a private path. */
+  // Stopping the demo, or leaving the page, puts the sample back.
+  useEffect(() => (demo ? startDemo() : undefined), [demo])
+
   const onUnlink = useCallback(() => {
     disconnect()
     dash.reset()
@@ -133,201 +94,164 @@ export function Dashboard() {
     void saveBlob('recent-files.csv', new Blob([[head, ...rows].join('\n')], { type: 'text/csv' }))
   }, [])
 
-  /* Whether a server is linked at all, which is not the same as whether one
-     has fed a card yet: a freshly linked server can be reloaded before it has
-     reported anything. requestReload re-reads the link itself, so this only
-     decides the disabled state and the hint. */
-  const [linked, setLinked] = useState(() => !!loadLink()?.baseUrl)
-
+  const { server, pack, players, subscription, files } = snapshot
   const total = players.correct + players.wrong
-  const pct = total ? Math.round((players.correct / total) * 100) : 0
   const live = meta.fed.length > 0
 
-  return (
-    <main className="page">
-      <div className="page-head">
-        <div>
-          <h1 className="page-title">Dashboard</h1>
-        </div>
-        <HealthPill health={health} meta={meta} now={now} />
-      </div>
+  // Rows that arrive after the page loaded are highlighted once.
+  const fileIds = files.map((f) => f.id).join(',')
+  const [rows, setRows] = useState(() => ({ ids: fileIds, known: new Set(files.map((f) => f.id)), fresh: new Set<string>() }))
+  if (rows.ids !== fileIds) {
+    setRows({
+      ids: fileIds,
+      known: new Set([...rows.known, ...files.map((f) => f.id)]),
+      fresh: new Set(files.filter((f) => !rows.known.has(f.id)).map((f) => f.id)),
+    })
+  }
 
-      {live ? null : (
-        <div className="dash-banner">
-          <Icon name="warning" size={16} />
-          <span>
-            No server connected. These cards show sample data.
-          </span>
+  return (
+    <main className="page dash">
+      <h1 className="vh">Dashboard</h1>
+      <Toasts items={toasts} />
+
+      <Scene
+        server={server}
+        correct={players.correct}
+        wrong={players.wrong}
+        packHash={pack.hash}
+        health={health}
+        meta={meta}
+        now={now}
+        badge={<SampleBadge fed={meta.fed} section="server" />}
+        menu={
+          <Menu
+            align="end"
+            entries={[
+              { label: 'Copy as JSON', icon: 'copy', onSelect: onCopyServer },
+              { kind: 'separator' },
+              { label: 'Unlink the plugin', icon: 'close', danger: true, onSelect: onUnlink },
+            ]}
+            trigger={dotsTrigger}
+          />
+        }
+      />
+
+      {demo ? (
+        <div className="dash-note" data-demo>
+          <span className="dash-note__dot" aria-hidden="true" />
+          <span>Demo server running. It feeds this page through the same API a real plugin uses.</span>
+          <button className="btn btn--sm" onClick={() => setDemo(false)}>
+            Stop demo
+          </button>
+        </div>
+      ) : live ? null : (
+        <div className="dash-note">
+          <Icon name="info" size={15} />
+          <span>No server connected. These cards show sample data.</span>
+          {linked ? null : (
+            <button className="btn btn--sm btn--primary" onClick={() => setDemo(true)}>
+              <Icon name="play" size={12} /> Run a demo server
+            </button>
+          )}
         </div>
       )}
 
       <div className="dash-grid">
-        {/* ---------- server name + file breakdown ---------- */}
         <Card
-          className="span-server"
+          className="dash-files"
+          style={order(1)}
           eyebrow={
             <>
-              Server <SourceMark fed={meta.fed} section="server" />
+              Server files <SampleBadge fed={meta.fed} section="server" />
             </>
           }
-          title={server.name}
-          note={server.host}
-          dividedHead
-          actions={
-            <>
-              <span className="server-tag" data-online={server.online}>
-                {server.status}
-              </span>
-              {/* Rename realm and Reconnect were inert: the realm's name
-                  comes from the plugin, and there is nothing to reconnect
-                  to that the link on this page does not already own. */}
-              <Menu
-                align="end"
-                entries={[
-                  { label: 'Copy as JSON', icon: 'copy', onSelect: onCopyServer },
-                  { kind: 'separator' },
-                  { label: 'Unlink the plugin', icon: 'close', danger: true, onSelect: onUnlink },
-                ]}
-                trigger={dotsTrigger}
-              />
-            </>
-          }
+          title={`${server.total} files synced`}
         >
-          <div className="breakdown">
-            <div className="breakdown__list">
-              {server.breakdown.map((row) => (
-                <div className="breakdown__row" key={row.label}>
-                  <span className="breakdown__dot" />
-                  {row.label}
-                  <span className="breakdown__rule" />
-                  <span className="breakdown__n">x{row.count}</span>
-                </div>
-              ))}
-              {server.breakdown.length ? null : <p className="dash-hint">The plugin reported no breakdown rows.</p>}
-            </div>
-            <div className="stat">
-              <div className="stat__value">{server.total}</div>
-              <div className="stat__label">Total files synced</div>
-            </div>
-          </div>
+          <Hotbar rows={server.breakdown} />
         </Card>
 
-        {/* ---------- power / subscription ---------- */}
         <Card
-          className="span-power"
+          className="dash-players"
+          style={order(2)}
           eyebrow={
             <>
-              Plan <SourceMark fed={meta.fed} section="subscription" />
+              Players <SampleBadge fed={meta.fed} section="players" />
             </>
           }
-          title={subscription.type}
+          title="On the current pack"
         >
-          <div className="power">
-            <div className="kv">
-              <div className="kv__row">
-                <span className="kv__k">Cloud</span>
-                <span className="kv__v">{subscription.cloud}</span>
-              </div>
-              <div className="kv__row">
-                <span className="kv__k">Seats</span>
-                <span className="kv__v">{subscription.seats}</span>
-              </div>
-            </div>
-          </div>
-        </Card>
-
-        {/* ---------- resource pack ---------- */}
-        <Card
-          className="span-pack"
-          eyebrow={
-            <>
-              Resource pack <SourceMark fed={meta.fed} section="pack" />
-            </>
-          }
-          title={pack.version ? `Build ${pack.version}` : 'Current build'}
-          note={`Pushed ${formatWhen(pack.pushedAt, now)}`}
-        >
-          <div className="pack__file">
-            <Icon name="file" size={18} />
-            <div style={{ minWidth: 0, flex: 1 }}>
-              <div className="pack__name">{pack.archive}</div>
-              <div className="pack__meta">
-                {formatBytes(pack.bytes)} &middot; {pack.hash}
-              </div>
-            </div>
-          </div>
-        </Card>
-
-        {/* ---------- player pack counts ---------- */}
-        <Card
-          className="span-count"
-          eyebrow={
-            <>
-              Players <SourceMark fed={meta.fed} section="players" />
-            </>
-          }
-          title="Pack adoption"
-        >
-          <div className="counts">
-            <div className="count-tile count-tile--ok">
-              <div className="count-tile__v">x{players.correct}</div>
-              <div className="count-tile__l">On current pack</div>
-            </div>
-            <div className="count-tile count-tile--warn">
-              <div className="count-tile__v">x{players.wrong}</div>
-              <div className="count-tile__l">Wrong / old pack</div>
-            </div>
-          </div>
-          <div className="meter" role="img" aria-label={`${pct}% of players on the current pack`}>
-            <span className="meter__fill" style={{ width: `${pct}%` }} />
-            <span className="meter__rest" style={{ width: `${100 - pct}%` }} />
-          </div>
-          <p className="card__note" style={{ marginTop: 'var(--sp-2)' }}>
+          <XpBar correct={players.correct} wrong={players.wrong} />
+          <p className="dash-players__sum">
             {total
-              ? `Counted ${formatWhen(players.sampledAt, now)}`
-              : 'Nobody is connected.'}
+              ? `${players.correct} of ${total} on the current pack. ${
+                  players.wrong ? `${players.wrong} still on an old one.` : 'Nobody left behind.'
+                }`
+              : 'Nobody is online.'}
           </p>
+          {total ? <p className="card__note">Counted {formatWhen(players.sampledAt, now)}</p> : null}
         </Card>
 
-        {/* ---------- apply on the server ---------- */}
         <Card
-          className="span-apply"
+          className="dash-pack"
+          style={order(3)}
+          eyebrow={
+            <>
+              Resource pack <SampleBadge fed={meta.fed} section="pack" />
+            </>
+          }
+        >
+          <PackEntry pack={pack} now={now} />
+        </Card>
+
+        <Card
+          className="dash-plan"
+          style={order(4)}
+          eyebrow={
+            <>
+              Plan <SampleBadge fed={meta.fed} section="subscription" />
+            </>
+          }
+        >
+          <PlanTooltip plan={subscription} />
+        </Card>
+
+        <Card className="dash-console" style={order(5)} eyebrow="Server console" title="What the plugin sent">
+          <ServerConsole log={log} />
+        </Card>
+
+        <Card
+          className="dash-apply"
+          style={order(6)}
           eyebrow="Apply"
           title="Push saved changes live"
           note="The server keeps serving the old pack until it reloads."
           dividedHead
         >
-          <ReloadControl linked={linked} />
+          <RedstoneLine phase={phase} linked={linked} />
+          <ReloadControl linked={linked} onPhase={setPhase} />
         </Card>
 
-        {/* ---------- recent files ---------- */}
         <Card
-          className="span-recent"
+          className="dash-recent"
+          style={order(7)}
           eyebrow={
             <>
-              Recent files <SourceMark fed={meta.fed} section="files" />
+              Recent files <SampleBadge fed={meta.fed} section="files" />
             </>
           }
           title="Last touched"
           note="Files edited since the pack was built."
           dividedHead
           actions={
-            <>
-              <Menu
-                align="end"
-                entries={[
-                  { label: 'Export list as CSV', icon: 'download', onSelect: onExportFiles },
-                  { kind: 'separator' },
-                  {
-                    label: 'Clear history',
-                    icon: 'trash',
-                    danger: true,
-                    onSelect: () => dash.clearFiles('ui'),
-                  },
-                ]}
-                trigger={dotsTrigger}
-              />
-            </>
+            <Menu
+              align="end"
+              entries={[
+                { label: 'Export list as CSV', icon: 'download', onSelect: onExportFiles },
+                { kind: 'separator' },
+                { label: 'Clear history', icon: 'trash', danger: true, onSelect: () => dash.clearFiles('ui') },
+              ]}
+              trigger={dotsTrigger}
+            />
           }
         >
           <div className="table-scroll">
@@ -343,8 +267,13 @@ export function Dashboard() {
               </thead>
               <tbody>
                 {files.map((f) => (
-                  <tr key={f.id}>
-                    <td className="cell-name">{f.name}</td>
+                  <tr key={f.id} data-new={rows.fresh.has(f.id) || undefined}>
+                    <td className="cell-name">
+                      <span className="cell-name__in">
+                        <PixelArt sprite={itemForPath(f.where)} scale={1} outline="#4a4a4a" />
+                        {f.name}
+                      </span>
+                    </td>
                     <td className="cell-dir">{f.where}</td>
                     <td className="mono">{formatWhen(f.touchedAt, now)}</td>
                     <td>{f.by}</td>
@@ -375,19 +304,6 @@ export function Dashboard() {
             </table>
           </div>
         </Card>
-      </div>
-
-      <div className="status-strip">
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-          <span className="status-strip__dot" data-online={server.online} />
-          &lt;{server.status}&gt;
-        </span>
-        <span>{server.ip}</span>
-        <span style={{ marginLeft: 'auto' }}>
-          {live
-            ? (meta.agent ?? server.name)
-            : 'Sample data.'}
-        </span>
       </div>
     </main>
   )

@@ -1,0 +1,85 @@
+/* Controls shared by every page: buttons and key/value rows. */
+
+.btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 8px 16px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--line-strong);
+  background-color: var(--glass-thin);
+  backdrop-filter: blur(var(--glass-blur-sm)) saturate(var(--glass-sat));
+  -webkit-backdrop-filter: blur(var(--glass-blur-sm)) saturate(var(--glass-sat));
+  color: var(--ink);
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  white-space: nowrap;
+  box-shadow: var(--bevel-soft);
+  isolation: isolate;
+  transition: background var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease),
+    box-shadow var(--dur) var(--ease);
+}
+
+.btn:hover {
+  background-color: var(--bg-sunken);
+  border-color: var(--line-strong);
+}
+
+.btn:active { background-color: var(--well-deep); }
+
+.btn--primary {
+  background-color: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+  box-shadow: none;
+}
+
+.btn--primary:hover {
+  background-color: var(--highlight);
+  border-color: var(--highlight);
+}
+
+.btn--ghost {
+  background-color: transparent;
+  border-color: var(--glass-rim);
+  color: var(--ink-muted);
+  box-shadow: none;
+}
+
+.btn--ghost:hover {
+  color: var(--ink);
+  background-color: var(--accent-soft);
+  border-color: var(--glass-rim-wax);
+  box-shadow: none;
+}
+
+.btn--block { width: 100%; }
+.btn--sm { padding: 5px 11px; font-size: var(--fs-xs); }
+
+/* Disabled buttons go grey. Fading a red one with opacity makes its label unreadable. */
+.btn:disabled,
+.btn[aria-disabled='true'] {
+  cursor: not-allowed;
+  background-color: var(--bg-sunken);
+  border-color: var(--line);
+  color: var(--ink-faint);
+  box-shadow: none;
+}
+
+.kv { display: grid; gap: 9px; }
+
+.kv__row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  font-size: var(--fs-sm);
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--glass-rim);
+}
+
+.kv__row:last-child { border-bottom: none; padding-bottom: 0; }
+.kv__k { color: var(--ink-faint); }
+.kv__v { font-family: var(--font-mono); color: var(--ink); }
