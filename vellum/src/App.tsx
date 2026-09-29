@@ -21,18 +21,18 @@ function NotFound({ path }: { path: string }) {
       <div className="page-head">
         <div>
           <div className="eyebrow">404</div>
-          <h1 className="page-title">No such page</h1>
+          <h1 className="page-title">This chunk never generated</h1>
           <p className="page-sub">
-            Nothing is routed at <code className="mono">#{path}</code>.
+            There&rsquo;s no page at <code className="mono">#{path}</code>.
           </p>
         </div>
       </div>
       <div className="row-actions" style={{ justifyContent: 'flex-start' }}>
         <button className="btn btn--primary" onClick={() => navigate('/dash')}>
-          <Icon name="grid" size={14} /> Back to the dashboard
+          <Icon name="grid" size={14} /> Go to the Dash
         </button>
         <button className="btn btn--ghost" onClick={() => navigate('/projects')}>
-          <Icon name="cube" size={14} /> Open the library
+          <Icon name="cube" size={14} /> Go to Projects
         </button>
       </div>
     </main>

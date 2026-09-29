@@ -58,6 +58,14 @@ const escapeNonAscii = (js) =>
 
 const title = html.match(/<title>([\s\S]*?)<\/title>/)?.[1] ?? 'App'
 
+/** Non-ASCII as HTML entities, for markup in a page that may have no charset. */
+const entities = (markup) => markup.replace(/[^\x00-\x7F]/gu, (c) => `&#${c.codePointAt(0)};`)
+
+// The boot screen inside #root, which React replaces on its first render,
+// and the classic inline scripts that have to run before the first paint.
+const boot = entities(html.match(/<div id="root">([\s\S]*)<\/div>\s*<\/body>/)?.[1].trim() ?? '')
+const early = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((m) => `<script>${escapeNonAscii(m[1])}</script>`)
+
 const styles = [...html.matchAll(/<link[^>]+rel="stylesheet"[^>]*href="([^"]+)"[^>]*>/g)].map(
   (m) => m[1],
 )
@@ -89,10 +97,11 @@ if (!fragment) {
 }
 head.push(`<title>${title}</title>`)
 
-const inner = `<style>
+const inner = `${early.join('\n')}
+<style>
 ${css}
 </style>
-<div id="root"></div>
+<div id="root">${boot}</div>
 <script type="module">
 ${js}
 </script>

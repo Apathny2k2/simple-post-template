@@ -16,6 +16,8 @@ with them. Nothing is fetched at runtime, so the result opens by double-click,
 attaches to an email, or drops onto any static host. Pass `--fragment` for page
 content without the `<html>/<head>/<body>` wrapper, for hosts that supply their
 own document skeleton, and `--out <path>` to write somewhere other than `dist/`.
+It also carries over the boot screen inside `#root` and any plain inline
+`<script>` from `index.html`, with non-ASCII in the markup written as entities.
 
 Two details it handles, both of which bite otherwise: non-ASCII is escaped to
 `\uXXXX` so the page is correct even where a host serves it without a charset
@@ -538,9 +540,20 @@ canvas pixel per art pixel, scaled up by a whole number so pixels stay square,
 in the text colour of wherever it sits, and limbs that swing by
 nearest-neighbour rotation so they never blur. The
 art is our own. Under reduced motion there is no ending to wait for and the
-result shows at once, and a result is never held back more than six seconds. It
-is decoration, so it is hidden from screen readers; the text beside it says
-what happened.
+result shows at once, and a result is never held back more than six seconds.
+
+While he works a short line sits under him, from `src/lib/pip/quips.ts`
+("Snapping to the nearest 22.5 degrees."), and it changes each time he breaks a
+block or something nibbles. The mining lines are real rules in the app, so keep
+them true. Under reduced motion one line stays put. The drawing and the line are
+hidden from screen readers. Where nothing beside him says what is happening,
+his `label` does, as a status: "Sending the report", "Building the pack".
+
+The boot screen is Pip too. `scripts/make-boot.mjs` draws one swing at a block
+with the mining scene's own code and writes it into `index.html` as a sprite,
+inside `#root`, so React's first render replaces it. It fades in after 150ms,
+so a quick load never shows it. A small script before it marks every page but
+the editor as dark, so a dark page doesn't flash light while the app loads.
 
 ## The stage
 

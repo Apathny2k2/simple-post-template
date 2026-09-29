@@ -474,7 +474,7 @@ function Compose({
 
       {sending ? (
         <div className="nt__run">
-          <Pip mood={sending} onFinish={onSent} className="nt__pip" />
+          <Pip mood={sending} onFinish={onSent} className="nt__pip" label="Sending your ticket" />
         </div>
       ) : (
         <TicketForm draft={draft} onDraft={onDraft} onSend={onSend} failed={failed} autoFocus className="nt__form" />

@@ -352,7 +352,7 @@
 
 /* someone on the team is writing: Pip fishes where their reply will be */
 .th__writer { display: grid; justify-items: start; gap: 2px; margin-top: 10px; }
-.th__pip { width: 256px; max-width: 100%; justify-content: flex-start; color: var(--ink-muted); }
+.th__pip { width: 256px; max-width: 100%; align-items: flex-start; color: var(--ink-muted); }
 
 .th__closed {
   padding: 16px 20px;

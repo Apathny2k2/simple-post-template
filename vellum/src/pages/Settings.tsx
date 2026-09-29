@@ -158,7 +158,7 @@ function ReportABug() {
     >
       {run ? (
         <div className="bug-run">
-          <Pip mood={run} onFinish={() => setRun(null)} className="bug-pip" />
+          <Pip mood={run} onFinish={() => setRun(null)} className="bug-pip" label="Sending the report" />
         </div>
       ) : (
         <>
@@ -311,7 +311,7 @@ function About() {
         dividedHead
         actions={
           <button className="btn btn--sm btn--primary" onClick={() => void check()} disabled={checking}>
-            <Icon name="refresh" size={13} /> {checking ? 'Checking' : 'Check the plugin'}
+            <Icon name="refresh" size={13} /> {checking ? 'Checking…' : 'Check the plugin'}
           </button>
         }
       >

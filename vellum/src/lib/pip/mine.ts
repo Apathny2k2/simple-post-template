@@ -25,10 +25,35 @@ const PIT = 20
 const WALK = 22
 const STROLL = 28
 const GRAVITY = 300
-const REACH = 9
+/** How far in front of Pip the block he mines sits. */
+export const REACH = 9
 const TAU = Math.PI * 2
 /** Seconds a block, portal or wall takes to rise out of the ground. */
 const RISE = 0.3
+
+/** Seconds per swing of the pickaxe. */
+export const SWING = 0.46
+
+/** Poses Pip `k` seconds into a swing: wind up, strike, recover. */
+export function swing(me: Pose, k: number) {
+  if (k < 0.24) {
+    const u = easeOut(k / 0.24)
+    me.armNear = lerp(0.35, 2.6, u)
+    me.pick = lerp(1.2, 0.15, u)
+  } else if (k < 0.32) {
+    const u = (k - 0.24) / 0.08
+    me.armNear = lerp(2.6, 0.85, u)
+    me.pick = lerp(0.15, 2.2, u)
+  } else {
+    const u = (k - 0.32) / 0.14
+    me.armNear = lerp(0.85, 0.35, u)
+    me.pick = lerp(2.2, 1.2, u)
+  }
+  me.armFar = -0.2
+  me.legNear = 0.28
+  me.legFar = -0.22
+  me.bob = 1
+}
 
 type Ore = { x: number; hits: number; born: number; struck: number }
 
@@ -75,6 +100,8 @@ export class MineScene implements PipScene {
   private knock = 0
   private flash = 0
   private endedAt: number | null = null
+  /** blocks broken so far */
+  loops = 0
 
   constructor(width = 128) {
     this.w = Math.max(96, Math.round(width))
@@ -209,8 +236,7 @@ export class MineScene implements PipScene {
 
       case 'mine': {
         const ore = ph.ore!
-        const cycle = 0.46
-        if (ph.t >= ore.hits * cycle + 0.3) {
+        if (ph.t >= ore.hits * SWING + 0.3) {
           ore.hits += 1
           ore.struck = this.time
           this.chips(ore.x + 1, GROUND - 5, 3, 0.6)
@@ -383,27 +409,9 @@ export class MineScene implements PipScene {
         me.hidden = false
         break
       }
-      case 'mine': {
-        const k = ph.t % 0.46
-        if (k < 0.24) {
-          const u = easeOut(k / 0.24)
-          me.armNear = lerp(0.35, 2.6, u)
-          me.pick = lerp(1.2, 0.15, u)
-        } else if (k < 0.32) {
-          const u = (k - 0.24) / 0.08
-          me.armNear = lerp(2.6, 0.85, u)
-          me.pick = lerp(0.15, 2.2, u)
-        } else {
-          const u = (k - 0.32) / 0.14
-          me.armNear = lerp(0.85, 0.35, u)
-          me.pick = lerp(2.2, 1.2, u)
-        }
-        me.armFar = -0.2
-        me.legNear = 0.28
-        me.legFar = -0.22
-        me.bob = 1
+      case 'mine':
+        swing(me, ph.t % SWING)
         break
-      }
       case 'enter':
         me.legNear = me.legFar = 0
         me.armNear = 0.3
@@ -453,6 +461,7 @@ export class MineScene implements PipScene {
   /* ---------------- events ---------------- */
 
   private breakOre(ore: Ore) {
+    this.loops += 1
     ore.struck = this.time
     this.chips(ore.x + 4, GROUND - 4, 12, 1)
     this.gem = { x: ore.x + 3, y: GROUND - 5, vx: -26, vy: -70, age: 0 }

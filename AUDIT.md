@@ -93,8 +93,33 @@ Longest block: 41 lines at `vellum/src/lib/config.ts:1`.
 
 Scanner after phase 1: 1100 candidates (was 1186), 3251 comment lines (was 3402), 221 banners (was 234).
 
+## Phase 2: loading states and humour
+
+Pip, drawn after the brief, already covers the loaders the brief listed: the
+ticket list's "Loading…" is gone, the typing dots became Pip fishing, and
+sending a ticket or a bug report runs Pip. What was left:
+
+| ID | Where | Change | Status |
+|---|---|---|---|
+| P2-1 | `components/Pip.tsx`, `lib/pip/quips.ts` | A line under Pip while he works, changed each time he breaks a block or something nibbles, starting at a random line. Twelve mining lines built on the app's real rules and six fishing lines. One fixed line under reduced motion | Fixed |
+| P2-2 | `components/Pip.tsx` and its four hosts | Pip was hidden from screen readers with nothing said in his place. A `label` now makes him a status: "Applying the files on the server", "Building the pack", "Sending your ticket", "Sending the report". The drawing and the quip stay hidden. The Support thread already says "Maya is writing" | Fixed |
+| P2-3 | `index.html`, `scripts/make-boot.mjs`, `scripts/bundle-single-file.mjs` | Boot screen: Pip swinging at a block with "Mining the loading block.", drawn from the mining scene's own code into a 12-frame sprite (2.9 KB) used as a mask, so he takes the text colour. Fades in after 150ms. The bundler now keeps `#root`'s contents and plain inline scripts | Fixed |
+| P2-4 | `index.html` | A dark page painted light until React set the surface. A small script sets it before the first paint | Fixed |
+| P2-5 | `App.tsx` 404 | "No such page" / "Nothing is routed at" → "This chunk never generated" / "There's no page at". Buttons say "Go to the Dash" and "Go to Projects" | Fixed |
+| P2-6 | `components/ErrorBoundary.tsx` | "Vellum stopped rendering" and two long paragraphs → "Vellum tripped over a block", "Something went wrong while drawing this page. Files you've saved are safe." The note keeps the fact that reloading loses unsaved work | Fixed |
+| P2-7 | `pages/Settings.tsx` | The busy label "Checking" → "Checking…", like the other busy buttons | Fixed |
+| P2-8 | Other humour candidates | Empty states (no tickets, an empty shelf), the Dash's "Sample data" note, the server list's offline row. Not changed; the brief asks to list them and ask | Waiting |
+
+Checked in a browser: the label is set, the quip changes after the first
+block breaks (at 1.3s on a demo reload), reduced motion keeps one line, the
+404 renders, and with the CPU slowed 8x the boot screen shows until React
+takes over, on the right surface from the first frame. No page errors.
+
+Scanner after phase 2: 1097 candidates, 3258 comment lines.
+
 ## Waiting on the operator
 
+- **More humour (P2-8).** Say which of the listed spots may get a line.
 - **Plugin repository (Phase 8).** Only `Apathny2k2/simple-post-template`
   is visible to this session. The plugin needs its `owner/repo` and the
   Claude GitHub App installed on it.

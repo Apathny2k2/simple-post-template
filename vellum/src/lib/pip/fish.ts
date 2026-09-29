@@ -58,6 +58,8 @@ export class FishScene implements PipScene {
   private thrownFrom: Point | null = null
   /** seconds into a nibble, or null between them */
   private nibble: number | null = null
+  /** nibbles so far */
+  loops = 0
   private nextNibble = 1.2
   private letter = { x: 0, y: 0, spin: 0 }
   /** seconds the letter has hung over his hat */
@@ -207,7 +209,10 @@ export class FishScene implements PipScene {
           this.snap()
           break
         }
-        if (this.nibble === null && this.time >= this.nextNibble) this.nibble = 0
+        if (this.nibble === null && this.time >= this.nextNibble) {
+          this.nibble = 0
+          this.loops += 1
+        }
         if (this.nibble !== null) {
           const before = this.nibble
           this.nibble += dt

@@ -18,6 +18,8 @@ export interface PipScene {
   readonly px: Pixels
   /** true once an outcome has played through */
   readonly finished: boolean
+  /** counts rounds of the working loop: blocks broken, nibbles */
+  readonly loops: number
   resize(width: number): void
   setMood(mood: Mood, failure?: Failure): void
   /** skips to a frame that sums the mood up, for a still picture */

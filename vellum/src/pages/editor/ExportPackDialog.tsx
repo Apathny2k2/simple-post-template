@@ -270,7 +270,7 @@ export function ExportPackDialog({
 
         {run ? (
           <div className="pk-run">
-            <Pip mood={run.mood} failure={run.failure} onFinish={landed} />
+            <Pip mood={run.mood} failure={run.failure} onFinish={landed} label="Building the pack" />
           </div>
         ) : null}
 

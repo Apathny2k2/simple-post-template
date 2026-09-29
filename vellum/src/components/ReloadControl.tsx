@@ -83,6 +83,7 @@ export function ReloadControl({
       {busy ? (
         <Pip
           className="rl__pip"
+          label="Applying the files on the server"
           mood={landing ? (landing.kind === 'swapped' ? 'done' : 'failed') : 'working'}
           failure={landing?.kind === 'refused' ? 'wall' : 'lava'}
           onFinish={onLanded}

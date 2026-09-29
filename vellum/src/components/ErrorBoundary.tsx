@@ -2,20 +2,8 @@ import { Component } from 'react'
 import type { ErrorInfo, ReactNode } from 'react'
 import './ErrorBoundary.css'
 
-/* ---------------------------------------------------------------
-   The last line of defence.
-
-   A render that throws takes React's whole tree with it: `#root` is
-   emptied and the user is left looking at a white page with no idea
-   what happened or whether their work survived. That is the worst
-   possible failure mode for an editor, and it is one bad value away at
-   any time - a file off disk, a number that became NaN, a shape the
-   decoder did not expect.
-
-   This cannot fix the cause, and it does not pretend to. It says what
-   broke, keeps the page on screen, and offers the one recovery that
-   does not lose anything (try again) before the one that might.
-   --------------------------------------------------------------- */
+/* Catches a render that throws, so the page says what broke instead of
+   going blank. */
 
 type Props = { children: ReactNode }
 type State = { error: Error | null; attempt: number }
@@ -39,10 +27,9 @@ export class ErrorBoundary extends Component<Props, State> {
     return (
       <div className="crash">
         <div className="crash__card">
-          <h1 className="crash__title">Vellum stopped rendering</h1>
+          <h1 className="crash__title">Vellum tripped over a block</h1>
           <p className="crash__lead">
-            Something in the last action threw an error the editor could not recover from on its own.
-            Nothing has been written to disk, so any file you have saved is untouched.
+            Something went wrong while drawing this page. Files you&rsquo;ve saved are safe.
           </p>
           <pre className="crash__msg">{error.message}</pre>
           <div className="crash__actions">
@@ -57,8 +44,8 @@ export class ErrorBoundary extends Component<Props, State> {
             </button>
           </div>
           <p className="crash__note">
-            &ldquo;Try again&rdquo; re-renders from the current state and keeps unsaved work if the
-            error was transient. Reloading always works and always loses it.
+            Try again keeps unsaved work if the problem was brief. Reloading always works, but loses
+            unsaved work.
           </p>
         </div>
       </div>
