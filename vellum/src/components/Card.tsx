@@ -17,7 +17,6 @@ type CardProps = {
   style?: React.CSSProperties
 }
 
-/** The reusable section card. Every page composes out of this one shape. */
 export function Card({
   title,
   note,

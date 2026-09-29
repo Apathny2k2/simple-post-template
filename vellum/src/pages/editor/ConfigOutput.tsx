@@ -1,11 +1,4 @@
-/* ---------------------------------------------------------------
-   The file the form is making, while it is being made.
-
-   A form that produces a config you cannot see until you export it is
-   a form you have to trust. This is the other half: the YAML, live, in
-   the middle of the editor, so a field and its line are on screen at
-   the same moment.
-   --------------------------------------------------------------- */
+/* Live YAML preview of the config form, shown in the editor's middle column. */
 
 import { useMemo, useState } from 'react'
 import { Icon } from '../../lib/icons'
@@ -14,7 +7,7 @@ import type { Config } from '../../lib/config'
 import { saveFile } from '../../lib/download'
 import type { ProjectKind } from '../../lib/model'
 
-/** Comment, key, list marker, then value - enough to read, no parser. */
+/** Highlights one YAML line (comment, key, list marker, value) with regexes. */
 function line(text: string, i: number) {
   if (/^\s*#/.test(text)) return <span key={i} className="yml__c">{text || ' '}</span>
   const m = /^(\s*)(- )?([A-Za-z0-9_]+)(:)(.*)$/.exec(text)
@@ -53,9 +46,8 @@ export function ConfigOutput({
 }) {
   const [note, setNote] = useState<string | null>(null)
   const yaml = useMemo(() => toYaml(id, kind, config), [id, kind, config])
-  /* One directory per thing, and the directory name IS the id. A flat
-     `mobs/<id>.yml` is not a wrong path that errors - it is a path no
-     reader ever visits. */
+  /* The loader reads one directory per id and a fixed file inside it, so a
+     flat `mobs/<id>.yml` would never be read. */
   const file = configPath(kind, id)
   const lines = yaml.replace(/\n$/, '').split('\n')
 

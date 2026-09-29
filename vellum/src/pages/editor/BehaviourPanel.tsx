@@ -1,11 +1,5 @@
-/* ---------------------------------------------------------------
-   Authoring a behaviour: what arms it, and what it does once armed.
-
-   Two lists and a clock. The requirements are checked by the plugin
-   against the world; the stages are a cycle this panel can run on the
-   spot, so a geyser can be watched charging and blowing before it has
-   ever been near a server.
-   --------------------------------------------------------------- */
+/* Behaviour editor: the blocks that arm a behaviour, and the stage cycle
+   it runs. The cycle can be previewed here without a server. */
 
 import { Icon } from '../../lib/icons'
 import {
@@ -40,13 +34,13 @@ export function BehaviourPanel({
   model: Model
   behaviour: Behaviour
   onChange: (next: Behaviour) => void
-  /** where the preview clock is, so the cycle bar can show it */
+  /** the preview clock's position, shown on the cycle bar */
   now: StageAt
   playing: boolean
   onPlaying: (p: boolean) => void
-  /** fill in the worked example, for a model that has the clips for it */
+  /** fills in the geyser example, matching the model's clips by name */
   onGeyser: () => void
-  /** the shared numeric row, passed in so there is one implementation */
+  /** renders Editor's NumRow for these rows */
   children: (rows: { label: string; value: Vec3; onChange: (v: Vec3) => void; step?: number }[]) => React.ReactNode
 }) {
   const total = cycleLength(behaviour)
@@ -177,7 +171,7 @@ export function BehaviourPanel({
                     },
                   ])}
                 </div>
-                {/* three numbers is exactly where an off-by-one hides */}
+                {/* the offset in words, since three bare numbers are easy to misread */}
                 <div className="bhv-req__says">{offsetLabel(r.at)}</div>
               </div>
             ))}
@@ -204,7 +198,6 @@ export function BehaviourPanel({
 
         {behaviour.stages.length ? (
           <>
-            {/* the whole cycle at a glance, with the clock on it */}
             <div
               className="bhv-bar"
               role="img"

@@ -1,7 +1,5 @@
-/* Design tokens. These are the editor's: Minecraft's inventory greys, flat,
-   with a blue for what is selected or active. studio.css re-points them
-   for the dark surface on every other page. Tokens are named by role, so a
-   rule says what it wants (--border, --accent-text) rather than a colour. */
+/* Design tokens for the editor: Minecraft's inventory greys, with a blue for
+   selection. studio.css re-points them for the dark pages. Named by role. */
 
 :root {
   color-scheme: light;

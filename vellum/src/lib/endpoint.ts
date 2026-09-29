@@ -1,11 +1,4 @@
-/* ---------------------------------------------------------------
-   One description of an HTTP endpoint, shared by every API surface
-   in the app.
-
-   The reference panels render straight from these, so documentation
-   cannot drift from what the client actually calls - and a plugin
-   author reading the panel is reading the same object the code uses.
-   --------------------------------------------------------------- */
+/* The description of one HTTP endpoint, shared by api.ts and dash-api.ts. */
 
 export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
 
@@ -24,6 +17,6 @@ export type EndpointSpec<Group extends string = string> = {
   params?: Param[]
   body?: Param[]
   returns: string
-  /** shown as the endpoint badge next to the UI it backs */
+  /** the part of the UI this endpoint feeds */
   usedBy?: string
 }

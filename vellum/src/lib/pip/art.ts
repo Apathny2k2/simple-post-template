@@ -1,6 +1,5 @@
-/* Pip and his props, drawn for this app in one colour, after the
-   offline dinosaur game: solid figures with holes for the details, and
-   the world around them in thin lines. */
+/* Pip and his props in one colour, after the offline dinosaur game: solid
+   figures with holes for the details, and the world in thin lines. */
 
 import { mask } from './pixels'
 

@@ -8,12 +8,9 @@ import { currentServer, enterServer, enterable, roleLabel, servers } from '../li
 import type { LinkedServer } from '../lib/servers'
 import './Servers.css'
 
-/* The way into the Studio: every server this account can open, the
-   ones it owns and the ones where another team has given it a seat.
-   With only one to go to there is nothing to ask, so it goes straight
-   in. */
+/* Every server this account can open: its own, and those where another team gave it a seat. */
 
-/** Signal bars, as the game's own server list draws them. */
+/** Ping as four signal bars. */
 function Signal({ server }: { server: LinkedServer }) {
   const ping = server.online ? server.ping : null
   const lit = ping === null ? 0 : ping < 80 ? 4 : ping < 150 ? 3 : ping < 300 ? 2 : 1
@@ -91,7 +88,7 @@ export function Servers() {
     navigate('/dash')
   }
 
-  // one server to go to is not a choice
+  // with only one server to enter, go straight in
   useEffect(() => {
     if (!only) return
     enterServer(only)

@@ -1,37 +1,9 @@
-/* ---------------------------------------------------------------
-   The Dashboard ingest API.
-
-   The Dash reports a Minecraft realm that Vellum does not run: the
-   server's identity, the resource pack it is serving, who is still on
-   an old copy, and what the team touched last. None of that is
-   knowable from inside a browser tab, so all of it is fed in from
-   outside - by a server plugin.
-
-   Three halves, in the order they matter:
-
-   1. `dashEndpoints` - the contract, machine-readable. The reference
-      panel on the Dash renders straight from it, so a plugin author
-      reads the same object the client calls. `GET /dash/schema`
-      returns it, which means a plugin can check at runtime that the
-      Vellum it is talking to speaks its dialect.
-
-   2. `dash` - the typed client, one method per endpoint. It writes
-      into the in-memory store; the shapes are already what a real
-      Vellum server would accept, so the plugin side does not change
-      when the store moves behind a socket.
-
-   3. The transports - three ways a plugin's data actually reaches a
-      static page, because a page cannot listen on a port:
-
-      - `window.Vellum.dash.*`  a global, for anything sharing the
-        document: a launcher's web view, a companion script, devtools.
-      - `postMessage`           for an embedding host, origin-checked.
-      - `connect(...)`          Vellum polls, or streams over SSE, from
-        a URL the plugin serves. This is the one a Paper plugin uses.
-
-   Every path lands in the same validator and the same log, so a card
-   cannot be fed by a route that skipped the checks.
-   --------------------------------------------------------------- */
+/* The Dash ingest API, the contract a server plugin implements (docs/plugin-api.md
+   has the prose). `GET /dash/schema` returns `dashEndpoints`, so a plugin can
+   check the version at startup. A static page cannot listen on a port, so data
+   arrives through `window.Vellum.dash`, `postMessage`, or `connect()`, which a
+   Paper plugin uses: Vellum polls or streams from a URL the plugin serves. All
+   three go through the same validators and the same log. */
 
 import {
   LIMITS,
@@ -319,11 +291,8 @@ export const dash = {
     const applied: Section[] = []
     const s = dashStore.snapshot
 
-    /* Each section goes through the same reader the single-section
-       endpoint uses, and only lands in `applied` if it actually
-       applied. Taking a section that was thrown away and reporting it
-       as fed turns off the one signal - the `sample` badge - that says
-       which numbers on this page are real. */
+    /* A section counts as applied, and loses its `sample` badge, only when
+       its reader found a known field in it. */
     const section = (
       key: Section,
       read: (b: Body) => { value: unknown; problems: string[]; touched: string[]; known: readonly string[] },
@@ -372,7 +341,7 @@ export const dash = {
       )
     }
     dashStore.accept(null, 'POST /dash/snapshot', problems, via, applied.length > 0)
-    // the cards it touched re-render; a plugin on a timer must not fill the log
+    // one log line for the whole call; `notify` re-renders the cards without adding more
     dashStore.notify(applied)
     return { ok: applied.length > 0, applied, problems }
   },
@@ -419,10 +388,8 @@ export const dash = {
   pack(input: unknown, via: Via = 'bridge'): Ack {
     const body = asBody(input)
     if (!body) return reject('PATCH /dash/pack', 'body must be a JSON object', via)
-    /* archive, bytes and hash are documented as required, and the hash
-       is what every player report is compared against - so the first
-       report of a build has to carry them rather than inheriting the
-       sample's. */
+    /* The first pack report must carry archive, bytes and hash, so player
+       reports are never compared against the sample's hash. */
     const firstPack = !dashStore.meta.fed.includes('pack')
     const missing = firstPack ? ['archive', 'bytes', 'hash'].filter((k) => body[k] === undefined) : []
     if (missing.length) {
@@ -436,10 +403,7 @@ export const dash = {
     dashStore.snapshot.pack = value
     dashStore.accept('pack', 'PATCH /dash/pack', problems, via)
 
-    /* A new pack invalidates every client's acknowledgement, so the
-       adoption card is recounted here rather than waiting for the next
-       census - otherwise it would claim everyone is up to date the
-       instant you push a build nobody has downloaded. */
+    // a new hash can make reported clients stale, so recount against it now
     if (dashStore.roster.size) {
       const counted = recountRoster()
       dashStore.snapshot.players = { ...counted, sampledAt: new Date().toISOString() }
@@ -503,7 +467,7 @@ export const dash = {
       return { ok: false, problems, added: 0 }
     }
 
-    // newest first, and a plugin streaming every save must not grow without bound
+    // newest first; the last row of a batch counts as the newest
     dashStore.snapshot.files = [...parsed.reverse(), ...dashStore.snapshot.files].slice(0, 50)
     dashStore.accept('files', 'POST /dash/files', problems, via)
     return { ok: true, problems, added: parsed.length }
@@ -580,8 +544,6 @@ export const dash = {
 
   /** GET /dash/schema */
   schema() {
-    // the endpoint's own `returns` promises limits, and a plugin should
-    // not have to discover them by tripping over problems[]
     return { version: DASH_API_VERSION, base: DASH_BASE, endpoints: dashEndpoints, limits: LIMITS }
   },
 
@@ -602,12 +564,7 @@ declare global {
   }
 }
 
-/**
- * Hang the client off `window` so anything sharing the document can
- * feed the Dash without a network hop - a launcher's web view, a
- * companion script, or a person in devtools checking their payload
- * before they write the plugin.
- */
+/** Exposes `dash` as `window.Vellum.dash`, for scripts in the page and for trying payloads in devtools. */
 export function installBridge() {
   if (typeof window === 'undefined') return
   window.Vellum = { version: DASH_API_VERSION, dash }
@@ -631,11 +588,7 @@ const OPS: Record<string, (body: unknown, via: Via) => unknown> = {
   'dash.read': () => dash.read(),
 }
 
-/**
- * Accept writes from an embedding page. The origin allowlist is not
- * optional and has no wildcard: a dashboard that takes numbers from
- * any frame that can reach it is not a dashboard.
- */
+/** Takes writes from an embedding page whose origin is in `allowedOrigins`. There is no wildcard. */
 export function listenPostMessage(allowedOrigins: string[]): () => void {
   const allowed = new Set(allowedOrigins.filter(Boolean))
   const onMessage = (e: MessageEvent) => {
@@ -675,7 +628,7 @@ export function loadLink(): Link | null {
     const raw = localStorage.getItem(STORAGE_KEY)
     return raw ? (JSON.parse(raw) as Link) : null
   } catch {
-    // private mode, or blocked site data - a link that cannot persist still works
+    // storage blocked: there is no saved link
     return null
   }
 }
@@ -685,21 +638,16 @@ function saveLink(link: Link | null) {
     if (link) localStorage.setItem(STORAGE_KEY, JSON.stringify(link))
     else localStorage.removeItem(STORAGE_KEY)
   } catch {
-    /* nothing to do - the link lives for this session only */
+    /* storage blocked: the link lasts for this session only */
   }
 }
 
 let active: { stop: () => void } | null = null
 
 /**
- * Point Vellum at a URL the plugin serves. SSE first, because a card
- * that updates when the pack is pushed beats one that updates up to a
- * minute later; polling is the fallback, and every failure is reported
- * rather than retried in silence.
- *
- * The plugin's server must allow this origin with CORS, and the SSE
- * token travels as a query parameter because EventSource cannot set a
- * header - so treat it as something that will appear in access logs.
+ * Feeds the Dash from a URL the plugin serves, over SSE when `link.stream` is set and by
+ * polling otherwise or once the stream fails. The plugin must allow this origin with CORS.
+ * EventSource cannot set headers, so the SSE token goes in the query string, where access logs keep it.
  */
 export function connect(link: Link, onState: (s: LinkState) => void): () => void {
   disconnect()

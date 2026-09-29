@@ -1,30 +1,6 @@
-/* ---------------------------------------------------------------
-   Behaviours: what makes a block or an item do something on its own.
-
-   An animation says how a model moves. It does not say *when*, and for
-   a block that is most of the question. A geyser is not a model with a
-   steam clip - it is a model that sits quiet until there is water over
-   lava beneath it, then charges for a while, rumbles as it nears full,
-   blows, and settles. Nothing in a clip can express "for a while" or
-   "when there is lava below".
-
-   So a behaviour is two things and nothing else:
-
-   1. `requires` - what has to be true of the blocks around this one
-      before any of it runs. All of them, or none of it.
-   2. `stages` - an ordered cycle. Each stage lasts a number of seconds,
-      plays one of the model's own clips while it does, and may throw
-      off particles, a sound or a shake. The cycle repeats while the
-      requirements hold.
-
-   "Near full charge it rumbles" needs no special case: rumble is the
-   stage before the burst, and how long the charge runs is the charge
-   stage's own duration.
-
-   The plugin is what checks the world and runs the clock. This is the
-   authoring half: the shape, the rules, and a clock good enough to
-   watch the thing work before it ever reaches a server.
-   --------------------------------------------------------------- */
+/* A behaviour: blocks that must sit at given offsets (`requires`) and a
+   timed cycle of stages, each looping a clip with optional effects. The
+   plugin checks the world and runs the cycle; this is the authoring side. */
 
 import type { Model, Vec3 } from './model'
 
@@ -43,7 +19,7 @@ export type BehaviourEffect = {
 export type BehaviourStage = {
   id: string
   name: string
-  /** how long it lasts. A stage of zero seconds is a stage nobody sees. */
+  /** length in seconds; a stage of 0 or less is skipped */
   seconds: number
   /** one of the model's clips, looped for the stage's length; null holds the rest pose */
   clip: string | null
@@ -70,7 +46,7 @@ export const hasBehaviour = (b: Behaviour | undefined): b is Behaviour =>
 
 /* ---------------- the catalogue ---------------- */
 
-/** Particles a pack can already name, with the colour each reads as. */
+/** Vanilla particles, with the colour and vertical drift the preview draws them with. */
 export const PARTICLES: Array<{ id: string; label: string; colour: string; rise: number }> = [
   { id: 'minecraft:cloud', label: 'Steam', colour: '#e8f1f6', rise: 1 },
   { id: 'minecraft:splash', label: 'Splash', colour: '#7fc4e8', rise: 0.6 },
@@ -85,7 +61,7 @@ export const PARTICLES: Array<{ id: string; label: string; colour: string; rise:
 export const particleById = (id: string | undefined) =>
   PARTICLES.find((p) => p.id === id) ?? PARTICLES[0]
 
-/** The blocks a requirement is most often about, offered rather than typed. */
+/** The requirement picker's block list; other ids are typed in. */
 export const COMMON_BLOCKS = [
   'minecraft:water',
   'minecraft:lava',
@@ -98,11 +74,7 @@ export const COMMON_BLOCKS = [
 
 /* ---------------- reading a position out loud ---------------- */
 
-/**
- * What an offset means in words. A modeller thinks "a water source
- * under it", not "[0, -1, 0]", and a row of three numbers is exactly
- * where an off-by-one hides.
- */
+/** An offset in words, such as "2 above, east". +x is east and +z is south, as in Minecraft. */
 export function offsetLabel(at: Vec3): string {
   const [x, y, z] = at
   if (x === 0 && y === 0 && z === 0) return 'this block itself'
@@ -177,10 +149,7 @@ export const makeRequirement = (at: Vec3, block: string): BehaviourRequirement =
 
 export type BehaviourIssue = { level: 'error' | 'warning'; message: string }
 
-/**
- * What can be wrong with a behaviour, checked against the model it is
- * attached to - a stage can only play a clip that model actually has.
- */
+/** Problems with a behaviour, checked against the model it is attached to. */
 export function validateBehaviour(model: Model, b: Behaviour | undefined): BehaviourIssue[] {
   if (!hasBehaviour(b)) return []
   const out: BehaviourIssue[] = []
@@ -250,14 +219,7 @@ export function validateBehaviour(model: Model, b: Behaviour | undefined): Behav
 
 /* ---------------- a worked example ---------------- */
 
-/**
- * The geyser, which is the case this whole shape was built around:
- * water over lava beneath it, a long quiet charge, a rumble as it nears
- * full, the burst, and a settle before it starts again.
- *
- * Clip ids are resolved by the caller, because a behaviour can only
- * name clips the model it is attached to actually has.
- */
+/** The geyser sample. The caller passes ids of clips the model has. */
 export function geyserBehaviour(clips: { idle?: string; rumble?: string; erupt?: string }): Behaviour {
   const charge = makeStage('charge', 7, clips.idle ?? null)
   charge.effects = [{ kind: 'particles', id: 'minecraft:splash', amount: 1, at: [0, 14, 0] }]

@@ -1,5 +1,4 @@
-/* Pip mining: the studio's waiting scene for work that runs, drawn in one
-   colour after the offline dinosaur game.
+/* Pip mining: the waiting scene for work that runs.
 
    working  he mines the block in front of him; when it breaks, the next
             one rises out of the ground a few steps on and he walks to it
@@ -8,7 +7,7 @@
    failed   the ground opens into lava and he walks in, or a wall rises
             and he walks into it and sits down under a rain cloud
 
-   An outcome never cuts a swing short and he never walks past a block.
+   An outcome waits for the current swing to land, and he never walks past a block.
    `finished` turns true once the ending has played, so whatever shows
    the result can wait for it. */
 

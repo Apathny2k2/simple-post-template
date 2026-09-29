@@ -4,8 +4,7 @@ import type { Bone, Clip, Cube, Face as ModelFace, FaceKey, Model, Pose, Vec3 } 
 import './Model3D.css'
 import './ModelView.css'
 
-/* Faces, in the order a CSS box needs them: each is the plane's own size plus
-   the transform that swings it onto the right side of the box. */
+/* Each face's plane size and the transform that places it on the box. South is +z. */
 const FACE_PLACEMENT: Record<
   FaceKey,
   (w: number, h: number, d: number) => { w: number; h: number; transform: string }
@@ -23,11 +22,8 @@ const ZOOM_MAX = 7
 /** Far enough to put any corner of a model under the cursor, near enough to find it again. */
 const PAN_LIMIT = 3000
 
-/**
- * Model space is Y-up and right-handed; CSS is Y-down. Mapping (x,y,z) to
- * (x,-y,z) flips the sense of rotation about X and Z but leaves Y alone,
- * which is where the sign flips below come from.
- */
+/* Model space is Y-up, CSS is Y-down. Mapping (x,y,z) to (x,-y,z) reverses
+   rotation about X and Z but not Y, so rx and rz are negated. */
 function transformOf(translate: Vec3, rotation: Vec3, scale: number, scl: Vec3 = [1, 1, 1]) {
   const [x, y, z] = translate
   const [rx, ry, rz] = rotation
@@ -84,18 +80,16 @@ function Face({
     const [x1, y1, x2, y2] = face.uv
     const uw = Math.abs(x2 - x1) || 1
     const uh = Math.abs(y2 - y1) || 1
-    // Scale the sheet so the UV rectangle covers this face exactly, then slide
-    // it so the rectangle's corner lands on the face's corner. The sheet is
-    // measured in UV space, which is not always the PNG's pixel size.
+    // Scale the sheet so the UV rectangle covers the face, then offset it to the
+    // rectangle's corner. Sizes are in UV units, which can differ from the PNG's pixels.
     const sx = inner.w / uw
     const sy = inner.h / uh
     skin.backgroundImage = `url(${texture.source})`
     skin.backgroundSize = `${texture.uvWidth * sx}px ${texture.uvHeight * sy}px`
     skin.backgroundPosition = `${-Math.min(x1, x2) * sx}px ${-Math.min(y1, y2) * sy}px`
     skin.imageRendering = 'pixelated'
-    // A reversed UV coordinate is how a face is mirrored. Normalising the
-    // rectangle to min/max would silently throw that away, so the flip is
-    // re-applied to the plane instead.
+    // A reversed UV coordinate mirrors the face. The rectangle above is
+    // normalised to min/max, so the flip is applied to the plane here.
     const flipX = x2 < x1
     const flipY = y2 < y1
     if (flipX || flipY) {
@@ -105,9 +99,8 @@ function Face({
     skin.background = 'rgba(146, 165, 202, 0.25)'
   }
 
-  /* offsetX/offsetY are already in the element's own coordinate system -
-     the browser inverse-transforms the hit point for us - so a click on a
-     rotated face in the viewport gives face-local pixels directly. */
+  /* The browser inverse-transforms offsetX/offsetY into the element's own
+     space, so a hit on a rotated face gives face-local pixels. */
   const report = (e: React.PointerEvent<HTMLDivElement>, phase: 'down' | 'move') => {
     if (!onPaint) return
     const u = e.nativeEvent.offsetX / px.w
@@ -128,9 +121,8 @@ function Face({
       onPointerDown={
         onPaint
           ? (e) => {
-              /* Left button paints and keeps the event to itself; any other
-                 button is left to bubble so the scene can orbit, which is
-                 what makes painting and looking around coexist. */
+              /* Left button paints and stops the event. Other buttons bubble
+                 up so the scene can orbit or pan. */
               if (e.button !== 0) return
               e.stopPropagation()
               ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
@@ -164,8 +156,8 @@ function CubeBox({
 }) {
   if (!cube.visible) return null
 
-  // the format does not guarantee to > from; a reversed box would render
-  // inside-out, so it is clamped here and flagged by the validator instead
+  // the format allows to < from, which would render inside-out. The size is
+  // clamped here and validateModel reports it.
   const inf = cube.inflate || 0
   const w = Math.max(cube.to[0] - cube.from[0], 0) + inf * 2
   const h = Math.max(cube.to[1] - cube.from[1], 0) + inf * 2
@@ -302,7 +294,7 @@ type Props = {
   initialPitch?: number
   /** Holds the view at this yaw, for a caller that turns the model itself. */
   yaw?: number
-  /** pull the camera back; negative moves away */
+  /** stage translateZ in px; negative moves the model away */
   zoom?: number
   /** false hides the on-canvas zoom cluster, for thumbnails */
   zoomable?: boolean
@@ -310,33 +302,20 @@ type Props = {
   time?: number
   selected?: string | null
   onSelect?: (id: string) => void
-  /** a click that lands on nothing - the only way back to no selection */
+  /** a click on empty space */
   onDeselect?: () => void
-  /**
-   * When set, a LEFT drag on a face paints. Every other drag - on empty
-   * space, or with any other button - still orbits, so you are never
-   * stuck looking at one side of the model while painting it.
-   */
+  /** When set, a left-button drag on a face paints. Other drags orbit or pan as usual. */
   onPaint?: (cubeId: string, face: FaceKey, u: number, v: number, phase: 'down' | 'move') => void
   /** a display-slot transform applied to the whole model, as a pack would */
   display?: { rotation: Vec3; translation: Vec3; scale: Vec3 } | null
-  /**
-   * Where the stage origin sits. A model stands on the grid, so its
-   * lowest point is what meets the floor; a whole scene has no floor
-   * to stand on and wants its middle in the middle of the frame.
-   */
+  /** 'floor' stands the model's lowest point on the grid; 'centre' centres it vertically. */
   anchorAt?: 'floor' | 'centre'
   /** an explicit stage origin, in model units, overriding `anchorAt` */
   anchorOn?: Vec3 | null
   className?: string
 }
 
-/**
- * Renders a `.vellum` with CSS 3D transforms: the bone hierarchy becomes
- * nested transformed divs, and each face samples its own UV rectangle out of
- * the texture. No WebGL, no meshes - but the geometry, the pivots and the UVs
- * are the real ones from the file.
- */
+/** Renders a model with CSS 3D transforms. Bones are nested divs; each face shows its UV rectangle. */
 export function ModelView({
   model,
   scale = 6,
@@ -363,9 +342,7 @@ export function ModelView({
   const yaw = heldYaw ?? ownYaw
   const [pitch, setPitch] = useState(initialPitch)
   const [factor, setFactor] = useState(1)
-  /* Screen-space offset of the whole stage. Without it the scale is
-     always about the stage's own centre, so every zoom walked into the
-     middle of the model and there was no way to look at a corner of it. */
+  // screen-space offset of the stage; without it every zoom is about the stage's centre
   const [pan, setPan] = useState({ x: 0, y: 0 })
   const drag = useRef<{ x: number; y: number; yaw: number; pitch: number } | null>(null)
   const panning = useRef<{ x: number; y: number; pan: { x: number; y: number } } | null>(null)
@@ -378,17 +355,10 @@ export function ModelView({
   const clampZoom = (f: number) => Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, f))
   const clampPan = (v: number) => Math.max(-PAN_LIMIT, Math.min(PAN_LIMIT, v))
 
-  /* Zooming about the cursor cannot be solved on paper here. The stage
-     scales in 3D and the result goes through a perspective divisor, so
-     the on-screen magnification is not the scale factor and the fixed
-     point is not the container's centre - assuming otherwise left the
-     thing under the cursor 288px away from it.
-
-     So it is measured. A hidden probe of known size rides inside the
-     stage; comparing its rect before and after the zoom gives both the
-     real screen ratio (from its width) and the real fixed point (from
-     where its centre went). The pan correction that holds the cursor
-     still follows from those two, and lands in the same frame. */
+  /* The stage scales in 3D under perspective, so a zoom's on-screen ratio and
+     fixed point can't be derived from the scale factor. A hidden probe inside
+     the stage is measured before and after: its width gives the ratio and its
+     centre gives the fixed point. The pan then holds the cursor still. */
   const probe = useRef<HTMLDivElement>(null)
   const zoomAnchor = useRef<{ at: { x: number; y: number }; before: DOMRect } | null>(null)
 
@@ -427,9 +397,7 @@ export function ModelView({
     (e: React.PointerEvent) => {
       if (!orbit) return
 
-      /* Middle button or shift-drag pans. Left stays orbit and right
-         stays orbit-while-painting, so nothing that already worked
-         changes meaning. */
+      // middle button or shift-drag pans; left and right drags orbit
       if (e.button === 1 || e.shiftKey) {
         e.preventDefault()
         panning.current = { x: e.clientX, y: e.clientY, pan }
@@ -471,7 +439,7 @@ export function ModelView({
       const [a, b] = [...pinch.current.values()]
       const span = Math.hypot(a.x - b.x, a.y - b.y)
       if (start.span > 0) {
-        // pinch about the midpoint, the same way the wheel zooms at the cursor
+        // zoom about the pinch midpoint
         const want = clampZoom((start.factor * span) / start.span)
         const now = factorRef.current
         if (now > 0 && want !== now) zoomAt(want / now, { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 })
@@ -492,9 +460,8 @@ export function ModelView({
     drag.current = null
   }, [])
 
-  /* Wheel zoom has to be a non-passive native listener: React's onWheel is
-     registered passively, so preventDefault there is ignored and the page
-     scrolls behind the viewport instead. */
+  /* A native non-passive listener: React registers onWheel as passive, so
+     preventDefault there is ignored and the page scrolls. */
   useEffect(() => {
     const node = root.current
     if (!node || !orbit) return
@@ -513,8 +480,6 @@ export function ModelView({
     return () => node.removeEventListener('wheel', onWheel)
   }, [orbit, zoomAt])
 
-  /* Centred left-to-right and front-to-back, but stood ON the grid rather
-     than through it: the model's lowest point is what meets the floor. */
   const anchor = useMemo(() => {
     if (!model.cubes.length) return anchorOn ?? ([0, 0, 0] as Vec3)
     const lo: Vec3 = [Infinity, Infinity, Infinity]
@@ -533,9 +498,8 @@ export function ModelView({
     ] as Vec3
   }, [model, anchorAt, anchorOn])
 
-  /* Zoom scales the whole stage rather than sliding the camera along Z:
-     translateZ past the perspective origin distorts and eventually turns
-     the model inside out, while scaling keeps proportions exact. */
+  /* The zoom factor scales the stage. Zooming with translateZ distorts, and
+     past the perspective distance it turns the model inside out. */
   const stage = spin
     ? undefined
     : `translate(${pan.x}px, ${pan.y}px) translateZ(${zoom}px) rotateX(${pitch}deg) ` +
@@ -583,7 +547,7 @@ export function ModelView({
           </div>
         ) : null}
         <div className="scene3d__origin">
-          {/* measured, never seen: gives the zoom its real ratio and fixed point */}
+          {/* invisible; measured before and after each zoom */}
           <div className="scene3d__probe" ref={probe} aria-hidden="true" />
           <div
             className="bbroot"

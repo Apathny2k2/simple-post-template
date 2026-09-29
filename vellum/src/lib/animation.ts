@@ -1,20 +1,5 @@
-/* ---------------------------------------------------------------
-   Creating and editing clips.
-
-   A clip is a name, a length and a set of tracks; a track is one bone
-   and one channel; a key is a time, a value and how it reaches the next
-   one. That is the whole model, and every edit here is a pure function
-   over it so the undo stack is just a list of old models.
-
-   Two rules the editor leans on:
-
-   1. **A track is created by keying it.** There is no "add animator"
-      step - keying a bone's rotation brings that track into existence,
-      and emptying a track removes it again, so the timeline never shows
-      a row with nothing in it.
-   2. **One key per time, per track.** Keying a time that already holds
-      a key overwrites it, which is what makes scrub-pose-key work.
-   --------------------------------------------------------------- */
+/* Clip, track and key edits. Each returns a new Model for the undo stack.
+   A track exists only while it has keys, and holds one key per time. */
 
 import { newId } from './new-model'
 import { sampleTrack } from './model'
@@ -31,7 +16,7 @@ export const DEFAULT_VALUE: Record<Channel, Vec3> = {
 
 export const CHANNELS: Channel[] = ['rotation', 'position', 'scale']
 
-/** Snap a time to the clip's grid. A snapping of 0 means "don't". */
+/** Clamp a time to the clip and snap it to the grid. A snapping of 0 means no grid. */
 export function snapTime(clip: Clip, t: number): number {
   const clamped = Math.max(0, Math.min(clip.length, t))
   if (!clip.snapping) return Number(clamped.toFixed(4))
@@ -44,7 +29,7 @@ export function makeClip(name: string, length = 1, snapping = 24): Clip {
   return { id: newId(), name, loop: 'loop', length, snapping, tracks: [] }
 }
 
-/** A name nothing else in the model is using. */
+/** `wanted`, or `wanted_2`, `wanted_3` and so on if it is taken. */
 export function uniqueName(taken: readonly string[], wanted: string): string {
   if (!taken.includes(wanted)) return wanted
   for (let n = 2; n < 1000; n++) {
@@ -55,9 +40,7 @@ export function uniqueName(taken: readonly string[], wanted: string): string {
 }
 
 export function addClip(model: Model, name?: string): { model: Model; id: string } {
-  /* Naming from the current count collided the moment anything was
-     deleted, and the picker is the only place a clip has an identity -
-     two options reading "4 · 1s" are indistinguishable. */
+  // the clip picker shows just name and length, so names must differ
   const names = model.clips.map((c) => c.name)
   const clip = makeClip(uniqueName(names, name?.trim() || `animation.${model.clips.length + 1}`))
   return { model: { ...model, clips: [...model.clips, clip] }, id: clip.id }
@@ -82,16 +65,7 @@ export function duplicateClip(model: Model, id: string): { model: Model; id: str
   return { model: { ...model, clips: [...model.clips, copy], }, id: copy.id }
 }
 
-/**
- * Patch a clip in place.
- *
- * Shortening one used to delete every key past the new end - 77 down to
- * 17 from one drag of the length field, with no warning and no way back
- * except undo, and lengthening it again brought nothing back. Keys off
- * the end round-trip through the codec perfectly well; the validator
- * already says they are out of range, so they are kept and reported
- * rather than destroyed.
- */
+/** Keys past a shortened clip's end are kept; the validator warns about them. */
 export function updateClip(model: Model, id: string, patch: Partial<Omit<Clip, 'id' | 'tracks'>>): Model {
   return {
     ...model,
@@ -119,12 +93,7 @@ function mapTracks(model: Model, clipId: string, fn: (tracks: Track[]) => Track[
   }
 }
 
-/**
- * Key a bone-channel at `time`. The track is created if it does not
- * exist; an existing key at that time is overwritten rather than stacked.
- * Without a value, the current sampled pose is keyed - which is what
- * "scrub, pose, key" means.
- */
+/** Key a bone-channel at `time`, replacing any key there. With no `value`, keys the sampled pose. */
 export function setKey(
   model: Model,
   clipId: string,
@@ -167,7 +136,7 @@ export function updateKey(
   return mapTracks(model, clipId, (tracks) =>
     tracks.map((track) => {
       if (!track.keys.some((k) => k.id === keyId)) return track
-      // moving a key onto another one replaces it, rather than stacking two at a time
+      // a key moved onto another replaces it
       const cleared =
         time === undefined
           ? track.keys
@@ -188,17 +157,13 @@ export function deleteKey(model: Model, clipId: string, keyId: string): Model {
   )
 }
 
-/** Drop every key a bone-channel holds, which removes the row entirely. */
 export function deleteTrack(model: Model, clipId: string, bone: string, channel: Channel): Model {
   return mapTracks(model, clipId, (tracks) =>
     tracks.filter((t) => !(t.bone === bone && t.channel === channel)),
   )
 }
 
-/**
- * Make a looping clip actually loop: copy each track's first key to the
- * clip's end, so the pose it returns to is the pose it left.
- */
+/** Copy each track's first key to the clip's end, so the loop returns to its start pose. */
 export function closeLoop(model: Model, clipId: string): Model {
   const clip = model.clips.find((c) => c.id === clipId)
   if (!clip) return model
@@ -222,7 +187,7 @@ export function closeLoop(model: Model, clipId: string): Model {
 
 export type BoneRef = { id: string; name: string; depth: number }
 
-/** Every bone in the tree, flattened - the animatable things in a model. */
+/** Every bone in the tree, flattened depth-first. */
 export function boneList(bones: Bone[], depth = 0): BoneRef[] {
   return bones.flatMap((b) => [
     { id: b.id, name: b.name, depth },

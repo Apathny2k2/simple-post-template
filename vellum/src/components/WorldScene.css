@@ -52,10 +52,7 @@
   white-space: nowrap;
 }
 
-/* Flat black. There was a sky here - a blue with the fog lightening
-   toward the horizon, a square sun, clouds, stars - and all of it was
-   competing with the one thing anybody opened this to look at. Black
-   also means a glow reads as a glow without a night mode to switch to. */
+/* Near-black so the model stands out and glowing particles read as glow. */
 .world__stage {
   position: relative;
   flex: 1;
@@ -115,8 +112,7 @@
 
 /* ---------------- behaviour effects ---------------- */
 
-/* The whole model shakes, which is what a block does when the ground
-   under it is moving - shaking each cube would read as it falling apart. */
+/* Shakes the whole model. Shaking each cube would look like it falling apart. */
 .world__shake { position: absolute; inset: 0; }
 .world__shake[data-shaking] { animation: world-shake 0.09s linear infinite; }
 

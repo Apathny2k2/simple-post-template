@@ -28,11 +28,7 @@ const TICKS = [0, 1, 2, 3, 4, 5, 6].map((i) => ({
   label: i === 6 ? 'now' : `${WINDOW_S - i * 15}s`,
 }))
 
-/**
- * Every write from the plugin as a keyframe on its channel, sliding left
- * as it ages, the way the animator's timeline reads. The store only keeps
- * the last forty writes, so this keeps its own ninety seconds.
- */
+/** Plugin writes as keyframes per channel over the last 90 s. The store keeps only 40, so this keeps its own list. */
 export function Timeline({ now }: { now: number }) {
   const [events, setEvents] = useState<IngestRecord[]>(() => [...dashStore.log].reverse())
 

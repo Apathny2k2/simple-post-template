@@ -1,11 +1,5 @@
-/* ---------------------------------------------------------------
-   Exporting the shelf as a resource pack.
-
-   A pack is a collection, not a model - one item in a pack of its own
-   is not how anybody ships - so this hangs off the shelf rather than
-   off the editor. It says what is going in, what is not and why, and
-   it says it before the download rather than after.
-   --------------------------------------------------------------- */
+/* Exports a library shelf as a resource pack, and lists what goes in and
+   what is left out before the download. */
 
 import { useMemo, useRef, useState } from 'react'
 import { Icon } from '../../lib/icons'
@@ -33,11 +27,8 @@ export function ExportPackDialog({
   useModal(panel, onClose, focusOnClose)
 
   const [namespace, setNamespace] = useState(() => safeId(suggestedName))
-  /* 84 is what the plugin's own generator reads out of 26.1.2's
-     version.json - a measured number, not a guessed one. It is still a
-     field rather than a constant because the plugin flagged that 26.2
-     may declare higher, and a stale constant here would be a confident
-     lie rather than an open question. */
+  /* 84 is the pack format in Minecraft 26.1.2's version.json. It is an
+     editable field because newer versions may declare a higher one. */
   const [packFormat, setPackFormat] = useState(84)
   const [description, setDescription] = useState(`${suggestedName} — built in Vellum`)
   const [note, setNote] = useState<string | null>(null)
@@ -49,8 +40,8 @@ export function ExportPackDialog({
     [items, namespace, packFormat, description, nsOk],
   )
 
-  /* Warnings only. An error is not a change on the way in - the model
-     was refused - and it says so under "Left out" with the reason on it. */
+  /* warnings for models that made it in; refused models are listed under
+     "Left out" with the reason */
   const problems = useMemo(() => {
     if (!report) return []
     const refused = new Set(report.skipped.map((s) => s.id))
@@ -62,23 +53,21 @@ export function ExportPackDialog({
 
   const models = report?.files.filter((f) => f.path.endsWith('.json') && f.path !== 'pack.mcmeta').length ?? 0
 
-  /* The configs are a SEPARATE archive on purpose: they go in the
-     plugin's folder, not in resourcepacks/, and burying them inside
-     the pack would invite dropping the whole thing in the wrong place. */
+  /* Configs are a separate zip because they go in the plugin's folder,
+     while the pack goes in resourcepacks/. */
   const configs = useMemo(() => buildConfigs(items), [items])
 
   const stem = safeId(suggestedName)
 
-  /* Pip works while the zip is built and saved, then plays out how
-     it went; what happened is only said once he is done. A save the
-     person cancelled is a wall, one that broke is lava. */
+  /* Pip animates while the zip is built and saved, and the result is shown
+     when his ending finishes. A cancelled save ends at a wall, a failed one in lava. */
   const [run, setRun] = useState<{ mood: PipMood; failure: PipFailure; said: string | null } | null>(null)
 
   const save = (name: string, build: () => Uint8Array) => {
     if (run) return
     setNote(null)
     setRun({ mood: 'working', failure: 'lava', said: null })
-    // one frame of him at work before the build holds the thread
+    // let Pip draw before the synchronous build blocks the main thread
     window.setTimeout(() => {
       let bytes: Uint8Array
       try {
@@ -152,8 +141,6 @@ export function ExportPackDialog({
                 aria-label="Pack format"
                 onChange={(e) => setPackFormat(Math.max(1, Number(e.target.value) || 1))}
               />
-              {/* One integer per Minecraft version, and the wrong one
-                  fails with no message worth reading. It is not guessed. */}
               <span className="field__hint">
                 84 is Minecraft 26.1.2. Newer versions use higher numbers. It must match your
                 server. If it&rsquo;s wrong, the pack won&rsquo;t load and Minecraft won&rsquo;t say why.
@@ -203,10 +190,7 @@ export function ExportPackDialog({
               </div>
             ) : null}
 
-            {/* A config that is held back has to SAY so. Held silently, a
-                user who filled the form in sees no mention of it anywhere
-                and reasonably concludes it never existed - which is the
-                same silent-failure shape the flat path had. */}
+            {/* list configs held back because their root key isn't confirmed */}
             {configs.skipped.some((s) => /root collection key/.test(s.why)) ? (
               <div className="pk__out pk__out--warn">
                 <div className="pk__outhead">Configs held back</div>

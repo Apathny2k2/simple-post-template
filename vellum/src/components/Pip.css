@@ -1,4 +1,4 @@
-/* Pip, drawn in the text colour of wherever he sits, on nothing. */
+/* The canvas takes its ink from `color`. */
 .pip {
   display: flex;
   flex-direction: column;

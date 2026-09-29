@@ -1,4 +1,4 @@
-/* Controls shared by every page: buttons and key/value rows. */
+/* Controls shared across pages: buttons, key/value rows and dialogs. */
 
 .btn {
   position: relative;
@@ -83,9 +83,7 @@
 .kv__k { color: var(--ink-faint); }
 .kv__v { font-family: var(--font-mono); color: var(--ink); }
 
-/* ---------------- dialogs ----------------
-   The scrim, the panel and its head, body and foot. Every dialog in the
-   app is built from these. */
+/* ---------------- dialogs ---------------- */
 
 .dlg {
   position: fixed;

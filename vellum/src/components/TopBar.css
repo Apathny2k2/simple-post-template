@@ -32,7 +32,6 @@
 
 .topbar__left { display: flex; align-items: center; gap: 14px; min-width: 0; }
 
-/* the server the Studio is open on */
 .topbar__server {
   display: inline-flex;
   align-items: center;
@@ -52,7 +51,6 @@
 .topbar__server-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .topbar__server svg { flex: none; color: var(--ink-faint); }
 
-/* the ringed nav from the sketch, cast in glass */
 .nav-pill {
   display: inline-flex;
   align-items: stretch;
@@ -78,8 +76,7 @@
 .nav-pill__link + .nav-pill__link { box-shadow: inset 1px 0 0 var(--border); }
 .nav-pill__link:hover { color: var(--ink); }
 
-/* active: one filled ground and one rule under it. The ground is its own
-   element so a page transition can slide it from one link to the next. */
+/* The active mark is its own element so a view transition can slide it between links. */
 .nav-pill__link[aria-current='page'] { color: var(--ink); }
 
 .nav-pill__mark {
@@ -129,11 +126,8 @@
   height: 7px;
   border-radius: 50%;
   background: var(--accent-mark);
-  /* A flat dot. It was a glowing, pulsing ember - a light source in
-     an interface made of paper. */
 }
 
-/* a wax-outlined icon button - the app's default affordance */
 .icon-btn {
   display: inline-grid;
   place-items: center;

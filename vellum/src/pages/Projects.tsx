@@ -18,7 +18,7 @@ import { saveDataUrl, saveFile } from '../lib/download'
 import { writeVellum } from '../lib/vellum'
 import './Projects.css'
 
-/** The card menu's two working entries, shared by every shelf. */
+/** Download and texture-export actions for the card menu. */
 function useAssetActions() {
   const [note, setNote] = useState<string | null>(null)
   const say = (text: string) => {
@@ -47,15 +47,9 @@ function useAssetActions() {
 
 const PER_PAGE = 12
 
-/** The two shelves, and what the tab on each says. */
 const shelfLabel: Record<Shelf, string> = { items: 'Items', mobs: 'Mobs' }
 
-/**
- * What a turning model needs to stay inside its tile: its height, or
- * the diagonal it sweeps through as it spins - whichever is larger. A
- * sword measured on its longest axis alone clips its own tip halfway
- * round.
- */
+/** Room a spinning model needs: the larger of its height and its horizontal diagonal. */
 function extentOf(model: Model) {
   if (!model.cubes.length) return 24
   const lo = [Infinity, Infinity, Infinity]
@@ -69,15 +63,7 @@ function extentOf(model: Model) {
   return Math.max(hi[1] - lo[1], Math.hypot(hi[0] - lo[0], hi[2] - lo[2]), 1)
 }
 
-/**
- * One model in one tile, framed by measuring the tile rather than by a
- * constant.
- *
- * These were cropped: `ModelView` stands a model on the grid, so its
- * lowest point sat at the middle of the card and everything above it
- * ran off the top. Half of every sword on the shelf was missing, which
- * is why the shelf read as placeholder art.
- */
+/** One model sized to its tile. Centred, because the floor anchor puts its base mid-tile and crops the top. */
 function CardRender({ model, spin }: { model: Model; spin?: boolean }) {
   const frame = useRef<HTMLDivElement>(null)
   const [box, setBox] = useState(150)
@@ -147,7 +133,7 @@ function AssetCard({
 }) {
   const [menuOpen, setMenuOpen] = useState(false)
   const model = asset.kind === 'mobs' ? lanternModel(asset.hue) : blockModel(asset.hue)
-  // cards backed by a real file show that file, not a stand-in
+  // cards backed by a sample file render that file
   const real = asset.sampleId ? sampleById(asset.sampleId).model : null
 
   return (
@@ -165,11 +151,6 @@ function AssetCard({
         <Menu
           align="end"
           onOpenChange={setMenuOpen}
-          /* Showcase, Duplicate and Delete used to sit here doing
-             nothing at all - Delete in particular reading as destructive
-             and confirming nothing. There is no library store behind
-             this page to delete from, so they are gone rather than
-             pretending. What is left works. */
           entries={
             real
               ? [
@@ -253,7 +234,7 @@ function Pager({
   )
 }
 
-/** The shared library panel - identical for Items and for Mobs. */
+/** The library panel, the same for both shelves. */
 function Library({ sceneId, shelf, openNew }: { sceneId: string; shelf: Shelf; openNew?: boolean }) {
   useTitle(shelfLabel[shelf])
   const actions = useAssetActions()
@@ -265,8 +246,8 @@ function Library({ sceneId, shelf, openNew }: { sceneId: string; shelf: Shelf; o
   const [packOpen, setPackOpen] = useState(false)
   const packBtn = useRef<HTMLButtonElement>(null)
 
-  /* Navigating from this shelf to `/new` on the same shelf is a hash
-     change, not a remount, so the initial state above never sees it. */
+  /* Going to `/new` on the same shelf does not remount, so the initial
+     state above misses it. */
   useEffect(() => {
     if (openNew) setNewOpen(true)
   }, [openNew])
@@ -288,20 +269,13 @@ function Library({ sceneId, shelf, openNew }: { sceneId: string; shelf: Shelf; o
     navigate(`/projects/${scene.id}/${next}`)
   }
 
-  /* Making a model used to mean opening one you did not want first, so
-     that the editor's own File menu was reachable. The shelf is where a
-     modeller already is when they decide to make something, so it is
-     where the button belongs - and the editor builds it from the URL
-     rather than being handed an object, so a reload does not lose it. */
+  // the editor builds the new model from the URL, so a reload keeps it
   const create = (kind: ProjectKind, subtype: Subtype | undefined, name: string) => {
     setNewOpen(false)
     navigate(`/editor/new/${kind}/${subtype ?? '-'}/${encodeURIComponent(name)}`)
   }
 
-  /* Grouped by what the model says it is for, not by its kind: a shelf
-     of eight items reads as Weapons, Tools and Consumables, which is
-     how a modeller looks for one. A kind is only the fallback for a
-     model whose project never said. */
+  // grouped by subtype (Weapons, Tools, ...), falling back to kind
   const groups = [...new Set(slice.map(groupOf))]
 
   return (
@@ -309,7 +283,6 @@ function Library({ sceneId, shelf, openNew }: { sceneId: string; shelf: Shelf; o
       <div className="page-head">
         <div>
           <div className="eyebrow">{scene.name}</div>
-          {/* title follows whichever tile opened the library */}
           <h1 className="page-title">
             <Kinetic key={shelf} text={shelfLabel[shelf]} />
           </h1>
@@ -337,9 +310,7 @@ function Library({ sceneId, shelf, openNew }: { sceneId: string; shelf: Shelf; o
             ))}
           </div>
 
-          {/* outside the pill: the tabs choose what you are looking at,
-              this makes something new, and a segmented control that
-              mixes the two reads as a third shelf */}
+          {/* kept out of the tab pill so it does not read as a third shelf */}
           <button
             ref={newBtn}
             className="btn btn--sm btn--primary library__new"
@@ -348,8 +319,7 @@ function Library({ sceneId, shelf, openNew }: { sceneId: string; shelf: Shelf; o
             <Icon name="plus" size={13} /> New model
           </button>
 
-          {/* A pack is a collection, so it is made from a shelf rather
-              than from one model in the editor. */}
+          {/* a pack is a collection, so it is exported from a shelf */}
           <button
             ref={packBtn}
             className="btn btn--sm library__pack"
@@ -416,12 +386,9 @@ function Library({ sceneId, shelf, openNew }: { sceneId: string; shelf: Shelf; o
 
       {packOpen ? (
         <ExportPackDialog
-          /* DEFAULT_DISPLAY is passed on purpose. `.vellum` carries no
-             display transforms - the Display tab says so - and a model
-             file with no display block and no `parent` renders at raw
-             model scale in the hand and the inventory, which for a
-             16-unit item means a speck. Minecraft's own defaults are
-             the right floor. */
+          /* `.vellum` has no display transforms, and a model file with no display
+             block and no `parent` renders untransformed in hand and inventory.
+             Minecraft's defaults fill the gap. */
           items={rows.flatMap((a) => {
             const sample = a.sampleId ? sampleById(a.sampleId) : null
             return sample
@@ -437,7 +404,7 @@ function Library({ sceneId, shelf, openNew }: { sceneId: string; shelf: Shelf; o
   )
 }
 
-/** The first scene: pick a project, then a shelf. */
+/** The projects landing page: pick a shelf. */
 function Gateway() {
   useTitle('Projects')
   const scene = scenes[0]
@@ -510,13 +477,13 @@ function Gateway() {
 }
 
 export function Projects({ segments }: { segments: string[] }) {
-  // #/projects | #/projects/:sceneId/:kind
+  // #/projects | #/projects/:sceneId/:kind[/new]
   const routeScene = segments[1]
   const routeKind = segments[2]
 
   if (routeKind === 'items' || routeKind === 'mobs' || routeKind === 'consumables') {
     const known = scenes.some((s) => s.id === routeScene) ? routeScene : scenes[0].id
-    // consumables became an item subtype; links to the old tab still work
+    // old links to a consumables shelf open items
     const shelf = shelfOf(routeKind === 'consumables' ? 'items' : routeKind)
     return (
       <Library

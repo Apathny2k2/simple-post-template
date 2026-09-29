@@ -1,7 +1,4 @@
-/* ---------------------------------------------------------------
-   The Dash. The dark room itself lives in styles/studio.css, shared
-   with Projects and Settings; this is what only the Dash has.
-   --------------------------------------------------------------- */
+/* Dash-only styles. The dark page styles it shares with Projects and Settings are in styles/studio.css. */
 
 @property --sweep {
   syntax: '<angle>';
@@ -784,8 +781,7 @@
   min-height: 250px;
 }
 
-/* An isometric floor for the stacks to stand on, ruled at the same
-   30 degrees as the cube edges and faded out towards its edges. */
+/* isometric floor under the stacks, ruled at the cubes' 30 degrees and faded at the edges */
 .stacks__row::before {
   content: '';
   position: absolute;
@@ -832,8 +828,7 @@
   background: radial-gradient(closest-side, rgba(0, 0, 0, 0.55), transparent);
 }
 
-/* A cube drawn flat: a hexagon with its three visible faces, shaded
-   the way the game shades them (top brightest, the sides darker). */
+/* A flat isometric cube: a hexagon of three faces, top brightest and sides darker as in the game. */
 .iso {
   --w: 28px;
   --h: calc(var(--w) * 1.1547);
@@ -1370,9 +1365,9 @@
   .feed__names li span { display: none; }
 }
 
-/* ---------------- reduced motion ----------------
-   base.css cuts every animation to nothing, which would leave the loops
-   parked on whatever frame they end on. Stop them outright instead. */
+/* ---------------- reduced motion ---------------- */
+
+/* base.css only shortens animations to one instant run, so these loops are stopped outright */
 
 @media (prefers-reduced-motion: reduce) {
   .hero__aurora i,
@@ -1391,7 +1386,7 @@
 
   .pack__cube { transform: rotateX(-24deg) rotateY(-38deg); }
 
-  /* no staggering either: everything is simply there */
+  /* and no stagger delays */
   .dash *,
   .dash *::before,
   .dash *::after { animation-delay: 0s !important; }

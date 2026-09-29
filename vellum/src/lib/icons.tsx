@@ -1,5 +1,4 @@
-/* A single stroke-weight icon set, drawn on a 24x24 grid.
-   Inline so the UI never waits on an icon font or sprite request. */
+/* Icons for one stroke weight on a 24x24 grid, inlined so nothing waits on an icon font or sprite. */
 
 export type IconName = keyof typeof paths
 

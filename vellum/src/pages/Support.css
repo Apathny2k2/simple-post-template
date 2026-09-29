@@ -1,7 +1,4 @@
-/* ============================================================
-   Support: the list on the left, one thread or the new-ticket
-   form on the right. On a narrow screen they take turns.
-   ============================================================ */
+/* Support: ticket list on the left, a thread or the new-ticket form on the right. */
 
 .sup {
   display: grid;
@@ -437,10 +434,9 @@
 
 .nt__pip { max-width: 480px; }
 
-/* ---------------- focus ----------------
-   The fields show focus on their frame, so the text areas inside them
-   do not ring a second time; everything else keeps its own corners. */
+/* ---------------- focus ---------------- */
 
+/* these inputs' frames show focus, so the inputs themselves do not */
 .cmp__box:focus-visible,
 .sl__search input:focus-visible { outline: none; }
 

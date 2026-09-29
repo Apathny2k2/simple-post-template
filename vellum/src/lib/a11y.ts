@@ -1,12 +1,3 @@
-/* ---------------------------------------------------------------
-   The small amount of machinery a keyboard needs.
-
-   None of this is visible to a mouse, which is exactly why it kept
-   getting left out: a dialog that traps nothing looks identical to one
-   that does until you press Tab, and then you are editing the page
-   behind a modal you cannot see.
-   --------------------------------------------------------------- */
-
 import { useEffect, useRef } from 'react'
 import type { RefObject } from 'react'
 
@@ -27,21 +18,11 @@ export function focusables(root: HTMLElement | null | undefined): HTMLElement[] 
   )
 }
 
-/**
- * Modal behaviour: Tab stays inside the panel, Escape closes it, and
- * focus goes back to whatever opened it. Without the last part a
- * keyboard user who closes a dialog is dropped at the top of the page
- * and has to tab all the way back to where they were.
- */
+/** Keeps Tab inside `panel`, closes on Escape, and gives focus back to the opener on close. */
 export function useModal(
   panel: RefObject<HTMLElement | null>,
   onClose: () => void,
-  /**
-   * Where focus goes when there was no opener to go back to - a dialog
-   * opened by a route has none, and without this a keyboard user who
-   * presses Escape is dropped on `body` at the top of the document.
-   * It should be the control that stands for what they just dismissed.
-   */
+  /** where focus goes on close when nothing opened the dialog, as with one opened by a route */
   fallback?: RefObject<HTMLElement | null>,
 ) {
   const close = useRef(onClose)
@@ -86,12 +67,7 @@ export function useModal(
   }, [panel])
 }
 
-/**
- * Arrow keys across a set of buttons that behave as one control - a
- * menu, a radiogroup, a toolbar. Returns the handler to put on the
- * container; `items` is read fresh each press so it copes with the
- * list changing underneath it.
- */
+/** Arrow, Home and End keys for a menu, radiogroup or toolbar. Call from onKeyDown; returns true if it handled the key. */
 export function arrowNav(
   container: HTMLElement | null,
   e: React.KeyboardEvent,

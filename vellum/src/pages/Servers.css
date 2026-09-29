@@ -1,8 +1,4 @@
-/* ============================================================
-   The server picker, between the site and the Studio. Rows read
-   like the game's own multiplayer list: icon, name, message of
-   the day, players and signal.
-   ============================================================ */
+/* The server picker. Rows follow the game's multiplayer list: icon, name, message of the day, players, signal. */
 
 .gate { min-height: 100vh; display: flex; flex-direction: column; }
 

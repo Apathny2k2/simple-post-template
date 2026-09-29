@@ -1,13 +1,5 @@
-/* ---------------------------------------------------------------
-   The studio's dark room: the Dash, Projects and Settings. The editor
-   keeps the paper it was designed on.
-
-   App sets data-surface="dark" on <html> for every route but the
-   editor, and the overrides below re-point the app's own tokens, so
-   the top bar, cards, menus, fields and buttons follow without knowing.
-   After Blockbench: grey-blue panels, one bright blue, the axis
-   colours, and motion that springs.
-   --------------------------------------------------------------- */
+/* The dark theme. App sets data-surface="dark" on <html> for every route but
+   the editor, and the rules below re-point the shared tokens for it. */
 
 @property --tint {
   syntax: '<color>';

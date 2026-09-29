@@ -1,22 +1,5 @@
-/* ---------------------------------------------------------------
-   Reading a rig, and animating it.
-
-   Animating a mob by hand means keying four limbs across five poses
-   and keeping them in phase, which is exactly the sort of work that is
-   tedious without being interesting. But an automatic animation is
-   only as good as its reading of the skeleton: the difference between
-   a walk and a twitch is knowing which bone is a leg.
-
-   So the reading comes first and is the part worth being careful
-   about. Names are the strongest signal a rigger gives - `leg_left`
-   means something - but a rig that names nothing still has a shape,
-   and a bone's height, its offset from the centre line and how far its
-   geometry reaches all say something. Names first, then geometry, and
-   the panel reports what it decided so a wrong guess is visible rather
-   than mysterious.
-
-   Everything here is mobs-only by design. An item has no gait.
-   --------------------------------------------------------------- */
+/* Reads a mob's rig and builds clips from it. A bone's role comes from its
+   name when one matches, otherwise from its height, side and reach. */
 
 import { flattenBones } from './model'
 import type { Bone, Clip, Interpolation, Key, Model, Track, Vec3 } from './model'
@@ -35,20 +18,20 @@ export type RiggedBone = {
   origin: Vec3
   /** how far the geometry under this bone reaches from its pivot */
   reach: number
-  /** why it was classified this way, for the panel to show */
+  /** whether the role came from the bone's name or its shape */
   why: 'name' | 'shape'
 }
 
 export type RigReading = {
   bones: RiggedBone[]
   byRole: Record<Role, RiggedBone[]>
-  /** jaws and mandibles, pulled out of `head` so they can chomp rather than look around */
+  /** jaws and mandibles, taken out of `head` so they get their own motion */
   jaws: RiggedBone[]
-  /** tail segments, outermost first, so a wave can travel down them */
+  /** tail segments, root end first, so a wave can travel down them */
   tailChain: RiggedBone[]
   /** the model's overall height in units */
   height: number
-  /** 0..1 - how much of the rig the names accounted for */
+  /** 0..1: the share of bones classified by name */
   confidence: number
   summary: string
 }
@@ -150,9 +133,7 @@ export function readRig(model: Model): RigReading {
 
     let why: RiggedBone['why'] = role ? 'name' : 'shape'
     if (!role) {
-      /* Nothing in the name. The shape still says something: how high
-         the pivot sits, how far off the centre line it is, and whether
-         anything hangs off it at all. */
+      // no name match: guess from pivot height, distance off the centre line and reach
       const y = (bone.origin[1] - lo[1]) / height
       const offCentre = Math.abs(bone.origin[0] - (lo[0] + hi[0]) / 2) / width
       if (depth === 0) role = 'root'
@@ -176,9 +157,8 @@ export function readRig(model: Model): RigReading {
   } as Record<Role, RiggedBone[]>
   for (const b of bones) byRole[b.role].push(b)
 
-  /* Only the outermost bone of a limb should be driven: keying a thigh
-     and its shin with the same curve doubles the swing and the leg
-     folds through itself. */
+  /* Drive only the top bone of each limb. Keying a thigh and its shin
+     with the same curve doubles the swing. */
   const limbLead = (role: Role) => {
     const all = byRole[role]
     return all.filter((b) => !all.some((other) => other !== b && other.depth < b.depth && isUnder(model, other.id, b.id)))
@@ -187,17 +167,15 @@ export function readRig(model: Model): RigReading {
   byRole.arm = limbLead('arm')
   byRole.wing = limbLead('wing')
 
-  /* A jaw is part of the head, but it does not look around with it -
-     driving both with the same curve swung the jaw twice as far as the
-     skull it hangs from. It gets its own motion instead. */
+  /* Jaws get their own motion. Driven with the head's curve, a jaw under
+     the skull would swing twice as far. */
   const jaws = byRole.head.filter((b) => /jaw|mouth|maw|mandible|beak/i.test(b.name))
   const skulls = byRole.head.filter((b) => !jaws.includes(b))
   byRole.head = skulls.filter(
     (b) => !skulls.some((other) => other !== b && other.depth < b.depth && isUnder(model, other.id, b.id)),
   )
 
-  /* A tail is the opposite case: every segment should move, but as a
-     wave travelling down it rather than all at once. Outermost first. */
+  // every tail segment moves, as a wave from the root end
   const tailChain = [...byRole.tail].sort((a, b) => a.depth - b.depth)
 
   const parts: string[] = []
@@ -263,19 +241,12 @@ const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v
 const strikingArm = (rig: RigReading) =>
   rig.byRole.arm.find((a) => a.side === 'right') ?? rig.byRole.arm[0] ?? null
 
-/**
- * Swing amplitude from how long the limb is. A 4-unit stub and a
- * 20-unit leg rotating by the same angle look nothing alike - the stub
- * barely moves and the leg swings through the floor.
- */
+/* Swing in degrees, smaller for a longer limb: at one angle a stub
+   barely moves while a long leg sweeps through the floor. */
 const swingFor = (reach: number) => clamp(34 - reach * 0.55, 14, 34)
 
-/**
- * One cycle of a sway, shifted a quarter turn per segment and decaying
- * as it travels, which is what makes a tail look like a tail rather
- * than a rod. The pattern is cyclic, so every segment still ends where
- * it started and the loop does not jump.
- */
+/* One sway cycle for a tail segment, shifted a quarter cycle per segment
+   and damped along the tail. First and last keys match, so the loop does not jump. */
 function wave(T: number, amp: number, segment: number, axis: Vec3): Key[] {
   const a = amp * Math.max(0.35, 1 - segment * 0.28)
   const pattern = [0, 1, 0, -1, 0]
@@ -356,12 +327,12 @@ const walk: Builder = (rig) => {
     ])
 
   legs.forEach((leg, i) => {
-    // pairs counter-phase; an odd leg out joins whichever phase is thinner
+    // left and right legs swing in opposite phase; centre legs alternate by index
     const flip = leg.side === 'right' || (leg.side === 'centre' && i % 2 === 1)
     cycle(leg.id, A, flip)
   })
 
-  // arms swing against the leg on their own side, which is what walking is
+  // each arm swings opposite the leg on its side
   for (const arm of rig.byRole.arm) {
     const flip = arm.side !== 'right'
     cycle(arm.id, A * 0.62, flip)
@@ -370,7 +341,7 @@ const walk: Builder = (rig) => {
   const spine = rig.byRole.torso[0] ?? rig.byRole.root[0]
   if (spine) {
     const bob = clamp(rig.height * 0.014, 0.1, 0.7)
-    // twice a cycle: one bob per footfall, not per stride
+    // two bobs a cycle, one per footfall
     at(spine.id, 'position', [
       key(0, [0, 0, 0]),
       key(T * 0.25, [0, bob, 0]),
@@ -438,8 +409,7 @@ const attack: Builder = (rig) => {
     ])
   }
 
-  /* A mob with no arms still attacks - with its head. Without this a
-     serpent's attack clip moved nothing at all. */
+  // the head always strikes, and harder when there is no arm to strike with
   const head = rig.byRole.head[0]
   if (head)
     at(head.id, 'rotation', [
@@ -459,7 +429,7 @@ const attack: Builder = (rig) => {
       key(T, [0, 0, 0]),
     ])
 
-  // the front foot braces, which is what stops a lunge looking like a slide
+  // even- and odd-indexed legs brace opposite ways, so the lunge does not look like a slide
   rig.byRole.leg.forEach((leg, i) => {
     const lead = i % 2 === 0
     at(leg.id, 'rotation', [
@@ -534,7 +504,7 @@ export type Preset = {
   id: string
   label: string
   blurb: string
-  /** what the preset has nothing to work with; empty means it will move something */
+  /** why the preset cannot run on this rig, or null when it can */
   needs: (rig: RigReading) => string | null
   build: Builder
 }
@@ -575,11 +545,7 @@ export const AUTO_PRESETS: Preset[] = [
   },
 ]
 
-/**
- * Build one preset against a model. Returns null when the reading found
- * nothing the preset can drive - a clip with no tracks plays nothing,
- * and handing one back would look like the feature had worked.
- */
+/** One preset's clip for a model, or null when there is nothing for it to move. */
 export function autoAnimate(model: Model, presetId: string, name?: string): Clip | null {
   const preset = AUTO_PRESETS.find((p) => p.id === presetId)
   if (!preset) return null

@@ -1,8 +1,4 @@
-/* ---------------------------------------------------------------
-   Self-hosted typefaces. No external requests, no FOUT from a CDN.
-   Inter  -> interface text (variable 300..700)
-   JetBrains Mono -> numeric fields, coordinates, file names
-   --------------------------------------------------------------- */
+/* Self-hosted fonts: Inter as Vellum Sans (300..700), JetBrains Mono as Vellum Mono. */
 
 @font-face {
   font-family: 'Vellum Sans';

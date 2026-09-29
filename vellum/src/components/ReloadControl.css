@@ -55,8 +55,7 @@
   gap: 10px;
 }
 
-/* A refusal is a finished, successful request. It reads as a verdict,
-   not as a failure - warning weight, never the error red. */
+/* A refusal uses the warning colour. Red is for a request that failed. */
 .rl__out[data-kind='swapped'] { border-left-color: var(--ok); }
 .rl__out[data-kind='refused'] { border-left-color: var(--warn); }
 .rl__out[data-kind='error']   { border-left-color: var(--danger); }
@@ -86,8 +85,7 @@
   font-family: var(--font-mono);
   font-size: 12px;
   line-height: 1.55;
-  /* The report is written for a person and names files and keys. It is
-     shown whole: wrapped, scrollable, never truncated with an ellipsis. */
+  /* shown whole: wrapped and scrollable, never truncated */
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   max-height: 22rem;
@@ -136,7 +134,6 @@
   .rl__go { width: 100%; }
 }
 
-/* The request as made, for reading back to whoever owns the server. */
 .rl__what {
   margin: 0;
   font-size: var(--fs-xs);

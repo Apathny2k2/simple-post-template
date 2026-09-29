@@ -2,9 +2,6 @@ import { Component } from 'react'
 import type { ErrorInfo, ReactNode } from 'react'
 import './ErrorBoundary.css'
 
-/* Catches a render that throws, so the page says what broke instead of
-   going blank. */
-
 type Props = { children: ReactNode }
 type State = { error: Error | null; attempt: number }
 
@@ -16,7 +13,6 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, info: ErrorInfo) {
-    // the stack is the only thing that makes this reportable
     console.error('Vellum crashed while rendering:', error, info.componentStack)
   }
 

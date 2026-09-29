@@ -9,11 +9,6 @@ import { Settings } from './pages/Settings'
 import { Icon } from './lib/icons'
 import { navigate, useRoute, useTitle } from './lib/router'
 
-/**
- * Anything that is not a route. It used to render the dashboard, which
- * meant a mistyped or dead link looked like it had worked and quietly
- * showed you somebody else's page.
- */
 function NotFound({ path }: { path: string }) {
   useTitle('Not found')
   return (
@@ -43,10 +38,8 @@ export default function App() {
   const { segments, path } = useRoute()
   const root = segments[0]
 
-  // Every page is the dark studio except the editor, which stays on paper.
   const surface = root === 'editor' ? 'paper' : 'dark'
-  // The home page and the server picker come before the Studio, so they
-  // carry their own headers instead of its top bar.
+  // The home page and the server picker come before the Studio and have their own headers.
   const outside = root === undefined || root === 'servers'
   useLayoutEffect(() => {
     const html = document.documentElement
@@ -56,9 +49,6 @@ export default function App() {
 
   return (
     <div className="app-shell">
-      {/* the first tab stop on every page: a keyboard user should not
-          have to walk the whole top bar to reach the thing they came
-          for. Hidden until it is focused. */}
       <button
         className="vh vh--focusable"
         onClick={() => {
@@ -84,11 +74,8 @@ export default function App() {
       ) : root === 'settings' ? (
         <Settings segments={segments} />
       ) : root === 'editor' ? (
-        /* Keyed on the model the route names: the editor reads its
-           document once, at mount, so without this a hash change from
-           one model to another left the previous one on screen. The
-           dirty guard runs before the route settles, so a remount here
-           only ever follows a navigation the user approved. */
+        /* Keyed on the model path because the editor reads its document only at mount.
+           The unsaved-work guard runs first, so a remount follows only an approved navigation. */
         <Editor key={segments.slice(1).join('/')} segments={segments} />
       ) : (
         <NotFound path={path} />

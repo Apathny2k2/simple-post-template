@@ -1,24 +1,10 @@
-/* ---------------------------------------------------------------
-   Undo and redo.
-
-   Every edit in this editor already produces a brand-new Model rather
-   than mutating one, so history is just a list of the models we passed
-   through - no diffing, no command objects, no inverse operations to
-   keep in sync with the forward ones.
-
-   The only interesting case is a burst: a brush stroke writes the
-   texture dozens of times a second, and undoing one of those writes
-   would be useless. `begin` / `amend` / `end` brackets a burst so the
-   whole stroke is one step. Everything else goes through `commit`.
-
-   Every updater here is pure - it derives its result from the state it
-   is handed and touches nothing outside - because React is free to run
-   an updater twice and keep only one result.
-   --------------------------------------------------------------- */
+/* Undo and redo. Values are replaced, never mutated, so history is a list
+   of past values. `begin`/`amend`/`end` make a burst of writes, such as a
+   brush stroke, one step. Updaters must be pure: React may run them twice. */
 
 import { useCallback, useMemo, useState } from 'react'
 
-/** Deep enough to cover a working session, shallow enough to stay cheap. */
+/** Most undo steps kept. */
 const LIMIT = 80
 
 type Entry<T> = { label: string; value: T }
@@ -27,18 +13,14 @@ type State<T> = {
   past: Entry<T>[]
   present: T
   future: Entry<T>[]
-  /** what the last commit was called, and when - see `coalesce` */
+  /** the last commit's label and time, for `coalesce` */
   lastLabel: string | null
   lastAt: number
-  /**
-   * Bumped by undo and redo only. A caller that keeps state alongside
-   * the value - which cube was selected, say - watches this to know it
-   * has travelled rather than edited, without having to diff anything.
-   */
+  /** bumped by undo and redo only, so a caller can tell travel from an edit */
   travel: number
 }
 
-/** Same-label commits closer together than this fold into one step. */
+/** `coalesce` commits with the same label closer together than this fold into one step. */
 const COALESCE_MS = 600
 
 export type History<T> = {
@@ -50,21 +32,17 @@ export type History<T> = {
   redoLabel: string | null
   /** increments on undo and redo, never on an edit */
   travel: number
-  /**
-   * Record one edit as one undo step. `coalesce` folds a run of
-   * same-label edits together, which is what makes dragging a number
-   * field one undo rather than forty.
-   */
+  /** One edit, one undo step. `coalesce` merges a quick run of same-label edits into one. */
   commit: (label: string, next: T | ((current: T) => T), coalesce?: boolean) => void
   /** open a burst; the step is named here */
   begin: (label: string) => void
-  /** move the present without recording - only meaningful inside a burst */
+  /** move the present without recording; for use inside a burst */
   amend: (next: T | ((current: T) => T)) => void
-  /** close a burst, discarding it if nothing actually changed */
+  /** close a burst, dropping it if nothing changed */
   end: () => void
   undo: () => void
   redo: () => void
-  /** a new file: the old history belonged to a different model */
+  /** clear history for a newly opened model */
   reset: (next: T) => void
 }
 
@@ -104,7 +82,7 @@ export function useHistory<T>(initial: T): History<T> {
 
   const begin = useCallback((label: string) => {
     setState((s) => {
-      // re-opening a burst that is already open must not push a second entry
+      // a repeat begin before anything has changed pushes no second entry
       const last = s.past[s.past.length - 1]
       if (last && last.value === s.present && last.label === label) return s
       return {

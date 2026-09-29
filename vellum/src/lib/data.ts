@@ -1,5 +1,4 @@
-/* Static fixtures for the library shelves, with the real .vellum samples
-   prepended so the first cards on each shelf open an actual model. */
+/* Library shelf data: scenes, card groups and one card per bundled sample. */
 
 import type { ProjectKind, Subtype } from './model'
 import { samples } from './samples'
@@ -13,23 +12,12 @@ export type Scene = {
 
 export type AssetKind = ProjectKind
 
-/**
- * Which shelf a kind lives on. Consumables are items - they are held,
- * they are used up, and splitting them onto a tab of their own left a
- * shelf with two cards on it and a tab row that made the library look
- * bigger than the work in it. They keep their own heading inside Items
- * instead, which is what tells them apart.
- */
+/** A library tab. Everything but a mob goes on items, under its group's heading. */
 export type Shelf = 'items' | 'mobs'
 
 export const shelfOf = (kind: AssetKind): Shelf => (kind === 'mobs' ? 'mobs' : 'items')
 
-/**
- * What a card is filed under inside its shelf. A subtype is the better
- * answer where the project gave one; a kind is the fallback, so a block
- * and an item that says nothing about itself still land somewhere
- * rather than in a group called "undefined".
- */
+/** A card's heading within its shelf: its subtype, or its kind when it has none. */
 export type Group = Subtype | ProjectKind
 
 export const groupOf = (a: Pick<Asset, 'kind' | 'subtype'>): Group => a.subtype ?? a.kind
@@ -63,7 +51,7 @@ export type Asset = {
   name: string
   file: string
   kind: AssetKind
-  /** what it is for, where the model said; absent is allowed */
+  /** weapon, tool and so on; absent when the model gives none */
   subtype?: Subtype
   sceneId: string
   format: string
@@ -159,16 +147,15 @@ export const assets: Asset[] = scenes.flatMap((scene, s) => [
   ...build(mobNames.slice(0, scene.counts.mobs), 'mobs', scene.id, s * 5 + 1),
 ])
 
-/* `.vellum` carries no format string - the project kind does that job,
-   which is what keeps one model from claiming two different formats. */
+/* A card's format label comes from its kind. The `format` in a .vellum
+   header names the document type and is always "model". */
 const KIND_LABEL: Record<string, string> = {
   items: 'Item model',
   mobs: 'Rigged entity',
   blocks: 'Block model',
 }
 
-/* Where a subtype says something a kind cannot, it is what the card
-   should print: "Weapon" tells a modeller more than "Item Model". */
+/* A subtype's label replaces the kind's where the model has one. */
 const SUBTYPE_FORMAT: Partial<Record<Subtype, string>> = {
   weapon: 'Weapon',
   tool: 'Tool',
@@ -178,8 +165,7 @@ const SUBTYPE_FORMAT: Partial<Record<Subtype, string>> = {
   docile: 'Docile mob',
 }
 
-/* The three models the probes built. These are the only cards whose
-   "Open in Editor" lands on the model the card is actually showing. */
+/* One card per bundled sample, each opening its own model in the editor. */
 const realAssets: Asset[] = samples.map((s, i) => ({
   id: s.id,
   name: s.label,
@@ -196,10 +182,7 @@ const realAssets: Asset[] = samples.map((s, i) => ({
   sampleId: s.id,
 }))
 
-/* Only real models are shelved. The fixture list below still backs the
-   dashboard's "recent files" copy, but nothing fabricated is offered as
-   something you can open. */
-/** Everything on a shelf, its own groups kept together and in order. */
+/** A shelf's sample cards, sorted by group. */
 export function assetsFor(sceneId: string, shelf: Shelf) {
   return realAssets
     .filter((a) => a.sceneId === sceneId && shelfOf(a.kind) === shelf)

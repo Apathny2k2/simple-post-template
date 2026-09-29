@@ -2,11 +2,7 @@ import { useEffect, useRef } from 'react'
 import { Icon } from '../../lib/icons'
 import { useModal } from '../../lib/a11y'
 
-/**
- * Asked before something irreversible. Deliberately not `window.confirm`:
- * a sandboxed frame can refuse to show one, and a guard that silently
- * does not appear is worse than no guard at all.
- */
+/** In-page confirm dialog, because a sandboxed frame can block `window.confirm`. */
 export function ConfirmDialog({
   title,
   body,
@@ -23,11 +19,10 @@ export function ConfirmDialog({
   const cancel = useRef<HTMLButtonElement>(null)
   const panel = useRef<HTMLDivElement>(null)
 
-  // Tab stays in the dialog, Escape leaves it, focus goes back where it was
   useModal(panel, onCancel)
 
   useEffect(() => {
-    // focus the safe choice, not the destructive one
+    // focus Keep editing, the safe choice
     cancel.current?.focus()
   }, [])
 

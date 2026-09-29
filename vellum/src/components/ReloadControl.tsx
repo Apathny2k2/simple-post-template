@@ -1,17 +1,5 @@
-/* ---------------------------------------------------------------
-   "Apply on the server" - POST /api/reload, and the report it may
-   answer with instead.
-
-   A save bakes; a bake is not live until a reload swaps the content
-   set. The control exists so that does not need a console.
-
-   The shape of this component is decided by one fact: the server
-   answers 200 for BOTH "swapped" and "declined to swap". A refusal is
-   a finished, successful request carrying a validation report, so it
-   gets its own resting state with the report rendered verbatim - not
-   an error toast, and never a spinner still turning. An author who
-   cannot tell those apart waits for something that already happened.
-   --------------------------------------------------------------- */
+/* POST /api/reload. The server answers 200 both when it swaps and when it
+   declines, so a refusal is a finished request with a report to show. */
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { requestReload, type ReloadOutcome } from '../lib/reload'
@@ -19,8 +7,7 @@ import { Icon } from '../lib/icons'
 import { Pip } from './Pip'
 import './ReloadControl.css'
 
-/* While the request runs Pip mines. When the answer is in he plays it
-   out, and only then does the verdict appear. */
+// 'landing': the answer is in and Pip is playing his ending; the verdict shows after
 type State =
   | { phase: 'idle' }
   | { phase: 'asking' }
@@ -35,7 +22,7 @@ export function ReloadControl({
   linked: boolean
   /** replaces the line next to the button */
   hint?: string
-  /** The call that asks for the reload. The demo server swaps in its own. */
+  /** Sends the reload request. The demo passes its own. */
   request?: (signal: AbortSignal) => Promise<ReloadOutcome>
 }) {
   const [state, setState] = useState<State>({ phase: 'idle' })
@@ -119,9 +106,8 @@ function Verdict({ outcome }: { outcome: ReloadOutcome }) {
 
   if (outcome.kind === 'refused') {
     return (
-      /* NOT an error. The request worked; the content did not pass. The
-         report names the file and the key and is written for a person,
-         so it is shown as it arrived rather than summarised. */
+      /* The request succeeded and the content failed validation. The report
+         is written for people, so it is shown as sent. */
       <div className="rl__out" data-kind="refused" role="status">
         <p className="rl__head">
           <Icon name="warning" size={16} />
@@ -155,10 +141,8 @@ function Verdict({ outcome }: { outcome: ReloadOutcome }) {
             : `The server answered ${outcome.status}.`}
       </p>
       <p className="rl__msg">{outcome.message}</p>
-      {/* The exact request, because the two failures that matter look the
-          same from the server side: a 404 names an endpoint that does not
-          exist, and a 403 on the same path names an auth gate on one that
-          does. Whoever reads this is the only one who can tell them apart. */}
+      {/* The URL lets a reader tell a wrong path (404) from an auth gate on
+          the right one (403). */}
       {outcome.url ? (
         <p className="rl__what">
           <code>POST {outcome.url}</code>
@@ -181,9 +165,7 @@ function Stages({ stages, unreadable }: { stages: string[]; unreadable: string[]
         </ol>
       ) : null}
       {unreadable.length ? (
-        /* Named rather than approximated, the same way an unknown schema
-           type is named. A stage rendered as "[object Object]" reads
-           like a step that ran and did nothing. */
+        /* parts of the response that could not be read, listed by name */
         <ul className="rl__unread">
           {unreadable.map((u, i) => (
             <li key={i}>{u}</li>

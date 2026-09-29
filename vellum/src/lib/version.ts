@@ -1,17 +1,6 @@
-/* ---------------------------------------------------------------
-   Who built this, what it is, and whether the server it is linked
-   to is running the build that shipped with it.
-
-   The studio is baked into the plugin - one download, not two. On
-   the Free tier it opens standalone and never needs a server; on
-   the paid tiers it is also the gateway, and the plugin on the far
-   side is what makes the cloud half answer. So a version gap is
-   never the normal case: it means someone opened this studio
-   against a server running an older plugin than the one it came
-   from. That is worth saying out loud, because it looks exactly
-   like a bug - and the only place that could have said so used to
-   read "0.4.1-mock".
-   --------------------------------------------------------------- */
+/* Studio build info, and the check that the linked plugin can talk to this
+   studio. The studio ships inside the plugin, so a gap usually means the
+   server's plugin is older than the build this studio shipped in. */
 
 export const STUDIO_VERSION = '0.9.0'
 export const RENDERER = 'Built in house'
@@ -23,12 +12,7 @@ export const PLUGIN_VERSION = '0.2a'
 /** The oldest plugin this studio can still talk to. */
 export const PLUGIN_MIN = '0.2a'
 
-/**
- * A version here is dotted numbers with an optional trailing letter:
- * `0.2a` is newer than `0.2`, older than `0.2b`, older than `0.3`.
- * Anything unparseable sorts as older than everything, which is the
- * safe direction - it prompts an upgrade rather than a silent pass.
- */
+/** Dotted numbers and an optional letter: 0.2 < 0.2a < 0.2b < 0.3. Unparseable input sorts oldest. */
 export function parseVersion(raw: string): { parts: number[]; suffix: number } {
   const m = /^v?(\d+(?:\.\d+)*)\s*([a-z])?$/i.exec(raw.trim())
   if (!m) return { parts: [-1], suffix: 0 }
@@ -38,7 +22,7 @@ export function parseVersion(raw: string): { parts: number[]; suffix: number } {
   }
 }
 
-/** -1, 0 or 1, the way a comparator is expected to answer. */
+/** -1, 0 or 1, like a sort comparator. */
 export function compareVersions(a: string, b: string): number {
   const x = parseVersion(a)
   const y = parseVersion(b)
@@ -70,11 +54,7 @@ type PluginVersionBody = {
 
 const str = (v: unknown): string | null => (typeof v === 'string' && v.trim() ? v.trim() : null)
 
-/**
- * Asks the linked plugin what it is. Every failure is a report rather
- * than a throw: an unreachable plugin is a thing the panel has to be
- * able to say, not an exception to swallow.
- */
+/** Asks the linked plugin for its version. Network and HTTP failures come back as an `unreachable` report. */
 export async function verifyPlugin(
   base: string | null,
   token: string,

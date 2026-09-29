@@ -117,13 +117,7 @@ function Gizmo({ yaw }: { yaw: number }) {
   )
 }
 
-/**
- * The studio's own models on a turntable, each playing its idle clip. One
- * hands over to the next every few seconds; resting the pointer on the
- * stage holds the current one, and clicking the model plays its action.
- * `linked` offers to open the model in the editor; the home page, which
- * has its own way in, turns that off.
- */
+/** Sample models on a turntable. Hover holds one; clicking plays its action. `linked` adds an editor link. */
 export const Showcase = memo(function Showcase({ linked = true }: { linked?: boolean }) {
   const reduced = useReducedMotion()
   const frame = useRef<HTMLDivElement>(null)

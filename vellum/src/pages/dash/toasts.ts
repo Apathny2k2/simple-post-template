@@ -53,10 +53,7 @@ const markOf = (): Mark => ({
   fed: dashStore.meta.fed,
 })
 
-/**
- * Turns changes in the store into toasts. A section's first report is not
- * news, so nothing fires until that section was already live.
- */
+/** Turns store changes into toasts, skipping each section's first report. */
 export function useDashToasts(push: (t: Omit<Toast, 'id'>) => void) {
   const version = dashStore.version
   const prev = useRef<Mark | null>(null)

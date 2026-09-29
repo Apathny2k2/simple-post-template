@@ -1,21 +1,10 @@
-/* ---------------------------------------------------------------
-   The model, in memory.
+/* The model in memory. It matches the `.vellum` document except that the
+   bone tree is nested here; on disk each bone names its `parent`.
 
-   This mirrors the `.vellum` document one-for-one: cubes, bones,
-   textures and clips, with ids rather than array indices and one track
-   per bone-channel pair. The only shape that differs is the bone tree -
-   on disk each bone names its `parent`, in memory the tree is nested,
-   because that is what a renderer and an outliner both want. The codec
-   flattens on write and rebuilds on read.
-
-   Two semantics are easy to get wrong and are worth stating here:
-
-   1. A cube's `rotation` turns about its `origin`, which is an absolute
-      model coordinate - not about the cube's own centre.
-   2. Face UVs are `[x1, y1, x2, y2]` in TEXTURE PIXELS with a top-left
-      origin, not normalised. A reversed coordinate mirrors the face, so
-      a rectangle must never be normalised to min/max on load.
-   --------------------------------------------------------------- */
+   A cube's `rotation` turns about its `origin`, an absolute model
+   coordinate. Face UVs are `[x1, y1, x2, y2]` in the texture's UV units
+   (see `Texture.uvWidth`) from the top left. A reversed pair mirrors the
+   face, so never normalise a rectangle to min/max on load. */
 
 import { validateBehaviour } from './behaviour'
 import type { Behaviour } from './behaviour'
@@ -28,26 +17,10 @@ export type UVRect = [number, number, number, number]
 export const FACES = ['north', 'east', 'south', 'west', 'up', 'down'] as const
 export type FaceKey = (typeof FACES)[number]
 
-/**
- * What a model is. It drives which validation rules apply, and it is
- * the project's, not the file's: a `.vellum` carries no format string,
- * so one model can never claim two formats.
- */
+/** What a model is. It decides which validation rules apply. */
 export type ProjectKind = 'items' | 'mobs' | 'blocks'
 
-/**
- * What it is *for*, which is a different question from what it is.
- *
- * A consumable used to be a fourth kind, which put it beside "item" as
- * though holding a potion were a different act from holding a sword.
- * It is not: a consumable is an item, and so are a weapon and a tool.
- * What separates them is what the game does with one, and that is
- * exactly what a subtype is - it picks the validation rules and it
- * groups the shelf, and it changes no geometry.
- *
- * A model read from an older file has none. That is allowed: absent
- * means "not said", and nothing may infer a subtype from a name.
- */
+/** What an item or mob is for. Picks validation rules and the shelf group; never inferred from a name. */
 export type ItemType = 'weapon' | 'tool' | 'consumable' | 'misc'
 export type MobType = 'hostile' | 'neutral' | 'docile'
 export type Subtype = ItemType | MobType
@@ -78,7 +51,7 @@ export const subtypeLabel = (s: Subtype) => SUBTYPE_LABELS[s]
 export const defaultSubtype = (kind: ProjectKind): Subtype | undefined =>
   kind === 'items' ? 'misc' : kind === 'mobs' ? 'neutral' : undefined
 
-/** Whether a subtype is one this kind actually offers. */
+/** Whether this kind offers the subtype. */
 export function subtypeFits(kind: ProjectKind | undefined, sub: unknown): sub is Subtype {
   if (!kind) return false
   return (SUBTYPES[kind] as readonly string[]).includes(sub as string)
@@ -102,16 +75,11 @@ export type Cube = {
   inflate: number
   boxUv: boolean
   /**
-   * Where a box unwrap starts on the sheet, when `boxUv` is set.
-   *
-   * The six face rects are always written out in full, so the UV
-   * *positions* survive a round trip on their own. What does not is the
-   * origin they were generated from - and a reader that regenerates the
-   * unwrap rather than trusting the rects has nothing to regenerate
-   * from. Absent on a cube that is not box-unwrapped.
+   * Where the box unwrap starts on the sheet, when `boxUv` is set. The face
+   * rects are stored in full; this is for readers that regenerate them.
    */
   uvOffset?: [number, number]
-  /** Mirrors the unwrap across the vertical axis. */
+  /** Box unwrap mirrored across the vertical axis; only stored, for readers that regenerate it. */
   mirrorUv?: boolean
   visible: boolean
   locked: boolean
@@ -126,7 +94,7 @@ export type Bone = {
   rotation: Vec3
   visible: boolean
   locked: boolean
-  /** Mirrors every cube under it, rather than each one saying so. */
+  /** Marks every cube under it as mirrored. Only stored, like `Cube.mirrorUv`. */
   mirrorUv?: boolean
   children: BoneChild[]
 }
@@ -138,9 +106,8 @@ export type Texture = {
   width: number
   height: number
   /**
-   * The space face UVs are expressed in. NOT necessarily the image size:
-   * a 64-unit model can be painted on a 512px sheet with uvWidth 64.
-   * Divide UVs by this, never by `width`.
+   * The space face UVs are in, which can differ from the image size: a
+   * 512px sheet can have uvWidth 64, so divide UVs by this.
    */
   uvWidth: number
   uvHeight: number
@@ -151,15 +118,7 @@ export type Texture = {
 export type Channel = 'rotation' | 'position' | 'scale'
 export type Interpolation = 'linear' | 'step' | 'catmullrom' | 'bezier'
 
-/**
- * The bezier handles an author drew, all four arrays or none.
- *
- * This is AUTHORING STATE, in the same class as a clip's snapping and a
- * cube's hidden flag - the runtime interpolates STEP, LINEAR and
- * CATMULLROM and has no bezier at all, so nothing a player sees depends
- * on it. What depends on it is the curve surviving a trip out of the
- * editor and back.
- */
+/** Bezier handles, all four arrays or none. Only stored: playback treats a bezier key as linear. */
 export type Handles = {
   leftTime: Vec3
   leftValue: Vec3
@@ -172,11 +131,11 @@ export type Key = {
   time: number
   value: Vec3
   interp: Interpolation
-  /** absent unless the author drew one; three of four is not half a curve */
+  /** absent unless the author drew one */
   handles?: Handles
 }
 
-/** One bone, one channel. The timeline stacks exactly these as its rows. */
+/** One bone and channel: one row in the timeline. */
 export type Track = {
   bone: string
   channel: Channel
@@ -196,9 +155,9 @@ export type Model = {
   name: string
   /** what the model is; drives which validation rules apply */
   kind?: ProjectKind
-  /** what it is for, within its kind; absent means nobody said */
+  /** what it is for, within its kind; absent means not set */
   subtype?: Subtype
-  /** what makes it act on its own, where it does; see lib/behaviour.ts */
+  /** what makes it act on its own; see lib/behaviour.ts */
   behaviour?: Behaviour
   /** the stats and behaviour authored beside it; see lib/config.ts */
   config?: Config
@@ -275,9 +234,8 @@ const DEFAULTS: Record<Channel, Vec3> = {
 }
 
 /**
- * Catmull-Rom through four control points, at parameter `k` on the
- * middle segment. The end segments repeat their outer neighbour, which
- * is the usual clamped form and keeps a two-key curve from flying off.
+ * Catmull-Rom on the segment p1..p2 at `k` in 0..1. At a track's ends the
+ * caller repeats the end key for the missing neighbour.
  */
 const spline = (p0: number, p1: number, p2: number, p3: number, k: number) => {
   const k2 = k * k
@@ -291,15 +249,7 @@ const spline = (p0: number, p1: number, p2: number, p3: number, k: number) => {
   )
 }
 
-/**
- * A track's value at time `t`.
- *
- * `step` holds until the next key. `catmullrom` runs a spline through
- * the neighbouring keys - it used to fall through to the same lerp as
- * `linear`, which made a third of the easing menu decorative and played
- * back every shipped clip as if it had been authored straight, since
- * they are all authored catmullrom.
- */
+/** A track's value at time `t`. Each segment eases by its first key's `interp`. */
 export function sampleTrack(track: Track, t: number): Vec3 {
   const keys = [...track.keys].sort((a, b) => a.time - b.time)
   if (!keys.length) return DEFAULTS[track.channel]
@@ -314,6 +264,7 @@ export function sampleTrack(track: Track, t: number): Vec3 {
     if (a.interp === 'step') return a.value
 
     const k = (t - a.time) / (b.time - a.time || 1)
+    // linear, and bezier too, since its handles are not sampled
     if (a.interp !== 'catmullrom') {
       return [
         a.value[0] + (b.value[0] - a.value[0]) * k,
@@ -356,18 +307,11 @@ export type Issue = { level: 'error' | 'warning'; message: string }
 
 const BLOCK_ROTATIONS = new Set([-45, -22.5, 0, 22.5, 45])
 
-/**
- * The rules the editor refuses to write past. Block projects are the
- * strict case: their limits mirror what Minecraft's own block model
- * format allows, and the kind comes from the project rather than the
- * file, because a `.vellum` carries no format string.
- */
+/** Issues for the editor's Validation panel. Block projects get Minecraft's block model limits. */
 export function validateModel(model: Model, kind?: ProjectKind, subtype?: Subtype): Issue[] {
   const issues: Issue[] = []
   const seen = new Set<string>()
-  /* The editor holds the kind and subtype the project says, which can
-     differ from what the document says while you are changing one. The
-     caller's answer wins; the document's is the fallback. */
+  /* `kind` is the caller's; only `subtype` falls back to the model's own. */
   const sub = subtype ?? model.subtype
 
   for (const cube of model.cubes) {
@@ -404,10 +348,8 @@ export function validateModel(model: Model, kind?: ProjectKind, subtype?: Subtyp
     }
 
     if (kind === 'items') {
-      /* Minecraft renders every item in the item slot, so anything far
-         outside the item volume is drawn somewhere the player is not
-         looking. This used to ask only of consumables, as though a
-         sword hanging out of frame were fine. */
+      /* Minecraft renders items in the item slot, so geometry far
+         outside it is drawn where the player is not looking. */
       for (const v of [...cube.from, ...cube.to]) {
         if (v < -16 || v > 32) {
           issues.push({ level: 'warning', message: `"${tag}": ${v} is outside an item's -16..32 range` })
@@ -463,10 +405,8 @@ export function validateModel(model: Model, kind?: ProjectKind, subtype?: Subtyp
       }
       for (const key of track.keys) {
         if (key.time < 0 || key.time > clip.length + 1e-9) {
-          /* A warning, not an error: the key round-trips through the
-             codec perfectly and the clip still plays, it simply never
-             reaches this one. Shortening a clip used to delete these
-             outright, which is the thing worth avoiding. */
+          /* A warning because the key still round-trips and the clip
+             plays; playback never reaches it. */
           issues.push({
             level: 'warning',
             message: `"${clip.name}" has a key at ${key.time}s, past its ${clip.length}s end, so that key won't play`,
@@ -486,11 +426,8 @@ export function validateModel(model: Model, kind?: ProjectKind, subtype?: Subtyp
     }
   }
 
-  /* Minecraft renders a held item inside a 16-unit slot, so a model
-     whose bounding box is bigger than that is drawn bigger than a
-     block in the player's hand - which is how a sword ends up taller
-     than the player holding it. Nothing checked this, because
-     validation only ever looked at each cube on its own. */
+  /* Minecraft renders a held item in a 16-unit slot, so a model wider
+     than 16 on any axis is bigger than a block in hand. */
   if (kind === 'items' && model.cubes.length) {
     const lo = [Infinity, Infinity, Infinity]
     const hi = [-Infinity, -Infinity, -Infinity]
@@ -512,9 +449,7 @@ export function validateModel(model: Model, kind?: ProjectKind, subtype?: Subtyp
     }
   }
 
-  /* A consumable is defined by its use animation. Shipping one with no
-     clip is the whole point missed, and nothing else would have said
-     so - validation only ever looked at geometry. */
+  /* A consumable is defined by its use animation. */
   if (sub === 'consumable' && !model.clips.length) {
     issues.push({
       level: 'warning',
@@ -522,10 +457,6 @@ export function validateModel(model: Model, kind?: ProjectKind, subtype?: Subtyp
     })
   }
 
-  /* The pose a player sees most of a hostile mob is the one where it is
-     coming at them. A hostile with an idle and a walk and nothing else
-     will attack on the idle, which reads as the mob doing nothing while
-     the damage lands. */
   if (sub === 'hostile' && model.clips.length && !model.clips.some((c) => ATTACK_CLIP.test(c.name))) {
     issues.push({
       level: 'warning',
@@ -533,10 +464,6 @@ export function validateModel(model: Model, kind?: ProjectKind, subtype?: Subtyp
     })
   }
 
-  /* A subtype that the kind does not offer means the file was written
-     by hand or upgraded wrong. It is worth an error rather than a
-     shrug, because everything downstream - the shelf, the rules above -
-     reads it and finds nothing. */
   if (sub && kind && !subtypeFits(kind, sub)) {
     issues.push({
       level: 'error',
@@ -550,5 +477,5 @@ export function validateModel(model: Model, kind?: ProjectKind, subtype?: Subtyp
   return issues
 }
 
-/** What reads as an attack in a clip name, across the usual vocabularies. */
+/** Clip names that count as an attack. */
 const ATTACK_CLIP = /attack|strike|swing|bite|lunge|slam|hit|charge/i

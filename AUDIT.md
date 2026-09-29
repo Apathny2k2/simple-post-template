@@ -250,6 +250,162 @@ Left alone: sample support replies in `lib/support.ts` and `lib/api.ts` read lik
 
 Scanner after phase 3: copy hits 82 → 7. Six are sample support replies written to read like a person typing, and one is "Unlock" meaning a locked cube.
 
+## Phase 4: comments
+
+Every source file was read against the brief's rules, in six groups at
+once. A comment stays if it says why, gives a number's source, or warns
+about a trap the code can't show. Each group was checked with
+`node scripts/same-code.mjs` (only comments changed) and the scanner.
+
+| Group | Files | Comment lines before | After |
+|---|---:|---:|---:|
+| Editor page and its panels | 10 | 547 | 299 |
+| `config.ts`, `vellum.ts` | 2 | 398 | 126 |
+| Model, world and export libraries | 5 | 530 | 238 |
+| Editing libraries (animation, history, texture...) | 13 | 526 | 218 |
+| Dash, Support, Pip and the small libraries | 19 | 565 | 341 |
+| Pages, components and styles | 47 | 686 | 359 |
+| **All** | **96** | **3252** | **1581** |
+
+Kept at length on purpose: the `.vellum` format rules (`vellum.ts:1`), the
+`/api/reload` response table (`reload.ts:1`), the plugin-author notes in
+`dash-api.ts`, Pip's mood tables (`pip/fish.ts:1`, `pip/mine.ts:1`), the
+Minecraft rules the quips quote, the zip layout, why history updaters must
+be pure, and a handful of editor effects whose order matters.
+
+Scanner comment hits: 719 before the audit, 4 now, and those 4 are false
+positives (minus signs in `ModelView.tsx` and `model.ts`, and an oxlint
+directive in `dash.ts`). Comment lines: 3402 before the audit, 3252 at the
+start of this phase, 1581 now (0.07 per code line). Blocks of 8 lines or
+more: 90 before, 7 now. The longest is Pip's 14-line fishing table.
+
+`same-code.mjs` counted edits to `/** doc comments */` as code, because the
+parser hands them over as nodes. Fixed in this commit.
+
+### Comments that said something the code doesn't do (S1, fixed)
+
+Reading every comment against its code found 81 that were wrong. They
+were rewritten to match the code; the code was not changed.
+
+| Where | Said | Does |
+|---|---|---|
+| `lib/api.ts:1`, `lib/support.ts:1` | a reference panel renders `endpoints`; "point `transport` at fetch" | nothing outside `api.ts` reads `endpoints`, and there is no `transport` |
+| `lib/endpoint.ts:1`, `lib/dash-api.ts:1` | reference panels render these specs | only `dash.schema()` uses `dashEndpoints` |
+| `lib/endpoint.ts:20` | `usedBy` is shown as a badge | nothing reads `usedBy` |
+| `lib/api.ts:236` | the canned replies move delivery states | the timers in `sendMessage` do |
+| `lib/api.ts:333` | the form disables the urgent option | neither ticket form offers urgent |
+| `lib/api.ts:480` | the caller debounces `sendTyping` | it is called on every change (B9) |
+| `lib/a11y.ts:70` | `arrowNav` returns a handler | it takes the key event and returns true or false |
+| `lib/dash.ts:1` | nothing is thrown away silently | see B10 |
+| `lib/dash.ts:131` | 45 characters fits an IPv6 literal with a scope id | 45 is the longest IPv6 address without one |
+| `lib/dash.ts:611` | live until a heartbeat is missed | live for two intervals, stale up to six |
+| `lib/dash-api.ts:391` | the first report of a build must carry archive, bytes and hash | the first pack report since the page loaded or the store was reset |
+| `lib/version.ts:57` | every failure becomes a report, never a throw | see B8 |
+| `lib/support.ts:32` | the `event` field renders a centred rule | rendering keys on `author.role`; nothing reads `event` |
+| `lib/pip/mine.ts:10` | an outcome never cuts a swing short | the follow-through is dropped once the block breaks |
+| `lib/vellum.ts:13` | four properties "are asserted by the round-trip test" | no such test was ever committed |
+| `lib/vellum.ts:6`, `:18` | the JSON keeps `git diff` useful | a model is written on one line; the order makes the same model write the same bytes |
+| `lib/vellum.ts:27` | the rig is regenerated on save | nothing does; `readRig` works it out from bone names |
+| `lib/vellum.ts:196` | `config` is a flat map of the schema's keys | it is the nested body from `bodyOf`, keyed by field path |
+| `lib/vellum.ts:388` | every upgrade step only re-stamps the version | v2 to v3 changes the kind; v6 to v7 renames config keys |
+| `lib/vellum.ts:398` | validation reports a malformed behaviour offset | it is replaced with `[0,-1,0]`; a non-array list throws (B7) |
+| `lib/vellum.ts:429` | a number where the form wants a list is dropped | any finite number is kept |
+| `lib/config.ts:77` | example path `Options.MovementSpeed` | a MythicMobs path no field uses; now `animations.idle` |
+| `lib/config.ts:365` | splitting on whitespace is safe for clip names | clip names are free text (B4) |
+| `lib/config.ts:391` | a tri-state flag is stored as `''`, `'true'` or `'false'` | the `.vellum` holds the boolean (B1) |
+| `lib/data.ts:1` | the samples are prepended to fixture cards | `assetsFor` returns only the samples |
+| `lib/data.ts:168` | "the three models" | there are eight |
+| `lib/data.ts:199` | the fixture list backs the Dash's recent files | the Dash reads `dashStore.snapshot.files` |
+| `lib/data.ts:150`, `lib/model.ts:20` | a `.vellum` carries no format string | every header has `vellum.format` |
+| `lib/model.ts:310` | the kind is the project's, not the file's | the file carries `kind`, and opening a file uses it |
+| `lib/model.ts:310` | the rules the editor refuses to write past | the editor only shows them; saving is not blocked |
+| `lib/model.ts:314` | the document is the fallback for kind and subtype | only for subtype |
+| `lib/model.ts:23` | a subtype changes no geometry | a new consumable starts from a flask |
+| `lib/model.ts:82`, `:97` | `mirrorUv` mirrors the unwrap | nothing applies it; it only round-trips |
+| `lib/model.ts:5`, `lib/mcmodel.ts:7`, `:240` | UVs are in texture pixels | UV units (`uvWidth`, `uvHeight`) |
+| `lib/mcmodel.ts:26` | `where` is the cube or bone | always a cube |
+| `lib/mcmodel.ts:75` | a bone's rotation never reaches the file | a single bone turn is written as the element's rotation |
+| `lib/mcmodel.ts:269` | a model here already passed the pack check | the function runs the check; `pack.ts` drops models with errors |
+| `lib/hitregions.ts:170` | `isRegionBone` finds a bone this module made | any bone whose own cubes are all hidden |
+| `lib/world.ts:85`, `:225` | a void face costs one texel | each gets a 4x4 region |
+| `lib/world.ts:117` | `emissive` is for a flame | those tiles are gone and nothing passes it |
+| `lib/world.ts:460` | a dropped item is a quarter size | 0.45 |
+| `lib/world.ts:532` | a model with no clip still turns slowly | only dropped and floating items spin |
+| `lib/world.ts:540` | one block per cycle | `travel.blocks`, which can be more |
+| `lib/world.ts:289` | the `- 26` turns the figure toward the camera | it turns it away (B14) |
+| `lib/pack.ts:158` | `saysSomething` catches the empty stub | it doesn't (B12) |
+| `lib/auto-rig.ts:21` | `why` is for the panel to show | nothing reads it |
+| `lib/auto-rig.ts:330`, `:432` | an odd leg joins the thinner phase; the front foot braces | legs alternate by index |
+| `lib/auto-rig.ts:30`, `:178` | the tail chain is outermost first | root end first |
+| `lib/new-model.ts:10` | `NewModelKind` exists for the dialog | nothing outside the file uses it |
+| `lib/new-model.ts:141` | the flask is rigged on two bones | three, all animated |
+| `lib/new-model.ts:312` | `deleteCube` removes the keys that drove it | it touches no clips |
+| `lib/new-model.ts:432` | `updateBone` takes pivot and rotation | any field but `id` and `children` |
+| `lib/uv-pack.ts:98` | `makeRoom` grows up to `limit` times | `limit` + 1 (B11) |
+| `lib/mob-schema.ts:1` | duration, clip and key are never drawn | they are drawn as text fields |
+| `lib/mob-schema.ts:96` | a checkbox only when the server states a default | decided by `inherits` |
+| `lib/history.ts:23` | same-label commits fold | only with `coalesce` |
+| `lib/history.ts:85` | a second `begin` never pushes an entry | it does once the burst was amended |
+| `lib/texture.ts:72` | min < max | min can equal max |
+| `pages/Editor.tsx:2368` | Animate mode opens playing; any edit stops it | playback stops only on leaving Animate, and nothing starts it |
+| `pages/Editor.tsx:1554` | a key drag is bracketed | every move commits with `coalesce` |
+| `pages/Editor.tsx:557` | `onCommit` makes a drag one undo step | the coalesced commits do |
+| `pages/Editor.tsx:1964` | "once" drops back to the rest pose | the playhead goes to 0, the clip's first frame |
+| `pages/Editor.tsx:2415` | `writeTexture` is batched to a frame | it writes at once; `commitTexture` batches |
+| `pages/Editor.tsx:1897` | ticks become tenths when the clip is short | spacing follows the zoom |
+| `pages/Editor.css:1095` | `.uv--paint` stops faces taking clicks | it sets a cursor; the panel sets pointer events inline |
+| `pages/Editor.css:1145` | `.ed-field` uses the grid of `.nf-row` | 52px and 6px against 66px and 5px |
+| `editor/DisplayPanel.tsx:38` | `slotJson` converts to 1/16 and drops vanilla values | no conversion; drops parts equal to the identity |
+| `editor/ConfigPanel.tsx:224` | durations are a type the form can't draw | they are text fields |
+| `editor/ScenePanel.tsx:8` | a player is two blocks tall | the hitbox is 1.8; 2 is the space a player needs |
+| `components/Card.tsx:20`, `Card.css:1` | every page is built from Card | only Settings uses it, and no variant is passed |
+| `components/WorldScene.tsx:52` | a 512px sheet and a night input | 1024px, no night option |
+| `components/Model3D.tsx:61`, `:66` | `orbit` is the editor's; `spin` is the library cards' | nothing passes `orbit`; the Projects tiles spin too |
+| `components/ModelView.tsx:315` | every drag but a left drag on a face orbits | middle and shift drags pan |
+| `components/ServerIcon.tsx:5` | until a server sends its own icon | no code for that |
+| `pages/Servers.tsx:16` | bars as the game's server list draws them | the game draws 5 bars at 150/300/600/1000 ms; this draws 4 at 80/150/300 |
+| `pages/Support.tsx:603` | `GET /tickets/{id}/events` | `api.streamAll`, for every ticket |
+| `pages/Projects.tsx:440` | pick a project, then a shelf | the page uses the first project and offers shelves |
+| `pages/Dashboard.tsx:68` | a Studio served by the plugin depends on this | that was the deleted plugin's host script |
+| `pages/Settings.tsx:86` | a switch holds for the session when storage is blocked | it is component state and resets on remount |
+| `pages/Settings.css:355` | the "How Vellum ships" list on About | no page renders it (removed in phase 5) |
+| `styles/controls.css:1` | buttons and key/value rows | also the dialogs |
+
+### UI text found wrong on the way (S2, fixed in the next commit)
+
+| Where | Said | Does |
+|---|---|---|
+| `editor/DisplayPanel.tsx`, Copy all tooltip | "Every slot that differs from vanilla" | copies every slot with a transform set; slots at the identity are left out, and nothing is compared with vanilla |
+
+## Bugs found by the audit
+
+Found while checking comments against code. The audit changes wording
+only, so these are open. The first two were reproduced.
+
+| # | Where | Bug | Status |
+|---|---|---|---|
+| B1 | `lib/config.ts:318` | `coerce` tests a tri-state flag with `v === 'true'`, but a saved `.vellum` holds the boolean. Set a mob's gravity to true, save, reopen: the YAML says `gravity: false`, and the next save keeps it. | open, reproduced |
+| B2 | `lib/texture.ts:117` | The bucket fill never ends when the new colour is within the tolerance (8) of the colour it replaces but not equal to it: a painted pixel still matches and is pushed again. Filling 100,100,100 with 104,100,100 on a 16x16 surface ran for three minutes and grew to 9 GB before it was killed. | open, reproduced |
+| B3 | `lib/config.ts` | `canonicalise` turns an old unset flag (`''`) into `false`, which is then written to the YAML. | open |
+| B4 | `lib/config.ts:365` | Animations are split on whitespace, but clip names are free text: a clip name with a space loses everything after it. | open |
+| B5 | `lib/new-model.ts:452` | Dropping a cube anywhere but on a bone calls `reparent` with a null parent, which takes the cube out of the bone tree. | open |
+| B6 | `lib/new-model.ts:326` | `deleteBone` drops the tracks of the deleted bone only; tracks on bones nested under it stay and fail validation. | open |
+| B7 | `lib/vellum.ts` | A `.vellum` whose `requires`, `stages` or `effects` isn't an array throws a TypeError on open. | open |
+| B8 | `lib/version.ts:57` | A 200 whose body is JSON `null` throws at `body.plugin`, outside the try. | open |
+| B9 | `pages/Support.tsx` | The composer calls `sendTyping` on every keystroke with no debounce. | open |
+| B10 | `lib/dash.ts` | A blank string keeps the old value with no note (`{"name": ""}` answers ok); `heartbeat` ignores a non-string `agent` silently. | open |
+| B11 | `lib/uv-pack.ts:98` | When packing fails completely, `makeRoom` returns an oversized sheet with `at: null`. | open |
+| B12 | `lib/pack.ts:158` | `saysSomething` is true for `toYaml`'s empty stub (it holds `config-version: 1`), so a model with nothing configured still gets a stub file in the configs zip. The README says such models are left out. | open |
+| B13 | `lib/pack.ts` | Textures are deduplicated by path: two models with a texture of the same name collide, and the second is skipped without a message. | open |
+| B14 | `lib/world.ts:289` | The `- 26` in the figure's facing turns its face further from the default camera (checked in Chromium; `+ 26` faces it). | open |
+| B15 | `lib/pack.ts`, `editor/ExportPackDialog.tsx` | `buildConfigs` skips blocks before its `keyConfirmed` check, so the export dialog's "Configs held back" notice can never appear. | open |
+| B16 | `lib/world.ts`, `components/ModelView.css` | View in the real world shades twice: the world texture has Minecraft's face shading baked in, and the viewport's per-face brightness applies on top (a bottom face ends at 0.5 x 0.62). | open |
+
+Unused exports seen on the way: `assets`, `outliner`, `editorTextures`,
+`animations`, `keyframeRows` in `lib/data.ts`; `endpoints`,
+`webhookEvents`, `endpointLabel`, `findEndpoint` outside `lib/api.ts`;
+`usedBy` in `lib/endpoint.ts`; the `event` field in `lib/support.ts`.
+
 ## Phase 6: colour and tokens
 
 The operator picked **B, inventory grey**, for the editor from four renders
@@ -317,4 +473,6 @@ audit covers the studio only.
 ## Waiting on the operator
 
 - **More humour (P2-8).** Say which of the listed spots may get a line.
+- **The bugs (B1 to B16).** The audit changes wording, so it left them open.
+  B1 loses a saved setting and B2 hangs the tab. Say which to fix.
 

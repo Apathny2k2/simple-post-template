@@ -167,8 +167,7 @@ function buildMenus(
     },
     {
       label: 'Animation',
-      // with no clip the rest would be no-ops, so the menu offers only the
-      // one entry that does something
+      // without a clip the other entries would do nothing
       entries: [
         { label: 'New animation', icon: 'plus', onSelect: actions.onNewClip },
         ...(state.hasClip
@@ -194,11 +193,6 @@ function buildMenus(
         { label: 'Quad view', icon: 'layers', shortcut: 'Ctrl 4', onSelect: actions.onQuad },
         { label: 'Toggle grid', icon: 'grid', shortcut: 'G', onSelect: actions.onGrid },
         { kind: 'separator' },
-        /* "Screenshot Model" used to sit here doing nothing, and there is
-           no honest way to implement it: the viewport is composed from
-           CSS 3D transforms, not a canvas, so there is nothing to read
-           pixels out of. Exporting the texture is the thing this menu
-           can actually do. */
         { label: 'Export texture PNG', icon: 'image', onSelect: actions.onExportTexture },
       ],
     },
@@ -235,9 +229,6 @@ function MenuBar({
   )
   return (
     <div className="ed-menubar">
-      {/* The editor was a one-way door: every route into it came from the
-          library and none led back, so the only way out was the browser's
-          own Back button. */}
       <button
         className="ed-menubar__back"
         onClick={() => navigate(`/projects/${scenes[0].id}/${kind === 'mobs' ? 'mobs' : 'items'}`)}
@@ -276,8 +267,7 @@ function MenuBar({
 /* ================= toolbar ================= */
 
 const toolsets: Record<Mode, Array<{ id: string; icon: IconName; label: string }>> = {
-  // neither a behaviour nor a config is a canvas, so the tool row has
-  // nothing to offer either of them
+  // these modes have no canvas, so no tools
   behaviour: [],
   config: [],
   edit: [
@@ -318,9 +308,8 @@ const baseModes: Array<{ id: Mode; label: string }> = [
 ]
 
 /**
- * A mob has no display transforms, so the tab that would edit them says
- * what it actually opens instead - and it has no behaviour either: a
- * mob is animated by what it is doing, not by the blocks around it.
+ * Mobs have no display transforms, so their Display tab is labelled Scene.
+ * Mobs get no Behaviour tab, and Config appears only for kinds that have one.
  */
 const modesFor = (kind: ProjectKind) =>
   baseModes
@@ -526,7 +515,7 @@ function Panel({
   children: ReactNode
   grow?: boolean
   defaultOpen?: boolean
-  /** opens the panel when it becomes true - `defaultOpen` is only read at mount */
+  /** opens the panel when it becomes true. `defaultOpen` is read only at mount. */
   forceOpen?: boolean
 }) {
   const [open, setOpen] = useState(defaultOpen)
@@ -559,20 +548,15 @@ function NumField({
   snap,
 }: {
   axis: 'x' | 'y' | 'z' | 'n'
-  /**
-   * What this number is, spelled out. Every one of these used to be an
-   * unlabelled box: a screen reader read nineteen inputs called
-   * "edit text" and the axis letter beside them was a decoration it
-   * never connected to anything.
-   */
+  /** the input's accessible name, also used in the scrub tooltip */
   name: string
   value: number
   onChange: (v: number) => void
   step?: number
   disabled?: boolean
-  /** fired once a scrub ends, so a drag is one undo step rather than forty */
+  /** called once when a scrub, typed edit or arrow nudge ends */
   onCommit?: () => void
-  /** round to whole units - what the magnet in the toolbar turns on */
+  /** round to whole units (the toolbar's magnet) */
   snap?: boolean
 }) {
   const emit = (v: number) => onChange(snap ? Math.round(v) : v)
@@ -620,8 +604,7 @@ function NumField({
         onKeyDown={(e) => {
           if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
           if (e.key === 'Escape') setDraft(null)
-          /* scrubbing is a mouse gesture; the arrows are how the same
-             nudge is made without one. Shift takes ten steps at once. */
+          // keyboard version of scrubbing, since the axis handle is pointer-only
           if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
             if (disabled) return
             e.preventDefault()
@@ -690,7 +673,7 @@ function CubePanel({
   cube: Cube | null
   kind: ProjectKind
   onChange: (fn: (c: Cube) => Cube) => void
-  /** the toolbar magnet: whole units for the fields where they mean something */
+  /** the toolbar magnet; applies to position, size and pivot */
   snap: boolean
 }) {
   if (!cube) {
@@ -811,7 +794,7 @@ function UVPanel({
   face: FaceKey
   onFace: (f: FaceKey) => void
   onChange: (fn: (c: Cube) => Cube) => void
-  /** texel coordinates straight off the sheet, when paint mode is active */
+  /** gets texel coordinates on the sheet; set only in paint mode */
   onPaint?: (x: number, y: number, phase: 'down' | 'move') => void
 }) {
   const texture = model.textures[0]
@@ -976,7 +959,7 @@ function hsvToHex(h: number, s: number, v: number) {
   return `#${f(5)}${f(3)}${f(1)}`
 }
 
-/** Starting colours for texture painting, after blocks everyone knows. */
+/** Starting palette for painting, named after familiar blocks. */
 const PAINTS: [name: string, hex: string][] = [
   ['Coal', '#1f1f23'],
   ['Stone', '#7d7d7d'],
@@ -1016,7 +999,8 @@ function ColorPanel({ colour, onColour }: { colour: string; onColour: (hex: stri
   const [sat, setSat] = useState(() => hexToHsv(colour)[1])
   const [val, setVal] = useState(() => hexToHsv(colour)[2])
 
-  // the eyedropper writes the parent's colour; the picker follows it
+  /* Resync HSV only when the colour changes from outside (the pipette).
+     Re-deriving it from our own output would lose the hue of a grey. */
   const external = useRef(colour)
   useEffect(() => {
     if (colour === external.current) return
@@ -1085,8 +1069,6 @@ function ColorPanel({ colour, onColour }: { colour: string; onColour: (hex: stri
 
       <div className="color-foot">
         <span className="color-swatch" style={{ background: colour }} />
-        {/* it was a read-only input dressed as an editable one, so an exact
-            colour could be read and never entered */}
         <input
           className="color-hex"
           value={draft ?? colour.toUpperCase()}
@@ -1151,14 +1133,11 @@ function Outliner({
   const [dragId, setDragId] = useState<string | null>(null)
   const [over, setOver] = useState<string | null>(null)
 
-  /* Pointer events rather than HTML5 drag-and-drop. DnD does not exist
-     on touch at all, and it needs the browser's own drag protocol, so
-     the gesture would work on a mouse and nowhere else. A movement
-     threshold keeps an ordinary click from being read as a drag. */
+  /* Pointer events, because HTML5 drag-and-drop does not work on touch.
+     A 5px threshold keeps a click from starting a drag. */
   const press = useRef<{ id: string; x: number; y: number; pointerId: number; moved: boolean } | null>(null)
-  /* pointerup clears the drag before the click fires, so the click has
-     to be told separately - otherwise releasing over a bone toggled it
-     collapsed and hid the row you had just moved */
+  /* pointerup clears the drag before click fires, so this flag stops the
+     click from selecting and collapsing the row that was just dropped */
   const swallowClick = useRef(false)
 
   const rowUnder = (x: number, y: number) => {
@@ -1173,9 +1152,9 @@ function Outliner({
     if (!held.moved) {
       held.moved = true
       setDragId(held.id)
-      /* Capture only once a drag is real. Capturing on pointerdown
-         retargets the click that follows to the capture element, which
-         quietly killed row selection and double-click-to-rename. */
+      /* Capture only once the drag starts. Capturing on pointerdown sends
+         the following click to the capture element, which breaks row
+         selection and double-click rename. */
       e.currentTarget.setPointerCapture(held.pointerId)
     }
     const target = rowUnder(e.clientX, e.clientY)
@@ -1195,7 +1174,7 @@ function Outliner({
     }
     swallowClick.current = true
     const target = rowUnder(e.clientX, e.clientY)
-    // off the rows entirely means "make it a root"
+    // dropping anywhere but on another bone makes it a root
     if (target !== held.id) onMove(held.id, target && bonesById.has(target) ? target : null)
     setDragId(null)
     setOver(null)
@@ -1258,13 +1237,12 @@ function Outliner({
             style={{ paddingLeft: 6 + row.depth * 13 }}
             onPointerDown={(e) => {
               if (editing === node.id || e.button !== 0) return
-              /* a fresh press is a fresh gesture: whatever the last drop
-                 asked us to swallow, it is not this */
+              // a new press clears a swallow left over from the last drop
               swallowClick.current = false
               press.current = { id: node.id, x: e.clientX, y: e.clientY, pointerId: e.pointerId, moved: false }
             }}
             onClick={() => {
-              // a click that turned into a drag is not a selection
+              // ignore the click that ends a drag
               if (dragId || swallowClick.current) {
                 swallowClick.current = false
                 return
@@ -1309,12 +1287,8 @@ function Outliner({
               </span>
             )}
 
-            {/* HIT REGIONS, ON MOBS ONLY, AS INTENT. The mechanism under
-                this button is "a child bone holding one hidden cube",
-                which is not a thing to ask an author to assemble by
-                hand - and getting it wrong makes the whole mob
-                unhittable with nothing said out loud. The Check block
-                reports the mode; this is how to get there on purpose. */}
+            {/* Mobs only. Adds or removes a hit region: a child bone holding
+                one hidden cube (see lib/hitregions). */}
             {isBone && model.kind === 'mobs' ? (
               region ? (
                 <button
@@ -1381,11 +1355,6 @@ function Outliner({
 
 /* ================= bone panel ================= */
 
-/**
- * Bones are what animation drives, and they had no inspector at all -
- * selecting one emptied the left column and `Add Bone` produced
- * something fixed at the origin that could never be moved.
- */
 function BonePanel({
   bone,
   onChange,
@@ -1470,9 +1439,6 @@ function Viewport({
 }) {
   const [shading, setShading] = useState<'solid' | 'wire'>('solid')
 
-  /* The fit used to be `430 / extent` - a constant that assumed a
-     desktop-sized viewport, so on a phone the model was cropped by the
-     frame it was supposed to be fitted to. Measure instead. */
   const scene = useRef<HTMLDivElement>(null)
   const [box, setBox] = useState({ w: 680, h: 680 })
   useLayoutEffect(() => {
@@ -1485,11 +1451,8 @@ function Viewport({
     ro.observe(el)
     return () => ro.disconnect()
   }, [])
-  /* The model stands ON the grid, and the grid sits at the middle of the
-     scene, so the height a model actually has to fit into is the half
-     above it - not the whole box. Fitting to the whole box is why the
-     head was cropped off at every window size narrower than the one the
-     old constant was tuned against. */
+  /* The model stands on the grid at the middle of the scene, so its
+     height has to fit in the top half of the box (0.44 of it). */
   const scale = Math.max(1.5, Math.min(16, Math.min(box.w * 0.6, box.h * 0.44) / extent))
 
   return (
@@ -1570,7 +1533,7 @@ function Viewport({
 
 /* ================= animation ================= */
 
-/** Everything the Animate-mode UI can do, in one place. */
+/** State and actions shared by the Animate-mode panels. */
 type AnimApi = {
   clips: Clip[]
   clip: Clip | null
@@ -1588,22 +1551,18 @@ type AnimApi = {
   removeTrack: (bone: string, channel: Channel) => void
   selectedKey: string | null
   selectKey: (id: string | null) => void
-  /** a key drag is one undo step, so it is bracketed rather than committed per frame */
+  /** each move is a coalesced commit, so a continuous drag is one undo step */
   dragKey: (keyId: string, time: number, phase: 'down' | 'move' | 'up') => void
   patchKey: (keyId: string, patch: Partial<Omit<Key, 'id'>>, transient?: boolean) => void
-  /** what kind of project this is - auto-animation is mobs only */
+  /** auto-animation is offered for mobs only */
   kind: ProjectKind
-  /** the model itself, so the rig reader has something to read */
+  /** read by readRig */
   model: Model
-  /** build a preset and select it; returns what it was called, or null */
+  /** builds a preset clip and selects it; returns the clip's name, or null */
   autoAnimate: (presetId: string) => string | null
 }
 
-/**
- * Strips the Minecraft-style `animation.<model>.` prefix and nothing
- * else. Taking the text after the last dot turned "2.5 second idle"
- * into "5 second idle" and "walk.cycle.v2" into "v2".
- */
+/** Strips only the `animation.<model>.` prefix, so dots later in the name are kept. */
 export function clipLabel(name: string) {
   const m = /^animation\.[^.]+\.(.+)$/.exec(name)
   return m ? m[1] : name
@@ -1613,10 +1572,8 @@ const LOOPS: Array<Clip['loop']> = ['loop', 'once', 'hold']
 const SNAPS = [0, 12, 24, 30, 60]
 
 /**
- * What the rig reader made of this model, and the presets it can build
- * from that reading. It says what it found before it offers to animate
- * it, so a wrong guess - a "blade_left" read as an arm - is visible
- * rather than mysterious.
+ * Shows what readRig found before offering presets, so a wrong guess
+ * (a "blade_left" read as an arm) is visible.
  */
 function AutoAnimate({ anim }: { anim: AnimApi }) {
   const [note, setNote] = useState<string | null>(null)
@@ -1774,9 +1731,8 @@ function AnimationPanel({ anim }: { anim: AnimApi }) {
       <p className="ed-hint" style={{ marginTop: 10 }}>
         Animating
       </p>
-      {/* the options carried aria-selected but no tab stop, so this list
-          could be read and never reached. Roving tabindex: one stop for
-          the list, arrows within it, selection follows focus. */}
+      {/* Roving tabindex: one tab stop for the list, arrows move within
+          it, and selection follows focus. */}
       <div
         className="tree tree--short"
         role="listbox"
@@ -1889,9 +1845,7 @@ function KeyframePanel({ anim }: { anim: AnimApi }) {
 
 /* ================= timeline ================= */
 
-/* The scale used to be this constant and nothing else, so a 0.5s clip
-   occupied 48px of a 1500px panel with every key within six pixels of
-   its neighbour, and a 40s clip could only be scrolled. */
+// timeline zoom, in pixels per second
 const PX_MIN = 12
 const PX_MAX = 1200
 const PX_DEFAULT = 96
@@ -1919,14 +1873,15 @@ function Timeline({
 
   const clampPx = (v: number) => Math.max(PX_MIN, Math.min(PX_MAX, v))
 
-  /** Fill the panel with the clip, which is what you want nine times in ten. */
+  /** Zoom so the whole clip fills the track area (178px is the names column). */
   const fit = useCallback(() => {
     const width = main.current?.clientWidth
     if (!width || !clip) return
     setPxPerS(clampPx((width - 178 - 24) / Math.max(clip.length, 0.05)))
   }, [clip])
 
-  // ctrl or shift + wheel zooms the timeline, as it does in every editor
+  /* Ctrl or Shift + wheel zooms. Attached by hand because React's wheel
+     listener is passive and cannot call preventDefault. */
   useEffect(() => {
     const node = main.current
     if (!node) return
@@ -1939,8 +1894,7 @@ function Timeline({
     return () => node.removeEventListener('wheel', onWheel)
   }, [])
 
-  /* Ticks follow the scale: whole seconds when there is room, tenths
-     when the clip is short enough that seconds say nothing. */
+  // tick spacing follows the zoom: tenths, seconds, 5s or 10s
   const tickStep = pxPerS >= 220 ? 0.1 : pxPerS >= 60 ? 1 : pxPerS >= 24 ? 5 : 10
   const ticks = Math.max(1, Math.ceil(length / tickStep))
   const trackW = Math.max(ticks * tickStep * pxPerS, 1)
@@ -1950,9 +1904,9 @@ function Timeline({
     [anim.bones],
   )
 
-  /* One row per bone-channel pair. The bone being animated always shows
-     all three channels even when empty - that empty row is how you key a
-     channel for the first time - and every other keyed bone follows. */
+  /* One row per bone and channel. The selected bone shows all three
+     channels, since an empty row is where a channel gets its first key.
+     Other bones show only channels that have a track. */
   const rows = useMemo<Row[]>(() => {
     if (!clip) return []
     const out: Row[] = []
@@ -1979,15 +1933,8 @@ function Timeline({
     return out
   }, [clip, anim.bone, nameOf])
 
-  /* The playhead lives in a ref for the duration of a playthrough.
-     Depending on `time` tore the loop down and rebuilt it on every
-     frame, and `last` was reset each time - so the gap between the
-     state update and the effect re-running was simply dropped, and a
-     one-second clip took nearly two seconds to play.
-
-     `loop` used to be a label too. The tick wrapped unconditionally, so
-     `once` and `hold` were byte-identical to `loop` - and the shipped
-     `strike` clip is authored `once` and ran forever. */
+  /* Playback keeps the playhead in a ref so `time` stays out of the loop's
+     deps. Restarting the loop each frame would reset `last` and lose time. */
   const timeRef = useRef(time)
   useEffect(() => {
     timeRef.current = time
@@ -2014,7 +1961,7 @@ function Timeline({
         raf = requestAnimationFrame(tick)
         return
       }
-      // hold freezes on the last pose; once drops back to the rest pose
+      // hold stops on the last frame; once goes back to time 0
       const end = clip.loop === 'hold' ? clip.length : 0
       timeRef.current = end
       onTime(end)
@@ -2124,11 +2071,8 @@ function Timeline({
       </div>
 
       {clip ? (
-        /* One scroller, not two. The names column and the track column
-           used to scroll independently, so a single wheel gesture over
-           the tracks offset the labels by up to ten rows and the
-           timeline started reporting the wrong bone for every key. The
-           names are sticky inside the same grid instead. */
+        /* names and tracks share one scroller so their rows stay aligned;
+           the names column is sticky */
         <div className="tl-main" ref={main}>
           <div
             className="tl-grid"
@@ -2148,9 +2092,6 @@ function Timeline({
               <Fragment key={r.key}>
                 <div className="tl-name" data-on={r.bone === anim.bone || undefined}>
                   <Icon name="folder" size={11} />
-                  {/* the row used to be a div carrying aria-selected and a
-                      click handler: no role, no tab stop, nothing a
-                      keyboard could reach. The label is the button now. */}
                   <button
                     className="tl-name__bone"
                     aria-pressed={r.bone === anim.bone}
@@ -2281,20 +2222,15 @@ function ownerBone(bones: Bone[], cubeId: string | null): string | null {
 }
 
 /**
- * What the route asks the editor to open.
- *
- * `#/editor/<sample>` opens a model that ships with the app.
- * `#/editor/new/<kind>/<subtype>/<name>` builds one, which is how the
- * library's New Model button gets here: a URL survives a reload and a
- * hand-off through memory does not, so the new model is described
- * rather than passed.
+ * `#/editor/<sample>` opens a bundled sample. `#/editor/new/<kind>/<subtype>/<name>`
+ * creates a model, described in the URL so a reload creates it again.
  */
 function startFrom(segments: string[]): { model: Model; file: string; kind: ProjectKind } {
   if (segments[1] === 'new') {
     const kind: ProjectKind =
       segments[2] === 'mobs' || segments[2] === 'blocks' ? segments[2] : 'items'
     const sub = subtypeFits(kind, segments[3]) ? segments[3] : defaultSubtype(kind)
-    // the URL is user-typeable, so the name goes through the same sieve the dialog uses
+    // the URL can be typed by hand, so clean the name as NewModelDialog does
     const name =
       decodeURIComponent(segments[4] ?? '')
         .toLowerCase()
@@ -2315,8 +2251,7 @@ export function Editor({ segments }: { segments: string[] }) {
 
   const [fileName, setFileName] = useState(initial.file)
   const [kind, setKind] = useState<ProjectKind>(initial.kind)
-  /* No state of its own: a subtype is nothing but what the document
-     says, and a second copy of it is a second thing to keep in step. */
+  // read from the model so undo and file loads keep it current
   const subtype = model.subtype
   const [mode, setMode] = useState<Mode>('edit')
   const [tool, setTool] = useState('move')
@@ -2356,23 +2291,19 @@ export function Editor({ segments }: { segments: string[] }) {
   const [openError, setOpenError] = useState<string | null>(null)
   const [saveNote, setSaveNote] = useState<string | null>(null)
 
-  /* Dirty is the model we have now against the last one written to disk
-     or read from it. Every edit produces a new Model object, so this
-     needs no diffing and cannot drift - it is exact. */
+  /* Dirty compares the current model with the last one saved or opened,
+     by identity. Every edit makes a new Model object. */
   const [savedModel, setSavedModel] = useState<Model>(initial.model)
   const dirty = model !== savedModel
-  /** the scene overlay: the model in a world, at a size you can judge */
+  /** the WorldScene overlay, which shows the model at real size */
   const [worldOpen, setWorldOpen] = useState(false)
 
-  /* Behaviour preview. Its clock is separate from the animation
-     playhead: the cycle is minutes long where a clip is seconds, and
-     scrubbing one has nothing to do with the other. */
+  // behaviour preview clock, separate from the animation playhead
   const [bhvTime, setBhvTime] = useState(0)
   const [bhvPlaying, setBhvPlaying] = useState(false)
-  // the tab carries the unsaved marker too, not only the menu bar
   useTitle(`${dirty ? '\u2022 ' : ''}${fileName}`)
 
-  /** Something irreversible, waiting on an answer. */
+  /** A destructive action waiting for confirmation. */
   const [pending, setPending] = useState<{
     title: string
     body: string
@@ -2380,19 +2311,16 @@ export function Editor({ segments }: { segments: string[] }) {
     run: () => void
   } | null>(null)
 
-  /** Set for exactly one navigation, once the user has said to discard. */
+  /** Lets one navigation through after the user chose to discard. */
   const allowNav = useRef(false)
 
-  /* What was selected when each model was current. Undo used to leave
-     the panels pointing at nothing - or, after undoing a delete, at the
-     wrong cube - because selection lived outside the history entirely.
-     A WeakMap keyed on the model object needs no bookkeeping and cannot
-     hold a model alive. */
+  /* The selection for each model in the history, so undo and redo can
+     restore it. A WeakMap lets discarded models be collected. */
   const selectionAt = useRef(new WeakMap<Model, string | null>())
 
   const loadModel = useCallback(
     (next: Model, name: string, nextKind: ProjectKind = 'items') => {
-      // what the document says it is beats what the last one was
+      // the file's own kind wins over `nextKind`
       const resolved = next.kind ?? nextKind
       history.reset(next)
       setSavedModel(next)
@@ -2406,17 +2334,16 @@ export function Editor({ segments }: { segments: string[] }) {
       setTime(0)
       setPlaying(false)
       setMode('edit')
-      // display slots are a preview of THIS model, not the last one
+      // the display transforms belonged to the previous model
       setDisplayState(DEFAULT_DISPLAY)
       setSlot('thirdperson_righthand')
     },
     [history],
   )
 
-  /* Order matters here. Recording runs first, so on the render an undo
-     produces it would stamp the *new* selection onto the *old* model and
-     the restore below would read back what it was trying to replace. It
-     stands down for exactly that render instead. */
+  /* Order matters. The recording effect runs first, so on the render after
+     an undo or redo it would store the stale selection against the
+     restored model before the restore effect reads it. It skips that render. */
   const lastTravel = useRef(0)
 
   useEffect(() => {
@@ -2431,40 +2358,29 @@ export function Editor({ segments }: { segments: string[] }) {
     if (was !== undefined) setSelected(was)
   }, [history.travel, history.present])
 
-  /* The tool palette changes per mode; keep the active tool valid.
-     Behaviour has no tools at all - it is two lists, not a canvas - so
-     there is nothing to fall back to and the tool is simply left as it
-     was for whichever mode comes next. */
+  /* Keep the active tool valid for the mode. Modes with no tools
+     (behaviour, config) leave it as it was. */
   useEffect(() => {
     const set = toolsets[mode]
     if (set.length && !set.some((t) => t.id === tool)) setTool(set[0].id)
   }, [mode, tool])
 
-  // Animate mode opens playing when there is something to play: a still
-  // first frame reads as "animation broken". Any edit stops it again.
+  // leaving Animate mode stops playback
   useEffect(() => {
     if (mode !== 'animate') setPlaying(false)
   }, [mode])
 
-  /* Painting writes into a decoded canvas and re-encodes the model's
-     data URI out of it, so the cache and the model can disagree - and
-     when they do, the cache wins the next time a stroke lands. Undo is
-     exactly that case: it puts the old texture back on the model and
-     leaves the canvas holding the pixels it just took away, so the next
-     stroke re-encodes the whole stale canvas over the top and the
-     undone stroke reappears.
-
-     So the cache remembers what it last encoded. Anything that changes
-     a texture from outside painting - an undo, a redo, a file opened -
-     no longer matches, and is decoded again before it can be painted
-     on. Keying this on the loaded model instead was the bug. */
+  /* Painting draws on a cached canvas per texture and re-encodes it into
+     the model. `encoded` holds the source each canvas last produced. A
+     texture changed any other way (undo, redo, open) won't match, so it
+     is decoded again before the next stroke can write a stale canvas over it. */
   const encoded = useRef(new Map<string, string>())
   const decoding = useRef(new Set<string>())
 
   useEffect(() => {
     let cancelled = false
 
-    // a texture the model no longer carries must not linger in the cache
+    // drop cached canvases for textures removed from the model
     const live = new Set(model.textures.map((t) => t.id))
     for (const id of [...surfaces.current.keys()]) {
       if (live.has(id)) continue
@@ -2484,7 +2400,7 @@ export function Editor({ segments }: { segments: string[] }) {
           surfaces.current.set(t.id, surface)
           encoded.current.set(t.id, t.source)
         } catch {
-          /* an undecodable texture simply cannot be painted */
+          /* an undecodable texture gets no canvas and can't be painted */
         } finally {
           decoding.current.delete(t.id)
         }
@@ -2496,14 +2412,13 @@ export function Editor({ segments }: { segments: string[] }) {
     }
   }, [model.textures])
 
-  /** Re-encode a painted canvas back into the model, batched to a frame. */
+  /** Re-encodes a painted canvas into the model. commitTexture batches calls to one per frame. */
   const writeTexture = useCallback(
     (id: string) => {
       const surface = surfaces.current.get(id)
       if (!surface) return
       const source = toDataUrl(surface)
-      // recorded before the write, so the effect above can tell this
-      // change came from the cache and must not be decoded straight back
+      // set before the write so the effect above sees a match and skips decoding it again
       encoded.current.set(id, source)
       history.amend((m) => ({
         ...m,
@@ -2527,9 +2442,8 @@ export function Editor({ segments }: { segments: string[] }) {
     [writeTexture],
   )
 
-  /* Growing the UV sheet means redrawing every texture at double size.
-     The decoded canvas is already in hand, so this is a nearest-
-     neighbour blit - lossless for pixel art, and synchronous. */
+  /* Called when the UV sheet grows. Scales the cached canvas with
+     nearest-neighbour sampling, which keeps pixel art exact and is synchronous. */
   const rescale = useCallback<Rescale>((texture, factor) => {
     const surface = surfaces.current.get(texture.id)
     if (!surface) return null
@@ -2543,7 +2457,7 @@ export function Editor({ segments }: { segments: string[] }) {
     return canvas.toDataURL('image/png')
   }, [])
 
-  /** Land the last frame of a stroke before its undo step is closed. */
+  /** Writes a stroke's pending frame before its undo step is closed. */
   const flushTexture = useCallback(() => {
     if (!commitTimer.current) return
     cancelAnimationFrame(commitTimer.current)
@@ -2565,9 +2479,7 @@ export function Editor({ segments }: { segments: string[] }) {
   )
   const bhvNow = useMemo(() => stageAt(behaviour, bhvTime), [behaviour, bhvTime])
 
-  /* The stage's clip loops inside the stage for as long as the stage
-     lasts: a 7s charge on a 2s idle plays it three and a half times,
-     which is what "plays while it charges" has to mean. */
+  // a stage's clip loops for as long as the stage lasts
   const bhvClip = useMemo(
     () => model.clips.find((c) => c.id === bhvNow.stage?.clip) ?? null,
     [model.clips, bhvNow.stage],
@@ -2604,20 +2516,16 @@ export function Editor({ segments }: { segments: string[] }) {
   }, [pickedBone, bones, model.bones, selected])
 
   const issues = useMemo(() => validateModel(model, kind), [model, kind])
-  /* What a resource pack could not express, which is a different
-     question from what the codec would refuse. */
+  // what a resource pack can't express; validateModel checks the model itself
   const translate = useMemo(() => checkTranslation(model, kind), [model, kind])
-  /* Only a mob has hit regions, and only a mob's rig can lose them. */
+  // hit regions exist only on mobs
   const hit = useMemo(() => (kind === 'mobs' ? hitReport(model) : null), [model, kind])
   const errors = issues.filter((i) => i.level === 'error').length
-  /* A panel that says "clean" while holding a warning is worse than one
-     that says nothing: it is the thing the user checks before shipping. */
   const warnings = issues.length - errors
   const cube = model.cubes.find((c) => c.id === selected) ?? null
   const selectedBone = selected ? boneById(model, selected) : null
 
-  /* Selecting a bone in the outliner is also how you choose what Animate
-     mode drives, so the two never disagree. */
+  // selecting a bone in the outliner also picks it for Animate mode
   const selectNode = useCallback(
     (id: string) => {
       setSelected(id)
@@ -2634,9 +2542,7 @@ export function Editor({ segments }: { segments: string[] }) {
   const move = useCallback(
     (id: string, parentId: string | null) => {
       history.commit('reparent', (m) => reparent(m, id, parentId))
-      /* Drop into a collapsed bone and the row you just moved vanished:
-         it was inside a branch nothing was showing. Open the branch you
-         dropped into, the way every file tree does. */
+      // expand the bone it was dropped into so the moved row stays visible
       if (parentId)
         setCollapsed((s) => {
           if (!s.has(parentId)) return s
@@ -2657,9 +2563,6 @@ export function Editor({ segments }: { segments: string[] }) {
   const editCube = useCallback(
     (fn: (c: Cube) => Cube) => {
       if (!selected) return
-      /* A padlock that stops nothing is decoration. It is stored, it is
-         serialised, it dims the outliner row - and every transform,
-         every brush stroke and Delete all went straight through it. */
       if (model.cubes.find((c) => c.id === selected)?.locked) return
       history.commit(
         'cube edit',
@@ -2670,17 +2573,15 @@ export function Editor({ segments }: { segments: string[] }) {
     [selected, history, model.cubes],
   )
 
-  /** Say why nothing happened, once, rather than ignoring the gesture. */
+  /** Tells the user why an edit on a locked node did nothing. */
   const refuseLocked = useCallback((what: string) => {
     setSaveNote(`${what} is locked. Unlock it in the outliner first.`)
     window.setTimeout(() => setSaveNote(null), 3000)
   }, [])
 
-  /* Four gestures used to throw work away without a word: reload,
-     leaving for another route, New model, and Open. The browser owns
-     the first - `beforeunload` is the only hook it offers. The other
-     three are ours, because a hash change never unloads the document
-     and neither dialog knew there was anything to lose. */
+  /* Unsaved-work guards. Reload and tab close can be caught only with
+     `beforeunload`. A hash change never unloads the page, so route
+     changes, Open and sample loads are guarded below. */
   useEffect(() => {
     if (!dirty) return
     const onBeforeUnload = (e: BeforeUnloadEvent) => {
@@ -2734,8 +2635,7 @@ export function Editor({ segments }: { segments: string[] }) {
     })
   }, [])
 
-  /* One texel, one tool. Everything upstream - the 2D sheet and the 3D
-     back-projection - resolves to a call here. */
+  // applies the active tool at one texel, for both the UV sheet and the model
   const applyTool = useCallback(
     (
       textureId: string,
@@ -2744,23 +2644,19 @@ export function Editor({ segments }: { segments: string[] }) {
       bounds: UVRect | null,
       phase: 'down' | 'move',
       /**
-       * Where a brush or shape stamp may write. Set when painting on the
-       * model, where a stamp that runs off the face lands on some other
-       * cube; null on the 2D sheet, where the whole atlas is the canvas
-       * and clipping to an island would make half the tools useless.
-       * `bounds` is separate: it is what a fill is bounded by.
+       * Where a brush or shape may write. The face's rectangle when painting
+       * on the model, so a stamp can't spill onto other faces; null on the
+       * sheet. `bounds` limits only the bucket fill.
        */
       clip: UVRect | null = null,
     ) => {
       const surface = surfaces.current.get(textureId)
-      /* A stroke started in the same frame as an undo would otherwise
-         land on the canvas being replaced, and re-encode it. Dropping
-         those few texels is the cheaper mistake. */
+      /* skip while the texture is being decoded again (after an undo, say),
+         or the stroke would land on the stale canvas */
       if (!surface || decoding.current.has(textureId)) return
 
       if (tool === 'pipette') {
         const sampled = pick(surface, x, y)
-        // a transparent texel used to be indistinguishable from a missed click
         if (!sampled) return
         if (sampled[3] === 0) {
           setSaveNote('That texel is transparent, so there\u2019s no colour to pick.')
@@ -2771,10 +2667,8 @@ export function Editor({ segments }: { segments: string[] }) {
         return
       }
 
-      /* Rectangle or ellipse between where the drag started and where it
-         is now. The canvas is restored from a snapshot on every move so
-         the shape follows the cursor instead of leaving a smear - which
-         is what this tool did before, being the brush with a new icon. */
+      /* Each move restores the snapshot taken on pointerdown before drawing,
+         so the shape follows the cursor without leaving a trail. */
       if (tool === 'shape') {
         if (phase === 'down') {
           shapeFrom.current = [x, y]
@@ -2803,7 +2697,7 @@ export function Editor({ segments }: { segments: string[] }) {
       const rgba = tool === 'eraser' ? ([0, 0, 0, 0] as [number, number, number, number]) : hexToRgba(colour)
       const stamp = (px: number, py: number) => paintTexels(surface, px, py, rgba, brush, clip)
 
-      // a fast drag would otherwise dot rather than draw
+      // fill the gap since the last move so a fast drag draws a line
       if (phase === 'move' && lastTexel.current) strokeBetween(lastTexel.current, [x, y], stamp)
       else stamp(x, y)
 
@@ -2813,8 +2707,8 @@ export function Editor({ segments }: { segments: string[] }) {
     [tool, colour, brush, shape, shapeFilled, commitTexture],
   )
 
-  /* A stroke is one undo step, however many texels it wrote. The last
-     frame is flushed first, or it would land after the step closed. */
+  /* A stroke is one undo step. Flush the pending frame first, or it would
+     land after the step closed. */
   useEffect(() => {
     const done = () => {
       shapeFrom.current = null
@@ -2832,7 +2726,7 @@ export function Editor({ segments }: { segments: string[] }) {
     }
   }, [flushTexture, history])
 
-  /** A click on the model, back-projected through that face's UV rectangle. */
+  /** Paints where a click lands on the model, mapped through that face's UV rectangle. */
   const paintOnModel = useCallback(
     (cubeId: string, faceKey: FaceKey, u: number, v: number, phase: 'down' | 'move') => {
       const target = model.cubes.find((c) => c.id === cubeId)
@@ -2842,8 +2736,7 @@ export function Editor({ segments }: { segments: string[] }) {
         return
       }
       if (phase === 'down') {
-        // the pipette reads a pixel; it is not an edit and must not
-        // leave an empty step for the user to click back through
+        // the pipette changes nothing, so it opens no undo step
         if (tool !== 'pipette') history.begin('paint')
         setSelected(cubeId)
         setFace(faceKey)
@@ -2851,17 +2744,15 @@ export function Editor({ segments }: { segments: string[] }) {
       const f = target.faces[faceKey]
       if (f.texture === null) return
       const texel = texelOfFace(f.uv, u, v)
-      // a zero-area UV has no texel under the click, so there is nothing to paint
+      // a zero-area UV has no texel under the click
       if (!texel) return
       applyTool(f.texture, texel[0], texel[1], faceBounds(f.uv), phase, faceBounds(f.uv))
     },
     [model.cubes, applyTool, history, tool, refuseLocked],
   )
 
-  /* On the sheet, a fill is bounded by the UV island the click landed in -
-     the face you clicked, not the face that happens to be selected. A
-     click on bare sheet has no island, so the fill is bounded only by
-     colour similarity. */
+  /* On the sheet, a fill stays inside the UV island under the click, which
+     may not be the selected face. On bare sheet only colour bounds it. */
   const paintOnSheet = useCallback(
     (x: number, y: number, phase: 'down' | 'move') => {
       const texture = model.textures[0]
@@ -2927,7 +2818,7 @@ export function Editor({ segments }: { segments: string[] }) {
       },
       patchClip: (patch) => {
         withClip('animation settings', (m, id) => updateClip(m, id, patch), true)
-        // a 3s playhead on a 1s clip renders past the end of the ruler
+        // keep the playhead on a shortened clip
         if (patch.length !== undefined) setTime((t) => Math.min(t, Math.max(0, patch.length!)))
       },
       closeLoop: () => withClip('close the loop', (m, id) => closeLoop(m, id)),
@@ -2979,18 +2870,13 @@ export function Editor({ segments }: { segments: string[] }) {
         const s = sampleById(id)
         guarded(`Open ${s.label}?`, 'Discard and open', () => loadModel(s.model, s.file, s.kind))
       },
-      /* Creation lives on the shelf now, so this goes there rather than
-         opening a second copy of the same dialog in a second place. The
-         guard still runs, because leaving a dirty editor is leaving a
-         dirty editor however you do it. */
+      /* New models are made in the library's dialog, so this navigates there.
+         The unsaved-changes route guard still applies. */
       onNew: () =>
         navigate(`/projects/${scenes[0].id}/${kind === 'mobs' ? 'mobs' : 'items'}/new`),
       onUndo: history.undo,
       onRedo: history.redo,
-      /* Where a new node goes: into the selected bone, or into the bone
-         that owns the selected cube. `addCube` has always taken a parent
-         id - the UI just never passed the one it already had, so
-         everything landed on the first root however deep you were. */
+      // a new node goes into the selected bone, or the bone that holds the selected cube
       onAddCube: () => {
         const parent = bones.some((b) => b.id === selected) ? selected : ownerBone(model.bones, selected)
         const next = addCube(model, parent, rescale)
@@ -3006,7 +2892,7 @@ export function Editor({ segments }: { segments: string[] }) {
       },
       onDuplicate: () => {
         if (!selected) return
-        // a bone duplicates with its whole subtree; it used to do nothing at all
+        // a bone is duplicated with its whole subtree
         const next = bones.some((b) => b.id === selected)
           ? duplicateBone(model, selected)
           : duplicateCube(model, selected)
@@ -3017,11 +2903,8 @@ export function Editor({ segments }: { segments: string[] }) {
       onDelete: () => {
         if (!selected) return
         const isBone = bones.some((b) => b.id === selected)
-        /* After an undo the selection can name something the model no
-           longer has. Deleting it used to build a new model object that
-           differed from nothing, commit a step for it, and truncate the
-           redo branch - so the cube you had just undone became
-           unrecoverable. */
+        /* After an undo the selection can name a node the model doesn't
+           have. Committing a no-op delete would still clear the redo branch. */
         if (!isBone && !model.cubes.some((c) => c.id === selected)) return
 
         const lockedCube = model.cubes.find((c) => c.id === selected && c.locked)
@@ -3034,7 +2917,7 @@ export function Editor({ segments }: { segments: string[] }) {
           refuseLocked(`"${lockedBone.name}"`)
           return
         }
-        // a bone takes its subtree with it; a cube goes alone
+        // deleting a bone deletes everything under it
         const next = isBone ? deleteBone(model, selected) : deleteCube(model, selected)
         if (next === model) return
         history.commit(isBone ? 'delete bone' : 'delete cube', next)
@@ -3066,24 +2949,19 @@ export function Editor({ segments }: { segments: string[] }) {
     [model, fileName, kind, textureIndex, loadModel, runSave, selected, bones, history, anim, animBone, guarded, rescale, refuseLocked],
   )
 
-  /* Keyboard. Anything typed into a field belongs to that field, so the
-     shortcuts stand down while one has focus. */
+  // keyboard shortcuts; all but Ctrl+S are ignored while a field has focus
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null
       const typing = !!target && /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)
       const mod = e.ctrlKey || e.metaKey
 
-      /* Save is the one shortcut that must work with a field focused:
-         typing a number and hitting Ctrl+S is a single gesture, and
-         standing down here hands the keystroke to the browser's own
-         "Save page as" dialog, which is worse than doing nothing. */
+      // Ctrl+S also works in a field; letting it through would open the browser's Save Page dialog
       if (mod && e.key.toLowerCase() === 's') {
         e.preventDefault()
         actions.onSave()
         return
       }
-      // everything else belongs to the field while one has focus
       if (typing) return
 
       if (mod && e.key.toLowerCase() === 'z') {
@@ -3099,7 +2977,7 @@ export function Editor({ segments }: { segments: string[] }) {
       }
       if (mod && e.key.toLowerCase() === 'd') {
         e.preventDefault()
-        // Animate duplicates the clip; geometry is not what this mode edits
+        // in Animate mode this duplicates the clip
         if (mode === 'animate') anim.duplicateClip()
         else actions.onDuplicate()
         return
@@ -3121,11 +2999,8 @@ export function Editor({ segments }: { segments: string[] }) {
       }
       if (mod) return
 
-      /* Delete means "the thing this mode edits", and nothing else.
-         Falling through to cube deletion whenever no keyframe happened
-         to be selected quietly dismantled the model one press at a
-         time, which is the last thing a texture or animation pass
-         should be able to do. */
+      /* Delete acts on what the mode edits: the selected keyframe in
+         Animate, the selected node in Edit, nothing in other modes. */
       if (e.key === 'Delete' || e.key === 'Backspace') {
         e.preventDefault()
         if (mode === 'animate') {
@@ -3150,8 +3025,7 @@ export function Editor({ segments }: { segments: string[] }) {
     return () => window.removeEventListener('keydown', onKey)
   }, [history, actions, anim, mode, selectedKey, animBone])
 
-  /* Only `.vellum` opens here. The format is the editor's own, and a
-     file that is not one is refused by name rather than half-parsed. */
+  // only .vellum files open here; anything else is refused before parsing
   const onFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
@@ -3171,8 +3045,7 @@ export function Editor({ segments }: { segments: string[] }) {
   const onLeft = useCallback((dx: number) => setLeftW((w) => Math.min(460, Math.max(210, w + dx))), [])
   const onRight = useCallback((dx: number) => setRightW((w) => Math.min(460, Math.max(210, w - dx))), [])
 
-  // fit the model from its real extent, not its distance from the origin -
-  // a tall sword and a 16-unit block both want to fill the viewport
+  // longest side of the model's bounding box, for fitting it to the viewport
   const extent = useMemo(() => {
     if (!model.cubes.length) return 24
     const lo = [Infinity, Infinity, Infinity]
@@ -3231,9 +3104,7 @@ export function Editor({ segments }: { segments: string[] }) {
         redoLabel={history.redoLabel}
       />
 
-      {/* the editor had no main landmark and no h1 at all: "skip to
-          content" had nothing to skip to, and the document announced
-          itself as a page about nothing */}
+      {/* the h1 is visually hidden (.vh) and names the page for screen readers */}
       <main className="ed-body">
         <h1 className="vh">
           {fileName} {'\u2014'} {kind} model, {mode} mode
@@ -3347,15 +3218,9 @@ export function Editor({ segments }: { segments: string[] }) {
               </Panel>
             )}
 
-            {/* WHERE IT CAN BE HIT. Its own panel, not a line inside
-                Validation, for two reasons that both cost real time to
-                learn: Validation stays collapsed when a model is clean,
-                and a mob that has just become unhittable IS clean by
-                every other measure - so the warning would sit folded
-                away behind a header reading "clean". And the count
-                below shows the MODE rather than a number, so the answer
-                is readable with the panel shut, which is how it will
-                spend most of its life. */}
+            {/* A separate panel because Validation stays collapsed on a clean
+                model, and a mob that just became unhittable passes every other
+                check. The count shows the mode so it reads with the panel shut. */}
             {hit ? (
               <Panel
                 title="Where it can be hit"
@@ -3367,11 +3232,8 @@ export function Editor({ segments }: { segments: string[] }) {
                       : 'nothing'
                 }
                 defaultOpen={hit.mode !== 'derived'}
-                /* The moment a rig flips to explicit the panel opens
-                   itself, because the flip is usually an accident and
-                   an accident nobody sees is the whole problem. It
-                   opens once and can still be closed - a nudge, not a
-                   latch. */
+                /* Opens when the rig turns explicit, which is usually an
+                   accident. It can still be closed afterwards. */
                 forceOpen={hit.mode === 'explicit'}
               >
                 <p className="ed-hint" data-warn={hit.mode !== 'derived' || undefined}>
@@ -3420,7 +3282,7 @@ export function Editor({ segments }: { segments: string[] }) {
               title="Validation"
               count={errors ? `${errors} error${errors === 1 ? '' : 's'}` : warnings ? `${warnings} warning${warnings === 1 ? '' : 's'}` : 'clean'}
               defaultOpen={errors > 0 || warnings > 0 || !!openError}
-              // a refused file arrives long after mount, and in silence otherwise
+              // defaultOpen is read only at mount, and a refused file comes later
               forceOpen={!!openError}
             >
               {openError ? (
@@ -3443,10 +3305,7 @@ export function Editor({ segments }: { segments: string[] }) {
                 </p>
               )}
 
-              {/* A separate question from whether the FILE is well formed:
-                  a model can be perfectly good here and impossible to put
-                  in a resource pack, and the place to find that out is
-                  while you are still modelling. */}
+              {/* whether a resource pack can express the model, separate from the checks above */}
               <div className="ed-translate">
                 <div className="ed-translate__head">
                   <Icon name="cube" size={11} />
@@ -3478,9 +3337,8 @@ export function Editor({ segments }: { segments: string[] }) {
           </div>
 
           <Splitter onDrag={onLeft} />
-          {/* The middle column is normally a hole through to the
-              viewport. In Config mode there is nothing to look at
-              through it, and a great deal to read. */}
+          {/* The middle column is normally empty so the viewport shows
+              through. Config mode fills it with the generated config. */}
           <div className="ed-rails__gap">
             {mode === 'config' && hasConfig(kind) ? (
               <ConfigOutput id={model.name} kind={kind} config={config} />
@@ -3518,8 +3376,7 @@ export function Editor({ segments }: { segments: string[] }) {
                 <button
                   key={t.id}
                   className="tex-row"
-                  /* aria-selected means nothing on a button; this is
-                     "the one of the set you are on", which is aria-current */
+                  // aria-selected is not valid on a button; aria-current marks the chosen texture
                   aria-current={i === textureIndex}
                   title={`${t.name}. Click to select, then use View \u25b8 Export texture PNG.`}
                   onClick={() => setTextureIndex(i)}

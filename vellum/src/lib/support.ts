@@ -1,10 +1,5 @@
-/* ---------------------------------------------------------------
-   Support domain: types, seed data, and the in-memory store the
-   mock transport in api.ts reads and writes.
-
-   This stands in for a server. Swap the transport and the shapes
-   below are what the real endpoints are expected to return.
-   --------------------------------------------------------------- */
+/* Support tickets: types, seed data, and the in-memory store that api.ts
+   reads and writes in place of a server. */
 
 export type TicketStatus = 'open' | 'pending' | 'resolved' | 'closed'
 export type TicketPriority = 'low' | 'normal' | 'high' | 'urgent'
@@ -34,7 +29,7 @@ export type Message = {
   createdAt: string
   attachments: Attachment[]
   delivery: DeliveryState
-  /** system messages render as a centred rule, not a bubble */
+  /** the change a system message records */
   event?: 'status' | 'assignment' | 'priority' | 'created'
 }
 
@@ -72,8 +67,7 @@ export type TicketDraft = { text: string; category: TicketCategory | null; block
 
 export const blankDraft: TicketDraft = { text: '', category: null, blocking: false }
 
-/** A ticket's subject is the first line of what was written, up to its
-    first full stop, cut at a word if it still runs long. */
+/** The first sentence of the first line, cut at a word near 80 characters. */
 export function subjectOf(text: string) {
   const line = text.trim().split('\n')[0].trim()
   const stop = line.search(/[.!?](\s|$)/)

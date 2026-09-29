@@ -1,31 +1,10 @@
-/* ---------------------------------------------------------------
-   POST /api/reload - ask the linked server to swap its content set.
-
-   A save bakes; a bake is not live until a reload swaps. Without this
-   every author edit needs someone at a console.
-
-   THE WHOLE DESIGN IS THAT THERE ARE THREE OUTCOMES, NOT TWO. The
-   plugin answers 200 twice, meaning different things:
-
+/* POST /api/reload asks the linked server to swap in what the last save baked.
      200 {reloaded: true,  counts, stages}   swapped
-     200 {reloaded: false, report, stages}   REFUSED, and this is the
-                                             one that matters
-
-   A refusal is a successful request that declined to swap, because the
-   validation report had errors. It is not a network failure and it is
-   not a spinner that never stops - if it renders as either, an author
-   sits waiting for something that already finished. And the blast
-   radius is the reason it has to be loud: one malformed mob file
-   blocks the swap for every item, block and furniture piece on the
-   server, so the report names the file and the key and is written for
-   a person to read. We render it verbatim rather than summarising it.
-
-   The error statuses are their own third outcome:
-
+     200 {reloaded: false, report, stages}   refused, because validation found errors
      409  the coordinator refused
-     504  reload still running; check console
+     504  still running; check the console
      500  interrupted mid-apply
-   --------------------------------------------------------------- */
+   One bad file blocks the whole swap, so the report is passed on as written. */
 
 import { loadLink } from './dash-api'
 
@@ -40,13 +19,7 @@ export type ReloadOutcome =
 const isObj = (v: unknown): v is Record<string, unknown> =>
   !!v && typeof v === 'object' && !Array.isArray(v)
 
-/**
- * `stages` has no declared shape yet, so it is read rather than assumed.
- *
- * A stage we can name becomes a line; anything else is counted and
- * reported as unreadable rather than stringified into `[object Object]`,
- * which would read like a stage that ran and did nothing.
- */
+/** `stages` has no fixed shape. Entries without a readable name go to `unreadable`. */
 function readStages(raw: unknown): { stages: string[]; unreadable: string[] } {
   if (raw === undefined) return { stages: [], unreadable: [] }
   if (!Array.isArray(raw)) return { stages: [], unreadable: ['stages was not a list'] }
@@ -70,7 +43,7 @@ function readStages(raw: unknown): { stages: string[]; unreadable: string[] } {
   return { stages, unreadable }
 }
 
-/** `counts` is the new content set per kind. Non-numbers are dropped, not coerced. */
+/** `counts` is the new content set's size per kind. Values that are not finite numbers go to `unreadable`. */
 function readCounts(raw: unknown): { counts: Record<string, number>; unreadable: string[] } {
   if (raw === undefined) return { counts: {}, unreadable: [] }
   if (!isObj(raw)) return { counts: {}, unreadable: ['counts was not an object'] }
@@ -84,7 +57,7 @@ function readCounts(raw: unknown): { counts: Record<string, number>; unreadable:
   return { counts, unreadable }
 }
 
-/** The message an error status carries, without inventing one it did not send. */
+/** The body's `error` text, or a stock message for the status. */
 function errorMessage(status: number, body: unknown): string {
   if (isObj(body) && typeof body.error === 'string' && body.error.trim()) return body.error
   if (status === 409) return 'The coordinator refused the reload.'
@@ -93,14 +66,7 @@ function errorMessage(status: number, body: unknown): string {
   return `The plugin answered ${status}.`
 }
 
-/**
- * Ask the linked server to reload.
- *
- * Person-gated on the plugin's side: it needs a linked Minecraft
- * account, so a 401/403 here means the link is not a person, which the
- * caller shows as an error rather than a refusal - a refusal is a
- * verdict about content and this is a verdict about who is asking.
- */
+/** Asks the linked server to reload. A 401 or 403 means the link is not tied to a Minecraft account. */
 export async function requestReload(signal?: AbortSignal): Promise<ReloadOutcome> {
   const link = loadLink()
   if (!link?.baseUrl) {
@@ -130,9 +96,6 @@ export async function requestReload(signal?: AbortSignal): Promise<ReloadOutcome
   if (!res.ok) return { kind: 'error', status: res.status, url, message: errorMessage(res.status, body) }
 
   if (!isObj(body) || typeof body.reloaded !== 'boolean') {
-    /* A 200 that does not say whether it swapped is not a success we can
-       report. Saying "reloaded" here would be the exact failure this
-       file exists to prevent. */
     return {
       kind: 'error',
       status: res.status,

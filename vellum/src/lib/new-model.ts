@@ -1,14 +1,5 @@
-/* ---------------------------------------------------------------
-   Making models, and growing them.
-
-   A new project starts from a starter rather than an empty scene:
-   an item is one cube you can immediately resize, a mob arrives rigged,
-   because a rig is tedious to build by hand and is what makes Animate
-   mode useful at all.
-
-   Everything here returns a new Model rather than mutating one, so the
-   editor's undo stack is a matter of keeping old references.
-   --------------------------------------------------------------- */
+/* Starter models, and the edits that add, remove and move cubes and
+   bones. Each returns a new Model. */
 
 import { FACES } from './model'
 import { boxUvFaces, makeRoom } from './uv-pack'
@@ -16,7 +7,6 @@ import type { Rescale } from './uv-pack'
 import { defaultSubtype, subtypeFits } from './model'
 import type { Bone, BoneChild, Clip, Cube, Face, FaceKey, Key, Model, ProjectKind, Subtype, Texture, UVRect, Vec3 } from './model'
 
-/** Kept as a name because the dialog reads better for it; it is the project kind. */
 export type NewModelKind = ProjectKind
 
 let counter = 0
@@ -27,10 +17,7 @@ export const newId = () =>
 
 /* ---------------- starter texture ---------------- */
 
-/**
- * A neutral sheet with a faint 8-texel check, so the first brush stroke
- * is visible and the UV islands are legible before anything is painted.
- */
+/** A grey sheet with a faint 8-texel check, so strokes and UV islands show before any painting. */
 export function starterTexture(size: number, name: string): Texture {
   const canvas = document.createElement('canvas')
   canvas.width = size
@@ -76,11 +63,9 @@ export function makeCube(
     rotation: opts.rotation ?? [0, 0, 0],
     faces: boxUvFaces(size, uvAt, opts.texture ?? null),
     inflate: 0,
-    /* The faces ARE a box unwrap, but the flag stays false: the editor
-       lets you drag a face anywhere, so the rects are the truth and
-       nothing should regenerate over them. The offset is recorded all
-       the same, so a reader that does regenerate has the origin these
-       rects came from. */
+    /* `boxUv` stays false although the faces are a box unwrap: faces can be
+       dragged anywhere, so nothing should regenerate them. `uvOffset` still
+       records where the unwrap began. */
     boxUv: false,
     uvOffset: [uvAt[0], uvAt[1]],
     visible: true,
@@ -102,17 +87,7 @@ export function makeBone(name: string, origin: Vec3, children: BoneChild[] = [])
 
 /* ---------------- starters ---------------- */
 
-/**
- * A starter for a kind, stamped with the subtype the project asked for.
- *
- * Only one subtype changes what you get: a consumable arrives as a
- * flask that already has its use clip, because a consumable is defined
- * by that clip and starting from a bare cube means starting from
- * something the rules will immediately complain about. Every other
- * subtype is metadata - a weapon and a tool begin from the same cube,
- * because what separates them is what the game does with one, not what
- * it is shaped like.
- */
+/** A starter for a kind and subtype. A consumable gets a flask; other subtypes get the kind's starter. */
 export function createModel(kind: NewModelKind, name: string, subtype?: Subtype): Model {
   const sub = subtypeFits(kind, subtype) ? subtype : defaultSubtype(kind)
   const base =
@@ -126,12 +101,7 @@ export function createModel(kind: NewModelKind, name: string, subtype?: Subtype)
   return { ...base, kind, subtype: sub }
 }
 
-/**
- * A full 16-unit cube, which is what a block is before you carve it.
- * The editor ships a whole block rule set - the -16..32 range, one
- * rotated axis, the fixed angles - that no model a user could create
- * was ever checked against, because there was no way to make one.
- */
+/** A full 16-unit cube. Its unwrap is 64 x 32 texels, hence the 64 sheet. */
 function blockStarter(name: string): Model {
   const texture = starterTexture(64, `${name}.png`)
   const cube = makeCube('block', [0, 0, 0], [16, 16, 16], {
@@ -152,10 +122,7 @@ function blockStarter(name: string): Model {
 }
 
 function itemStarter(name: string): Model {
-  /* 32 rather than 16: the starter cube is 8 x 16 x 8, whose unwrap
-     needs 32 x 24 texels. On a 16-wide sheet three of its six faces
-     used to be clamped to zero width, so the model you were handed had
-     half its faces unpaintable before you touched it. */
+  // a 32 sheet: the 8 x 16 x 8 starter cube unwraps to 32 x 24 texels
   const texture = starterTexture(32, `${name}.png`)
   const cube = makeCube('cube', [4, 0, 4], [12, 16, 12], { uvAt: [0, 0], texture: texture.id })
   const root = makeBone(name, [0, 0, 0], [{ kind: 'cube', id: cube.id }])
@@ -171,12 +138,8 @@ function itemStarter(name: string): Model {
   }
 }
 
-/**
- * A flask with a stopper, rigged on two bones and arriving with the
- * clip that makes it a consumable rather than an item: tip it back,
- * the stopper comes away, the level drops. The validator asks for that
- * clip, so the starter had better have one.
- */
+/* A flask with a use clip: it tips back, the cork comes out, the level
+   drops. The validator warns about a consumable with no clip. */
 function consumableStarter(name: string): Model {
   const texture = starterTexture(32, `${name}.png`)
   const t = texture.id
@@ -249,7 +212,7 @@ function mobStarter(name: string): Model {
   const L = 64
   const t = texture.id
 
-  // pivots sit on the joints, which is what makes the rig animate properly
+  // pivots sit on the joints, so the head and limbs turn at the neck, shoulders and hips
   const head = makeCube('head', [-4, 24, -4], [4, 32, 4], { origin: [0, 24, 0], uvAt: [0, 0], texture: t })
   const torso = makeCube('torso', [-4, 12, -2], [4, 24, 2], { origin: [0, 12, 0], uvAt: [16, 16], texture: t })
   const armL = makeCube('arm_left', [-8, 12, -2], [-4, 24, 2], { origin: [-4, 23, 0], uvAt: [40, 16], texture: t })
@@ -308,12 +271,7 @@ function addChild(bones: Bone[], parentId: string | null, child: BoneChild): Bon
   })
 }
 
-/**
- * Add a cube, parented to `parentId` when given and to the first root
- * otherwise. `rescale` lets the sheet grow when it is full; without one
- * a full sheet means the new cube shares an island rather than getting
- * a degenerate one, which is at least recoverable by hand.
- */
+/** Add a cube under `parentId`, else under the first root. With no room on the sheet, its UVs start at 0,0. */
 export function addCube(
   model: Model,
   parentId: string | null = null,
@@ -351,7 +309,7 @@ function countBones(bones: Bone[]): number {
   )
 }
 
-/** Remove a cube, the bone-tree entry that held it, and any key that drove it. */
+/** Remove a cube and its entry in the bone tree. */
 export function deleteCube(model: Model, id: string): Model {
   const strip = (bones: Bone[]): Bone[] =>
     bones.map((b) => ({
@@ -399,7 +357,7 @@ export function deleteBone(model: Model, id: string): Model {
     ...model,
     cubes: model.cubes.filter((c) => !doomed.has(c.id)),
     bones: strip(model.bones),
-    // a clip driving a bone that no longer exists would fail validation
+    // drop this bone's own tracks: a track on a missing bone fails validation
     clips: model.clips.map((clip) => ({ ...clip, tracks: clip.tracks.filter((t) => t.bone !== id) })),
   }
 }
@@ -471,7 +429,7 @@ export function duplicateBone(model: Model, id: string): { model: Model; id: str
   return { model: { ...model, cubes: [...model.cubes, ...made], bones: place(model.bones) }, id: copy.id }
 }
 
-/** Edit a bone's own properties - its pivot and its rotation. */
+/** Patch a bone's own fields, such as its pivot and rotation. */
 export function updateBone(model: Model, id: string, patch: Partial<Omit<Bone, 'id' | 'children'>>): Model {
   const walk = (bones: Bone[]): Bone[] =>
     bones.map((b) => ({
@@ -490,11 +448,7 @@ function contains(bone: Bone, id: string): boolean {
   )
 }
 
-/**
- * Move a cube or a bone under a new parent. Rebuilding the rig used to
- * be impossible: a bone you added could never receive anything, so it
- * was a permanent empty folder.
- */
+/** Move a cube or bone under `parentId`. Null makes a bone a root and takes a cube out of the tree. */
 export function reparent(model: Model, id: string, parentId: string | null): Model {
   if (id === parentId) return model
 

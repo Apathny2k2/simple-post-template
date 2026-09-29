@@ -5,14 +5,8 @@ import { ErrorBoundary } from './components/ErrorBoundary'
 import { installBridge, listenPostMessage } from './lib/dash-api'
 import './styles/base.css'
 
-/* The dashboard reports a realm this app does not run, so its numbers
-   have to be fed in from outside. The bridge goes up before React does,
-   so a launcher or companion script can push state at any point - even
-   before anyone navigates to the Dash.
-
-   postMessage is opt-in per origin and has no wildcard. Same-origin is
-   the only default: a dashboard that accepts numbers from any frame
-   that can reach it is not a dashboard. */
+/* The Dash is fed from outside the app. The bridge goes in before React renders, so a
+   launcher can push state early. postMessage is accepted from this origin only. */
 installBridge()
 listenPostMessage([window.location.origin])
 

@@ -34,8 +34,7 @@ const KINDS: Array<{
   },
 ]
 
-/* What a subtype is actually for, said once so the picker is not a row
-   of words a modeller has to guess the consequences of. */
+/* what each subtype does, shown under the subtype picker */
 const SUB_NOTE: Record<Subtype, string> = {
   weapon: 'Swung. Dropped on the ground in the world view.',
   tool: 'Held and used on a block. Dropped on the ground in the world view.',
@@ -55,7 +54,7 @@ export function NewModelDialog({
   onClose: () => void
   onCreate: (kind: ProjectKind, subtype: Subtype | undefined, name: string) => void
   title?: string
-  /** where focus goes when nothing opened this - see useModal */
+  /** where focus goes on close if no element opened the dialog (see useModal) */
   focusOnClose?: React.RefObject<HTMLElement | null>
 }) {
   const [kind, setKind] = useState<ProjectKind>('items')
@@ -72,9 +71,7 @@ export function NewModelDialog({
     first.current?.select()
   }, [])
 
-  /* A subtype only means anything inside its kind, so changing the kind
-     has to change it too - otherwise a Block could carry "hostile" out
-     of the dialog, which is a state the reader would only throw away. */
+  // subtypes belong to a kind, so changing the kind resets the subtype
   const pickKind = (k: ProjectKind) => {
     setKind(k)
     setSubtype(defaultSubtype(k))
@@ -82,7 +79,7 @@ export function NewModelDialog({
 
   const options = SUBTYPES[kind]
 
-  // the id rules a project path can carry
+  // a project id: lowercase letters, digits and underscores
   const clean = name.trim().toLowerCase().replace(/[^a-z0-9_]+/g, '_').replace(/^_+|_+$/g, '')
   const valid = clean.length > 0 && clean.length <= 64
   const create = () => valid && onCreate(kind, subtype, clean)
@@ -102,9 +99,7 @@ export function NewModelDialog({
         </header>
 
         <div className="dlg__body">
-          {/* a radiogroup is one stop in the tab order, and the arrows
-              move within it - three separate tab stops is not what a
-              screen reader is told this is */}
+          {/* radiogroup: one tab stop, and the arrow keys move within it */}
           <div
             className="newmodel__kinds"
             role="radiogroup"

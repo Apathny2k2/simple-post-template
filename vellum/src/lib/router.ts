@@ -14,26 +14,16 @@ function read(): Route {
   return { path, segments: path.split('/').filter(Boolean) }
 }
 
-/* ---------------- leaving a page that has unsaved work ----------------
+/* ---------------- leaving a page that has unsaved work ---------------- */
 
-   A page can refuse a navigation and handle it itself - ask, then
-   navigate again once the answer is in. `beforeunload` cannot help
-   here: moving between routes never unloads the document, so without
-   this, clicking the top nav threw away an afternoon's work in
-   silence.
-
-   The guard has to cover Back as well as our own links. A hashchange
-   has already happened by the time we hear about it, so a refusal puts
-   the hash back where it was; `restoring` keeps that from recursing. */
-
+// Returning false refuses the navigation; the page can then ask and call `navigate` itself.
+// Route changes never unload the document, so `beforeunload` cannot do this.
 type Guard = (to: string) => boolean
 
 let guard: Guard | null = null
 
-/* A path `navigate` has already cleared with the guard. Writing the
-   hash fires a hashchange, and asking the same guard about the same
-   navigation a second time is how a confirmed "discard and leave"
-   ended up bouncing straight back into the editor. */
+/* A path `navigate` has already cleared with the guard, so the hashchange
+   it causes does not ask again. */
 let approved: string | null = null
 
 /** Returns a disposer. Only the registered guard can clear itself. */
@@ -54,10 +44,8 @@ export function navigate(path: string, { replace = false }: { replace?: boolean 
   else window.location.hash = `#${next}`
 }
 
-/* Pages cross-fade where the browser can, using a view transition. The
-   update has to land inside the transition's callback, so it is flushed
-   synchronously there. Moving between the sections of Settings is not a
-   new page, so it swaps in place. */
+/* Pages cross-fade with a view transition where supported. The update must
+   land inside its callback, hence flushSync. Settings sections swap in place. */
 const inPlace = (from: string, to: string) => from.startsWith('/settings') && to.startsWith('/settings')
 
 function swap(apply: () => void, quiet = false) {
@@ -74,6 +62,8 @@ export function useRoute(): Route {
   const current = useRef(route.path)
 
   useEffect(() => {
+    // Back and typed URLs arrive as a hashchange after the fact, so a refusal
+    // writes the old hash back; `restoring` skips the event that write causes.
     let restoring = false
     const onChange = () => {
       if (restoring) {
@@ -103,11 +93,6 @@ export function useRoute(): Route {
   return route
 }
 
-/**
- * Every route rendered as "Vellum" in the tab and in history, so a
- * browser's back list was eight identical entries and a screen reader
- * announced nothing on navigation.
- */
 export function useTitle(title: string | null) {
   useEffect(() => {
     document.title = title ? `${title} — Vellum` : 'Vellum'

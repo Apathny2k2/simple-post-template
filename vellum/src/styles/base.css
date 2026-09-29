@@ -28,19 +28,9 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* ---------------------------------------------------------------
-   The room the glass sits in.
+/* ---------------- background ---------------- */
 
-   Was four radial gradients drifting on a 34-second loop. Glass over
-   a moving wash never settles, and at any moment it looked like a
-   smear rather than a surface - which is most of what read as haze.
-
-   Now: a flat ground with one fine grid ruled across it. The grid is
-   the texture. It is the right texture for this app specifically,
-   because the thing being edited is built on a grid of 16 units to
-   the block, and it gives every translucent panel something with a
-   hard edge to sit against instead of a gradient.
-   --------------------------------------------------------------- */
+/* A flat ground with a fine grid, so translucent panels have hard edges behind them. */
 
 body::before {
   content: '';
@@ -53,9 +43,7 @@ body::before {
     var(--bg);
 }
 
-/* A fine grain, so the large flats are not perfectly clean. Finer and
-   fainter than before: at 0.35 opacity the old one was visible as
-   noise rather than felt as texture. */
+/* fine grain so large flat areas are not perfectly clean */
 body::after {
   content: '';
   position: fixed;
@@ -119,8 +107,7 @@ svg { display: block; flex: none; }
   background-clip: content-box;
 }
 
-/* Glass: a translucent tint over a backdrop blur, with a border and a
-   lit top edge. */
+/* ---------------- glass ---------------- */
 
 .glass {
   position: relative;
@@ -152,9 +139,6 @@ svg { display: block; flex: none; }
   font-size: var(--fs-2xs);
   letter-spacing: var(--tracking-caps);
   text-transform: uppercase;
-  /* Was --accent-hover, i.e. red. Every card label in the app was an
-     accent colour, so red marked nothing in particular. Section
-     labels are structure, not signal. */
   color: var(--ink-faint);
   font-weight: 600;
 }
@@ -207,9 +191,6 @@ svg { display: block; flex: none; }
   max-width: 62ch;
 }
 
-/* The page's entrance. Was a staggered rise with a scale and an
-   overshoot, which meant every navigation began with the layout
-   visibly assembling itself. One short fade, everything at once. */
 @keyframes rise-in {
   from { opacity: 0; }
   to { opacity: 1; }
@@ -229,10 +210,7 @@ svg { display: block; flex: none; }
   }
 }
 
-/* Present to a screen reader, absent to everything else. Used for the
-   headings and names a sighted reader takes from the layout - the
-   editor's title bar says what file you are in, but only if you can
-   see it. */
+/* visually hidden, still read by screen readers */
 .vh {
   position: absolute;
   width: 1px;
@@ -245,8 +223,7 @@ svg { display: block; flex: none; }
   border: 0;
 }
 
-/* The one exception: a skip link has to show itself once it is focused,
-   or it is a control that only exists for people who cannot find it. */
+/* a skip link shows itself when focused */
 .vh--focusable:focus-visible {
   position: fixed;
   top: 10px;
@@ -263,9 +240,10 @@ svg { display: block; flex: none; }
   box-shadow: var(--shadow-pop);
 }
 
-/* ---------------- page transitions ----------------
-   The router wraps a route change in a view transition. The page fades
-   up into place while the top bar holds still and its marker slides. */
+/* ---------------- page transitions ---------------- */
+
+/* The router wraps route changes in a view transition. The top bar and its nav
+   mark have their own transition names, so the bar holds still and the mark slides. */
 
 ::view-transition-old(root) {
   animation: page-out 200ms cubic-bezier(0.4, 0, 1, 1) both;

@@ -5,7 +5,6 @@
   align-items: start;
 }
 
-/* the vertical rule the sketch draws down the right of the list */
 .settings__nav {
   position: sticky;
   top: calc(var(--topbar-h) + 20px);
@@ -150,9 +149,6 @@
 .toggle-row__t { font-size: var(--fs-sm); }
 .toggle-row__d { font-size: var(--fs-xs); color: var(--ink-faint); margin-top: 1px; }
 
-/* A cut track with a cut block in it. Off is grey, on is the accent, and
-   that is the whole of the state. Was a pill whose round knob stretched
-   under the finger, lit by a gradient and a ring. */
 .switch {
   position: relative;
   width: 42px;
@@ -352,7 +348,6 @@
 
 .dir-row__tag[data-sync='outdated'] { border-color: var(--warn); color: var(--warn); }
 
-/* "How Vellum ships" - the three-line shape of the product, on About. */
 .ships { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; }
 
 .ships__row {

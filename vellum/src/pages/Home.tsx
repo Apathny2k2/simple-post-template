@@ -8,8 +8,7 @@ import { trackPointer, useReducedMotion } from '../lib/motion'
 import { Showcase } from './dash/showcase'
 import './Home.css'
 
-/* vellumdev.com: what Vellum is, for someone who has not used it yet,
-   and the way into the Studio for someone who has. */
+/* The public home page (vellumdev.com) and the way into the Studio. */
 
 const features: { icon: IconName; title: string; body: string; colour: string }[] = [
   {
@@ -46,8 +45,7 @@ const steps = [
 
 type Plan = { id: string; name: string; blurb: string; seats: string; points: string[]; open: boolean }
 
-/* Seats are the plans as they stand. Paid prices are not settled yet, so
-   the paid plans say they open soon rather than show a number. */
+/* Paid prices are not set yet, so paid plans say "Price at launch" and show no number. */
 const plans: Plan[] = [
   {
     id: 'free',

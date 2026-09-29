@@ -1,15 +1,7 @@
-/* ---------------------------------------------------------------
-   The support API.
-
-   Two halves:
-   1. `endpoints` - a machine-readable catalogue of the REST surface.
-      The API reference panel in the UI renders straight from it, so
-      the documentation cannot drift from what the client calls.
-   2. `api` - the typed client. Every method names the endpoint it
-      maps to. It currently runs against the in-memory store in
-      support.ts; point `transport` at fetch and the shapes are
-      already what a real server would need to return.
-   --------------------------------------------------------------- */
+/* The support API. `api` is the typed client; each method names the endpoint
+   it stands for and runs against the in-memory store in support.ts.
+   `endpoints` and `webhookEvents` describe the REST surface, but nothing
+   outside this file reads them. */
 
 import {
   agents,
@@ -241,7 +233,7 @@ export type ListTicketParams = {
   limit?: number
 }
 
-/** Canned agent replies, so the thread answers back and the delivery states move. */
+/** Canned agent replies, so the mock thread answers back. */
 const replies = [
   'Got it - pulling the realm logs for that window now.',
   'Thanks, that narrows it down. One more thing: does it reproduce on a fresh project, or only this one?',
@@ -268,7 +260,6 @@ function scheduleAgentReply(ticket: Ticket) {
     const live = store.tickets.find((x) => x.id === ticket.id)
     const at = new Date().toISOString()
 
-    // whoever answers an unassigned ticket takes it
     if (live && !live.assignee) {
       live.assignee = agent
       const taken: Message = {
@@ -339,9 +330,7 @@ export const api = {
   }): Promise<Ticket> {
     await latency(320)
     const now = new Date().toISOString()
-    /* The option is disabled in the form, but a disabled option is a UI
-       courtesy, not a rule - the endpoint documents "urgent requires a
-       paid tier" and has to be the one that enforces it. */
+    // urgent needs a paid tier and the mock has none, so urgent is filed as high
     const priority = input.priority === 'urgent' ? 'high' : input.priority
     const ticket: Ticket = {
       id: store.nextTicketId(),
@@ -463,7 +452,6 @@ export const api = {
     store.emit({ type: 'message.created', message })
     store.touch(ticketId, message.createdAt)
 
-    // the server acknowledges, then the agent's client reads it
     window.setTimeout(() => {
       message.delivery = 'delivered'
       store.emit({ type: 'message.updated', message: { ...message } })
@@ -489,7 +477,7 @@ export const api = {
 
   /** POST /tickets/{ticketId}/typing */
   async sendTyping(_ticketId: string): Promise<void> {
-    /* 202, no body - debounced by the caller */
+    /* 202, no body */
   },
 
   /** POST /uploads */
@@ -498,7 +486,7 @@ export const api = {
     return { id: nextId('att'), ...file }
   },
 
-  /** GET /tickets/{ticketId}/events - SSE stand-in */
+  /** GET /tickets/{ticketId}/events, standing in for the SSE stream */
   stream(ticketId: string, onEvent: (e: StoreEvent) => void): () => void {
     return store.subscribe((e) => {
       const id =
@@ -507,7 +495,7 @@ export const api = {
     })
   },
 
-  /** GET /tickets/{ticketId}/events - unfiltered, for the list's badges */
+  /** Events for every ticket, for the list's badges and the open thread */
   streamAll(onEvent: (e: StoreEvent) => void): () => void {
     return store.subscribe(onEvent)
   },

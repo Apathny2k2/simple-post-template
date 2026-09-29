@@ -1,13 +1,5 @@
-/* ---------------------------------------------------------------
-   Handing the viewer a file.
-
-   In a browser this is an anchor click and the file is exactly what it
-   says it is. Inside the Artifact viewer the page cannot download
-   directly - it offers the file through the host, which allowlists
-   extensions, and `.vellum` is not among them. The bytes are identical
-   either way; only the name the viewer is offered differs, and the
-   caller says so rather than letting the save fail silently.
-   --------------------------------------------------------------- */
+/* Saving a file: an anchor click in a browser, or the host's `downloads`
+   API inside the Artifact viewer, where the page cannot download itself. */
 
 type DownloadsApi = { save: (req: { filename: string; data: string | Blob }) => Promise<unknown> }
 
@@ -51,7 +43,7 @@ export async function saveFile(name: string, text: string): Promise<string> {
   const api = await host()
   if (!api) return viaAnchor(name, new Blob([text], { type: 'application/json' }))
 
-  // the viewer's allowlist has no .vellum in it; the bytes are the same
+  // the viewer's extension allowlist has no .vellum; the bytes are unchanged
   const filename = name.endsWith('.vellum') ? `${name}.json` : name
   try {
     await api.save({ filename, data: text })
@@ -64,12 +56,7 @@ export async function saveFile(name: string, text: string): Promise<string> {
   }
 }
 
-/**
- * A PNG out of the editor. The viewport itself cannot be captured - it
- * is composed from CSS 3D transforms, not a canvas, so there are no
- * pixels to read - but the texture is a real image and is the thing
- * anyone actually wants out of a paint session.
- */
+/** Save a PNG data URL. Textures export this way; the viewport is CSS 3D and has no pixels to read. */
 export async function saveDataUrl(name: string, dataUrl: string): Promise<string> {
   if (!dataUrl.startsWith('data:')) return 'That texture has no image data to export.'
   const [head, body] = dataUrl.split(',')

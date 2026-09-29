@@ -1,24 +1,6 @@
-/* ---------------------------------------------------------------
-   The mob schema, served by the plugin.
-
-   `GET /api/mob/schema` is the catalogue the runtime actually applies:
-   the nine flags, the eight goals with their options, and the animation
-   states. Reading it rather than keeping a copy is what makes drift
-   impossible instead of something we agree to avoid - a flag the server
-   stops applying stops appearing here, without anyone remembering to
-   delete it.
-
-   THE STATIC `SCHEMA` IN config.ts DOES NOT GO AWAY. It is the
-   standalone shape, for the free tier that has no plugin to ask. This
-   module replaces it only when a plugin is linked and answers.
-
-   WHAT THIS DELIBERATELY DOES NOT DO IS GUESS. The server declares
-   types this form has never drawn - `duration`, `clip`, `key` - and a
-   type it cannot draw is reported, not approximated. Drawing a
-   `duration` as a plain number would offer a control whose value the
-   loader then refuses, which is worse than saying the field could not
-   be rendered.
-   --------------------------------------------------------------- */
+/* The mob schema a linked plugin serves at `GET /api/mob/schema`, as
+   Config tab sections. When no plugin answers, config.ts's static
+   `SCHEMA` is used. */
 
 import { useEffect, useState } from 'react'
 import { loadLink } from './dash-api'
@@ -27,7 +9,7 @@ import type { ProjectKind } from './model'
 
 /* ---------------- what comes off the wire ---------------- */
 
-/** Every type the catalogue may declare. Anything else is refused by name. */
+/** Types the form can draw. Any other type is reported as a problem, by name. */
 export const WIRE_TYPES = ['number', 'boolean', 'duration', 'clip', 'key', 'string'] as const
 export type WireType = (typeof WIRE_TYPES)[number]
 
@@ -67,12 +49,7 @@ export type SchemaResult =
   | { ok: true; schema: MobSchema; sections: Section[]; problems: SchemaProblem[] }
   | { ok: false; reason: string }
 
-/**
- * Ask the linked plugin for its catalogue.
- *
- * With no link there is nothing to ask, and that is not an error - it is
- * the standalone case, which is most of the free tier.
- */
+/** Fetch the linked plugin's catalogue. With no link, returns `ok: false` and the built-in schema stays. */
 export async function fetchMobSchema(signal?: AbortSignal): Promise<SchemaResult> {
   const link = loadLink()
   if (!link?.baseUrl) return { ok: false, reason: 'No plugin is linked, so the built-in schema is in use.' }
@@ -98,15 +75,8 @@ const isObj = (v: unknown): v is Record<string, unknown> =>
 /** Tri-state, because a checkbox cannot say "inherit". */
 const TRISTATE = ['', 'true', 'false'] as const
 
-/**
- * One declared option as a field this form can draw, or a problem saying
- * why it cannot.
- *
- * `inherits` decides the control as much as the type does: a value with
- * no default must be able to say nothing at all, so it is a text field
- * where blank means inherit rather than a number spinner sitting on a
- * zero nobody chose.
- */
+/* One declared option as a form field, or a problem when its type cannot
+   be drawn. An `inherits` option gets a control that can stay blank. */
 function fieldOf(opt: WireOption, path: string, where: string): Field | SchemaProblem {
   const base = {
     key: opt.name,
@@ -123,16 +93,15 @@ function fieldOf(opt: WireOption, path: string, where: string): Field | SchemaPr
 
   switch (opt.type) {
     case 'boolean':
-      /* Declared defaults exist for the flags, so a real checkbox is
-         honest here - but only when the server states one. */
+      // a checkbox has no blank state, so an `inherits` flag gets a three-way select
       return opt.inherits
         ? { ...base, kind: 'select', options: TRISTATE, fallback: '' }
         : { ...base, kind: 'bool', fallback: opt.default === true }
 
     case 'number':
     case 'duration':
-      /* A duration accepts `8` and `8s` alike, so it is text either way;
-         a number with no default has to be able to stay unsaid. */
+      /* A duration takes `8` or `8s`, so it is a text field. So is an
+         `inherits` number, which must be able to stay blank. */
       return opt.type === 'duration' || opt.inherits
         ? { ...base, kind: 'text', fallback: '', placeholder: opt.inherits ? 'inherit' : String(opt.default ?? '') }
         : { ...base, kind: 'number', step: 0.05, fallback: typeof opt.default === 'number' ? opt.default : undefined }
@@ -144,12 +113,7 @@ function fieldOf(opt: WireOption, path: string, where: string): Field | SchemaPr
   }
 }
 
-/**
- * The served catalogue as the sections the Config tab renders.
- *
- * Exported separately from the fetch so it can be tested against a
- * literal payload without a server.
- */
+/** The served catalogue as the sections the Config tab renders. */
 export function readMobSchema(raw: unknown): SchemaResult {
   if (!isObj(raw)) return { ok: false, reason: 'The plugin answered something that is not a schema.' }
   if (!Array.isArray(raw.flags)) return { ok: false, reason: 'The schema declares no `flags`.' }
@@ -199,10 +163,9 @@ export function readMobSchema(raw: unknown): SchemaResult {
       (kinds.length ? ` The server supports ${kinds.length} goals.` : ''),
   }
 
-  /* ---- the states: ONE list with a `plays` flag, not two lists ----
-     Retired states are declared here on purpose, with the note that says
-     where the clip should go instead. Rendering them as editable slots
-     would offer a key the loader drops. */
+  /* ---- the states ----
+     A retired state (`plays: false`) is reported with its note. An editable
+     slot for it would offer a key the loader drops. */
   const states = (raw.states ?? []) as WireState[]
   const live = states.filter((s) => isObj(s) && s.plays)
   const retired = states.filter((s) => isObj(s) && !s.plays)
@@ -240,13 +203,7 @@ export type SchemaSource =
   | { from: 'plugin'; sections: Section[]; problems: SchemaProblem[]; reason: null }
   | { from: 'asking'; sections: null; problems: []; reason: null }
 
-/**
- * The served catalogue if a plugin answers, the built-in schema if not.
- *
- * Asked once per mount rather than polled: a catalogue that changes
- * under an author mid-edit would move controls beneath their hands, and
- * the reload that changes it is a deliberate act anyway.
- */
+/** The plugin's catalogue if it answers, else the built-in schema. Not polled, so fields stay put mid-edit. */
 export function useMobSchema(kind: ProjectKind): SchemaSource {
   const [state, setState] = useState<SchemaSource>({ from: 'asking', sections: null, problems: [], reason: null })
 

@@ -14,24 +14,7 @@ export type PipFailure = Failure
 /** Longest an ending may take before the result is shown anyway. */
 const ENDING_LIMIT_MS = 6000
 
-/**
- * Pip, Vellum's mascot, drawn in one colour after the offline dinosaur
- * game. He is only on screen while something is on its way.
- *
- * `scene="mine"` is for work that runs: he mines until the answer comes,
- * then walks into a portal, into lava, or into a wall. `scene="fish"` is
- * for waiting on a person: he fishes, and when the answer comes something
- * bites and he lands a letter.
- *
- * Mount it only while something is running. When the mood turns to done
- * or failed it plays the ending and then calls `onFinish`, which is when
- * the result should appear. It draws in the text colour of wherever it
- * sits, at one canvas pixel per art pixel scaled up by a whole number.
- *
- * While he works a short line sits under him, changing each time he
- * breaks a block or something nibbles. `label` is what screen readers
- * hear; the drawing and the line are hidden from them.
- */
+/** The mascot shown while something is on its way. Mount him only while waiting. */
 export function Pip({
   scene: kind = 'mine',
   mood,
@@ -42,10 +25,11 @@ export function Pip({
   quips = true,
   className = '',
 }: {
-  /** fixed for the life of the component; key it to change scenes */
+  /** 'mine' for work that runs, 'fish' for waiting on a person. Fixed at mount; key it to change. */
   scene?: 'mine' | 'fish'
   mood: Mood
   failure?: Failure
+  /** called after the done or failed ending has played; show the result then */
   onFinish?: () => void
   /** the largest whole-number zoom; the frame widens to fill its box */
   maxScale?: number
@@ -95,7 +79,7 @@ export function Pip({
     scene.setMood(mood, failure)
     told.current = false
     if (mood !== 'done' && mood !== 'failed') return
-    // a result is never held back for long, whatever happens to the drawing
+    // show the result even if the ending never finishes
     const id = window.setTimeout(() => {
       if (told.current) return
       told.current = true

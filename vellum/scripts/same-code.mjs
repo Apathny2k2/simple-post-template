@@ -21,6 +21,8 @@ function tokens(file, text) {
   const walk = (node) => {
     // `{/* a comment */}` in JSX is a comment, so it may come and go
     if (ts.isJsxExpression(node) && !node.expression) return
+    // so is a /** doc comment */, which the parser hands over as nodes
+    if (node.kind >= ts.SyntaxKind.FirstJSDocNode && node.kind <= ts.SyntaxKind.LastJSDocNode) return
     const children = node.getChildren(sf)
     if (!children.length) {
       if (node.kind === ts.SyntaxKind.EndOfFileToken) return

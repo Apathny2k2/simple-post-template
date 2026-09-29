@@ -6,7 +6,6 @@ import { categories, subjectOf } from '../lib/support'
 import type { TicketDraft } from '../lib/support'
 import './TicketForm.css'
 
-/** A chip that is on or off, for the choices under the ticket form. */
 export function ToggleChip({
   on,
   onToggle,
@@ -18,7 +17,7 @@ export function ToggleChip({
   on: boolean
   onToggle: () => void
   icon?: IconName
-  /** `warn` lights up amber, for things that are in the way */
+  /** `warn` shows amber when on */
   tone?: 'warn'
   title?: string
   children: ReactNode
@@ -31,11 +30,7 @@ export function ToggleChip({
   )
 }
 
-/**
- * The form that opens a ticket: one text box, whose first line becomes
- * the subject, then what it is about and whether it is in the way.
- * Support's new ticket and Report A Bug both use it.
- */
+/** New-ticket form. The first line of the text becomes the subject. */
 export function TicketForm({
   draft,
   onDraft,

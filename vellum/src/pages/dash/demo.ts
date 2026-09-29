@@ -6,12 +6,7 @@ const NAMES = ['kite', 'nine', 'aurelia', 'juno', 'pike', 'moss', 'wren', 'ash',
 const SAVES = ['ember_hound.vellum', 'tide_crawler.vellum', 'brass_golem.vellum', 'moth_king.vellum']
 const hashOf = (build: number) => `sha1:${(Math.imul(build + 101, 2654435761) >>> 0).toString(16).padStart(8, '0')}`
 
-/**
- * A pretend server that feeds the Dash through the same API a plugin uses.
- * It loops: players join, someone saves, a new build goes out and players
- * pick it up one by one, then the server restarts. Returns a stop function
- * that puts the sample back.
- */
+/** A pretend server feeding the Dash through the plugin API. The returned stop function restores the sample. */
 export function startDemo(): () => void {
   const timers = new Set<number>()
   let stopped = false
@@ -55,7 +50,7 @@ export function startDemo(): () => void {
     if (!online.includes(name)) online.push(name)
     dash.report({ player: name, packHash: hashOf(current ? build : build - 1) }, via)
   }
-  // 12 players arrive; 4 of them still hold last week's pack.
+  // 12 players arrive; 4 of them still hold the previous build.
   ;[1, 1, 0, 1, 1, 1, 0, 1, 1, 0, 1, 0].forEach((current, i) => later(500 + i * 320, () => join(NAMES[i], current === 1)))
 
   const cycle = (stragglers: number) => {
@@ -121,10 +116,7 @@ const RELOADS: ReloadOutcome[] = [
 
 let reloads = 0
 
-/**
- * Stands in for POST /api/reload while the demo runs. It takes a few
- * seconds, then swaps, refuses and fails in turn, so each answer can be seen.
- */
+/** Demo stand-in for POST /api/reload: after 3.2 s it swaps, refuses and fails in turn. */
 export function demoReload(signal?: AbortSignal): Promise<ReloadOutcome> {
   const outcome = RELOADS[reloads++ % RELOADS.length]
   return new Promise((resolve) => {

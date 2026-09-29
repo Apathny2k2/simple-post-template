@@ -1,22 +1,6 @@
-/* ---------------------------------------------------------------
-   Finding room on the sheet.
-
-   A box unwrap needs a rectangle `2(w+d)` wide and `d+h` tall. The old
-   code picked the lowest y any face reached and put the next box
-   there, then clamped the result into the sheet - so on an atlas that
-   already reached the bottom edge, every face of the new cube was
-   clamped to zero height and the cube arrived unpaintable, with the
-   validator calling it clean. On a small sheet it was worse: once the
-   lowest point passed the limit it returned the origin forever, and
-   every cube you added landed on the same island.
-
-   So: pack properly, and when the sheet is genuinely full, make the
-   sheet bigger rather than folding the box flat. Doubling the UV space
-   and doubling every existing coordinate is a visual no-op - the same
-   texels stay under the same faces - and pixel-doubling the image is
-   lossless for pixel art. The bottom-right three quarters come back as
-   free space.
-   --------------------------------------------------------------- */
+/* Finding room on the texture sheet for a box unwrap, and doubling the
+   sheet when it is full. Doubling every UV along with the image keeps
+   each face on the same texels. */
 
 import { FACES } from './model'
 import type { Cube, FaceKey, Model, Texture, UVRect, Vec3 } from './model'
@@ -49,11 +33,8 @@ export function occupied(model: Model, skip?: string): UVRect[] {
 
 const overlaps = (a: UVRect, b: UVRect) => a[0] < b[2] && b[0] < a[2] && a[1] < b[3] && b[1] < a[3]
 
-/**
- * First fit, scanning only the corners existing islands create - the
- * top-left of a free rectangle always sits against one of them, so
- * this finds a spot if one exists without walking every texel.
- */
+/* First fit over candidate corners at 0 and the island edges. Any free
+   spot can slide up and left onto one of them, so none is missed. */
 export function findSpot(model: Model, box: [number, number]): [number, number] | null {
   const [bw, bh] = box
   const { width, height } = model.resolution
@@ -83,10 +64,7 @@ export function findSpot(model: Model, box: [number, number]): [number, number] 
 /** Redraw a texture at `factor` size. Null when it cannot be rendered. */
 export type Rescale = (texture: Texture, factor: number) => string | null
 
-/**
- * Double the UV space. Every coordinate doubles with it, so nothing
- * moves relative to the texture - the sheet simply gains room.
- */
+/** Scale the UV space, every face rect and each texture by `factor`, so faces keep their texels. */
 export function growUvSpace(model: Model, rescale: Rescale, factor = 2): Model {
   const scaleRect = (uv: UVRect): UVRect => [uv[0] * factor, uv[1] * factor, uv[2] * factor, uv[3] * factor]
 
@@ -104,9 +82,7 @@ export function growUvSpace(model: Model, rescale: Rescale, factor = 2): Model {
         height: t.height * factor,
         uvWidth: t.uvWidth * factor,
         uvHeight: t.uvHeight * factor,
-        // a texture we could not redraw keeps its pixels and simply
-        // samples a quarter of the new space - wrong, but visible and
-        // repaintable, which a blank sheet would not be
+        // a texture that could not be redrawn keeps its old pixels, still visible and repaintable
         source: source ?? t.source,
       }
     }),
@@ -119,11 +95,7 @@ export function growUvSpace(model: Model, rescale: Rescale, factor = 2): Model {
   }
 }
 
-/**
- * Room for a box of this size, growing the sheet up to `limit` times if
- * it has to. Returns the model to place into - which may be a bigger
- * one than you passed.
- */
+/** Room for a box. With `rescale`, the sheet doubles after each miss, up to `limit` + 1 times. */
 export function makeRoom(
   model: Model,
   size: Vec3,
@@ -141,7 +113,7 @@ export function makeRoom(
   return { model: current, at: null }
 }
 
-/** The faces of a box unwrap laid out at `at`. Never degenerate. */
+/** The six faces of a box unwrap at `at`. Each side is at least 1 texel. */
 export function boxUvFaces(
   size: Vec3,
   at: [number, number],

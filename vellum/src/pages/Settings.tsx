@@ -60,9 +60,7 @@ const paidSections: Section[] = [
 
 const allSections = [...freeSections, ...paidSections]
 
-/* These are per-device preferences, so they live where the device can
-   keep them. They used to reset on every reload, which made three
-   switches that looked like settings and behaved like decoration. */
+// per-device preferences, kept in this browser
 const PREF_KEY = 'vellum.prefs'
 
 function readPref(id: string, fallback: boolean): boolean {
@@ -83,7 +81,7 @@ function writePref(id: string, value: boolean) {
     all[id] = value
     localStorage.setItem(PREF_KEY, JSON.stringify(all))
   } catch {
-    /* it holds for this session and no longer, which is better than nothing */
+    /* storage blocked: the switch keeps its state while it is on screen */
   }
 }
 
@@ -104,11 +102,7 @@ function Switch({ id, on, label }: { id: string; on: boolean; label: string }) {
   )
 }
 
-/**
- * A bug report is a support ticket, written in the same form Support
- * uses, with the session log as one more chip. Pip mines while it sends,
- * and the result shows once he is done.
- */
+/** Files a bug as a support ticket, with an optional session log. */
 function ReportABug() {
   const [draft, setDraft] = useState<TicketDraft>(blankDraft)
   const [withLog, setWithLog] = useState(true)
@@ -211,12 +205,7 @@ function ToggleRow({ id, title, desc, on }: { id: string; title: string; desc: s
 
 const BUILT = '09/19/26'
 
-/**
- * What this build knows about itself. The Master Console replaces this
- * the moment it pushes a changelog; until then a studio that has never
- * been fed still has something true to show, rather than a card that
- * says release notes "would render here".
- */
+/** Release notes shown until a changelog arrives through `PUT /console/changelog`. */
 const BUILT_IN_RELEASES: Release[] = [
   {
     id: 'built-in-9',
@@ -394,13 +383,7 @@ const SYNC_TONE: Record<Workspace['status'], { tone: string; say: string }> = {
   error: { tone: 'warn', say: 'The last sync failed.' },
 }
 
-/**
- * The workspace a paid account is allocated, as the plugin reports it.
- * Everything here is fed through `PATCH /cloud/workspace` and
- * `PUT /cloud/members`, which is the same door the dashboard cards use -
- * there is no second, private path, and nothing here is invented when
- * the plugin has said nothing.
- */
+/** The paid workspace as the plugin reports it through `PATCH /cloud/workspace` and `PUT /cloud/members`. */
 function Cloud() {
   const version = useSyncExternalStore(
     subscribeStore,
@@ -505,9 +488,6 @@ function Cloud() {
         )}
       </Card>
 
-      {/* Said plainly, because it is true and because a shared database
-          somebody else administers is not what everybody assumes a
-          "cloud workspace" means. */}
       <Card title="Who can read this" dividedHead>
         <p className="ed-hint" style={{ marginTop: 0 }}>
           <Icon name="info" size={11} /> Vellum sets up and runs the workspace database. The account
@@ -537,9 +517,6 @@ function Body({ section }: { section: Section }) {
                 <span className="field__hint">Last changed 04/02/26.</span>
               </label>
             </div>
-            {/* "Revoke other sessions" needed a session store that does not
-                exist here, so it is gone rather than looking live. The
-                switches below are per-device and are kept for real. */}
             <p className="field__hint" style={{ marginTop: 'var(--sp-4)' }}>
               Account details are read-only. The preferences below are kept on this device.
             </p>
@@ -655,9 +632,8 @@ export function Settings({ segments }: { segments: string[] }) {
   const section = allSections.find((s) => s.id === active)!
   useTitle(section.label)
 
-  /* The page plays in when you arrive. Moving between its sections swaps
-     the title and the cards in place; replaying the entrance on every
-     click got in the way. */
+  /* The entrance plays on arrival only. Moving between sections swaps the
+     title and cards in place. */
   const [arrivedOn] = useState(active)
   const [moved, setMoved] = useState(false)
   if (!moved && active !== arrivedOn) setMoved(true)

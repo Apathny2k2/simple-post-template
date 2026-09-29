@@ -1,19 +1,14 @@
-/* Where a mob can be hit, worked out from its rig. There is no
-   hit-region field in .vellum.
-
-   The rule comes from the original plugin. That repository has been
+/* Where a mob can be hit, worked out from its rig; .vellum has no
+   hit-region field. The rule comes from the original plugin, which was
    deleted, and the rewritten plugin has not been checked against it.
 
-     - A bone that draws nothing is a locator. Its bounds come from its
-       hidden cubes, if it has any.
-     - A bone that draws something is a render bone, bounded by what it
-       draws.
-     - If any locator has bounds, only locators can be hit. Otherwise
-       every render bone can.
+     - A bone that draws nothing is a locator, bounded by its hidden cubes.
+     - A bone that draws something is a render bone, bounded by what it draws.
+     - If any locator has bounds, only locators can be hit. Otherwise every
+       render bone can.
 
-   So hiding one cube in an otherwise empty bone switches the whole mob
-   to explicit regions. The readout warns on that condition itself,
-   whether or not the author used the hit-region controls. */
+   So hiding one cube in an otherwise empty bone switches the whole mob to
+   explicit regions. The editor's hit panel warns whenever that is the mode. */
 
 import type { Bone, Cube, Model, Vec3 } from './model'
 
@@ -22,37 +17,35 @@ export type Box = { min: Vec3; max: Vec3 }
 export type Region = {
   boneId: string
   boneName: string
-  /** LOCATOR is a bone that draws nothing; RENDER is one that does. */
+  /** `locator` draws nothing; `render` draws something. */
   kind: 'locator' | 'render'
-  /** Bone-local, because that is what travels with the bone's animation. */
+  /** Relative to the bone's pivot, so it moves with the bone's animation. */
   box: Box
   /** How many cubes the box was measured from. */
   from: number
 }
 
-/** A bone that will not be a target, and the reason it will not. */
+/** A bone that can't be hit, and why. */
 export type Inert = { boneId: string; boneName: string; why: string }
 
 export type HitReport = {
   /**
-   * `explicit` the moment any locator carries bounds; `derived`
-   * otherwise. `none` means nothing is hittable at all, which is a
-   * real state and not an error - a rig with no drawn bones and no
-   * bounded locators has nowhere to be hit.
+   * `explicit` when any locator has bounds, else `derived`; `none` when
+   * there are no drawn bones or bounded locators.
    */
   mode: 'derived' | 'explicit' | 'none'
   regions: Region[]
-  /** Bones that would be targets under the other mode but are not under this one. */
+  /** Drawn bones that can't be hit because the rig has marked regions. */
   lost: Inert[]
-  /** Locator bones with no cubes at all, so no bounds and no effect either way. */
+  /** Locator bones with no cubes at all, so no bounds and no effect. */
   empty: Inert[]
-  /** Things we cannot decide from the model alone. Named, never guessed at. */
+  /** Cases the rule doesn't cover, listed as warnings. */
   unknowns: string[]
 }
 
 const isCube = (c: Bone['children'][number]): c is { kind: 'cube'; id: string } => c.kind === 'cube'
 
-/** Every bone in the tree, depth first, with no reliance on a helper that may not exist. */
+/** Every bone in the tree, depth first. */
 export function allBones(bones: Bone[], out: Bone[] = []): Bone[] {
   for (const b of bones) {
     out.push(b)
@@ -61,11 +54,7 @@ export function allBones(bones: Bone[], out: Bone[] = []): Bone[] {
   return out
 }
 
-/**
- * A cube's corners after inflate, which is part of how big it actually
- * is. `from`/`to` are not ordered, so both ends are taken per axis
- * rather than assumed.
- */
+/** A cube's box including inflate, with min and max per axis in case `to` is below `from`. */
 function corners(c: Cube): Box {
   const lo: Vec3 = [0, 0, 0]
   const hi: Vec3 = [0, 0, 0]
@@ -94,10 +83,7 @@ function measure(cubes: Cube[], pivot: Vec3): Box | null {
   }
 }
 
-/**
- * Which bones can be hit. A bone counts only its own cubes, so a bone
- * that holds nothing but child bones draws nothing itself.
- */
+/** Which bones can be hit. Each bone counts only its own cubes. */
 export function hitReport(model: Model): HitReport {
   const byId = new Map(model.cubes.map((c) => [c.id, c]))
   const unknowns: string[] = []
@@ -111,8 +97,7 @@ export function hitReport(model: Model): HitReport {
     const shown = own.filter((c) => c.visible)
     const hidden = own.filter((c) => !c.visible)
 
-    /* The old plugin's rule did not cover a hidden bone holding visible
-       cubes, so it is reported instead of guessed. */
+    /* The rule doesn't cover a hidden bone with visible cubes, so report it. */
     if (!bone.visible && shown.length) {
       unknowns.push(
         `"${bone.name}" is hidden but holds ${shown.length} visible cube${shown.length === 1 ? '' : 's'}. It isn't known whether the plugin treats them as drawn.`,
@@ -174,23 +159,15 @@ export function modeLine(r: HitReport): string {
   return 'Nothing can be hit. This rig has no visible cubes and no marked regions.'
 }
 
-/* ---------------- authoring ----------------
-
-   SURFACE THE INTENT, NOT THE MECHANISM. "Make this a hit region"
-   really means "add a child bone, give it a cube, hide the cube, and
-   make sure that bone draws nothing else". Asked to do that by hand an
-   author gets it wrong once, and the mob is then unhittable everywhere
-   with nothing said out loud. Same relationship as a box unwrap, where
-   one origin becomes six face rects.
-   --------------------------------------------------------------- */
+/* ---------------- authoring ---------------- */
 
 import { makeBone, makeCube } from './new-model'
 import type { BoneChild } from './model'
 
-/** Named so the bone reads as what it is in the outliner. */
+/** Prefix for region bone names, so they read as regions in the outliner. */
 export const REGION_PREFIX = 'hit_'
 
-/** A bone this module authored, by its shape rather than by its name. */
+/** True when a bone has cubes of its own and all are hidden, whatever its name. */
 export const isRegionBone = (model: Model, bone: Bone): boolean => {
   const own = bone.children.filter(isCube)
   if (!own.length) return false
@@ -230,30 +207,17 @@ const attach = (bones: Bone[], parentId: string, child: BoneChild): Bone[] =>
         },
   )
 
-/**
- * Mark a bone as hittable: a child bone holding one hidden cube.
- *
- * The box defaults to whatever the bone draws, so "a hit region on the
- * head" starts the size of the head rather than at some arbitrary
- * origin the author then has to find. A bone that draws nothing gets a
- * modest cube at its pivot instead of nothing at all - a zero-size box
- * measures to a point and would be a region that cannot be hit, which
- * is the failure this whole area is about.
- *
- * It is a CHILD bone rather than the bone itself on purpose: the bone
- * keeps drawing what it drew, and the region travels with it because
- * it hangs off it.
- */
+/** Adds a hit region to a bone: a child bone holding one hidden cube, so the bone keeps drawing. */
 export function addHitRegion(model: Model, boneId: string): { model: Model; boneId: string; cubeId: string } | null {
   const target = allBones(model.bones).find((b) => b.id === boneId)
   if (!target) return null
 
+  // the size of what the bone draws, else an 8-unit cube on its pivot: a zero-size box can't be hit
   const box = drawnBox(model, target)
   const from: Vec3 = box ? box.min : [target.origin[0] - 4, target.origin[1], target.origin[2] - 4]
   const to: Vec3 = box ? box.max : [target.origin[0] + 4, target.origin[1] + 8, target.origin[2] + 4]
 
-  /* Untextured and unmapped: it is never drawn, so a UV island for it
-     would be sheet space spent on nothing. */
+  /* Untextured: it is never drawn, so it needs no space on the sheet. */
   const cube = { ...makeCube('region', from, to, { texture: null }), visible: false }
   const bone = makeBone(`${REGION_PREFIX}${target.name}`, [...target.origin] as Vec3, [
     { kind: 'cube', id: cube.id },

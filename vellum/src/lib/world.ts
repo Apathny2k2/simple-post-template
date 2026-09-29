@@ -1,11 +1,8 @@
 /* The stage for "View in the real world": a black stage, a floor that
    moves under a walking model, and a figure two blocks tall for scale.
-   The world is a .vellum model like any other, so the renderer, camera
-   and animation code work on it unchanged.
-
-   Faces follow Minecraft's rules: one texel per unit, and fixed
-   directional shading (top 1.0, north and south 0.8, east and west 0.6,
-   bottom 0.5) baked into each face's texture. */
+   It is an ordinary .vellum model, so the renderer, camera and animation
+   code work on it unchanged. Faces are one texel per unit, with
+   Minecraft's face shading baked into the texture. */
 
 import { FACES } from './model'
 import type { Bone, BoneChild, Clip, Cube, Face, FaceKey, Key, Model, ProjectKind, Subtype, Texture, Track, UVRect, Vec3 } from './model'
@@ -14,7 +11,7 @@ import { readRig } from './auto-rig'
 
 export const BLOCK = 16
 
-/** Minecraft's fixed directional shading. Not a lighting model - a table. */
+/** Minecraft's fixed shading for each face direction. */
 const FACE_SHADE: Record<FaceKey, number> = {
   up: 1,
   down: 0.5,
@@ -34,7 +31,7 @@ type TileKind =
   | 'skin' | 'hair' | 'shirt' | 'sleeve' | 'trouser' | 'boot' | 'face'
   | 'void'
 
-/** Deterministic, so the same world is the same world every time. */
+/** Deterministic, so the world paints the same every time. */
 function noise(x: number, y: number, salt: number) {
   const n = Math.sin(x * 127.1 + y * 311.7 + salt * 74.7) * 43758.5453
   return n - Math.floor(n)
@@ -43,9 +40,8 @@ function noise(x: number, y: number, salt: number) {
 type Paint = { r: number; g: number; b: number; a?: number }
 
 /**
- * One texel of one block type, at texture coordinates that repeat every
- * 16 - so a face can start anywhere in the pattern and still line up
- * with its neighbours.
+ * One texel of a tile. Coordinates wrap every 16, so a face can start
+ * anywhere in the pattern and still line up with its neighbours.
  */
 function texel(kind: TileKind, tx: number, ty: number): Paint | null {
   const x = ((tx % 16) + 16) % 16
@@ -58,14 +54,8 @@ function texel(kind: TileKind, tx: number, ty: number): Paint | null {
 
   switch (kind) {
     case 'floor': {
-      /* Near-black, with one lighter texel on the block boundary. The
-         stage is meant to disappear, but a floor that disappears
-         entirely takes the treadmill with it: a walking mob would look
-         like a walking mob standing still. One line every block is the
-         least that still shows ground moving, and doubles as the ruler
-         it already had to be - so it is one line, dim, and nothing
-         else: a grid that draws the eye is a grid competing with the
-         model for it. */
+      /* Near-black, with a dim line on each block boundary so the moving
+         floor shows motion and marks out blocks. */
       if (x === 0 || y === 0) return { r: 31, g: 33, b: 39 }
       return jitter([11, 12, 15], 0.07)
     }
@@ -76,15 +66,15 @@ function texel(kind: TileKind, tx: number, ty: number): Paint | null {
     case 'shirt':
       return jitter([62, 110, 168], 0.06)
     case 'sleeve':
-      // a sleeve that ends in a hand, and a shade off the shirt so the
-      // arms are not the same blue slab as the body they hang from
+      // the bottom quarter is the hand; the sleeve is a lighter blue than
+      // the shirt so the arms stand out from the body
       return y > 11 ? jitter([199, 140, 98], 0.06) : jitter([74, 124, 182], 0.06)
     case 'trouser':
       return jitter([42, 49, 87], 0.07)
     case 'boot':
       return jitter([46, 43, 41], 0.08)
     case 'face': {
-      // eyes and a mouth, so which way it is looking is not a guess
+      // eyes and a mouth, to show which way the figure faces
       if (y >= 6 && y <= 7 && (x === 3 || x === 4 || x === 11 || x === 12))
         return x === 3 || x === 11 ? { r: 240, g: 240, b: 245 } : { r: 40, g: 52, b: 92 }
       if (y === 10 && x >= 6 && x <= 9) return { r: 138, g: 90, b: 72 }
@@ -92,7 +82,7 @@ function texel(kind: TileKind, tx: number, ty: number): Paint | null {
       return jitter([199, 140, 98], 0.06)
     }
     case 'void':
-      // a face that is never meant to be seen, and costs one texel to say so
+      // transparent, for faces that are never seen
       return null
     default:
       return null
@@ -100,8 +90,8 @@ function texel(kind: TileKind, tx: number, ty: number): Paint | null {
 }
 
 /**
- * Shelf-packs one region per (block type, size, shade) and paints it on
- * first request, so identical faces share one region.
+ * Shelf-packs one region per (tile, size, shade, emissive, fit) and paints
+ * it on first request, so identical faces share a region.
  */
 class Atlas {
   readonly size: number
@@ -118,18 +108,14 @@ class Atlas {
     this.canvas.width = size
     this.canvas.height = size
     this.ctx = this.canvas.getContext('2d')
-    /* Claimed first so that it is also what a request past the end of
-       the sheet falls back to. The old fallback handed out whatever had
-       been packed first, which was the field - so overflowing the
-       atlas painted floor onto everything instead of failing visibly. */
+    /* Claimed first: a request that overflows the sheet gets the first
+       region back, and this one is transparent. */
     this.region('void', 4, 4, 1)
   }
 
   /**
-   * `emissive` skips the face shading, for a flame. `fit` scales the 16x16
-   * motif onto the region instead of slicing it: a fence post wants a
-   * 4-texel slice of the plank pattern, but a player's 8-unit head
-   * wants the whole face on it, not the top-left corner of one.
+   * `emissive` skips the face shading. `fit` stretches the 16x16 motif over
+   * the region; otherwise the pattern repeats across it.
    */
   region(
     kind: TileKind,
@@ -145,18 +131,15 @@ class Atlas {
     const found = this.spots.get(key)
     if (found) return found
 
-    /* A texel of clearance around every island. A face 160 units wide
-       samples its region at 160x, and at that magnification the filter
-       reaches past the edge into whatever was packed next door - which
-       drew pale seams across the plain where a transparent face sat
-       beside a green one. */
+    /* A texel of clearance after each region, so filtering at a face's
+       edge does not pick up its neighbour. */
     const pad = 1
     if (this.x + width + pad > this.size) {
       this.x = 0
       this.y += this.shelf
       this.shelf = 0
     }
-    // out of sheet: hand back the first region rather than draw off it
+    // out of sheet: return the first region, the transparent one
     if (this.y + height + pad > this.size) return this.spots.values().next().value ?? [0, 0, 1, 1]
 
     const at: Rect = [this.x, this.y, this.x + width, this.y + height]
@@ -175,10 +158,7 @@ class Atlas {
     const h = y1 - y0
     const k = emissive ? 1 : shade
 
-    /* One ImageData rather than a fillRect per texel. The field is a
-       960 x 640 patch - six hundred thousand of them - and painting it
-       a rectangle at a time cost half a second every time the
-       placement changed. */
+    /* ImageData: the field alone is 960 x 640 texels, too many for a fillRect each. */
     const img = ctx.createImageData(w, h)
     const px = img.data
     for (let y = 0; y < h; y++) {
@@ -217,11 +197,7 @@ class Atlas {
 
 type Skin = Partial<Record<FaceKey, TileKind>> & { all?: TileKind }
 
-/**
- * A cube, textured one texel per unit and shaded per face the way
- * Minecraft shades. `size` comes from the cube itself, so nothing has
- * to be kept in step by hand.
- */
+/** A locked cube whose faces get atlas regions one texel per unit, shaded by direction. */
 function block(
   atlas: Atlas,
   texture: string,
@@ -246,7 +222,7 @@ function block(
   const faces = Object.fromEntries(
     FACES.map((key) => {
       const kind: TileKind = skin[key] ?? skin.all ?? 'void'
-      // a void face is transparent at any size, so it claims one texel
+      // a void face is transparent at any size, so it gets a small fixed region
       const [fw, fh] = kind === 'void' ? [4, 4] : span[key]
       const uv = atlas.region(kind, fw, fh, FACE_SHADE[key], opts.emissive, opts.fit) as UVRect
       return [key, { uv, texture, rotation: 0 as const }]
@@ -272,20 +248,8 @@ function block(
 
 
 /**
- * A flat field, and nothing else on it.
- *
- * One cube, not a grid of them. A tiled field needs its cubes to
- * overlap or antialiasing leaves a hairline of the stage along every join,
- * and once they overlap their coplanar tops fight over which is in
- * front - either way a grid gets drawn across the floor. Offsetting
- * them in height trades that for a sliver of transparency at each
- * step, because the sides are void. There is no arrangement of many
- * cubes that has no seam; one cube has no join to show.
- *
- * It costs a 960 x 640 patch of the sheet, which sounds expensive and
- * is not: the pattern repeats every 16 texels, so it is about 75 KB of
- * PNG. Its sides and underside are a single transparent texel each -
- * the frame never reaches them.
+ * The floor, as one cube. A grid of cubes shows seams: antialiasing gaps
+ * where they meet, or z-fighting where they overlap.
  */
 function terrain(atlas: Atlas, t: string): { cubes: Cube[]; bone: Bone } {
   const cube = block(atlas, t, 'field', [-480, -BLOCK, -320], [480, 0, 320], {
@@ -312,19 +276,9 @@ function terrain(atlas: Atlas, t: string): { cubes: Cube[]; bone: Bone } {
 export type PlayerRig = { legs: [string, string]; arms: [string, string] }
 
 /**
- * Two blocks tall, which is the whole point of it: a mob is either
- * about the height of the thing standing next to it or it is not, and
- * that is not a judgement anybody makes reliably against a void.
- *
- * Rigged on joints rather than welded into one piece, so that when the
- * ground starts moving it can walk at the same speed instead of
- * standing still on a floor sliding out from under it.
- *
- * `facing` is worked out rather than passed: rotateY maps the local -z
- * axis to (-sin, 0, -cos), so the yaw that points a figure at the
- * origin from (x, z) is atan2(x, z) - eased back toward the camera,
- * because a figure turned squarely at the model shows the viewer the
- * back of its head.
+ * A figure two blocks tall for scale, jointed so it can walk with the
+ * floor. Its face is on local -z, which rotateY maps to (-sin, 0, -cos),
+ * so atan2(x, z) is the yaw that faces the origin from (x, z).
  */
 function playerParts(
   atlas: Atlas,
@@ -389,13 +343,13 @@ function playerParts(
 
 /* ---------------- how far a walk actually walks ---------------- */
 
-/** The legs' own reach, so a walk covers the ground it looks like it covers. */
+/** Hip-to-foot length of the figure's legs. */
 const PLAYER_LEG = 12
 
 export type Travel = {
-  /** what the legs are asking for, in units per cycle */
+  /** stride from the legs' swing, in units per cycle */
   asked: number
-  /** whole blocks per cycle - the only distance the field can loop on */
+  /** `asked` rounded to whole blocks, since the floor pattern repeats every block */
   blocks: number
   /** units per second, after rounding */
   speed: number
@@ -403,16 +357,7 @@ export type Travel = {
 
 export const NO_TRAVEL: Travel = { asked: 0, blocks: 0, speed: 0 }
 
-/**
- * How far a clip means to travel, read off the rig rather than guessed
- * or asked for. A leg swinging by `a` degrees about a pivot `r` from
- * the foot sweeps an arc whose chord is `2r sin(a)`, and that chord is
- * the ground a stride covers.
- *
- * Only a looping clip travels. An attack lunges and comes back; a
- * model that walked away during one would be worse than one that
- * stayed put.
- */
+/** How far a looping clip travels per cycle, from its legs' swing. */
 export function travelOf(subject: Model, clip: Clip | null): Travel {
   if (!clip || clip.loop !== 'loop' || clip.length <= 0) return NO_TRAVEL
   const rig = readRig(subject)
@@ -423,16 +368,15 @@ export function travelOf(subject: Model, clip: Clip | null): Travel {
     const track = clip.tracks.find((t) => t.bone === leg.id && t.channel === 'rotation')
     if (!track || track.keys.length < 2) continue
     const swing = Math.max(...track.keys.map((k) => Math.abs(k.value[0])))
+    // a leg of length r swinging a degrees either way covers a chord of 2r sin(a)
     asked = Math.max(asked, 2 * leg.reach * Math.sin((swing * Math.PI) / 180))
   }
 
-  // a breathing idle rocks the legs a degree or two; that is not walking
+  // small sways, such as an idle's breathing, don't count as walking
   if (asked < 3) return NO_TRAVEL
 
-  /* The field is tiled, so it can only wrap on a whole block - anything
-     else jumps visibly at the loop. Rounding the stride there is what
-     buys a seam nobody can see, and the speed reported back is the
-     rounded one, because that is the speed you are looking at. */
+  /* The floor pattern repeats every block, so the stride is rounded to
+     whole blocks to loop without a jump. `speed` uses the rounded stride. */
   const blocks = Math.max(1, Math.round(asked / BLOCK))
   return { asked, blocks, speed: (blocks * BLOCK) / clip.length }
 }
@@ -443,15 +387,10 @@ export type Placement = 'ground' | 'air' | 'dropped'
 
 const TOOLS = /sword|blade|axe|pick|shovel|spade|hoe|knife|dagger|spear|lance|bow|staff|wand|hammer|mace|scythe|fang|cleaver|sickle|glaive/i
 
-/**
- * What the scene does with a model when nobody has said. Tools, weapons
- * and consumables are things you drop on the floor; a plain item model
- * is a thing you hold up and look at.
- */
+/** Starting placement: ground for mobs and blocks; dropped for tools, weapons and consumables; else air. */
 export function defaultPlacement(kind: ProjectKind, name: string, subtype?: Subtype): Placement {
   if (kind === 'mobs' || kind === 'blocks') return 'ground'
-  /* A subtype is something the project actually said, so it beats the
-     name test below, which is a guess over a vocabulary. */
+  /* A subtype the project set wins over the name guess below. */
   if (subtype === 'consumable' || subtype === 'weapon' || subtype === 'tool') return 'dropped'
   if (subtype === 'misc') return 'air'
   return TOOLS.test(name) ? 'dropped' : 'air'
@@ -488,7 +427,7 @@ function transformed(model: Model, factor: number, shift: Vec3): { cubes: Cube[]
 export type WorldOptions = {
   kind: ProjectKind
   placement: Placement
-  /** a player entity beside the model, for height and for reach */
+  /** a player figure beside the model, for scale */
   withPlayer: boolean
 }
 
@@ -496,7 +435,7 @@ export type BuiltWorld = {
   model: Model
   /** the bone the subject hangs from, so the scene can pose it */
   subjectId: string
-  /** the field, which is what moves when the model walks */
+  /** the floor's bone, moved when the model walks */
   groundId: string
   /** the reference figure's joints, so it can walk at the same speed */
   player: PlayerRig | null
@@ -504,7 +443,6 @@ export type BuiltWorld = {
   blocks: number
   /** the middle of the subject, for the camera to look at */
   focus: Vec3
-  /** what it decided to do with it */
   placement: Placement
 }
 
@@ -519,10 +457,8 @@ export function buildWorld(subject: Model, opts: WorldOptions): BuiltWorld {
   const height = Math.max(hi[1] - lo[1], 1)
   const span = Math.max(hi[0] - lo[0], hi[2] - lo[2], 1)
 
-  /* A dropped item is a quarter size in Minecraft and sits just off the
-     ground. An item held up for inspection is scaled to something that
-     reads at this distance rather than left at whatever the modeller
-     happened to build it at. */
+  /* Dropped items shrink and sit just off the ground, as in Minecraft.
+     Floating items are scaled to a size that reads at this distance. */
   const factor =
     opts.placement === 'dropped' ? 0.45 : opts.placement === 'air' ? Math.min(1.6, 26 / Math.max(height, span)) : 1
 
@@ -593,22 +529,15 @@ const key = (time: number, value: Vec3, interp: Key['interp'] = 'linear'): Key =
   interp,
 })
 
-/**
- * The model's own animation, plus what the scene adds: a dropped item
- * turns and bobs the way a dropped item does, and a model with no clip
- * at all still turns slowly so every side of it can be seen.
- *
- * A `once` clip gets a beat of stillness on the end so a repeated
- * attack reads as separate swings rather than a stutter.
- */
+/** The model's clip plus the scene's tracks: moving floor, walking figure, or spin and bob. */
 export function sceneClip(built: BuiltWorld, clip: Clip | null, travel: Travel = NO_TRAVEL): Clip | null {
   const extra: Track[] = []
   const base = clip?.length ?? 3
+  // a once clip gets a pause of 40% of its length, so repeats read as separate swings
   const length = clip ? (clip.loop === 'once' ? clip.length * 1.4 : clip.length) : 3
 
-  /* The model walks by standing still while the world goes past it,
-     which is the only way a walk can loop forever and stay in frame.
-     One whole block per cycle wraps invisibly on a tiled field. */
+  /* The model stays put and the floor moves under it, so the walk loops
+     in frame. Moving whole blocks per cycle hides the wrap. */
   if (built.placement === 'ground' && travel.speed > 0 && clip) {
     const dist = travel.blocks * BLOCK
     extra.push({
@@ -617,10 +546,8 @@ export function sceneClip(built: BuiltWorld, clip: Clip | null, travel: Travel =
       keys: [key(0, [0, 0, 0]), key(clip.length, [0, 0, dist])],
     })
 
-    /* And the figure beside it walks too. A reference standing still on
-       a floor sliding out from under it is a worse lie than no
-       reference at all - so it takes the swing that covers the same
-       ground its own legs would: chord = 2r sin(a), solved for a. */
+    /* The figure walks too, with the leg swing that covers the same
+       distance: chord = 2r sin(a) solved for a, capped. */
     if (built.player) {
       const swing = (Math.asin(Math.min(0.85, dist / (2 * PLAYER_LEG))) * 180) / Math.PI
       const cycle = (bone: string, amp: number, flip: boolean) =>

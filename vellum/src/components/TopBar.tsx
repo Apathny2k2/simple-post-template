@@ -11,7 +11,7 @@ const links = [
   { path: '/settings', label: 'Settings', match: (s: string[]) => s[0] === 'settings', icon: 'gear' as const },
 ]
 
-/** mm/dd/yy hh:mm, exactly as the sketch corner reads */
+/** mm/dd/yy hh:mm */
 function stamp(d: Date) {
   const p = (n: number) => String(n).padStart(2, '0')
   return `${p(d.getMonth() + 1)}/${p(d.getDate())}/${String(d.getFullYear()).slice(2)} ${p(d.getHours())}:${p(d.getMinutes())}`
@@ -40,7 +40,6 @@ export function TopBar({ segments }: { segments: string[] }) {
           <VellumMark />
           Vellum
         </a>
-        {/* the server the Studio is open on; it leads back to the list */}
         <button
           className="topbar__server"
           onClick={() => navigate('/servers')}

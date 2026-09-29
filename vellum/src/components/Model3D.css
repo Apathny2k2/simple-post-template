@@ -1,10 +1,8 @@
-/* A CSS-transform stand-in for a renderer. Six divs to a box, no WebGL,
-   no meshes - enough to read as a model in a viewport. */
+/* A CSS 3D-transform scene, six divs per box. Shared with ModelView. */
 
 .scene3d {
-  /* Fills its (positioned) parent by inset rather than height:100%, which
-     collapses to zero whenever the parent's height comes from min-height
-     or flex sizing instead of a definite height. */
+  /* inset: 0 because height: 100% collapses to zero when the parent's height
+     comes from min-height or flex sizing. */
   position: absolute;
   inset: 0;
   overflow: hidden;
@@ -17,14 +15,10 @@
   position: absolute;
   inset: 0;
   transform-style: preserve-3d;
-  /* A transform container, not a target. Left hit-testable it sits at
-     z=0 and swallows the click for anything the scene has pushed behind
-     that plane - which is every face once a display transform is
-     applied, so Display mode's "click a cube" hint was a lie. Events
-     fall through to .scene3d, which is where orbiting lives anyway. */
+  /* If hit-testable, the stage sits at z=0 and takes clicks meant for faces
+     pushed behind that plane. Events fall through to .scene3d, which orbits. */
   pointer-events: none;
-  /* base pose: also what a spinning scene falls back to when the viewer
-     has asked for reduced motion and the animation never runs */
+  /* base pose, also used by a spinning scene under reduced motion */
   transform: translate(var(--pan-x, 0px), var(--pan-y, 0px)) translateZ(var(--zoom, 0px))
     rotateX(var(--pitch, -22deg)) rotateY(var(--yaw, -34deg))
     scale3d(var(--zoom-scale, 1), var(--zoom-scale, 1), var(--zoom-scale, 1));
@@ -102,7 +96,7 @@
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent-hover) 45%, transparent);
 }
 
-/* pixel-ish surface so the placeholder reads as a texture, not a gradient */
+/* faint pixel grid on placeholder faces */
 .box3d__face::after {
   content: '';
   position: absolute;

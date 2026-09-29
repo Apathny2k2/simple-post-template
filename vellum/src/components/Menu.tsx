@@ -38,9 +38,7 @@ export function Menu({ entries, trigger, align = 'end', side = 'down', onOpenCha
   const [open, setOpen] = useState(false)
   const wrap = useRef<HTMLDivElement>(null)
   const pop = useRef<HTMLDivElement>(null)
-  /* how far the popup had to be pulled back to stay on screen - a card
-     near the right edge used to open a menu that ran off it, and the
-     last few characters of every entry were simply unreachable */
+  // sideways nudge, in px, that keeps the popup on screen
   const [shift, setShift] = useState(0)
   const [flip, setFlip] = useState(false)
   const id = useId()
@@ -68,7 +66,7 @@ export function Menu({ entries, trigger, align = 'end', side = 'down', onOpenCha
     const under = pad - r.left
     if (over > 0) setShift(-over)
     else if (under > 0) setShift(under)
-    // no room below? open upwards instead of off the bottom of the page
+    // no room below: open upwards
     if (side === 'down' && r.bottom > window.innerHeight - pad && r.top > r.height + pad) setFlip(true)
   }, [open, side, entries.length])
 

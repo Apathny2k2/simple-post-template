@@ -1,14 +1,5 @@
-/* ---------------------------------------------------------------
-   Texture pixels.
-
-   Painting touches the texture and nothing else: the geometry is
-   byte-identical before and after a painting session. What every tool
-   ultimately needs is a texel coordinate, and there are two ways to get
-   one - straight off the 2D texture panel, or by back-projecting a
-   click on the 3D model through that face's UV rectangle. The second is
-   what makes per-face UV bearable: you click the creature's arm, not a
-   rectangle in an atlas.
-   --------------------------------------------------------------- */
+/* Texture pixels and the paint tools. A tool works on a texel, taken from
+   the 2D panel or back-projected from a click on a face through its UV rect. */
 
 import type { Texture, UVRect } from './model'
 
@@ -67,27 +58,18 @@ export function rgbaToHex([r, g, b]: RGBA) {
 
 /* ---------------- texel maths ---------------- */
 
-/**
- * Back-project a point on a face into a texel.
- *
- * `u`/`v` are the hit position within the face, 0..1 from its top-left.
- * A face whose UV rectangle has zero area cannot be painted, which is
- * the same rule Blockbench applies - there is no texel under the click.
- */
+/** The texel under a hit at `u`,`v` (0..1 from the face's top-left), or null on a zero-area UV rect. */
 export function texelOfFace(uv: UVRect, u: number, v: number): [number, number] | null {
   const [x1, y1, x2, y2] = uv
   if (x1 === x2 || y1 === y2) return null
-  /* The rectangle is normalised here even though a reversed one mirrors
-     the face, because the mirror has already been applied: the renderer
-     re-adds the flip as a CSS scale() on the plane, and `offsetX` is
-     reported in the element's own post-transform space. Following the
-     signed width as well flipped it twice, so clicking a pixel changed
-     the one opposite it. */
+  /* Normalised although a reversed rect mirrors the face: the renderer
+     applies the flip as a CSS scale(), and `offsetX` is already in the
+     flipped space. Following the signed width too would flip it twice. */
   const [ax, ay, bx, by] = faceBounds(uv)
   return [Math.floor(ax + u * (bx - ax)), Math.floor(ay + v * (by - ay))]
 }
 
-/** The texel rectangle a face occupies, normalised so min < max. */
+/** The texel rectangle a face occupies, normalised so min <= max. */
 export function faceBounds(uv: UVRect): UVRect {
   const [x1, y1, x2, y2] = uv
   return [Math.min(x1, x2), Math.min(y1, y2), Math.max(x1, x2), Math.max(y1, y2)]
@@ -98,14 +80,7 @@ export function faceBounds(uv: UVRect): UVRect {
 const inBounds = (x: number, y: number, s: PixelSurface) =>
   x >= 0 && y >= 0 && x < s.width && y < s.height
 
-/**
- * Brush and eraser are the same operation; the eraser just writes alpha 0.
- *
- * `bounds` clips the stamp to one UV island. Without it a size-8 brush
- * on a packed sheet wrote most of its 64 texels into other faces - a
- * single click repainting three unrelated cubes - which is the same
- * reason the bucket has always been bounded.
- */
+/** Stamp a square brush, clipped to `bounds` (one UV island) when given. The eraser paints alpha 0. */
 export function paint(
   s: PixelSurface,
   x: number,
@@ -138,11 +113,7 @@ export function pick(s: PixelSurface, x: number, y: number): RGBA | null {
   return [d[0], d[1], d[2], d[3]]
 }
 
-/**
- * Flood fill from a texel, bounded by the face's own UV rectangle so a
- * fill cannot bleed across the whole atlas. This is the practical reason
- * non-overlapping UV islands matter.
- */
+/** Flood fill within the face's UV rect, so a fill stays on its own island. */
 export function bucket(
   s: PixelSurface,
   x: number,
@@ -198,9 +169,7 @@ export function bucket(
   s.ctx.putImageData(image, x1, y1)
 }
 
-/* ---------------- shapes ----------------
-   A rectangle or an ellipse between two texels, outlined or filled.
-   The tool used to be the brush wearing a different icon. */
+/* ---------------- shapes ---------------- */
 
 export type ShapeKind = 'rect' | 'ellipse'
 
@@ -236,9 +205,8 @@ export function drawShape(
     return
   }
 
-  /* Midpoint ellipse by inclusion test rather than by the incremental
-     algorithm: at texture resolutions the cost is nothing and it keeps
-     the filled and outlined cases in one place. */
+  /* An inclusion test per texel: cheap at texture sizes, and one test
+     serves both filled and outlined. */
   const cx = (x1 + x2) / 2
   const cy = (y1 + y2) / 2
   const rx = Math.max(0.5, (x2 - x1) / 2)
@@ -256,7 +224,7 @@ export function drawShape(
   }
 }
 
-/** Bresenham, so a fast drag paints a line rather than dotting. */
+/** Bresenham line, so a fast drag leaves no gaps. */
 export function strokeBetween(
   from: [number, number],
   to: [number, number],
@@ -269,7 +237,7 @@ export function strokeBetween(
   const sx = x0 < x1 ? 1 : -1
   const sy = y0 < y1 ? 1 : -1
   let err = dx - dy
-  // guards a pathological drag from spinning
+  // stop after 4096 steps if the ends never meet
   for (let guard = 0; guard < 4096; guard++) {
     apply(x0, y0)
     if (x0 === x1 && y0 === y1) return

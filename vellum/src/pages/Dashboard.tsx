@@ -65,7 +65,7 @@ export function Dashboard() {
   const [toasts, pushToast] = useToasts()
   useDashToasts(pushToast)
 
-  // A saved link reconnects on load. A Studio served by the plugin depends on this.
+  // reconnect a saved link on load, so a reload keeps the feed
   useEffect(() => {
     const saved = loadLink()
     if (!saved?.baseUrl) return

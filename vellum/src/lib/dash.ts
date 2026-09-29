@@ -1,23 +1,7 @@
-/* ---------------------------------------------------------------
-   Dashboard state, and the gate everything entering it goes through.
-
-   Every value on the Dash comes from outside this app - a server
-   plugin reports its realm, its pack build and who is running an old
-   copy. So this module has two jobs, and the second one matters more:
-
-   1. Hold that state and tell anyone who cares when it changes.
-   2. Refuse to store anything it cannot render.
-
-   An ingest endpoint that trusts its caller is a crash waiting for a
-   plugin bug. Everything here is coerced into range, truncated to a
-   length the layout survives, and reported back to the caller when it
-   had to be corrected - so a plugin author finds out from the API
-   rather than from a broken card. Nothing is thrown away silently.
-
-   The seed below is the frozen sample the Dash has always shown. It
-   stays until a plugin feeds a card, and each card knows individually
-   whether it is still a fixture or now live.
-   --------------------------------------------------------------- */
+/* Dashboard state, and the checks every write to it goes through. Values are
+   coerced into range and cut to what the cards can lay out, and corrections go
+   back to the caller in `problems`. The Dash starts on a fixed sample, and
+   `meta.fed` lists the sections a plugin has replaced. */
 
 export type Health = 'live' | 'stale' | 'offline'
 export type Source = 'fixture' | 'plugin'
@@ -28,7 +12,7 @@ export type ServerState = {
   name: string
   host: string
   ip: string
-  /** free text from the plugin - Connected, Restarting, Degraded... */
+  /** free text from the plugin: Connected, Restarting, Degraded... */
   status: string
   online: boolean
   breakdown: BreakdownRow[]
@@ -70,11 +54,7 @@ export type FileTouch = {
   staleClients: number
 }
 
-/**
- * One person with access to a paid account's workspace. The identity is
- * per-member rather than per-seat: a shared workspace where two people
- * are both "the licence" tells you nothing about who touched what.
- */
+/** One person with access to a paid account's workspace. */
 export type Member = {
   id: string
   name: string
@@ -85,10 +65,7 @@ export type Member = {
   holding: number
 }
 
-/**
- * The database Vellum allocates to a paid account. The plugin syncs
- * against it, so a team opens the same files from the same place.
- */
+/** The database a paid account gets. The plugin syncs against it. */
 export type Workspace = {
   id: string
   region: string
@@ -111,11 +88,7 @@ export type DashSnapshot = {
 
 export type Section = keyof DashSnapshot
 
-/**
- * One release note, pushed into a studio from the Master Console. The
- * About panel used to reserve a region for these and render nothing;
- * this is the shape that fills it.
- */
+/** One release note, pushed from the Master Console and shown in About. */
 export type Release = {
   id: string
   version: string
@@ -149,15 +122,13 @@ export type IngestRecord = {
   via: 'bridge' | 'postMessage' | 'http' | 'ui'
 }
 
-/* ---------------- limits ----------------
-   Chosen from what the cards can actually lay out, not from a database
-   column width. A name longer than this does not get rejected - it gets
-   truncated, and the caller is told. */
+/* ---------------- limits ---------------- */
 
+/** Sized to what the cards can lay out. A longer string is truncated, with a note. */
 export const LIMITS = {
   name: 64,
   host: 120,
-  ip: 45, // an IPv6 literal with a scope id
+  ip: 45, // the longest IPv6 address in text form, without a zone id
   status: 32,
   label: 32,
   breakdownRows: 12,
@@ -181,14 +152,14 @@ export const LIMITS = {
   count: 1_000_000_000,
 } as const
 
-/* ---------------- coercion ----------------
-   Each helper takes what arrived, pushes it into range, and appends a
-   note to `problems` when it had to. `problems` is the return value the
-   endpoints hand back - a 200 with corrections is not a silent success. */
+/* ---------------- coercion ---------------- */
+
+// Each helper returns a usable value and notes corrections in `problems`, which
+// the endpoints return. `str` keeps the fallback for a blank string without a note.
 
 type Problems = string[]
 
-/** `JSON.stringify` turns NaN and Infinity into "null", naming a value nobody sent. */
+/** `JSON.stringify` would print NaN and Infinity as null. */
 const show = (v: unknown) =>
   typeof v === 'number' && !Number.isFinite(v) ? String(v) : JSON.stringify(v)
 
@@ -198,7 +169,7 @@ function str(v: unknown, field: string, max: number, fallback: string, problems:
     problems.push(`${field}: expected a string, got ${typeof v}. Kept the previous value.`)
     return fallback
   }
-  // a control character would not render; a tab in a table cell is a mess
+  // control characters do not render, and a tab breaks a table cell
   // oxlint-disable-next-line no-control-regex -- stripping them is the point
   const clean = v.replace(/[\u0000-\u001f\u007f]/g, ' ').trim()
   if (!clean) return fallback
@@ -232,9 +203,7 @@ function num(
 function bool(v: unknown, field: string, fallback: boolean, problems: Problems): boolean {
   if (v === undefined || v === null) return fallback
   if (typeof v === 'boolean') return v
-  /* `online: 1` is the natural shape out of Java, SQL and PHP, and this
-     is the field that says whether the realm is up - silently keeping
-     the old value was the worst place in the API to do that. */
+  // Java, SQL and PHP often send 1 and 0 for booleans, so they are read, with a note
   if (v === 1 || v === 0) {
     problems.push(`${field}: got ${v}, read as ${v === 1}. Send a boolean.`)
     return v === 1
@@ -243,11 +212,7 @@ function bool(v: unknown, field: string, fallback: boolean, problems: Problems):
   return fallback
 }
 
-/**
- * Timestamps arrive as ISO 8601, epoch millis or epoch seconds, because
- * every plugin language reaches for a different one. All three are
- * accepted; anything else falls back rather than rendering "Invalid Date".
- */
+/** Accepts ISO 8601, epoch milliseconds or epoch seconds. Anything else keeps the fallback, with a note. */
 function when(v: unknown, field: string, fallback: string, problems: Problems): string {
   if (v === undefined || v === null) return fallback
   let d: Date
@@ -274,11 +239,7 @@ function oneOf<T extends string>(v: unknown, field: string, allowed: readonly T[
   return fallback
 }
 
-/**
- * Reports unknown keys, and counts the known ones actually present.
- * A body carrying none of them applied nothing, and an endpoint that
- * answers `ok` to that has told the caller their plugin is working.
- */
+/** Notes unknown keys and returns the known ones present. A body with none has nothing to apply. */
 function scan(body: Record<string, unknown>, known: readonly string[], problems: Problems) {
   const extra = Object.keys(body).filter((k) => !known.includes(k))
   if (extra.length) problems.push(`ignored unknown field(s): ${extra.join(', ')}`)
@@ -363,27 +324,15 @@ const nextId = (p: string) => `${p}-${(seq += 1).toString(36)}-${Date.now().toSt
 class DashStore {
   snapshot: DashSnapshot = clone(SEED)
   meta: DashMeta = { agent: null, lastSeen: null, heartbeatSeconds: 30, fed: [] }
-  /** newest first, capped - the feed log on the Dash reads this */
+  /** newest first, for the feed log on the Dash */
   log: IngestRecord[] = []
-  /**
-   * player -> the pack hash that client last acknowledged. Kept so a
-   * plugin can report one client at a time (which is all a join event
-   * knows) and let Vellum do the counting.
-   */
+  /** player -> the pack hash that client last acknowledged, so a plugin can report one at a time */
   roster = new Map<string, string>()
 
-  /**
-   * Release notes from the Master Console. Empty until one pushes:
-   * the About panel falls back to what this build knows about itself,
-   * which is honest rather than blank.
-   */
+  /** Release notes pushed from the Master Console. While empty, About shows the built-in ones. */
   releases: Release[] = []
 
-  /**
-   * Bumped on every change. The snapshot is mutated in place, so its
-   * identity never changes and React would see nothing - this counter
-   * is what `useSyncExternalStore` actually watches.
-   */
+  /** Bumped on every change. The snapshot is mutated in place, so `useSyncExternalStore` watches this. */
   version = 0
 
   private listeners = new Set<Listener>()
@@ -408,7 +357,7 @@ class DashStore {
     }
   }
 
-  /** Record a write and mark the section live. Returns what was corrected. */
+  /** Logs a write. A successful one marks its section as fed. */
   accept(
     section: Section | null,
     op: string,
@@ -488,7 +437,6 @@ export function readServer(body: Record<string, unknown>, current: ServerState) 
     status: str(body.status, 'status', LIMITS.status, current.status, problems),
     online: bool(body.online, 'online', current.online, problems),
     breakdown,
-    // a plugin that reports rows but no total means the sum of the rows
     total:
       body.total === undefined
         ? breakdown.reduce((n, r) => n + r.count, 0)
@@ -504,7 +452,7 @@ export function readPack(body: Record<string, unknown>, current: PackState) {
     archive: str(body.archive, 'archive', LIMITS.archive, current.archive, problems),
     bytes: num(body.bytes, 'bytes', { min: 0, max: 1e12, fallback: current.bytes }, problems),
     hash: str(body.hash, 'hash', LIMITS.hash, current.hash, problems),
-    // a new pack is pushed now unless it says otherwise; a repeat keeps its date
+    // a new hash defaults to now; the same hash keeps its date
     pushedAt: when(
       body.pushedAt,
       'pushedAt',
@@ -609,10 +557,7 @@ export function readFile(body: Record<string, unknown>, index: number, problems:
   }
 }
 
-/**
- * One entry of a changelog push. Notes that are not strings are dropped
- * with a line in `problems` rather than rendered as "[object Object]".
- */
+/** One entry of a changelog push. Notes that are not strings are dropped and reported in `problems`. */
 export function readRelease(body: Record<string, unknown>, index: number, problems: Problems): Release | null {
   const version = str(body?.version, `releases[${index}].version`, LIMITS.version, '', problems)
   if (!version) {
@@ -663,11 +608,7 @@ export function readReleases(value: unknown, problems: Problems): Release[] {
 
 /* ---------------- derived ---------------- */
 
-/**
- * Live until a heartbeat is missed, stale for the next few, then offline.
- * A dashboard that keeps showing yesterday's numbers as though they were
- * current is worse than one that admits it lost the plugin.
- */
+/** Live within two heartbeat intervals of the last accepted write, stale within six, then offline. */
 export function healthOf(meta: DashMeta, now = Date.now()): Health {
   if (meta.lastSeen === null) return 'offline'
   const age = (now - meta.lastSeen) / 1000

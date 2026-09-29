@@ -1,8 +1,4 @@
-/* The models the editor opens with.
-
-   These ship as `.vellum`, the native format, and are parsed by the same
-   reader an opened file goes through - there is no second path into the
-   editor. */
+/* The bundled sample models, parsed by the same reader as an opened file. */
 
 import { readVellum } from './vellum'
 import type { Model, ProjectKind, Subtype } from './model'
@@ -25,13 +21,7 @@ export type Sample = {
   model: Model
 }
 
-/**
- * The kind and subtype come off the parsed document rather than being
- * declared twice. The argument below is only a fallback for a file that
- * does not say, which keeps the registry from drifting away from the
- * bytes it loads - that drift is exactly how both consumables ended up
- * listed as consumables while loading with no kind at all.
- */
+/** Kind and subtype come from the file; `kind` here is a fallback for a file that gives none. */
 const of = (
   id: string,
   label: string,

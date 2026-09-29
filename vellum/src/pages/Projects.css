@@ -334,7 +334,7 @@
   color: var(--ink-faint);
 }
 
-/* the grid narrows a long way; clip rather than wrap to two lines */
+/* the grid gets narrow; keep each field to one line */
 .asset__meta span {
   min-width: 0;
   overflow: hidden;
@@ -385,7 +385,7 @@
 }
 
 @media (max-width: 640px) {
-  /* two fields, not four - at this width the rest only ellipses */
+  /* only the middle two fields fit at this width */
   .asset__meta {
     display: flex;
     justify-content: space-between;
@@ -400,15 +400,11 @@
   }
 }
 
-/* ---------------- shelf groups ----------------
+/* ---------------- shelf groups ---------------- */
 
-   Consumables are items, so they share the Items shelf and are told
-   apart by a heading rather than by a tab of their own. */
-
-/* The grid carries the panel's inset, so a heading above it has to be
-   given the same one or its rule runs out past the cards. */
 .library__group > .library__grid { padding-top: var(--sp-4); }
 
+/* same side inset as the grid, so the rule stays over the cards */
 .library__groupname {
   display: flex;
   align-items: center;
@@ -432,8 +428,6 @@
   color: var(--ink-faint);
 }
 
-/* Making a model is not a shelf you can be on, so it sits outside the
-   tab pill rather than becoming a third segment of it. */
 .library__new { flex: none; }
 
 @media (width <= 720px) {
@@ -447,9 +441,7 @@
   .library__pack { order: 4; }
 }
 
-/* ---------------- in the dark studio ----------------
-   The shelf and its gateway take the Dash's panels: rounded, lit
-   under the pointer, and springing when touched. */
+/* ---------------- in the dark studio ---------------- */
 
 html[data-surface='dark'] .gateway { gap: 18px; }
 

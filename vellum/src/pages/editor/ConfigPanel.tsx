@@ -1,11 +1,5 @@
-/* ---------------------------------------------------------------
-   The config form.
-
-   Every control here is generated from `SCHEMA` in lib/config.ts -
-   nothing below knows what a boss bar is. That is the point: a field
-   added to the schema appears here, validates, and lands in the YAML
-   without three places having to agree about how it is spelled.
-   --------------------------------------------------------------- */
+/* The config form. Every control is generated from a schema, served by a
+   linked plugin or taken from `SCHEMA` in lib/config.ts. */
 
 import { useState } from 'react'
 import { Icon } from '../../lib/icons'
@@ -186,7 +180,7 @@ function Control({
   }
 }
 
-/** A field whose control sits beside its label, rather than under it. */
+/** Field kinds whose control sits beside the label. */
 const INLINE = new Set<Field['kind']>(['bool', 'number'])
 
 export function ConfigPanel({
@@ -198,15 +192,11 @@ export function ConfigPanel({
   config: Config
   onChange: (next: Config) => void
 }) {
-  /* The SERVED catalogue when a plugin answers, the built-in one when
-     not. The built-in is the standalone shape, not a stale copy: the
-     free tier has no plugin to ask. */
+  // the schema a linked plugin serves, else the built-in one
   const served = useMobSchema(kind)
   const sections: Section[] = served.sections ?? SCHEMA[kind] ?? []
   const [open, setOpen] = useState<string>(sections[0]?.id ?? '')
-  /* Bound by PATH, not by field key: the block is the runtime's own
-     body, so `movement-speed` is where the speed lives and `idle` sits
-     inside an `animations` branch. */
+  // set by path because the YAML nests values, e.g. `idle` under `animations`
   const set = (path: string, v: unknown) => onChange(setAt(config, path, v as never))
   const touched = setFields(kind, config)
 
@@ -218,9 +208,7 @@ export function ConfigPanel({
         name, so the two stay in sync.
       </p>
 
-      {/* WHERE THE FIELDS CAME FROM. A form that silently draws a stale
-          copy of the server's catalogue is the drift this exists to
-          prevent, so it says which one it is reading. */}
+      {/* say which schema the form is drawn from */}
       {served.from === 'plugin' ? (
         <p className="ed-hint cfg-lead">
           <Icon name="check" size={11} />
@@ -233,9 +221,8 @@ export function ConfigPanel({
         </p>
       ) : null}
 
-      {/* A TYPE THIS FORM CANNOT DRAW IS REPORTED, NOT APPROXIMATED.
-          Drawing a duration as a plain number would offer a control
-          whose value the loader then refuses. */}
+      {/* Lists what the served schema has that the form doesn't show:
+          unknown types, unnamed flags and retired states. */}
       {served.problems.length ? (
         <div className="cfg-probs">
           <div className="cfg-probs__head">
@@ -273,8 +260,8 @@ export function ConfigPanel({
                     <span className="cfg-field__label">{f.label}</span>
                     <Control
                       field={f}
-                      /* A rows field is stored as the LINES the file holds;
-                         the row is only how they are edited. */
+                      /* a rows field is stored as lines of text; rows are
+                         only the editing view */
                       value={f.kind === 'rows' ? rowsOf(f, getAt(config, f.path)) : getAt(config, f.path)}
                       onChange={(v) =>
                         set(f.path, f.kind === 'rows' ? linesOf(f, v as never) : v)

@@ -1,6 +1,5 @@
-/* Pip fishing: the waiting scene for a person rather than a job, used
-   while someone on the team writes back. Same line and same colour as
-   the mining scene.
+/* Pip fishing: the waiting scene while someone on the team writes back.
+   Same line and same colour as the mining scene.
 
    working  he sits on the bank with his legs over the edge and casts;
             the float rides the water, and now and then something

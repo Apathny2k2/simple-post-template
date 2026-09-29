@@ -15,12 +15,7 @@ const PLACEMENTS: Array<{ id: Placement; label: string; blurb: string }> = [
   { id: 'dropped', label: 'Dropped', blurb: 'On the floor at a quarter size, turning and bobbing.' },
 ]
 
-/**
- * "View in the real world": the model on a black stage at its real size,
- * with a floor that moves under a walk and a two-block figure for scale.
- * The scene is an ordinary .vellum model, so the renderer, camera and
- * animation code need nothing special for it.
- */
+/** The model at real size in a small world, which is itself a model that ModelView renders. */
 export function WorldScene({
   model,
   kind,
@@ -49,21 +44,12 @@ export function WorldScene({
   const [playing, setPlaying] = useState(true)
   const [time, setTime] = useState(0)
 
-  /* Rebuilding this paints a 512px sheet, so it is memoised on the few
-     things that actually change it rather than on every frame. Night is
-     one of them: the world is repainted darker rather than filtered,
-     which is why the model keeps its own colours. */
+  // buildWorld paints a 1024px texture sheet, so it only reruns when its inputs change
   const built = useMemo(
     () => buildWorld(model, { kind, placement, withPlayer }),
     [model, kind, placement, withPlayer],
   )
-  /* What the legs are asking for, read off the rig. A clip that does
-     not loop, or drives no legs, asks for nothing and the field stays
-     put - an attack that walked away would be worse than one that did
-     not. */
-  /* A behaviour, if it has one, drives which clip plays rather than the
-     picker: the whole point is watching the cycle, and a geyser looks
-     like an idle block until the stage that blows it comes round. */
+  // a behaviour with a cycle picks the clip, overriding the clip picker
   const cyclic = hasBehaviour(behaviour) && cycleLength(behaviour) > 0 ? behaviour : null
   const [runCycle, setRunCycle] = useState(true)
   const cycle = cyclic && runCycle ? cyclic : null
@@ -92,20 +78,14 @@ export function WorldScene({
     return () => ro.disconnect()
   }, [])
 
-  /* 140 units of frame was a constant tuned around a mob, and it left a
-     16-unit block as a speck on a field nobody was looking at. Frame
-     the subject instead - and the player too when the player is there
-     to be compared against, since a comparison you have to squint at
-     is not one. */
+  // frame the subject, and the player too when it is shown
   const subjectUnits = Math.max(built.blocks * BLOCK, withPlayer ? 2 * BLOCK : 0)
   const fit = Math.min(box.w * 0.66, box.h * 0.86) / Math.max(72, subjectUnits * 2.6)
-  /* A dropped or hovering item is small on purpose, so the island stops
-     being the subject and the camera comes in - the scenery is there for
-     scale, not to be looked at. */
+  // dropped and held items are small, so the camera comes in closer
   const scale = Math.max(1, Math.min(18, fit * (built.placement === 'ground' ? 1 : 1.95)))
 
-  /* The clock lives in a ref: an effect that depends on `time` and
-     resets its own baseline every frame runs at half speed. */
+  /* The clock is read from a ref. An effect that depends on `time` restarts
+     every frame, resets its baseline and runs at half speed. */
   const timeRef = useRef(0)
   timeRef.current = time
   useEffect(() => {
@@ -146,17 +126,14 @@ export function WorldScene({
     setCycleT(0)
   }, [])
 
-  /* The stage's clip loops inside the stage, so a 7s charge on a 2s
-     idle plays it three and a half times. */
+  // the stage's clip loops through the stage: a 2s clip in a 7s stage plays 3.5 times
   const at = cycle && scene?.length ? (now?.local ?? 0) % scene.length : time
 
   const shake = cycle
     ? (now?.stage?.effects ?? []).filter((e) => e.kind === 'shake').reduce((n, e) => Math.max(n, e.amount), 0)
     : 0
 
-  /* Playing the animation here is the point of the scene, so a model
-     that has one arrives with it running rather than with "none"
-     selected and nothing moving. */
+  // on open, start the first clip if none is picked
   const picked = useRef(false)
   useEffect(() => {
     if (picked.current || clip || !clips.length) return
@@ -188,8 +165,6 @@ export function WorldScene({
         </header>
 
         <div className="world__stage" ref={stage}>
-          {/* The model shakes as a whole rather than each cube, which is
-              what a block does when the ground under it is moving. */}
           <div
             className="world__shake"
             style={shake > 0 ? ({ '--shake': `${shake * 3}px` } as React.CSSProperties) : undefined}
@@ -244,8 +219,7 @@ export function WorldScene({
                 <Icon name="power" size={14} />
               </button>
             ) : null}
-            {/* Two clocks run here and only one of them is driving, so
-                the read-out says which. */}
+            {/* shows whichever clock is driving: the cycle or the clip */}
             <span className="world__time mono">
               {cycle
                 ? `${now?.stage?.name ?? '-'} · ${(now?.local ?? 0).toFixed(1)}s / ${cycleLength(cycle).toFixed(1)}s`
@@ -255,8 +229,7 @@ export function WorldScene({
 
           <label className="world__field">
             <span>{cycle ? 'Cycle' : 'Animation'}</span>
-            {/* While the cycle drives, the picker would be a control
-                that changes nothing, so it says what is playing instead. */}
+            {/* while the cycle drives, the disabled picker shows the clip it chose */}
             <select
               className="ed-select"
               value={cycle ? (subject?.id ?? '') : (clip?.id ?? '')}
@@ -322,20 +295,11 @@ export function WorldScene({
   )
 }
 
-/* ---------------------------------------------------------------
-   A stage's particles.
+/* ---------------- particles ---------------- */
 
-   No engine and no per-frame React: each particle is one span with a
-   CSS keyframe, and the group's members are staggered across the
-   lifetime by animation-delay so the stream reads as continuous. The
-   burst falls out of the stage change - mounting forty of them at once
-   is what an eruption looks like.
-
-   The emitter sits on the model's vertical axis at the effect's own
-   height, and the horizontal spread is per-particle. That is honest
-   about what it can know: the camera orbits, so an offset resolved
-   against one yaw would point the wrong way the moment you dragged it.
-   --------------------------------------------------------------- */
+/* Each particle is a span with a CSS keyframe, staggered by animation-delay so
+   the stream looks continuous. The overlay is flat and the camera orbits, so
+   an emitter uses only the effect's height and sits on the model's axis. */
 
 /** A stable spread per index, so a group does not reshuffle every render. */
 const spread = (i: number) => {

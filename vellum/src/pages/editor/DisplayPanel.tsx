@@ -2,10 +2,8 @@ import { useState } from 'react'
 import type { Vec3 } from '../../lib/model'
 import { Icon } from '../../lib/icons'
 
-/* The eight slots a Java item model can be posed in. A pack owns these
-   numbers, not the model: `.vellum` deliberately carries no display
-   transforms, so what this panel edits is a preview, and the editor says
-   so rather than implying the values are saved with the geometry. */
+/* The eight display slots of a Java item model. .vellum stores no display
+   transforms, so this panel edits a preview. */
 export const DISPLAY_SLOTS = [
   { id: 'thirdperson_righthand', label: 'Third person, right hand' },
   { id: 'thirdperson_lefthand', label: 'Third person, left hand' },
@@ -25,7 +23,7 @@ export type DisplayState = Record<SlotId, SlotTransform>
 
 const rest: SlotTransform = { rotation: [0, 0, 0], translation: [0, 0, 0], scale: [1, 1, 1] }
 
-/** Minecraft's own defaults, which is what a modeller expects to start from. */
+/** Starting transforms, taken from vanilla item and block models. */
 export const DEFAULT_DISPLAY: DisplayState = {
   thirdperson_righthand: { rotation: [0, -90, 55], translation: [0, 4, 0.5], scale: [0.85, 0.85, 0.85] },
   thirdperson_lefthand: { rotation: [0, 90, -55], translation: [0, 4, 0.5], scale: [0.85, 0.85, 0.85] },
@@ -37,7 +35,7 @@ export const DEFAULT_DISPLAY: DisplayState = {
   fixed: { ...rest },
 }
 
-/** Minecraft writes 1/16 units and drops anything that matches vanilla. */
+/** One slot as display JSON, leaving out parts equal to the identity transform. */
 function slotJson(t: SlotTransform) {
   const out: Record<string, number[]> = {}
   const same = (a: Vec3, b: Vec3) => a.every((v, i) => Math.abs(v - b[i]) < 1e-6)
@@ -62,11 +60,11 @@ export function DisplayPanel({
   transform: SlotTransform
   onTransform: (t: SlotTransform) => void
   onReset: () => void
-  /** open the scene: the model, in a world, next to something two blocks tall */
+  /** opens WorldScene: the model at real size beside a two-block figure */
   onWorld: () => void
-  /** every slot, so "copy all" can emit the whole display block */
+  /** every slot's transform, for Copy all */
   all: DisplayState
-  /** the numeric row component, passed in so it stays one implementation */
+  /** renders Editor's NumRow for these rows */
   children: (rows: {
     label: string
     value: Vec3
@@ -76,8 +74,6 @@ export function DisplayPanel({
 }) {
   const [note, setNote] = useState<string | null>(null)
 
-  /* The panel used to be a preview you could not act on: you tuned eight
-     slots and then retyped the numbers into your pack by hand. */
   const copy = (only: SlotId | null) => {
     const display: Record<string, Record<string, number[]>> = {}
     for (const s of DISPLAY_SLOTS) {
@@ -140,10 +136,6 @@ export function DisplayPanel({
         ])}
       </div>
 
-      {/* A display slot poses a model against nothing at all: no ground,
-          no sky, and nothing of a known size. This is the other half of
-          judging a model - how big it actually is, and what its
-          animation looks like somewhere real. */}
       <button className="btn btn--primary" style={{ width: '100%', marginTop: 12 }} onClick={onWorld}>
         <Icon name="scene" size={14} /> View in the real world
       </button>

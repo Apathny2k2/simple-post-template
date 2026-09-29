@@ -1,35 +1,20 @@
-/* ---------------------------------------------------------------
-   Does this model translate, and what does it become?
+/* Checks whether a model converts to a Minecraft model file, and converts
+   it. Where a model file differs from a .vellum:
 
-   A `.vellum` and a Minecraft model file are not the same kind of
-   thing, and the difference is not cosmetic:
+   - Elements are flat, with no bones.
+   - An element rotates on one axis, about one origin, by one of five angles.
+   - Elements have no inflate.
+   - UVs run 0..16 across the whole texture. Ours are in the texture's UV units.
 
-   * A model file has NO hierarchy. Elements are flat, in one model
-     space. Our bones nest and rotate.
-   * An element rotates on ONE axis, about ONE origin, at one of five
-     fixed angles. Our cubes carry a full Vec3 at any angle, and sit
-     under bones that carry their own.
-   * An element has no inflate. Ours do.
-   * UVs are in a 0..16 space over the whole texture. Ours are in
-     texture pixels.
-
-   So a model can be perfectly good in the Studio and impossible to put
-   in a pack. The job here is to say which, and why, and where - before
-   anyone ships a pack that loads wrong - and then to convert the part
-   that does translate.
-
-   What saves most of it: in the rest pose a bone with no rotation
-   contributes no transform at all. The renderer places a bone at
-   `origin - parentOrigin` and a cube at `origin - boneOrigin`, so the
-   offsets telescope and a cube under unrotated bones sits at exactly
-   the absolute coordinates its own `from`/`to` already say. Only a
-   *rotated* bone actually moves its children.
-   --------------------------------------------------------------- */
+   In the rest pose an unrotated bone adds nothing: the renderer offsets
+   each bone and cube by its origin minus its parent's, so a cube under
+   unrotated bones sits at its own `from`/`to`. Only a rotated bone moves
+   its children. */
 
 import { FACES } from './model'
 import type { Bone, Cube, FaceKey, Model, ProjectKind, Vec3 } from './model'
 
-/** The five angles an element may rotate by. Anything else is not a model. */
+/** The angles a model element may rotate by. */
 export const LEGAL_ANGLES = [-45, -22.5, 0, 22.5, 45] as const
 
 const AXES = ['x', 'y', 'z'] as const
@@ -38,7 +23,7 @@ export type Axis = (typeof AXES)[number]
 export type TranslationIssue = {
   /** `error` cannot be expressed at all; `warning` is expressed differently; `note` is a fact. */
   level: 'error' | 'warning' | 'note'
-  /** the cube or bone it is about, where it is about one */
+  /** the cube it is about, if any */
   where?: string
   message: string
 }
@@ -50,10 +35,7 @@ type Turn = { axis: Axis; angle: number; origin: Vec3; owner: string }
 /** The rotations found along one route down the bone tree. */
 type Path = { turns: Turn[]; multiAxis: string[] }
 
-/**
- * What one rotation amounts to: nothing, a single turn, or a rotation
- * on more than one axis - which an element cannot express at all.
- */
+/** A rotation as 'none', a single-axis turn, or 'multi' for more than one axis. */
 function turnOf(rotation: Vec3, origin: Vec3, owner: string): Turn | 'none' | 'multi' {
   const live = rotation.map((v, i) => [i, v] as const).filter(([, v]) => v !== 0)
   if (!live.length) return 'none'
@@ -62,17 +44,12 @@ function turnOf(rotation: Vec3, origin: Vec3, owner: string): Turn | 'none' | 'm
 }
 
 /**
- * Every non-zero rotation between the model root and this cube, in order.
- *
- * Both lists are scoped to the path, not to the traversal: a bone in a
- * branch this cube does not live in says nothing about this cube, and
- * naming it here would send someone to look at geometry that is fine.
- * Its own cubes report it themselves.
+ * The non-zero rotations from the root down to this cube: the bones on its
+ * path, in order, and its own. Bones in other branches are left out.
  */
 function chainOf(model: Model, cube: Cube): { bones: Path; own: Turn | 'multi' | null } {
 
-  /* Walk down rather than up: a cube knows nothing about its bone, so
-     the tree is what says which bones are above it. */
+  /* Cubes don't reference their bone, so search down from the root. */
   const walk = (bones: Bone[], above: Path): Path | null => {
     for (const bone of bones) {
       const t = turnOf(bone.rotation, bone.origin, `bone "${bone.name}"`)
@@ -95,12 +72,9 @@ function chainOf(model: Model, cube: Cube): { bones: Path; own: Turn | 'multi' |
   const above = walk(model.bones, { turns: [], multiAxis: [] }) ?? { turns: [], multiAxis: [] }
   const mine = turnOf(cube.rotation, cube.origin, `"${cube.name}"`)
 
-  /* The two are kept apart because they are not the same constraint.
-     A cube's own rotation goes INTO the model file and is bound by what
-     an element can say. A bone's rotation never reaches the file at all:
-     on the pack path there is nowhere to put it, and on the plugin path
-     it becomes the bone's rest rotation, applied at runtime by the
-     display carrying it. Same geometry, different verdict. */
+  /* Kept apart because the limits differ. A cube's own rotation always
+     goes into its element. A bone's reaches a pack only as an element's
+     single pivot; with the plugin it becomes the bone's rest rotation. */
   return {
     bones: above,
     own: mine === 'none' ? null : mine,
@@ -112,29 +86,17 @@ const nearestLegal = (angle: number) =>
 
 /* ---------------- the check ---------------- */
 
-/**
- * Where the model is going, because it decides what counts as a fault.
- *
- * `pack` is a resource pack and nothing else: a model file, alone, on a
- * vanilla client. `any` is the editor's own view, which cannot know
- * whether a server is linked, so it reports what a pack could not hold
- * WITHOUT calling it broken - the plugin expresses several of these at
- * runtime and refusing them outright would be wrong about half the time.
- */
+/** `pack`: a vanilla resource pack. `any`: the editor's view, where limits the plugin handles are warnings. */
 export type Target = 'pack' | 'any'
 
-/**
- * What would go wrong, said before anyone exports. A model with no
- * errors here converts exactly; one with warnings converts into
- * something that loads but is not quite what is on screen.
- */
+/** Conversion problems: errors keep a model out of a pack, warnings mean the result differs. */
 export function checkTranslation(
   model: Model,
   kind: ProjectKind | undefined,
   target: Target = 'any',
 ): TranslationIssue[] {
   const out: TranslationIssue[] = []
-  /* Fatal to a pack, merely a fact on a linked server. */
+  /* Errors for a pack; on a linked server the plugin handles these. */
   const boneLevel = target === 'pack' ? 'error' : 'warning'
   const carried = target === 'pack' ? '' : '. The plugin applies it as the bone’s rest rotation'
 
@@ -145,10 +107,7 @@ export function checkTranslation(
         'A mob has no model file in vanilla Minecraft. Resource packs can’t hold entity models, so the plugin renders it.',
     })
 
-    /* Where it can be hit is NOT a resource-pack question and does not
-       belong in a resource-pack answer - it is the plugin's rig, and it
-       gets its own always-visible readout. See lib/hitregions.ts, and
-       the "Where it can be hit" panel that renders it. */
+    /* Hit regions are checked in lib/hitregions.ts. */
     return out
   }
 
@@ -168,9 +127,7 @@ export function checkTranslation(
     const tag = cube.name || cube.id
     const { bones, own } = chainOf(model, cube)
 
-    /* ---- the cube's own rotation: a model-file limit on every path ----
-       "Cube rotations stay raw inside the model, exactly as authored",
-       so what an element can say is what a cube may be, linked or not. */
+    /* The cube's own rotation goes into its element on every path. */
     if (own === 'multi') {
       out.push({
         level: 'error',
@@ -185,7 +142,6 @@ export function checkTranslation(
       })
     }
 
-    /* ---- the bones above it: nothing a model file can hold ---- */
     for (const owner of bones.multiAxis) {
       out.push({
         level: boneLevel,
@@ -194,8 +150,8 @@ export function checkTranslation(
       })
     }
 
-    /* One bone turn and no cube turn is the one case a pack CAN express:
-       an element gets exactly one pivot, so that rotation becomes it. */
+    /* An element has one pivot, so a single turn on the path (bone or
+       cube) becomes it; two or more can't be written. */
     const pivots = bones.turns.length + (own && own !== 'multi' ? 1 : 0)
     if (pivots > 1) {
       const names = [...bones.turns.map((t) => t.owner), ...(own && own !== 'multi' ? [own.owner] : [])]
@@ -212,18 +168,14 @@ export function checkTranslation(
       })
     }
 
-    /* Inflate has no element field: it bakes into the corners, which is
-       what it already means. Worth saying only when it is non-zero and
-       would push the cube out of range. */
+    /* Elements have no inflate, so it is baked into the corners before
+       the -16..32 range check. */
     const from = cube.from.map((v) => v - cube.inflate) as Vec3
     const to = cube.to.map((v) => v + cube.inflate) as Vec3
     for (let i = 0; i < 3; i++) {
       if (from[i] < -16 || to[i] > 32) {
         out.push({
-          /* A pack has nowhere to put this. A linked server does: the
-             plugin divides an over-reaching bone down and records the
-             divisor on it, multiplying it back into that one display's
-             scale. So it is fatal to a pack and a fact on a server. */
+          /* An error for a pack; the plugin can scale the bone down to fit. */
           level: target === 'pack' ? 'error' : 'warning',
           where: tag,
           message: `${AXES[i]} runs ${from[i]} to ${to[i]}${cube.inflate ? ' once inflated' : ''}, but an element must stay inside -16..32${
@@ -274,50 +226,35 @@ export type McModel = {
   display?: Record<string, { rotation?: Vec3; translation?: Vec3; scale?: Vec3 }>
 }
 
-/**
- * A resource path Minecraft will accept: lowercase, digits, underscore,
- * dot, dash.
- *
- * This lives here rather than beside the zip writer because it is not
- * about zips - it is the rule the model file's texture references and
- * the file names under `textures/` BOTH have to obey, and the one thing
- * that must never happen is the two disagreeing. A model that points at
- * `item/Blade Sheet` while the PNG sits at `item/blade_sheet.png` loads
- * without complaint and renders the missing-texture checkerboard.
- */
+/** A name valid in a resource path. Texture references and file names both use it, so they always match. */
 export const safeId = (s: string) =>
   s
     .toLowerCase()
     .replace(/[^a-z0-9_.-]+/g, '_')
     .replace(/^_+|_+$/g, '') || 'model'
 
-/** What one texture is called inside the pack, from either side. */
+/** A texture's name in the pack, for the model's reference and the PNG path alike. */
 export const textureName = (texName: string, fallback: string) =>
   safeId((texName || fallback).replace(/\.png$/i, ''))
 
-/** Texture pixels to the 0..16 space a model file measures UVs in. */
+/** UV units to the 0..16 space a model file measures UVs in. */
 const uvTo16 = (v: number, span: number) => Math.round((v / span) * 16 * 10000) / 10000
 
 const round = (v: number) => Math.round(v * 10000) / 10000
 
-/**
- * The model file, plus what had to change to make one.
- *
- * `display` comes straight from the Display tab - those eight slots
- * ARE the model file's display block, which is why the tab exists.
- */
+/** The model file and its pack issues. `display` holds the Display tab's eight slots. */
 export function toMinecraftModel(
   model: Model,
   namespace: string,
   folder: 'item' | 'block',
   display?: Record<string, { rotation: Vec3; translation: Vec3; scale: Vec3 }>,
-  /** the stem the pack files this model under - the fallback for an unnamed texture */
+  /** the model's file stem in the pack, also used for an unnamed texture */
   assetName?: string,
 ): { json: McModel; issues: TranslationIssue[] } {
   const issues = checkTranslation(model, folder === 'block' ? 'blocks' : 'items', 'pack')
 
-  /* One entry per texture, in order, so `#0` is the first sheet and a
-     model with two sheets does not silently paint everything from one. */
+  /* One variable per texture, in order, so `#0` is the first sheet.
+     Minecraft takes break particles from `particle`. */
   const slot = new Map<string, string>()
   model.textures.forEach((t, i) => slot.set(t.id, String(i)))
   const stem = assetName ?? safeId(model.name)
@@ -329,8 +266,8 @@ export function toMinecraftModel(
 
   const elements: McElement[] = model.cubes.map((cube) => {
     const { bones, own } = chainOf(model, cube)
-    /* One pivot is all an element has. A model that reaches here has
-       already passed the pack check, so there is at most one. */
+    /* An element has one pivot. With two or more turns the pack check
+       reports an error and no rotation is written. */
     const turns = [...bones.turns, ...(own && own !== 'multi' ? [own] : [])]
     const el: McElement = {
       name: cube.name || undefined,
@@ -372,9 +309,8 @@ export function toMinecraftModel(
   const json: McModel = { textures, elements }
 
   if (display) {
-    /* Only the slots that differ from rest: Minecraft reads an absent
-       slot as the default, and writing eight identity blocks into every
-       model is eight lies about having tuned them. */
+    /* Only what differs from identity. With no parent model, Minecraft
+       reads an absent slot or field as identity. */
     const out: McModel['display'] = {}
     for (const [name, t] of Object.entries(display)) {
       const block: { rotation?: Vec3; translation?: Vec3; scale?: Vec3 } = {}

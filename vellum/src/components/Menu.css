@@ -9,9 +9,8 @@
   min-width: 194px;
   padding: 6px;
   border-radius: var(--r-md);
-  /* Near-opaque on purpose. An ancestor with backdrop-filter (the menu bar,
-     the library panel) becomes the backdrop root, so a popover inside one
-     samples nothing and a thin tint would render see-through. */
+  /* Near-opaque: an ancestor with backdrop-filter becomes the backdrop root, so
+     inside one the blur here samples nothing and a thin tint would look see-through. */
   background-color: var(--glass-solid);
   backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat));
   border: 1px solid var(--border);

@@ -9,10 +9,8 @@ import { blankDraft, clockTime, formatBytes, me, relativeTime, subjectOf } from 
 import type { Attachment, Message, Ticket, TicketDraft, TicketStatus } from '../lib/support'
 import './Support.css'
 
-/* Support is your tickets, one thread at a time, and a form that is one
-   text box. Pip shows up while something is on its way: he mines while
-   a new ticket is sent and fishes while someone on the team is writing
-   back, and what he was waiting for appears once he is done. */
+/* Pip mines while a new ticket sends and fishes while an agent types a reply.
+   What he waited for appears once his ending has played. */
 
 type View = 'open' | 'closed'
 
@@ -239,8 +237,8 @@ function Composer({
   const box = useRef<HTMLTextAreaElement>(null)
   const picker = useRef<HTMLInputElement>(null)
 
-  /* The box grows with what is typed, up to a few lines. Empty, it keeps
-     its one-row height, which also holds while a narrow screen hides it. */
+  /* Grows with the text, up to a few lines. Empty, it keeps its CSS height,
+     so a narrow screen hiding it does not collapse it. */
   useLayoutEffect(() => {
     const el = box.current
     if (!el) return
@@ -352,7 +350,7 @@ function Thread({
     if (el) el.scrollTop = el.scrollHeight
   }, [ticket.id, last, writing])
 
-  // a narrow screen mounts the thread hidden, so it looks again once it shows
+  // a narrow screen mounts the thread hidden, so scroll to the end once it shows
   useEffect(() => {
     const el = scroller.current
     if (!el) return
@@ -503,8 +501,8 @@ export function Support() {
   const [fresh, setFresh] = useState<string | null>(null)
   const [replyHours, setReplyHours] = useState<number | null>(null)
 
-  /* What the event stream needs to know when a message lands. Kept in a
-     ref so the one subscription always sees the current thread. */
+  /* State the event handler reads. It is a ref so the subscription, made
+     once, still sees the current thread. */
   const live = useRef<{ activeId: string | null; composing: boolean; writing: Writing | null }>({
     activeId: null,
     composing: false,
@@ -552,7 +550,7 @@ export function Support() {
     }
   }, [])
 
-  // GET /tickets?q= - the server searches message text too, so it answers with ids
+  // GET /tickets?q=. The server also searches message text, so it answers with ids.
   useEffect(() => {
     const q = query.trim()
     if (!q) return
@@ -600,7 +598,7 @@ export function Support() {
     )
   }
 
-  // GET /tickets/{id}/events - one subscription for the list's badges and the open thread
+  // events for every ticket: one subscription for the list's badges and the open thread
   useEffect(
     () =>
       api.streamAll((e) => {
@@ -639,7 +637,7 @@ export function Support() {
     setWriting(null)
   }
 
-  /** A new ticket that is in goes into the list. */
+  /** Puts a newly created ticket at the top of the list. */
   const file = (ticket: Ticket) => {
     setDraft(blankDraft)
     setTickets((rows) => [ticket, ...rows.filter((r) => r.id !== ticket.id)])
@@ -725,7 +723,7 @@ export function Support() {
     }
   }
 
-  /** Pip is through the portal, or in the lava. */
+  /** Runs after Pip's ending: files the new ticket, or shows the failure. */
   const sent = () => {
     const ticket = created.current
     created.current = null

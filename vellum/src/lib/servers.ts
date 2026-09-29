@@ -1,11 +1,5 @@
-/* ---------------------------------------------------------------
-   The servers this account can enter: the ones it owns, and the ones
-   where another team has given it a seat. This stands in for what the
-   account service will answer; the shapes are what it should send.
-
-   Which one you are in is kept per browser, so the Studio opens on
-   the server you left it on.
-   --------------------------------------------------------------- */
+/* The servers this account owns or has a seat on, as sample data standing in
+   for the account service. */
 
 import { useSyncExternalStore } from 'react'
 
@@ -115,7 +109,7 @@ function readId(): string | null {
   try {
     return localStorage.getItem(KEY)
   } catch {
-    // private mode, or blocked site data: the first server stands in
+    // storage blocked: fall back to the first server you own
     return null
   }
 }
@@ -132,7 +126,7 @@ export function enterServer(id: string) {
   try {
     localStorage.setItem(KEY, id)
   } catch {
-    /* it holds for this visit, which is enough to get in */
+    /* storage blocked: the choice lasts for this visit */
   }
   for (const fn of [...listeners]) fn()
 }

@@ -1,10 +1,6 @@
-/* A small pixel buffer drawn by hand and put on a canvas in one call.
-
-   Everything is one ink colour on a transparent ground, the way the
-   offline dinosaur game is drawn. Shapes are masks: a pixel is inked or
-   it is not, and fainter things (the far arm, a cloud) are the same ink
-   at lower strength. Masks turn by nearest-neighbour sampling, so a
-   swinging arm stays as crisp as a standing one. */
+/* A one-colour pixel buffer, put on a canvas in one call. Shapes are masks,
+   and fainter things (the far arm, a cloud) are the same ink at lower
+   strength. Masks turn by nearest-neighbour sampling, so they stay crisp. */
 
 /** 0xRRGGBB */
 export type Rgb = number
@@ -103,11 +99,7 @@ export function stamp(p: Pixels, m: Mask, x: number, y: number, how: Stamp = {})
   }
 }
 
-/**
- * Inks a mask turned by `angle` radians (clockwise on screen) about a
- * pivot given in the mask's own pixels, with the pivot landing on x, y.
- * Each screen pixel samples the one mask pixel under it, so nothing blurs.
- */
+/** Inks a mask turned `angle` radians clockwise about a pivot in mask pixels, which lands on x, y. */
 export function stampTurned(
   p: Pixels,
   m: Mask,

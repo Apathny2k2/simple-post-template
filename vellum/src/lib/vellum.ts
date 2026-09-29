@@ -1,32 +1,17 @@
-/* ---------------------------------------------------------------
-   `.vellum` - the native model format.
+/* `.vellum`, the native model format: compact UTF-8 JSON on one line. Its
+   shape follows the model in `./model`, but the bone tree differs: on disk
+   each bone names its `parent`, in memory the tree is nested.
 
-   Not a zip and not a custom binary, but a compact, key-ordered UTF-8
-   JSON document with a Vellum-owned schema. The extension is ours; the
-   encoding is JSON so `git diff` on a model keeps working.
+   - The `vellum` header is the first key, so a well-formed file begins
+     with HEADER_PREFIX.
+   - Keys are written in a fixed order, and faces and keyframes are
+     sorted, so the same model always writes the same bytes.
+   - An unset optional key is left out. Nothing is written as null.
+   - readVellum upgrades an older version in memory. The writer always
+     stamps CURRENT_VERSION.
 
-   The in-memory model in `./model` mirrors this document one-for-one,
-   so this file is close to a pass-through. The one shape that differs
-   is the bone tree: on disk each bone names its `parent`, in memory the
-   tree is nested. Flatten on write, rebuild on read.
-
-   Four properties are load-bearing and are asserted by the round-trip
-   test rather than left to good intentions:
-
-   1. **No magic number.** Identity is the first JSON key, so a
-      well-formed file begins byte-for-byte with HEADER_PREFIX.
-   2. **Key order is structural, not accidental.** Keys are written in a
-      fixed order and faces are sorted, so a model whose faces reshuffle
-      does not turn every diff into noise.
-   3. **Absent, never null.** Optional keys are omitted rather than
-      written as JSON null.
-   4. **Upgrading is the reader's job**, in memory, on every read. The
-      writer always stamps CURRENT_VERSION - never the version it was
-      handed.
-
-   Deliberately NOT in the file: no rig (regenerated on save), no pack
-   models or textures, no display transforms, and no editor state.
-   --------------------------------------------------------------- */
+   Not in the file: pack models and textures, display transforms and
+   editor state. */
 
 import { FACES, subtypeFits } from './model'
 import type { Behaviour, BehaviourEffect, BehaviourRequirement, BehaviourStage, EffectKind } from './behaviour'
@@ -61,7 +46,7 @@ export const EXTENSION = '.vellum'
 
 type VellumFace = {
   uv: UVRect
-  /** a texture id, not an index into an array */
+  /** a texture's `id` */
   texture?: string
   rotation?: number
 }
@@ -76,12 +61,8 @@ type VellumCube = {
   inflate?: number
   box_uv?: boolean
   /**
-   * The origin a box unwrap was generated from, and whether it is
-   * mirrored. Version 6 added both. The six face rects are written in
-   * full regardless, so these are what a reader needs only if it
-   * regenerates the unwrap rather than trusting the rects - which the
-   * plugin does, and which is why a box-UV model used to come back with
-   * nothing to regenerate from.
+   * Added in v6 with `mirror_uv`: the box unwrap's origin. The face rects are
+   * written in full anyway, so only a reader that regenerates the unwrap needs it.
    */
   uv_offset?: [number, number]
   mirror_uv?: boolean
@@ -95,10 +76,9 @@ type VellumBone = {
   name: string
   origin: Vec3
   rotation: Vec3
-  /** said once, as a parent id - rather than a tree duplicated beside a flat list */
   parent?: string
   cubes: string[]
-  /** mirrors every cube under it, rather than each one saying so */
+  /** mirrors every cube under it */
   mirror_uv?: boolean
   hidden?: boolean
   locked?: boolean
@@ -114,13 +94,7 @@ type VellumTexture = {
   source?: string
 }
 
-/**
- * The four arrays a bezier keyframe needs, and it is ALL FOUR OR NONE.
- *
- * Three of four describes half a curve, which is worse than no curve at
- * all because it would be drawn as though somebody meant it. A partial
- * block is dropped whole rather than half-read.
- */
+/** A bezier key's handles: all four arrays or none. A partial set is dropped on read. */
 type WireHandles = {
   left_time: Vec3
   left_value: Vec3
@@ -132,7 +106,6 @@ type VellumKey = {
   time: number
   value: Vec3
   interp: Interpolation
-  /** written AFTER `interp`, because the handles mean nothing without it */
   handles?: WireHandles
 }
 
@@ -165,39 +138,18 @@ export type VellumBehaviour = {
 export type VellumDocument = {
   vellum: { format: string; version: number }
   name?: string
-  /**
-   * What the model is for. Block models are validated against rules the
-   * others are not, so a document that does not say leaves the editor
-   * guessing - and it used to guess from whichever page you happened to
-   * open first, which meant a block model opened after a mob was not
-   * checked at all.
-   */
+  /** `items`, `mobs` or `blocks`. It picks the validation rules. */
   kind?: string
-  /**
-   * What it is for, within its kind. Optional, and absent means nobody
-   * said - never "misc". Version 3 added it; a version 2 document that
-   * called itself a `consumables` kind becomes an item that says
-   * `consumable` here, which is the same claim in the shape that can
-   * also describe a weapon.
-   */
+  /** What it is for within its kind (v3). Absent means unset; it does not default to `misc`. */
   subtype?: string
   resolution?: { width: number; height: number }
   bones: VellumBone[]
   cubes: VellumCube[]
   textures: VellumTexture[]
   clips: VellumClip[]
-  /**
-   * What makes it act on its own. Version 4 added it, and it is absent
-   * on anything that does not - which is most models, so writing an
-   * empty behaviour onto every file would be noise in every diff.
-   */
+  /** Added in v4. Absent when the model has no requirements and no stages. */
   behaviour?: VellumBehaviour
-  /**
-   * The config, as a flat map of the schema's own keys.
-   * Version 5 added it. Deliberately not the YAML: the YAML is derived,
-   * and storing a derived form is storing something that can disagree
-   * with what it was derived from.
-   */
+  /** Added in v5. The body from `bodyOf`: nested by field path, set fields only. */
   config?: Record<string, unknown>
 }
 
@@ -212,7 +164,7 @@ export class VellumFormatError extends Error {
 
 /* ---------------- write ---------------- */
 
-/** Drop keys whose value is undefined, so optional means absent, not null. */
+/** Drops keys whose value is undefined. */
 function compact<T extends Record<string, unknown>>(obj: T): T {
   const out = {} as Record<string, unknown>
   for (const [k, v] of Object.entries(obj)) if (v !== undefined) out[k] = v
@@ -230,15 +182,13 @@ export function toVellumDocument(model: Model): VellumDocument {
       rotation: c.rotation,
       inflate: c.inflate || undefined,
       box_uv: c.boxUv || undefined,
-      /* Written whenever it is known, not only when `box_uv` is set.
-         Gating it on the flag would drop the offset on exactly the
-         cube this field exists to preserve: one that arrived from a
-         reader that had it, on a model the editor then marked hand-UV. */
+      /* Written whenever known, even with `box_uv` off: the editor's own
+         box-unwrapped cubes have the flag off. */
       uv_offset: c.uvOffset,
       mirror_uv: c.mirrorUv || undefined,
       hidden: c.visible ? undefined : true,
       locked: c.locked || undefined,
-      // faces are emitted in sorted order so a reshuffle cannot churn the diff
+      // sorted, so reordering FACES doesn't change the bytes written
       faces: Object.fromEntries(
         [...FACES].sort().map((key): [string, VellumFace] => [
           key,
@@ -289,9 +239,7 @@ export function toVellumDocument(model: Model): VellumDocument {
     }),
   )
 
-  /* One track per bone-channel pair, which is also how the timeline
-     stacks its rows - an animator carrying mixed-channel keyframes makes
-     you re-filter by channel at every read. */
+  // a track is one bone and one channel, as the timeline stacks its rows
   const clips: VellumClip[] = model.clips.map((clip) =>
     compact({
       id: clip.id,
@@ -310,8 +258,7 @@ export function toVellumDocument(model: Model): VellumDocument {
               time: k.time,
               value: k.value,
               interp: k.interp,
-              /* After `interp`, because handles mean nothing without it.
-                 Wire is snake_case; the runtime is camelCase. */
+              // after `interp`, which decides whether the handles apply
               handles: k.handles && {
                 left_time: k.handles.leftTime,
                 left_value: k.handles.leftValue,
@@ -323,8 +270,6 @@ export function toVellumDocument(model: Model): VellumDocument {
     }),
   )
 
-  /* Absent, never empty: a model with no behaviour writes no behaviour
-     key at all, rather than an object with two empty lists in it. */
   const b = model.behaviour
   const behaviour: VellumBehaviour | undefined =
     b && (b.requires.length || b.stages.length)
@@ -350,19 +295,14 @@ export function toVellumDocument(model: Model): VellumDocument {
         }
       : undefined
 
-  /* Only what was set - and this used to be a comment describing
-     something the code did not do. The whole form state went in,
-     defaults and all, so a model edited in the app carried forty keys
-     meaning nothing while one built by the sample script carried four.
-
-     `bodyOf` is the same function the YAML is written through, so the
-     block in the file and the block in the preview cannot disagree. */
+  /* Only set fields, from `bodyOf`, which is also the body toYaml writes,
+     so the file and the YAML preview agree. */
   const body = model.kind && hasConfig(model.kind) && model.config
     ? bodyOf(model.kind, model.config)
     : undefined
   const config = body && Object.keys(body).length ? (body as Record<string, unknown>) : undefined
 
-  // insertion order here IS the written key order
+  // insertion order here is the written key order
   return compact({
     vellum: { format: FORMAT, version: CURRENT_VERSION },
     name: model.name || undefined,
@@ -385,19 +325,11 @@ export function writeVellum(model: Model): string {
 
 /* ---------------- read ---------------- */
 
-/**
- * Upgrade in memory, on every read. Each step is a re-stamp today - they
- * exist so that the ladder exists, and so a real migration has somewhere
- * to go.
- */
 const EFFECTS: EffectKind[] = ['particles', 'sound', 'shake']
 
 /**
- * A behaviour off disk, with every field forced into the shape the rest
- * of the app can rely on. Nothing here rejects a document: an offset
- * that is not three numbers becomes the block below, and validation
- * says so afterwards where a person can read it - a throw at this depth
- * would only ever show up as "could not open".
+ * A behaviour off disk. Malformed fields get defaults so the model still
+ * opens: an offset that isn't three numbers becomes the block below.
  */
 function readBehaviour(raw: VellumBehaviour | undefined): Behaviour | undefined {
   if (!raw) return undefined
@@ -424,19 +356,7 @@ function readBehaviour(raw: VellumBehaviour | undefined): Behaviour | undefined 
   return { requires, stages }
 }
 
-/**
- * A config off disk, with every value forced into one of the shapes a
- * field can hold. Anything else is dropped rather than carried: a
- * number where the form wants a list is a value nothing could render.
- */
-/**
- * The config block off disk.
- *
- * It nests now, because it is the entity body in the runtime's own
- * vocabulary rather than a flat bag of form keys - `animations.idle`
- * really is an `animations` branch with an `idle` in it. Anything whose
- * type is not one the block can hold is dropped rather than guessed.
- */
+/** The config block off disk, nested by field path. Values no field could hold are dropped. */
 function readConfig(raw: Record<string, unknown> | undefined, kind?: ProjectKind): Config | undefined {
   if (!raw || typeof raw !== 'object') return undefined
 
@@ -470,12 +390,8 @@ function readConfig(raw: Record<string, unknown> | undefined, kind?: ProjectKind
     if (read !== undefined) out[key] = read
   }
 
-  /* An unknown key is KEPT: the block is a body, and a body may
-     legitimately carry something this build's schema has not learned
-     about yet - dropping it would silently lose a user's config.
-     What is not kept is a BRANCH where the schema declares a leaf.
-     `health: {nonsense: true}` is not a forward-compatible key, it is a
-     scalar field holding an object, and nothing can ever mean that. */
+  /* Unknown keys are kept, since a newer schema may know them. An object
+     where the schema declares a scalar field is dropped. */
   if (kind && hasConfig(kind)) {
     for (const f of fieldsOf(kind)) {
       if (f.kind === 'rows' || f.kind === 'list') continue
@@ -513,12 +429,7 @@ function upgrade(doc: VellumDocument): VellumDocument {
       case 1: // v2's added fields are optional, and absent is already correct
         version = 2
         break
-      case 2:
-        /* v3 split "what it is" from "what it is for". `consumables` was
-           a kind, which put it beside `items` as though holding a potion
-           were a different act from holding a sword. It is an item with
-           a subtype, and that is the same claim in a shape that can also
-           describe a weapon or a tool. */
+      case 2: // v3 turned the `consumables` kind into `items` with subtype `consumable`
         if (doc.kind === 'consumables') doc = { ...doc, kind: 'items', subtype: 'consumable' }
         version = 3
         break
@@ -528,28 +439,13 @@ function upgrade(doc: VellumDocument): VellumDocument {
       case 4: // v5 added `config`, likewise
         version = 5
         break
-      case 5:
-        /* v6 added `uv_offset` and `mirror_uv`. Absent is correct for
-           anything written before: a document that never said is a
-           document with no mirror and an unwrap nobody recorded the
-           origin of, which is exactly the state v5 left them in. */
+      case 5: // v6 added `uv_offset` and `mirror_uv`, and absent is already correct
         version = 6
         break
       case 6: {
-        /* v7 does two things.
-
-           One is a stamp: a keyframe may carry bezier `handles`, and a
-           document written before simply has none.
-
-           The other is NOT a stamp. The `config` block used to be keyed
-           by the FORM's field names - `speed`, and `idle`/`walk` at the
-           top level - where the runtime reads `movement-speed` and
-           nests the two under `animations:`. That is not a cosmetic
-           difference: `speed` is not an unknown key that fails quietly,
-           it is an error, and one error holds back the content swap for
-           every kind on that server. So an old block is read into the
-           runtime's vocabulary here, once, rather than translated on
-           every write. */
+        /* v7 added optional keyframe `handles`, and re-keyed `config` from
+           form field names to field paths (`speed` became `movement-speed`,
+           a top-level `idle` became `animations.idle`). */
         const raw = doc.config
         if (raw && typeof raw === 'object' && doc.kind && looksLegacy(doc.kind as ProjectKind, raw as Record<string, unknown>)) {
           doc = { ...doc, config: canonicalise(doc.kind as ProjectKind, raw as Record<string, unknown>) as Record<string, unknown> }
@@ -564,13 +460,6 @@ function upgrade(doc: VellumDocument): VellumDocument {
   return { ...doc, vellum: { format: doc.vellum.format, version } }
 }
 
-/**
- * The four handle arrays, or nothing.
- *
- * ALL FOUR OR NONE, and a partial block is dropped whole rather than
- * half-read: three of four describes half a curve, which is worse than
- * no curve because it would be drawn as though somebody meant it.
- */
 function readHandles(raw: unknown): Handles | undefined {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined
   const r = raw as Record<string, unknown>
@@ -588,19 +477,12 @@ function readHandles(raw: unknown): Handles | undefined {
 let keyCounter = 0
 const keyId = () => `k${(keyCounter += 1).toString(36)}`
 
-/**
- * A vector, or the fallback. `from`, `to` and a key's `value` used to be
- * copied straight through while their neighbours were defaulted, so a
- * file missing one of them - still valid JSON, still a Vellum document -
- * reached the validator as `undefined` and took the whole editor down
- * with it. Nothing that comes off disk is trusted to have a shape.
- */
-/** The two-component sibling of `vec3`, and absent where it was absent. */
 const vec2 = (v: unknown): [number, number] | undefined =>
   Array.isArray(v) && v.length === 2 && v.every((n) => typeof n === 'number' && Number.isFinite(n))
     ? [v[0], v[1]]
     : undefined
 
+/** A missing or malformed vector gets the fallback, so later code never gets undefined. */
 const vec3 = (v: unknown, fallback: Vec3): Vec3 =>
   Array.isArray(v) && v.length === 3 && v.every((n) => typeof n === 'number' && Number.isFinite(n))
     ? [v[0], v[1], v[2]]
@@ -623,12 +505,8 @@ export function fromVellumDocument(doc: VellumDocument): Model {
     const faces = {} as Record<FaceKey, Face>
     for (const key of FACES) {
       const f = c.faces?.[key]
-      /* A face naming a texture this file does not carry keeps the name.
-         Erasing it here rendered the same - an untextured face - but it
-         also silenced the validator's own rule for exactly this case and
-         then wrote the detachment back on the next save, so a file whose
-         texture ids had been renamed by another tool was reported clean
-         and then permanently broken. */
+      /* A texture id this file doesn't carry is kept, so the validator can
+         report it and the next save doesn't erase it. */
       faces[key] = {
         uv: (f?.uv ?? [0, 0, 0, 0]) as UVRect,
         texture: f?.texture ?? null,
@@ -645,10 +523,8 @@ export function fromVellumDocument(doc: VellumDocument): Model {
       faces,
       inflate: c.inflate ?? 0,
       boxUv: c.box_uv ?? false,
-      /* Absent, never guessed. A box-UV cube written before v6 has no
-         recorded origin, and inventing [0,0] for it would claim the
-         unwrap starts at the corner of the sheet - which is a different
-         lie from saying nothing. */
+      /* Left unset when absent. A pre-v6 box-UV cube has no recorded
+         origin, and [0,0] would claim one. */
       uvOffset: vec2(c.uv_offset),
       mirrorUv: c.mirror_uv || undefined,
       visible: !c.hidden,
@@ -676,7 +552,7 @@ export function fromVellumDocument(doc: VellumDocument): Model {
   for (const b of list) {
     const self = byId.get(b.id)!
     const parent = b.parent ? byId.get(b.parent) : undefined
-    // a parent this file does not carry would orphan the bone, so it roots instead
+    // a bone whose parent is missing becomes a root
     if (parent) parent.children.push({ kind: 'bone', bone: self })
     else bones.push(self)
   }
@@ -703,9 +579,6 @@ export function fromVellumDocument(doc: VellumDocument): Model {
   const kind: ProjectKind | undefined =
     doc.kind === 'items' || doc.kind === 'mobs' || doc.kind === 'blocks' ? doc.kind : undefined
 
-  /* A subtype the kind does not offer is dropped rather than carried:
-     absent means "not said", which every reader already handles, and a
-     nonsense subtype is a claim nothing downstream could act on. */
   const subtype: Subtype | undefined = subtypeFits(kind, doc.subtype) ? doc.subtype : undefined
 
   return {
@@ -722,11 +595,7 @@ export function fromVellumDocument(doc: VellumDocument): Model {
   }
 }
 
-/**
- * Two refusals, both by name rather than by failing somewhere in the
- * middle of a cube: a file from a newer Vellum, which cannot be known
- * to mean what this one would assume; and a foreign file.
- */
+/** Checks the header first, and throws VellumFormatError for bad JSON, a foreign file or a newer version. */
 export function readVellum(raw: string | object): Model {
   let parsed: unknown
   if (typeof raw === 'string') {
@@ -770,7 +639,7 @@ export function isVellum(raw: string) {
   return raw.trimStart().startsWith('{"vellum"')
 }
 
-/** Every model Vellum writes is a `.vellum`, whatever it was called before. */
+/** The save name: a `.json` or `.vellum` extension becomes `.vellum`, and any other name gets it appended. */
 export function vellumFileName(name: string) {
   return `${name.replace(/\.(vellum|json)$/i, '')}${EXTENSION}`
 }

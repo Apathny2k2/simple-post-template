@@ -1,8 +1,3 @@
-/* ============================================================
-   The home page: vellumdev.com. Same dark room as the Studio,
-   laid out as a page you scroll.
-   ============================================================ */
-
 .site { min-height: 100vh; display: flex; flex-direction: column; }
 
 /* ---------------- header ---------------- */

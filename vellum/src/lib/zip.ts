@@ -1,17 +1,6 @@
-/* ---------------------------------------------------------------
-   A ZIP writer, in about a hundred lines and with no dependency.
-
-   Everything a resource pack contains is either already compressed
-   (PNG) or small enough that compressing it saves less than the code
-   to do it costs. So every entry is STORED - method 0, bytes written
-   through unchanged. The format is otherwise the real one: local
-   headers, a central directory and an end record, so what comes out
-   opens in any unzipper and in Minecraft.
-
-   Deliberately not here: deflate, zip64, encryption, directory
-   entries. A pack that needed any of them would be a pack with
-   something wrong with it.
-   --------------------------------------------------------------- */
+/* A small ZIP writer. Every entry is stored uncompressed (method 0): PNGs
+   are compressed already and the text files are small. No deflate, zip64,
+   encryption or directory entries. */
 
 export type ZipEntry = { path: string; bytes: Uint8Array }
 
@@ -80,10 +69,7 @@ class Buf {
 
 const utf8 = (s: string) => new TextEncoder().encode(s)
 
-/**
- * The entries as one archive. Paths use forward slashes and no leading
- * slash, which is what every unzipper and Minecraft expect.
- */
+/** One archive from the entries. Paths get forward slashes and no leading slash, as unzippers and Minecraft expect. */
 export function makeZip(entries: ZipEntry[], at: Date = new Date()): Uint8Array {
   const { time, date } = dosStamp(at)
   const body = new Buf()
@@ -148,7 +134,7 @@ export function makeZip(entries: ZipEntry[], at: Date = new Date()): Uint8Array 
   return out.join()
 }
 
-/** The bytes behind a `data:` URI, which is how a texture is carried. */
+/** The bytes of a `data:` URI. Textures are stored as these. */
 export function dataUriBytes(uri: string): Uint8Array | null {
   const comma = uri.indexOf(',')
   if (!uri.startsWith('data:') || comma === -1) return null

@@ -1,12 +1,7 @@
 import { Fragment } from 'react'
 import type { CSSProperties } from 'react'
 
-/**
- * A title dropped in a letter at a time; hovering a letter nudges it
- * and its neighbours. Screen readers get the plain text. Give it a key
- * of the text so a new title plays in again, or `still` to swap the
- * text without the drop.
- */
+/** A title that drops in letter by letter. Key it on the text to replay the drop; `still` skips it. */
 export function Kinetic({ text, still = false }: { text: string; still?: boolean }) {
   let i = 0
   return (

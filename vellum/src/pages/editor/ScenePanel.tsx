@@ -1,23 +1,11 @@
-/* ---------------------------------------------------------------
-   What the Display tab is for a mob.
-
-   The eight display slots are an item's: they pose a model in a hand,
-   in a GUI cell, on a head, in an item frame. A mob is never in any of
-   them - it stands in the world at its own size - so showing a mob
-   modeller "Third person, right hand" is offering a control that does
-   nothing and implying a transform the game will never read.
-
-   What a mob modeller actually needs to know is the thing an editor
-   viewport cannot tell them: how big this is next to a player, and
-   whether the walk they just keyed covers ground or moonwalks. Both
-   are measured here rather than eyeballed.
-   --------------------------------------------------------------- */
+/* The Display tab for mobs, labelled Scene. Mobs have no display slots, so
+   it shows the mob's size beside a player and how far a walk travels. */
 
 import { BLOCK, travelOf } from '../../lib/world'
 import { Icon } from '../../lib/icons'
 import type { Clip, Model } from '../../lib/model'
 
-/** A player is two blocks tall, and that is the only yardstick in the game. */
+/** The size reference: a player fits in a space two blocks tall (the hitbox is 1.8). */
 const PLAYER_BLOCKS = 2
 
 function boundsOf(model: Model) {
@@ -32,7 +20,7 @@ function boundsOf(model: Model) {
   return model.cubes.length ? ([0, 1, 2].map((i) => hi[i] - lo[i]) as [number, number, number]) : ([0, 0, 0] as [number, number, number])
 }
 
-/** How this reads beside a player, in the words a person would use. */
+/** Describes a height relative to a player, in plain words. */
 function against(blocks: number): string {
   if (blocks <= 0) return 'nothing to measure yet'
   const ratio = blocks / PLAYER_BLOCKS
@@ -82,9 +70,7 @@ export function ScenePanel({
         </div>
       </div>
 
-      {/* No "none" option: the editor always falls back to the first
-          clip, so offering one would be a control that quietly snapped
-          back to where it was. */}
+      {/* no "none" option, because the editor falls back to the first clip */}
       {clips.length ? (
         <label className="field" style={{ marginTop: 12 }}>
           <span className="field__label">Clip the scene loops</span>
@@ -103,8 +89,7 @@ export function ScenePanel({
         </label>
       ) : null}
 
-      {/* The one thing the timeline cannot show: a walk plays in place
-          there whether or not the legs are carrying the mob anywhere. */}
+      {/* how far a walk carries the mob; clips play in place on the timeline */}
       <p className="ed-hint scene-travel" data-moving={travel.blocks > 0 || undefined}>
         <Icon name={travel.blocks > 0 ? 'move' : 'info'} size={11} />
         {!clip ? (

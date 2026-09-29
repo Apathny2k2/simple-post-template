@@ -9,7 +9,7 @@ export type Box = {
   w: number
   h: number
   d: number
-  /** [top, side, front] - a flat three-tone shade, no lighting pass */
+  /** [top, side, front] */
   colors: [string, string, string]
   selected?: boolean
 }
@@ -58,12 +58,12 @@ function Box3D({ box }: { box: Box }) {
 
 type Props = {
   boxes: Box[]
-  /** free spin, used by the library cards on hover */
+  /** continuous turntable spin */
   spin?: boolean
   grid?: boolean
   gridSize?: number
   cell?: number
-  /** orbit with the pointer, used by the editor viewport */
+  /** drag to orbit */
   orbit?: boolean
   initialYaw?: number
   initialPitch?: number
@@ -146,7 +146,7 @@ export function Model3D({
   )
 }
 
-/* ---- two stock models, so the mock has something to show ---- */
+/* ---- stock models for placeholder art ---- */
 
 export function lanternModel(palette: [string, string, string], selectedIndex = -1): Box[] {
   const [a, b, c] = palette

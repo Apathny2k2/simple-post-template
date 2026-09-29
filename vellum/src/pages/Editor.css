@@ -1,11 +1,5 @@
-/* ============================================================
-   Editor shell.
-
-   The viewport runs full-bleed under everything; the two tool
-   columns float over it as rounded slabs of glass, so what you
-   see through them is the model itself, blurred. Blockbench's
-   layout, rendered as a material.
-   ============================================================ */
+/* ---------------- editor shell ---------------- */
+/* The viewport is full-bleed; the tool columns float over it as glass. */
 
 .editor-root {
   position: relative;
@@ -36,8 +30,8 @@
   border-bottom: 1px solid var(--border);
   box-shadow: var(--inner-highlight-soft);
   flex: none;
-  /* No scrolling here: a scrolling bar clips the menus that drop from it.
-     On a narrow screen the file name gives way instead. */
+  /* no overflow scrolling, which would clip the dropdown menus; on narrow
+     screens the file name shrinks instead */
 }
 
 .ed-menubar__mark {
@@ -163,9 +157,8 @@
   color: var(--accent-ink);
 }
 
-/* The buttons on the right of the toolbar share .ed-tool but are not the
-   tool: grid, quad view and snapping are view state. They read as on, not
-   as what the drag will do. */
+/* Grid, quad view and snap are view toggles, so their pressed state is
+   grey to keep it apart from the active tool's accent. */
 .ed-toolbar__right .ed-tool[aria-pressed='true'] {
   background: var(--sunken-strong);
   border-color: var(--border-strong);
@@ -351,8 +344,6 @@
   transition: color var(--dur-fast) var(--ease);
 }
 
-/* Only the letter is coloured, so a dozen number fields don't fill the
-   panel with colour. */
 .nf__axis:hover { color: var(--ink); }
 .nf__axis--x { color: var(--axis-x); }
 .nf__axis--y { color: var(--axis-y); }
@@ -750,9 +741,8 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* One scroll container. The names column and the ruler stick inside it
-   rather than being separate scrollers, so a label can never drift away
-   from the track it names. */
+/* One scroll container. The names column and the ruler are sticky inside
+   it, so labels stay aligned with their tracks. */
 .tl-main {
   flex: 1;
   min-height: 0;
@@ -800,7 +790,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  /* it is a button now, so it has to be told not to look like one */
+  /* reset button styles so the name reads as plain text */
   background: none;
   border: 0;
   padding: 0;
@@ -866,7 +856,7 @@
   padding-left: 4px;
 }
 
-/* the real end of the clip, which the whole-second ruler over-runs */
+/* the clip's real end; the ruler runs on to the next whole tick */
 .tl-end {
   position: absolute;
   top: 0;
@@ -915,7 +905,7 @@
 
 .tl-key:hover { background: var(--accent-soft); }
 
-/* a key past the clip end still plays back nothing - say so */
+/* a key past the clip end has no effect on playback, so it is dimmed */
 .tl-key[data-past-end] {
   background: var(--glass-solid);
   border-color: var(--ink-faint);
@@ -961,8 +951,7 @@
   font-family: var(--font-mono);
   font-size: var(--fs-2xs);
   color: var(--ink-faint);
-  /* the right-hand half of this bar used to be clipped away with no
-     way to reach it - the cube count and the selection both live there */
+  /* scrolls sideways on narrow screens so the right-hand items stay reachable */
   overflow-x: auto;
   overflow-y: hidden;
   scrollbar-width: none;
@@ -1064,10 +1053,10 @@
 
 .ed-status__bad { color: var(--danger); }
 
-/* the UV editor now draws the real texture behind the face rectangles */
+/* colour behind the texture, which UVPanel sets inline */
 .uv { background-color: var(--uv-bg); }
 
-/* keyframe shape follows its interpolation, the way Blockbench marks them */
+/* keyframe shape shows its interpolation, as in Blockbench */
 .tl-key[data-interp='step'] { border-radius: 0; }
 .tl-key[data-interp='catmullrom'] { border-radius: 50%; }
 
@@ -1103,7 +1092,7 @@
 
 .ed-brush .mono { text-transform: none; letter-spacing: 0; color: var(--ink-muted); }
 
-/* the sheet becomes the canvas, so the face rectangles stop intercepting */
+/* paint mode; UVPanel also turns off pointer events on the face rectangles */
 .uv--paint { cursor: crosshair; }
 
 /* ---------------- new model dialog ---------------- */
@@ -1153,9 +1142,7 @@
 
 /* ---------------- animation editing ---------------- */
 
-/* A labelled control that is not a number scrubber - a name, a loop mode,
-   an easing. Laid out on the same grid as .nf-row so the left rail reads
-   as one column rather than two. */
+/* a label and a control that isn't a number field: name, loop, easing */
 .ed-field {
   display: grid;
   grid-template-columns: 52px minmax(0, 1fr);
@@ -1206,7 +1193,7 @@
   transform: none;
 }
 
-/* the bone picker is a list, not the whole outliner, so it is capped */
+/* the bone picker in the Animation panel */
 .tree--short {
   max-height: 148px;
   overflow-y: auto;
@@ -1238,16 +1225,14 @@
 
 .tl-empty p { margin: 0; }
 
-/* The scene is full-bleed under the two floating rails, so its own HUD has
-   to be inset past them the same way the corner chips are - otherwise the
-   zoom cluster sits underneath the right rail and cannot be clicked.
-   Stacked above the axis gizmo, which owns the bottom-right corner. */
+/* The scene runs under the rails, so the zoom buttons are inset past the
+   right rail like the corner chips, and sit above the axis gizmo. */
 .ed-view:not([data-quad='true']) .scene3d__zoom {
   right: calc(var(--right-w) + var(--rail-pad) + 18px);
   bottom: 84px;
 }
 
-/* four of them would be noise; the wheel still zooms each cell */
+/* hidden in quad view; the wheel still zooms each cell */
 .ed-view[data-quad='true'] .scene3d__zoom { display: none; }
 
 @media (max-width: 1080px) {
@@ -1297,13 +1282,9 @@
   background: color-mix(in srgb, var(--accent) 6%, transparent);
 }
 
-/* ---------------- touch ----------------
-
-   Every surface here is dragged rather than scrolled: the UV sheet, the
-   scrub handle beside a number, the colour square, the timeline ruler
-   and its keys, and the column dividers. Without this the browser reads
-   the first few pixels of each drag as a scroll, takes the pointer away
-   mid-gesture, and the control simply stops following your finger. */
+/* ---------------- touch ---------------- */
+/* Drag surfaces. Without this the browser treats the start of a drag as a
+   scroll and cancels the pointer. */
 
 .nf__axis,
 .color-sv,
@@ -1315,18 +1296,14 @@
   touch-action: none;
 }
 
-/* A panel that scrolls should not also bounce the page behind it. */
+/* keep scrolling inside the panel instead of passing it to the page */
 .ed-col,
 .tl-main {
   overscroll-behavior: contain;
 }
 
-/* ---------------- phones ----------------
-
-   Below this the viewport is barely wider than the hint that sits in
-   its corner, and the hint describes a mouse: it overlapped the zoom
-   buttons and the axis gizmo, and named gestures a finger does not
-   have. */
+/* ---------------- phones ---------------- */
+/* the mouse hint in the corner would overlap the zoom buttons and gizmo */
 @media (max-width: 560px) {
   .ed-view__corner--bl { display: none; }
   .ed-view { min-height: 46vh; }
@@ -1366,9 +1343,6 @@
 .auto__name { font-size: var(--fs-xs); color: var(--ink); }
 .auto__blurb { font-size: var(--fs-2xs); color: var(--ink-faint); line-height: 1.45; }
 
-/* The way out. The editor is reached from the library and had no route
-   back to it, which left the browser's own Back button as the only
-   door - and that one does not know the file is unsaved. */
 .ed-menubar__back {
   display: inline-grid;
   place-items: center;
@@ -1390,9 +1364,7 @@
   border-color: var(--border-accent);
 }
 
-/* The subtype row. A kind is a big decision with a picture; what the
-   thing is *for* is a smaller one, so it reads as chips under it rather
-   than as a second wall of tiles. */
+/* subtype chips under the kind tiles in the new model dialog */
 .newmodel__sub { display: grid; gap: 7px; margin-top: 14px; }
 .newmodel__subrow { display: flex; flex-wrap: wrap; gap: 5px; }
 .newmodel__subchip[aria-checked='true'] {
@@ -1402,7 +1374,7 @@
 }
 .newmodel__sub .field__hint { min-height: 1.4em; }
 
-/* The mob Scene panel: measured facts first, then the way into the world. */
+/* the mob Scene panel */
 .scene-kv .kv__v { font-size: var(--fs-xs); }
 .scene-travel { margin-top: 10px; align-items: flex-start; line-height: 1.5; }
 .scene-travel[data-moving] { color: var(--ink-muted); }
@@ -1451,9 +1423,8 @@
 
 .bhv-req__top { display: flex; align-items: center; gap: 4px; }
 
-/* A grid, not a flex row: the rail is 300px and a flex row pushed the
-   reorder and remove buttons off the end of it, where the only sign
-   they existed was that nothing worked. */
+/* a grid, so the name shrinks and the reorder and remove buttons stay
+   inside the 300px rail */
 .bhv-stage__top {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 56px repeat(3, 24px);
@@ -1477,18 +1448,16 @@
 .bhv-req__top .bhv-x { margin-left: auto; }
 .bhv-x:disabled { opacity: 0.45; cursor: not-allowed; }
 
-/* Kind, amount and remove on one line; whatever the effect is *of* -
-   a particle, a sound id - wraps onto its own, because a namespaced id
-   has no business being squeezed into a third of a narrow rail. */
+/* kind, amount and remove on the first row; the particle or sound id
+   gets the full row below */
 .bhv-fx {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 56px 24px;
   gap: 3px;
   align-items: center;
 }
-/* Placed rather than flowed: the id spans a whole row, and in DOM order
-   that would otherwise push the amount and the remove button onto a
-   third row of their own. */
+/* explicit grid areas, because in DOM order the full-width id would push
+   the amount and remove button onto a third row */
 .bhv-fx__kind { grid-area: 1 / 1; min-width: 0; }
 .bhv-fx__amt { grid-area: 1 / 2; min-width: 0; font-size: var(--fs-2xs); padding: 5px 6px; text-align: right; }
 .bhv-fx > .bhv-x { grid-area: 1 / 3; }
@@ -1500,7 +1469,7 @@
   padding-left: 2px;
 }
 
-/* The whole cycle at a glance, with the clock riding over it. */
+/* the whole behaviour cycle as a bar, with the playhead over it */
 .bhv-bar {
   position: relative;
   display: flex;
@@ -1544,9 +1513,8 @@
   pointer-events: none;
 }
 
-/* The spinner arrows cost 14px of a 56px field, which is enough to clip
-   "0.45" down to "0" - and a number you cannot read is worse than no
-   control at all. The arrows step these anyway from the keyboard. */
+/* Hide the spinner arrows: they take 14px of a 56px field and clip "0.45"
+   to "0". The arrow keys still step the value. */
 .bhv-stage__secs,
 .bhv-fx__amt {
   appearance: textfield;
@@ -1615,7 +1583,7 @@
 .cfg-field__label { font-size: var(--fs-xs); color: var(--ink-muted); }
 .cfg-field__help { font-size: var(--fs-2xs); color: var(--ink-faint); line-height: 1.5; }
 
-/* A toggle or a number is smaller than its own label, so it sits beside it. */
+/* toggles and numbers sit beside their label */
 .cfg-field[data-inline] {
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
@@ -1658,9 +1626,8 @@
 
 .cfg-rows { display: grid; gap: 6px; }
 
-/* Three columns do not fit a 300px rail and reading half of each is
-   worse than reading one: the widest wraps to a line of its own and
-   the rest share the next. */
+/* Three columns don't fit the 300px rail, so the first (widest) cell of a
+   three-column row takes a line and the rest share the next. */
 .cfg-row {
   display: flex;
   flex-wrap: wrap;
@@ -1687,8 +1654,7 @@
   margin: 0 var(--sp-2);
   border-radius: var(--r-lg);
   border: 1px solid var(--border);
-  /* Solid, since you read it line by line and the model would show
-     through glass. */
+  /* solid so the model doesn't show through the text */
   background-color: var(--code-bg);
   box-shadow: var(--inner-highlight), var(--shadow-lg);
   animation: rail-in var(--dur-slow) var(--ease) backwards;
@@ -1754,8 +1720,7 @@
   .yml__no { display: none; }
 }
 
-/* "In a resource pack" — a different question from whether the file is
-   well formed, so it reads as its own section rather than more issues. */
+/* the "In a resource pack" section of the Validation panel */
 .ed-translate {
   margin-top: 12px;
   padding-top: 10px;
@@ -1848,10 +1813,8 @@
 .pk__outrow { font-size: var(--fs-2xs); color: var(--ink-faint); line-height: 1.55; }
 .pk__outrow strong { color: var(--ink-muted); font-weight: 500; }
 
-/* The served-schema report: types the plugin declared that the form
-   could not draw, and states it declared as retired. Not an error - a
-   fact the author needs, because the alternative is a control that
-   offers a value the loader refuses. */
+/* what the served schema declared that the form can't show: field types
+   it can't draw and retired states */
 .cfg-probs {
   margin: 0 0 var(--sp-3);
   padding: 9px 11px;
@@ -1872,8 +1835,6 @@
 .cfg-probs__row { font-size: var(--fs-2xs); color: var(--ink-faint); line-height: 1.55; }
 .cfg-probs__row strong { color: var(--ink-muted); font-weight: 500; }
 
-/* A hit region reads as a marked bone rather than an ordinary one: it
-   draws nothing, so without a mark in the outliner it looks like an
-   empty folder somebody forgot to fill. */
+/* hit-region bones draw nothing, so the outliner marks them */
 .tree__row[data-region] .tree__name { color: var(--warn); }
 .tree__toggle[data-region] { color: var(--warn); }
