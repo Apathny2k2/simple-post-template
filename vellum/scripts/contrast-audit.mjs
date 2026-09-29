@@ -9,16 +9,19 @@ const screens = [
   ['support',  '#/settings/support'],
   ['editor',   '#/editor/voidling'],
 ]
+// a dev server by default; BASE=file:///…/dist/vellum.html checks the bundle
+const BASE = process.env.BASE ?? 'http://localhost:5199/'
 const lowContrast = []
 for (const [name, hash] of screens) {
   const ctx = await b.newContext({ viewport: { width: 1500, height: 1000 }, deviceScaleFactor: 2 })
   const p = await ctx.newPage()
   const errs = []
   p.on('pageerror', e => errs.push(e.message))
-  await p.goto('http://localhost:5199/' + hash, { waitUntil: 'networkidle' })
+  await p.goto(BASE + hash, { waitUntil: 'networkidle' })
   /* Light is the only scheme now, so there is nothing to opt into. */
   await p.waitForTimeout(1100)
-  await p.screenshot({ path: `L-${name}.png`, fullPage: false })
+  // the home page's font set never reports ready, so a stalled shot is skipped, not fatal
+  await p.screenshot({ path: `L-${name}.png`, fullPage: false, timeout: 8000 }).catch(() => console.log(`${name}: screenshot skipped`))
 
   // audit: any visible text whose colour is close to its background
   const bad = await p.evaluate(() => {

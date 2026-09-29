@@ -111,42 +111,24 @@ svg { display: block; flex: none; }
   background: color-mix(in srgb, var(--ink-faint) 22%, transparent);
   border: 3px solid transparent;
   background-clip: content-box;
-  border-radius: var(--r-pill);
+  border-radius: var(--r-control);
 }
 
 *::-webkit-scrollbar-thumb:hover {
-  background: var(--glass-rim-wax);
+  background: var(--border-accent);
   background-clip: content-box;
 }
 
-/* ---------------------------------------------------------------
-   The glass recipe.
-
-   Three parts: a translucent tint, a backdrop blur that saturates
-   what it samples, and a rim lit along the top edge. The ::before
-   sheen is the specular highlight - it is what stops the surface
-   looking like flat transparency.
-   --------------------------------------------------------------- */
+/* Glass: a translucent tint over a backdrop blur, with a border and a
+   lit top edge. */
 
 .glass {
   position: relative;
   background-color: var(--glass);
   backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat));
-  border: 1px solid var(--glass-rim);
-  box-shadow: var(--bevel), var(--shadow);
+  border: 1px solid var(--border);
+  box-shadow: var(--inner-highlight), var(--shadow);
   isolation: isolate;
-}
-
-/* The specular wipe. In the light theme --sheen resolves to none, so
-   this paints nothing there and costs nothing. */
-.glass::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  border-radius: inherit;
-  background: var(--sheen);
-  pointer-events: none;
 }
 
 .glass--thin {
@@ -170,7 +152,7 @@ svg { display: block; flex: none; }
   font-size: var(--fs-2xs);
   letter-spacing: var(--tracking-caps);
   text-transform: uppercase;
-  /* Was --highlight, i.e. red. Every card label in the app was an
+  /* Was --accent-hover, i.e. red. Every card label in the app was an
      accent colour, so red marked nothing in particular. Section
      labels are structure, not signal. */
   color: var(--ink-faint);
@@ -276,7 +258,7 @@ svg { display: block; flex: none; }
   padding: 9px 14px;
   clip-path: none;
   border-radius: var(--r-sm);
-  background: var(--wax-500);
+  background: var(--accent);
   color: #fff;
   box-shadow: var(--shadow-pop);
 }

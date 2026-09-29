@@ -16,25 +16,25 @@ const features: { icon: IconName; title: string; body: string; colour: string }[
     icon: 'cube',
     title: 'Shape',
     body: 'Cubes and bones, pivots and rotations. Start from an item, a block, a rigged mob or a consumable.',
-    colour: 'var(--bb-blue-hi)',
+    colour: 'var(--blue-bright)',
   },
   {
     icon: 'brush',
     title: 'Paint',
     body: 'Paint on the model itself or on its sheet, one texel per unit, the way the game draws its own.',
-    colour: 'var(--bb-violet)',
+    colour: 'var(--violet)',
   },
   {
     icon: 'anim',
     title: 'Animate',
     body: 'Key clips on a timeline, or let Vellum read the rig and build its idle, walk and attack.',
-    colour: 'var(--bb-amber)',
+    colour: 'var(--amber)',
   },
   {
     icon: 'server',
     title: 'Ship',
     body: 'Push a pack, see which players have it, and apply new files to the running server.',
-    colour: 'var(--bb-green)',
+    colour: 'var(--green)',
   },
 ]
 

@@ -376,78 +376,68 @@ endpoints above are expected to exchange.
 
 ## The material
 
-Two surfaces and no theme toggle. The editor sits on **paper**, a warm-grey
-field defined in `src/styles/tokens.css`. Every other page is a dark room,
-described at the end of this section. The paper replaced a midnight navy theme
-(see `docs/archive/SPEC-light-theme.md`), which is why its grey ramp is still named `navy`.
-Only four of its fifteen steps are used.
+Two surfaces and no theme toggle. The editor uses Minecraft's inventory greys,
+set in `src/styles/tokens.css`. Every other page is a dark room, set in
+`src/styles/studio.css` and described further down.
 
-Three rules hold the look together, and they are written at the top of
-`tokens.css` because every decision below falls out of them:
+Tokens are named by what they do: `--border`, `--sunken`, `--accent-text`,
+`--focus-ring`, `--viewport-bg`. A rule asks for a role, and each surface picks
+the colour.
 
-1. **A line does the work a shadow used to.** `--shadow-sm` resolves to
-   `none` and `--shadow` to a single hairline's worth of lift, so panels get
-   an edge instead of a bloom. Real depth
-   survives only where something genuinely floats: menus, popovers, dialogs.
-2. **Nothing is a pill.** Radii top out at 8px and most controls sit at 3-4px.
-   `--r-pill` resolves to 4px rather than 999px, so the toggles, chips and tab
-   groups that name it come out cut instead of moulded.
-3. **Red is structural.** It marks the one thing that is active or the one
-   thing that is wrong, and nothing else.
+**The editor is inventory grey.** Panels are the inventory's `#c6c6c6`, the
+viewport behind the model is its slot grey `#8b8b8b`, and the page under the
+panels is a shade darker. Borders are dark lines at 40%, with a faint lit line
+along a panel's top edge, the way the game draws its inventory. Blue
+(`#264690`) marks what is active or selected: the current tool and mode, the
+selected row, focus. Errors stay red (`--danger`) and warnings amber
+(`--warn`). The UV sheet sits on near-black, because pale texels disappear on
+grey, and the YAML listing is solid grey, since you read it line by line. The
+editor was white paper with a red accent before the audit
+(`docs/archive/SPEC-light-theme.md`); the operator picked the greys (`AUDIT.md`,
+phase 6).
 
-**Liquid glass, thinned.** Every surface above the background is still the same
-recipe: a translucent tint, a `backdrop-filter` blur that saturates what it
-samples, and a rim. But the blur is 14px rather than 28px - a heavy blur turns
-whatever is behind it to fog, which is the opposite of sharp - and the rim is a
-crisp dark hairline rather than a lit bevel with a specular sheen over it.
-`--sheen` resolves to `none`.
-The one panel that is *not* glass is the config listing: it covers the viewport
-and you read it line by line, and at 98% the model behind it still ghosted
-through as a grey cloud over the code.
+**Glass.** Panels are a translucent tint over a 14px `backdrop-filter` blur, so
+the shape behind a panel stays readable. The editor's panels are 86% opaque, so
+text stays crisp over the model.
 
-**The ground is ruled, not lit.** `body::before` was four radial gradients
-drifting on a 34-second loop; glass over a moving wash never settles, and at
-any moment it looked like a smear rather than a surface. It is now a flat field
-with one fine 64px grid ruled across it - the right texture for an app whose
-subject is built on a grid of 16 units to the block - and `body::after` lays a
-fainter grain over it.
+**Depth.** `--shadow` is next to nothing, so borders separate panels. Menus use
+`--shadow-lg` and dialogs `--shadow-pop`. Radii stay at 8px or under in the
+editor, and `--r-control` is 4px.
 
-**Two vocabularies for "on".** A segment that is merely switched on (a mode
-tab, a view toggle, a UV face, a filter, a pager page) reads as a filled
-neutral segment: `--well-deep` behind `--ink`, on a `--line-strong` hairline.
-The accent is spent only on what you have *selected* - the outliner row, the
-texture, the open ticket - as one flat `--accent-soft` fill with a 2px accent
-rule down its left edge, and on the active tool and the one primary button per
-screen, which are solid `--accent`. Before this split, a default editor session
-lit eight things in red at once, which is the same as lighting none.
+**The ground is ruled.** `body::before` is a flat field with a fine 64px grid,
+the texture of an app built on 16 units to the block, and `body::after` lays a
+faint grain over it.
 
-**Short, no overshoot.** One curve, `cubic-bezier(0.2, 0, 0, 1)`, at 90/140/220
-ms. The three spring tokens are gone along with their callers: 59 decorative
-hover and press transforms were removed outright, because a button that rises
-off the page on hover and shrinks when pressed is a toy. Entrances fade rather
-than scale. What motion remains does work: the switch knob throws, the panel
-chevron swings, the world stage shakes.
+**Two kinds of "on".** Something merely switched on (a mode tab, a view
+toggle, a filter) is a filled neutral segment: `--sunken-strong` behind
+`--ink`, on a `--border-strong` line. The accent is kept for what you have
+selected (the outliner row, the texture, the open ticket), as an
+`--accent-soft` fill with a 2px accent line down its left edge, and for the
+active tool and the one primary button per screen, which are solid `--accent`.
 
-**Contrast is measured, not eyeballed**, and measured against the *translucent*
-panel rather than `#fff` - a swatch check against white overstates the headroom
-by about half a point, because the panel is white over a tinted ground.
-`scripts/contrast-audit.mjs` walks every route against a dev server and reports
-text runs under 4.5:1; it reads zero on all five.
+**Motion.** In the editor, one curve, `cubic-bezier(0.2, 0, 0, 1)`, at 90, 140
+and 220ms, with no overshoot. Entrances fade. The dark pages add springs.
 
-Three notes on `backdrop-filter`, all of which bit during the build:
+**Contrast is measured.** `scripts/contrast-audit.mjs` walks every page and
+reports text under 4.5:1, measured against the translucent panel as it
+renders. It reads 0 on all seven pages. Set `BASE=file:///…/dist/vellum.html`
+to check the built file instead of a dev server.
 
-- An ancestor with `backdrop-filter` becomes the *backdrop root*, so a popover
-  inside the menu bar or the library panel samples nothing and a thin tint
-  renders see-through. Menus are therefore near-opaque by design.
+Things to know about `backdrop-filter` and overflow:
+
+- An ancestor with `backdrop-filter` becomes the *backdrop root* for its
+  descendants, so a popover inside the menu bar or the library panel samples
+  nothing and a thin tint renders see-through. Menus are nearly opaque for that
+  reason.
 - `height: 100%` collapses to zero when the parent's height comes from
   `min-height` or flex sizing rather than a definite height, so `.scene3d`
   fills its parent by `inset` instead.
 - Write `backdrop-filter` on its own. The build minifies CSS with Lightning
   CSS, which adds `-webkit-backdrop-filter` for Safari by itself. When the
   source also carries a prefixed line after the standard one, the minifier
-  keeps only the prefixed line, which Chrome and Firefox ignore. For a while
-  every glass surface in the bundle drew no blur while the dev server, which
-  does not minify, still showed it.
+  keeps only the prefixed line, which Chrome and Firefox ignore.
+- A bar that scrolls sideways clips the menus that drop from it. The editor's
+  menu bar doesn't scroll; on a narrow screen the file name gives way instead.
 
 **Type.** Inter and JetBrains Mono, self-hosted as `woff2` under `public/fonts`
 with latin + latin-ext subsets and `unicode-range` splits. No request leaves
@@ -468,22 +458,21 @@ flat three-tone shading, a CSS grid floor, drag-to-orbit, and a keyframed spin
 for the library cards. There is no mesh, no camera and no raster pipeline - it
 is there so the viewport reads as a viewport.
 
-**The studio is a dark room; the editor stays on paper.** The Dash, Projects and
-Settings take after Blockbench: grey-blue panels, one bright blue, the axis
-colours, and the studio's own models turning on a disc at the top of the Dash.
-There is no second copy of the styles. `App` sets `data-surface="dark"` on
-`<html>` for every route but the editor, and `src/styles/studio.css` re-points
-the app's tokens under that selector, so the top bar, cards, menus, fields and
-dialogs go dark and come back when you open a model. The paper's red accent
-becomes blue there, except where red meant something was wrong: destructive
-menu items, urgent tickets and failed messages keep a warning colour. The rules
-above bend in the dark on purpose: panels are rounded and lit under the pointer,
-titles drop in a letter at a time, motion springs, and on the Dash the
-turntable, the adoption ring, the file stacks and the plugin timeline all move.
-Settings plays its entrance once, when you arrive: moving between its sections
-swaps the title and the cards in place, with no cross-fade, because replaying
-it on every click got in the way. Under reduced motion every loop stops and
-nothing is staggered.
+**Every other page is a dark room.** The Dash, Projects and Settings take
+after Blockbench: grey-blue panels, one bright blue, the axis colours, and the
+studio's own models turning on a disc at the top of the Dash. There is no
+second copy of the styles. `App` sets `data-surface="dark"` on `<html>` for
+every route but the editor, and `src/styles/studio.css` re-points the tokens
+under that selector, so the top bar, cards, menus, fields and dialogs go dark
+and come back when you open a model. The accent is blue there too, in brighter
+steps: `--accent-mark` `#5aa2ff` for lines and marks, `--accent-text`
+`#a9ccff` for text. Errors and warnings use `--danger` and `--warn` on both
+surfaces. The dark pages are livelier: panels are rounded and lit under the
+pointer, titles drop in a letter at a time, motion springs, and on the Dash
+the turntable, the adoption ring, the file stacks and the plugin timeline all
+move. Settings plays its entrance once, when you arrive. Moving between its
+sections swaps the title and the cards in place. Under reduced motion every
+loop stops and nothing is staggered.
 
 White text on Blockbench's `#3e90ff` measures 3.2:1, so filled buttons use a
 deeper `#2a6ad8` and the bright blue is kept for light and lines. The contrast

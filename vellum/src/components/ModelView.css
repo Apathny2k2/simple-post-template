@@ -52,7 +52,7 @@
 .bbface[data-face='west'] { filter: brightness(0.84); }
 
 .bbbox--selected .bbface {
-  outline: 1px solid var(--wax-300);
+  outline: 1px solid var(--accent-mark);
   outline-offset: -1px;
   box-shadow: inset 0 0 0 1px var(--accent);
 }
@@ -70,8 +70,8 @@
   gap: 1px;
   border-radius: 9px;
   overflow: hidden;
-  border: 1px solid var(--glass-rim);
-  background: var(--well);
+  border: 1px solid var(--border);
+  background: var(--glass-thick);
   backdrop-filter: blur(9px) saturate(1.2);
 }
 
@@ -91,7 +91,7 @@
 }
 
 .scene3d__zoom button:hover {
-  background: var(--well-deep);
+  background: var(--sunken-strong);
   color: var(--ink);
 }
 
@@ -99,6 +99,6 @@
   font-family: var(--font-mono);
   font-size: 9px !important;
   letter-spacing: 0.02em;
-  border-top: 1px solid var(--glass-rim) !important;
-  border-bottom: 1px solid var(--glass-rim) !important;
+  border-top: 1px solid var(--border) !important;
+  border-bottom: 1px solid var(--border) !important;
 }

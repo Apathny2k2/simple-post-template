@@ -21,7 +21,7 @@
   width: min(1180px, 100%);
   height: min(780px, 100%);
   border-radius: var(--r-lg);
-  border: 1px solid var(--glass-rim);
+  border: 1px solid var(--border);
   background: var(--glass-thick);
   backdrop-filter: blur(var(--glass-blur-lg)) saturate(var(--glass-sat));
   box-shadow: var(--shadow-pop);
@@ -34,7 +34,7 @@
   align-items: center;
   gap: var(--sp-3);
   padding: 11px 14px;
-  border-bottom: 1px solid var(--glass-rim);
+  border-bottom: 1px solid var(--border);
   flex: none;
 }
 
@@ -44,9 +44,9 @@
 
 .world__stat {
   padding: 3px 10px;
-  border-radius: var(--r-pill);
-  border: 1px solid var(--glass-rim);
-  background: var(--bg-sunken);
+  border-radius: var(--r-control);
+  border: 1px solid var(--border);
+  background: var(--sunken);
   font-size: var(--fs-2xs);
   color: var(--ink-muted);
   white-space: nowrap;
@@ -75,8 +75,8 @@
   align-items: center;
   gap: 6px;
   padding: 4px 10px;
-  border-radius: var(--r-pill);
-  border: 1px solid var(--glass-rim);
+  border-radius: var(--r-control);
+  border: 1px solid var(--border);
   background: var(--glass-thick);
   font-size: var(--fs-2xs);
   color: var(--ink-muted);
@@ -89,8 +89,8 @@
   align-items: center;
   gap: var(--sp-3);
   padding: 9px 14px;
-  border-top: 1px solid var(--glass-rim);
-  background: var(--chrome-soft);
+  border-top: 1px solid var(--border);
+  background: var(--bar-bg-soft);
   flex: none;
 }
 

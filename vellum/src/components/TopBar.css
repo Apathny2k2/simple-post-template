@@ -9,9 +9,9 @@
   gap: var(--sp-4);
   height: var(--topbar-h);
   padding-inline: var(--gutter);
-  background: var(--chrome);
+  background: var(--bar-bg);
   backdrop-filter: blur(20px) saturate(1.5);
-  border-bottom: 1px solid var(--glass-rim);
+  border-bottom: 1px solid var(--border);
 }
 
 .topbar__brand {
@@ -27,7 +27,7 @@
 }
 
 .topbar__brand svg {
-  color: var(--wax-400);
+  color: var(--accent-mark);
 }
 
 .topbar__left { display: flex; align-items: center; gap: 14px; min-width: 0; }
@@ -40,14 +40,14 @@
   min-width: 0;
   max-width: 220px;
   padding: 4px 10px 4px 5px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--border);
   border-radius: 10px;
   font-size: var(--fs-xs);
   color: var(--ink-muted);
   transition: color 180ms var(--ease-out), border-color 180ms var(--ease-out), background-color 180ms var(--ease-out);
 }
 
-.topbar__server:hover { color: var(--ink); border-color: var(--line-strong); background: rgba(255, 255, 255, 0.04); }
+.topbar__server:hover { color: var(--ink); border-color: var(--border-strong); background: rgba(255, 255, 255, 0.04); }
 .topbar__server .srv-icon { flex: none; border-radius: 4px; }
 .topbar__server-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .topbar__server svg { flex: none; color: var(--ink-faint); }
@@ -56,7 +56,7 @@
 .nav-pill {
   display: inline-flex;
   align-items: stretch;
-  border-radius: var(--r-pill);
+  border-radius: var(--r-control);
   padding: 4px;
 }
 
@@ -66,7 +66,7 @@
   align-items: center;
   gap: 6px;
   padding: 6px clamp(12px, 1.6vw, 22px);
-  border-radius: var(--r-pill);
+  border-radius: var(--r-control);
   border: 1px solid transparent;
   font-size: var(--fs-sm);
   color: var(--ink-muted);
@@ -75,7 +75,7 @@
     background var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
 }
 
-.nav-pill__link + .nav-pill__link { box-shadow: inset 1px 0 0 var(--glass-rim); }
+.nav-pill__link + .nav-pill__link { box-shadow: inset 1px 0 0 var(--border); }
 .nav-pill__link:hover { color: var(--ink); }
 
 /* active: one filled ground and one rule under it. The ground is its own
@@ -87,7 +87,7 @@
   inset: -1px;
   z-index: -1;
   border-radius: inherit;
-  border: 1px solid var(--line);
+  border: 1px solid var(--border);
   background: var(--accent-soft);
   box-shadow: inset 0 -2px 0 var(--accent);
   pointer-events: none;
@@ -118,7 +118,7 @@
   align-items: center;
   gap: 7px;
   padding: 5px 12px 5px 9px;
-  border-radius: var(--r-pill);
+  border-radius: var(--r-control);
   font-size: var(--fs-xs);
   color: var(--ink-muted);
   white-space: nowrap;
@@ -128,7 +128,7 @@
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: var(--wax-400);
+  background: var(--accent-mark);
   /* A flat dot. It was a glowing, pulsing ember - a light source in
      an interface made of paper. */
 }
@@ -149,12 +149,12 @@
 .icon-btn:hover {
   background: var(--accent-soft);
   color: var(--ink);
-  border-color: var(--glass-rim-wax);
+  border-color: var(--border-accent);
 }
 
 .icon-btn[aria-pressed='true'] {
-  background: var(--well-deep);
-  border-color: var(--line-strong);
+  background: var(--sunken-strong);
+  border-color: var(--border-strong);
   color: var(--ink);
 }
 

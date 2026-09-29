@@ -14,7 +14,7 @@
 .rl__go {
   flex: 0 0 auto;
   padding: 9px 16px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--border);
   border-radius: var(--r-md);
   background: var(--accent);
   color: var(--accent-ink);
@@ -23,17 +23,17 @@
   cursor: pointer;
 }
 
-.rl__go:hover:not(:disabled) { background: var(--highlight); }
+.rl__go:hover:not(:disabled) { background: var(--accent-hover); }
 
 .rl__go:disabled {
   cursor: not-allowed;
-  background: var(--bg-sunken);
-  border-color: var(--line);
+  background: var(--sunken);
+  border-color: var(--border);
   color: var(--ink-faint);
 }
 .rl__go:focus-visible {
   outline: none;
-  border-color: var(--glass-rim-lit);
+  border-color: var(--border-strong);
   box-shadow: 0 0 0 3px var(--accent-soft);
 }
 
@@ -46,7 +46,7 @@
 }
 
 .rl__out {
-  border: 1px solid var(--line);
+  border: 1px solid var(--border);
   border-left-width: 3px;
   border-radius: var(--r-md);
   padding: 12px 14px;
@@ -81,7 +81,7 @@
 .rl__report {
   margin: 0;
   padding: 10px 12px;
-  background: var(--bg-sunken);
+  background: var(--sunken);
   border-radius: var(--r-sm);
   font-family: var(--font-mono);
   font-size: 12px;

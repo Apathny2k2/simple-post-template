@@ -79,8 +79,8 @@ export function AdoptionRing({ players, now }: { players: PlayerCensus; now: num
         <svg className="adopt__ring" viewBox="-84 -84 168 168" aria-hidden="true">
           <defs>
             <radialGradient id={glow}>
-              <stop offset="0.55" style={{ stopColor: 'var(--bb-blue)', stopOpacity: 0.22 }} />
-              <stop offset="1" style={{ stopColor: 'var(--bb-blue)', stopOpacity: 0 }} />
+              <stop offset="0.55" style={{ stopColor: 'var(--blue)', stopOpacity: 0.22 }} />
+              <stop offset="1" style={{ stopColor: 'var(--blue)', stopOpacity: 0 }} />
             </radialGradient>
           </defs>
           <circle r="82" fill={`url(#${glow})`} className="adopt__bloom" data-on={share === 100 || undefined} />

@@ -1,43 +1,18 @@
-/* Design tokens for the paper surface, which the editor uses.
-   studio.css re-points them for the dark surface on every other page.
-
-   On paper, hairlines separate panels and only menus, popovers and
-   dialogs cast a shadow. Radii stay at 8px or under. Red marks what is
-   active or wrong. */
+/* Design tokens. These are the editor's: Minecraft's inventory greys, flat,
+   with a blue for what is selected or active. studio.css re-points them
+   for the dark surface on every other page. Tokens are named by role, so a
+   rule says what it wants (--border, --accent-text) rather than a colour. */
 
 :root {
   color-scheme: light;
 
-  /* Neutral greys. The name is left from an older navy palette. */
-  --navy-990: #0d0d0f;
-  --navy-970: #131315;
-  --navy-950: #191919;
-  --navy-900: #232326;
-  --navy-850: #2e2e31;
-  --navy-800: #3a3a3e;
-  --navy-750: #46464a;
-  --navy-700: #545458;
-  --navy-600: #65656a;
-  --navy-500: #7a7a80;
-  --navy-400: #94949a;
-  --navy-300: #b0b0b6;
-  --navy-200: #c9c9cd;
-  --navy-100: #e2e2e4;
-  --navy-050: #f2f2f1;
+  /* ---------- ground and panels ---------- */
 
-  /* The red accent. --wax-500 is 5.9:1 on white and 5.4:1 on the page. */
-  --wax-950: #2a0a06;
-  --wax-900: #3f0f09;
-  --wax-800: #5a160f;
-  --wax-700: #7a1e13;
-  --wax-600: #9a2718;
-  --wax-500: #bb2f1c;
-  --wax-400: #bb2f1c;
-  --wax-300: #a52a19;
-  --wax-200: #8f2416;
-
-  /* Amber for live values. */
-  --flame-400: #8a5209;
+  --bg: #b9b9b9;
+  --bg-deep: #adadad;
+  /* search fields, log strips, tree gutters */
+  --sunken: rgba(55, 55, 55, 0.12);
+  --sunken-strong: rgba(55, 55, 55, 0.2);
 
   /* Glass: translucent panels over a backdrop blur. At 14px the shape
      behind a panel stays readable. */
@@ -45,85 +20,73 @@
   --glass-blur-sm: 9px;
   --glass-blur-lg: 20px;
   --glass-sat: 1.05;
+  --glass-thin: rgba(198, 198, 198, 0.72);
+  --glass: rgba(198, 198, 198, 0.86);
+  --glass-thick: rgba(198, 198, 198, 0.94);
+  --glass-solid: rgba(203, 203, 203, 0.98);
 
-  /* tints, thinnest to thickest */
-  --glass-thin: rgba(255, 255, 255, 0.55);
-  --glass: rgba(255, 255, 255, 0.78);
-  --glass-thick: rgba(255, 255, 255, 0.91);
-  --glass-solid: rgba(255, 255, 255, 0.98);
+  /* the top bar, and the editor's menu bar, toolbar and status bar */
+  --bar-bg: #c6c6c6;
+  --bar-bg-strong: #c6c6c6;
+  --bar-bg-soft: rgba(198, 198, 198, 0.92);
 
-  /* Panel edges. On paper these do the work of shadows. */
-  --glass-rim: rgba(24, 24, 27, 0.14);
-  --glass-rim-lit: rgba(24, 24, 27, 0.22);
-  --glass-rim-wax: rgba(187, 47, 28, 0.55);
-  /* No highlight on paper. Rules still reference these, so they stay. */
-  --sheen: none;
-  --sheen-strong: none;
+  /* behind the model in the viewport: the inventory's slot grey */
+  --viewport-bg: #8b8b8b;
+  /* behind the UV sheet; dark, because pale texels vanish on grey */
+  --uv-bg: #262626;
+  /* the YAML listing, solid */
+  --code-bg: #d6d6d6;
+  --grid-line: rgba(0, 0, 0, 0.1);
 
-  --bg: #f4f4f3;
-  /* Off-white, so white panels have an edge against it. */
-  --bg-deep: #eaeae8;
-  --surface: var(--glass);
-  --surface-2: var(--glass-thin);
-  --surface-raised: var(--glass-thick);
-  --bg-sunken: rgba(24, 24, 27, 0.042);
+  /* ---------- lines ---------- */
 
-  --ink: #18181b;
-  --ink-muted: #52525b;
-  /* Contrast for these is measured on the translucent panel over the
-     page, which is darker than pure white. */
-  --ink-faint: #65656d;
-  --ink-invert: #fafafa;
+  --border: rgba(55, 55, 55, 0.4);
+  --border-strong: rgba(55, 55, 55, 0.6);
+  --border-dashed: rgba(55, 55, 55, 0.55);
+  --border-accent: rgba(38, 70, 144, 0.6);
+  --focus-ring: 0 0 0 1px rgba(38, 70, 144, 0.6);
 
-  --line: var(--glass-rim);
-  --line-strong: rgba(24, 24, 27, 0.24);
-  /* For provisional things. */
-  --line-dashed: rgba(24, 24, 27, 0.26);
+  /* ---------- text ---------- */
 
-  --accent: var(--wax-500);
-  --accent-ink: #fff4f2;
-  --accent-soft: rgba(187, 47, 28, 0.1);
-  --accent-softer: rgba(187, 47, 28, 0.05);
-  --highlight: var(--wax-600);
-  --highlight-soft: rgba(154, 39, 24, 0.11);
+  --ink: #1f1f1f;
+  --ink-muted: #373737;
+  --ink-faint: #404040;
 
-  --ok: #26714a;
-  --warn: #8a5209;
-  --danger: #a3281a;
+  /* ---------- the accent ---------- */
 
-  /* --shadow-sm and --shadow are next to nothing, so hairlines separate
-     panels. Menus use --shadow-lg and dialogs --shadow-pop. */
-  --shadow-sm: none;
-  --shadow: 0 1px 1px rgba(24, 24, 27, 0.05);
-  --shadow-lg: 0 10px 24px -14px rgba(24, 24, 27, 0.22), 0 0 0 1px rgba(24, 24, 27, 0.1);
-  --shadow-pop: 0 18px 40px -20px rgba(24, 24, 27, 0.26), 0 0 0 1px rgba(24, 24, 27, 0.12);
+  --accent: #264690;
+  --accent-hover: #1e3a78;
+  --accent-ink: #ffffff;
+  /* borders, focus, dots and icons */
+  --accent-mark: #264690;
+  /* accent-coloured text */
+  --accent-text: #1e3a78;
+  --accent-soft: rgba(38, 70, 144, 0.16);
+  --accent-softer: rgba(38, 70, 144, 0.08);
 
-  /* A lit hairline along a panel's top edge. */
-  --bevel: inset 0 1px 0 rgba(255, 255, 255, 0.9);
-  --bevel-soft: inset 0 1px 0 rgba(255, 255, 255, 0.7);
-  --glow-wax: 0 0 0 1px rgba(187, 47, 28, 0.55);
-  --glow-wax-strong: 0 0 0 1px rgba(187, 47, 28, 0.85);
+  /* ---------- state ---------- */
 
-  --grid-line: rgba(24, 24, 27, 0.075);
+  --ok: #17572f;
+  --warn: #6b4a12;
+  --danger: #8a1c14;
 
-  /* Bars: the top bar, the editor's menu bar, toolbar and status bar. */
-  --chrome: rgba(255, 255, 255, 0.88);
-  --chrome-strong: rgba(255, 255, 255, 0.93);
-  --chrome-soft: rgba(255, 255, 255, 0.78);
-  --chrome-status: rgba(255, 255, 255, 0.88);
-  /* Sunken areas: search fields, log strips, tree gutters. */
-  --well: rgba(24, 24, 27, 0.045);
-  --well-deep: rgba(24, 24, 27, 0.08);
-  /* Behind the UV sheet. Dark, because pale texels vanish on white. */
-  --uv-field: #17171a;
+  /* axis colours, dark enough to read as text on the panels */
+  --axis-x: #8f2a20;
+  --axis-y: #245a33;
+  --axis-z: #223f86;
 
-  /* Behind the model in the editor's viewport, a shade below the page. */
-  --stage-wash: #e7e7e5;
+  /* ---------- depth ---------- */
 
-  /* Axis colours, dark enough to read as text on paper. */
-  --axis-x: #a93b2f;
-  --axis-y: #3f7042;
-  --axis-z: #34588c;
+  /* Next to nothing, so borders separate panels. Menus use --shadow-lg
+     and dialogs --shadow-pop. */
+  --shadow: 0 1px 0 rgba(0, 0, 0, 0.12);
+  --shadow-lg: 0 10px 24px -14px rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(55, 55, 55, 0.35);
+  --shadow-pop: 0 18px 40px -20px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(55, 55, 55, 0.4);
+  /* a lit line along a panel's top edge, as the inventory draws it */
+  --inner-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.45);
+  --inner-highlight-soft: inset 0 1px 0 rgba(255, 255, 255, 0.3);
+
+  /* ---------- type ---------- */
 
   --font-sans: 'Vellum Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
   --font-mono: 'Vellum Mono', ui-monospace, 'SF Mono', Menlo, monospace;
@@ -141,13 +104,15 @@
   --tracking-wide: 0.06em;
   --tracking-caps: 0.11em;
 
-  /* --r-pill is 4px on paper, so pills come out square-cornered. */
+  /* ---------- shape and space ---------- */
+
   --r-xs: 2px;
   --r-sm: 3px;
   --r-md: 4px;
   --r-lg: 6px;
   --r-xl: 8px;
-  --r-pill: 4px;
+  /* buttons, chips and tab groups */
+  --r-control: 4px;
 
   --sp-1: 4px;
   --sp-2: 8px;
@@ -163,8 +128,10 @@
   --shell-max: 1680px;
   --topbar-h: 52px;
 
-  /* Paper motion: one short curve with no overshoot. The dark surface
-     adds its own springs in studio.css. */
+  /* ---------- motion ---------- */
+
+  /* One short curve with no overshoot. The dark surface adds springs in
+     studio.css. */
   --dur-fast: 90ms;
   --dur: 140ms;
   --dur-slow: 220ms;

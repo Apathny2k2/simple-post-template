@@ -250,9 +250,67 @@ Left alone: sample support replies in `lib/support.ts` and `lib/api.ts` read lik
 
 Scanner after phase 3: copy hits 82 → 7. Six are sample support replies written to read like a person typing, and one is "Unlock" meaning a locked cube.
 
+## Phase 6: colour and tokens
+
+The operator picked **B, inventory grey**, for the editor from four renders
+(today's paper, A stone and redstone, B inventory grey, C cutting mat). The
+dark pages keep the Blockbench room the operator asked for earlier.
+
+**The editor's palette.** Panels `#c6c6c6`, viewport `#8b8b8b` (the slot
+grey), page `#b9b9b9`, ink `#1f1f1f` / `#373737` / `#404040`, accent `#264690`
+blue, ok `#17572f`, warn `#6b4a12`, danger `#8a1c14`, UV sheet `#262626`, YAML
+listing `#d6d6d6`. Glass stays: panels are 86% over a 14px blur.
+
+**Tokens by role.**
+
+| Was | Now |
+|---|---|
+| `--glass-rim`, `--line` | `--border` |
+| `--glass-rim-lit`, `--line-strong` | `--border-strong` |
+| `--line-dashed` | `--border-dashed` |
+| `--glass-rim-wax` | `--border-accent` |
+| `--glow-wax` | `--focus-ring` |
+| `--wax-500` | `--accent` (the same value) |
+| `--wax-400` | `--accent-mark` (lines, dots, focus; brighter on the dark surface) |
+| `--wax-300`, `--wax-200` | by meaning, one use at a time: `--accent-mark` or `--accent-text` where they meant selected or active, `--danger` where they meant wrong (menu delete, validation errors, the crash message, config problems), `--warn` where they meant a warning (hints, the export warning, outdated sync, the YAML note) |
+| `--highlight` | `--accent-hover` |
+| `--flame-400` | `--warn` |
+| `--bg-sunken`, `--well` | `--sunken` |
+| `--well-deep` | `--sunken-strong` |
+| `--chrome`, `--chrome-status` / `--chrome-strong` / `--chrome-soft` | `--bar-bg` / `--bar-bg-strong` / `--bar-bg-soft` |
+| `--stage-wash` | `--viewport-bg` |
+| `--uv-field` | `--uv-bg` |
+| `--bevel`, `--bevel-soft` | `--inner-highlight`, `--inner-highlight-soft` |
+| `--r-pill` | `--r-control` |
+| `--navy-*` | gone. The 4 steps in use became `--viewport-bg`, `--ink-faint` and two fixed colours on the hue picker's knob |
+| `--bb-blue`, `--bb-blue-hi`, `--bb-violet`, `--bb-teal`, `--bb-amber`, `--bb-green`, `--bb-red` | `--blue`, `--blue-bright`, `--violet`, `--teal`, `--amber`, `--green`, `--red` |
+
+Deleted, unused or always `none`: `--sheen`, `--sheen-strong`, `--shadow-sm`,
+`--highlight-soft`, `--glow-wax-strong`, `--wax-600` to `--wax-950`, eleven
+`--navy-*` steps, `--surface`, `--surface-2`, `--surface-raised`,
+`--ink-invert`, `--bb-pink`. The six rules that only painted `--sheen` went
+with it. Every `var(--x)` left in the code names a token that exists, apart
+from per-element values set inline (`--i`, `--mx` and so on).
+
+**Checks.** A snapshot of every computed colour on 12 dark routes, taken
+before and after, is identical apart from one switch knob that moved from
+`#94949a` to `#949bab`. `contrast-audit.mjs` reads 0 on all seven pages; it
+first flagged the viewport's zoom control (3.49:1 over the grey viewport),
+which now sits on a solid panel, and the UV face labels, which now use a pale
+tint of the accent on the dark sheet.
+
+**Found on the way.** The editor's File, Edit, Animation, View and Help menus
+had been cut off below their first item since commit `612c294`, which made the
+menu bar scroll sideways for narrow screens; a scrolling box clips what drops
+out of it. The bar no longer scrolls, the file name shrinks instead on a
+narrow screen, and every menu opens in full on desktop and at 390px.
+
+`contrast-audit.mjs` also takes `BASE=` now, so it can check the built file,
+and skips a screenshot that stalls: the home page's font set never reports
+ready in headless Chromium, which hung the script.
+
 ## Waiting on the operator
 
 - **More humour (P2-8).** Say which of the listed spots may get a line.
-- **Plugin repository (Phase 8).** Only `Apathny2k2/simple-post-template`
-  is visible to this session. The plugin needs its `owner/repo` and the
-  Claude GitHub App installed on it.
+- **Plugin (Phase 8).** Skipped this round at the operator's word. It needs
+  the plugin's `owner/repo` and the Claude GitHub App installed on it.
