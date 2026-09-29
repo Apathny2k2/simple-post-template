@@ -233,9 +233,9 @@ export class FishScene implements PipScene {
         const to = this.prize()
         this.letter = {
           x: lerp(this.spot, to.x, k),
-          y: lerp(WATER, to.y, k) - Math.sin(Math.PI * k) * 14,
-          // it turns over once on the way up and arrives the right way round
-          spin: (1 - easeOut(k)) * Math.PI * 2,
+          y: lerp(WATER, to.y, k) - Math.sin(Math.PI * k) * 10,
+          // it rocks on the way up and arrives level, so it reads as a letter throughout
+          spin: Math.sin(k * Math.PI * 3) * 0.35 * (1 - k),
         }
         if (k < 0.8 && this.rand() < dt * 24) {
           this.bits.push({ x: this.letter.x + (this.rand() - 0.5) * 4, y: this.letter.y + 2, vx: 0, vy: 10, age: 0, life: 0.5, gravity: GRAVITY })
