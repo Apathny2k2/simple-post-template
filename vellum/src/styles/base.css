@@ -118,16 +118,6 @@ svg { display: block; flex: none; }
   isolation: isolate;
 }
 
-.glass--thin {
-  background-color: var(--glass-thin);
-  backdrop-filter: blur(var(--glass-blur-sm)) saturate(var(--glass-sat));
-}
-
-.glass--thick {
-  background-color: var(--glass-thick);
-  backdrop-filter: blur(var(--glass-blur-lg)) saturate(var(--glass-sat));
-}
-
 /* ---------------- shared primitives ---------------- */
 
 .mono {
@@ -141,17 +131,6 @@ svg { display: block; flex: none; }
   text-transform: uppercase;
   color: var(--ink-faint);
   font-weight: 600;
-}
-
-.visually-hidden {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  margin: -1px;
-  padding: 0;
-  overflow: hidden;
-  clip-path: inset(50%);
-  white-space: nowrap;
 }
 
 .app-shell {
@@ -191,13 +170,13 @@ svg { display: block; flex: none; }
   max-width: 62ch;
 }
 
-@keyframes rise-in {
+@keyframes fade-in {
   from { opacity: 0; }
   to { opacity: 1; }
 }
 
 .page > * {
-  animation: rise-in var(--dur) var(--ease) backwards;
+  animation: fade-in var(--dur) var(--ease) backwards;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -211,7 +190,7 @@ svg { display: block; flex: none; }
 }
 
 /* visually hidden, still read by screen readers */
-.vh {
+.visually-hidden {
   position: absolute;
   width: 1px;
   height: 1px;
@@ -224,7 +203,7 @@ svg { display: block; flex: none; }
 }
 
 /* a skip link shows itself when focused */
-.vh--focusable:focus-visible {
+.visually-hidden--focusable:focus-visible {
   position: fixed;
   top: 10px;
   left: 10px;

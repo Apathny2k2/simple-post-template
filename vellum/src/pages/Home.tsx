@@ -177,7 +177,7 @@ export function Home() {
             {features.map((f, i) => (
               <Reveal key={f.title} delay={i * 90}>
                 <article
-                  className="home-feature lit"
+                  className="home-feature pointer-glow"
                   style={{ '--c': f.colour } as CSSProperties}
                   onPointerMove={trackPointer}
                 >
@@ -204,7 +204,7 @@ export function Home() {
               <li key={s.title}>
                 <Reveal delay={i * 110}>
                   <div className="home-step">
-                    <span className="home-step__n" aria-hidden="true">
+                    <span className="home-step__number" aria-hidden="true">
                       {i + 1}
                     </span>
                     <h3>{s.title}</h3>

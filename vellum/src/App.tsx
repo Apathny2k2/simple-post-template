@@ -50,7 +50,7 @@ export default function App() {
   return (
     <div className="app-shell">
       <button
-        className="vh vh--focusable"
+        className="visually-hidden visually-hidden--focusable"
         onClick={() => {
           const main = document.querySelector('main')
           if (!main) return

@@ -23,5 +23,5 @@ export function ServerIcon({ id, hue, size = 48 }: { id: string; hue: number; si
     }
   }, [id, hue])
 
-  return <canvas ref={canvas} className="srv-icon" width={8} height={8} style={{ width: size, height: size }} aria-hidden="true" />
+  return <canvas ref={canvas} className="server-icon" width={8} height={8} style={{ width: size, height: size }} aria-hidden="true" />
 }

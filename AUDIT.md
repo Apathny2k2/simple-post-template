@@ -368,7 +368,7 @@ were rewritten to match the code; the code was not changed.
 | `pages/Projects.tsx:440` | pick a project, then a shelf | the page uses the first project and offers shelves |
 | `pages/Dashboard.tsx:68` | a Studio served by the plugin depends on this | that was the deleted plugin's host script |
 | `pages/Settings.tsx:86` | a switch holds for the session when storage is blocked | it is component state and resets on remount |
-| `pages/Settings.css:355` | the "How Vellum ships" list on About | no page renders it (removed in phase 5) |
+| `pages/Settings.css:355` | the "How Vellum ships" list on About | no page renders it; the rules went in phase 5 |
 | `styles/controls.css:1` | buttons and key/value rows | also the dialogs |
 
 ### UI text found wrong on the way (S2, fixed)
@@ -377,34 +377,68 @@ were rewritten to match the code; the code was not changed.
 |---|---|---|---|
 | `editor/DisplayPanel.tsx`, Copy all tooltip | "Every slot that differs from vanilla" | copies every slot with a transform set; nothing is compared with vanilla | "Every slot with a transform set" |
 
-## Bugs found by the audit
+## Phase 5: class names
 
-Found while checking comments against code. The audit changes wording
-only, so these are open. The first two were reproduced.
+Class names are full words now. The brief's map was followed where the
+names still existed (`.tl__*`, the ticket list, had already become `.sl__*`;
+`.power` was already `.plan`), and the same rule was applied to every other
+abbreviation, one-letter element and metaphor.
 
-| # | Where | Bug | Status |
-|---|---|---|---|
-| B1 | `lib/config.ts:318` | `coerce` tests a tri-state flag with `v === 'true'`, but a saved `.vellum` holds the boolean. Set a mob's gravity to true, save, reopen: the YAML says `gravity: false`, and the next save keeps it. | open, reproduced |
-| B2 | `lib/texture.ts:117` | The bucket fill never ends when the new colour is within the tolerance (8) of the colour it replaces but not equal to it: a painted pixel still matches and is pushed again. Filling 100,100,100 with 104,100,100 on a 16x16 surface ran for three minutes and grew to 9 GB before it was killed. | open, reproduced |
-| B3 | `lib/config.ts` | `canonicalise` turns an old unset flag (`''`) into `false`, which is then written to the YAML. | open |
-| B4 | `lib/config.ts:365` | Animations are split on whitespace, but clip names are free text: a clip name with a space loses everything after it. | open |
-| B5 | `lib/new-model.ts:452` | Dropping a cube anywhere but on a bone calls `reparent` with a null parent, which takes the cube out of the bone tree. | open |
-| B6 | `lib/new-model.ts:326` | `deleteBone` drops the tracks of the deleted bone only; tracks on bones nested under it stay and fail validation. | open |
-| B7 | `lib/vellum.ts` | A `.vellum` whose `requires`, `stages` or `effects` isn't an array throws a TypeError on open. | open |
-| B8 | `lib/version.ts:57` | A 200 whose body is JSON `null` throws at `body.plugin`, outside the try. | open |
-| B9 | `pages/Support.tsx` | The composer calls `sendTyping` on every keystroke with no debounce. | open |
-| B10 | `lib/dash.ts` | A blank string keeps the old value with no note (`{"name": ""}` answers ok); `heartbeat` ignores a non-string `agent` silently. | open |
-| B11 | `lib/uv-pack.ts:98` | When packing fails completely, `makeRoom` returns an oversized sheet with `at: null`. | open |
-| B12 | `lib/pack.ts:158` | `saysSomething` is true for `toYaml`'s empty stub (it holds `config-version: 1`), so a model with nothing configured still gets a stub file in the configs zip. The README says such models are left out. | open |
-| B13 | `lib/pack.ts` | Textures are deduplicated by path: two models with a texture of the same name collide, and the second is skipped without a message. | open |
-| B14 | `lib/world.ts:289` | The `- 26` in the figure's facing turns its face further from the default camera (checked in Chromium; `+ 26` faces it). | open |
-| B15 | `lib/pack.ts`, `editor/ExportPackDialog.tsx` | `buildConfigs` skips blocks before its `keyConfirmed` check, so the export dialog's "Configs held back" notice can never appear. | open |
-| B16 | `lib/world.ts`, `components/ModelView.css` | View in the real world shades twice: the world texture has Minecraft's face shading baked in, and the viewport's per-face brightness applies on top (a bottom face ends at 0.5 x 0.62). | open |
+| Was | Now |
+|---|---|
+| `.sl`, `.sl__*` (ticket list) | `.tickets`, `.tickets__*`; `__prio` is `__priority` |
+| `.th`, `.th__*` | `.thread`, `.thread__*`; `__act`, `__actlabel` are `__action`, `__action-label` |
+| `.bub`, `.bub__*` | `.message`, `.message__*`; `__atts` is `__attachments` |
+| `.cmp__*` | `.composer__*` |
+| `.att`, `.att__*` | `.attachment`, `.attachment__*` |
+| `.nt`, `.nt__*` | `.new-ticket`, `.new-ticket__*` |
+| `.tf`, `.tf__*` | `.ticket-form`, `.ticket-form__*` |
+| `.ev` | `.system-line` |
+| `.sup` | `.support` |
+| `.pk`, `.pk__*`, `.pk-run` | `.export`, `.export__*`, `.export-run`; `__out*` is `__output*` |
+| `.rl`, `.rl__*` | `.reload`, `.reload__*`; `__out` `__outcome`, `__msg` `__message`, `__n` `__count`, `__blast` `__impact`, `__bare` `__no-report` |
+| `.bhv-*` | `.behaviour-*`; `-fx` `-effect`, `-req` `-requirement`, `-sec` `-section`, `-x` `-remove`, `__seg` `__segment`, `__secs` `__seconds`, `__amt` `__amount` |
+| `.cfg-*` | `.config-*`; `-sec` `-section`, `-probs` `-problems`, `-num` `-number`, `-x` `-remove`, `__n` `__count` |
+| `.ed-*` | `.editor-*`; `-col` `-column`, `-sep` `-separator`, `__btn` `__button`, `__sel` `__selection`, `__bad` `__problems`, `__vbtn` `__shading`, `--tl` `--top-left` and so on |
+| `.tl-*` (timeline) | `.timeline-*`; `__ch` `__channel`, `__btn` `__button` |
+| `.nf`, `.nf-row`, `.nf-grid` | `.num-field`, `.num-field-row`, `.num-field-grid` |
+| `.yml__*` | `.yaml__*`; `__k` `__key`, `__v` `__value`, `__c` `__comment`, `__d` `__punctuation`, `__n` `__count`, `__no` `__line-number` |
+| `.dlg__*` | `.dialog__*` |
+| `.kv__row`, `__k`, `__v` | `.pairs__row`, `__key`, `__value` |
+| `.rel__*` | `.release__*`; `__v` `__version`, `__t` `__title`, `__ch` `__channel`, `__at` `__date` |
+| `.dir-list`, `.dir-row__path`, `.mem__role`, `.mem__seen` | `.list-rows`, `.list-row__name`, `.list-row__role`, `.list-row__when` |
+| `.srv`, `.srv-icon`, `.srv-bars` | `.server`, `.server-icon`, `.signal-bars` |
+| `.gate`, `.gate-head` | `.server-picker`, `.server-picker-head` |
+| `.gateway`, `.gateway__tile`, `.gateway__*`, `.scene-chip__n` | `.shelves`, `.shelf-tile`, `.shelf-tile__*`, `.shelf-tile__count` |
+| `.src-mark` | `.sample-badge` |
+| `.bbroot`, `.bbgroup`, `.bbpivot`, `.bbbox`, `.bbface` | `.model-root`, `.model-group`, `.model-pivot`, `.model-cube`, `.model-face` |
+| `.tex-row`, `.tex-thumb` | `.texture-row`, `.texture-thumb` |
+| `.newmodel__*` | `.new-model__*` |
+| `.lit` | `.pointer-glow` |
+| `.iso`, `.iso--glyph` | `.cube-icon`, `.cube-icon--small` |
+| `.vh`, `.vh--focusable` | `.visually-hidden`, `.visually-hidden--focusable` |
+| `.kinetic__ch`, `.home-step__n`, `.toggle-row__t`, `__d`, `.panel__chev`, `.world__fx`, `.hero__rec`, `.cell-name__in` | `__letter`, `__number`, `__title`, `__description`, `__chevron`, `__effects`, `__live`, `__inner` |
+| ids `sup-rows`, `sup-subject`, `newmodel-sub`, `cfg-<field>` | `support-rows`, `support-subject`, `new-model-sub`, `config-<field>` |
 
-Unused exports seen on the way: `assets`, `outliner`, `editorTextures`,
-`animations`, `keyframeRows` in `lib/data.ts`; `endpoints`,
-`webhookEvents`, `endpointLabel`, `findEndpoint` outside `lib/api.ts`;
-`usedBy` in `lib/endpoint.ts`; the `event` field in `lib/support.ts`.
+Keyframes: the four identical opacity fades (`rise-in`, `fade-in`, `rail-in`,
+`panel-open`) are one `fade-in` in `base.css`. `bub-in`, `sl-fresh`, `rl-in`,
+`dlg-in`, `studio-dlg`, `fx-rise` and `rec` follow their classes, and `rec`
+is `blink`.
+
+Deleted, because no code can produce them: `.ships*` (the old "How Vellum
+ships" list on About), a second `.visually-hidden` identical to `.vh`,
+`.glass--thin`, `.glass--thick`, `.card__placeholder`, `.stale-tag`,
+`.tier-note`, `.scene3d__axis`, `.scene-row` and `.scene-chip`. Card's
+`--dashed`, `--flush` and `--muted` stay: no page passes a variant, but the
+prop still accepts them.
+
+**Checks.** A snapshot of every computed style on 17 views (home, servers,
+Dash, Projects, a shelf, six Settings pages, 404, and the editor in all five
+modes), taken on the built file before and after, is identical: 0 differing
+entries out of about 7,500 elements. The class names the code uses without
+a CSS rule are the same set before and after, renamed. No old name is left
+in the CSS, the TSX or the comments. Typecheck, lint and every browser test
+pass.
 
 ## Phase 6: colour and tokens
 
@@ -464,6 +498,35 @@ narrow screen, and every menu opens in full on desktop and at 390px.
 `contrast-audit.mjs` also takes `BASE=` now, so it can check the built file,
 and skips a screenshot that stalls: the home page's font set never reports
 ready in headless Chromium, which hung the script.
+
+## Bugs found by the audit
+
+Found while checking comments against code. The audit changes wording
+only, so these are open. The first two were reproduced.
+
+| # | Where | Bug | Status |
+|---|---|---|---|
+| B1 | `lib/config.ts:318` | `coerce` tests a tri-state flag with `v === 'true'`, but a saved `.vellum` holds the boolean. Set a mob's gravity to true, save, reopen: the YAML says `gravity: false`, and the next save keeps it. | open, reproduced |
+| B2 | `lib/texture.ts:117` | The bucket fill never ends when the new colour is within the tolerance (8) of the colour it replaces but not equal to it: a painted pixel still matches and is pushed again. Filling 100,100,100 with 104,100,100 on a 16x16 surface ran for three minutes and grew to 9 GB before it was killed. | open, reproduced |
+| B3 | `lib/config.ts` | `canonicalise` turns an old unset flag (`''`) into `false`, which is then written to the YAML. | open |
+| B4 | `lib/config.ts:365` | Animations are split on whitespace, but clip names are free text: a clip name with a space loses everything after it. | open |
+| B5 | `lib/new-model.ts:452` | Dropping a cube anywhere but on a bone calls `reparent` with a null parent, which takes the cube out of the bone tree. | open |
+| B6 | `lib/new-model.ts:326` | `deleteBone` drops the tracks of the deleted bone only; tracks on bones nested under it stay and fail validation. | open |
+| B7 | `lib/vellum.ts` | A `.vellum` whose `requires`, `stages` or `effects` isn't an array throws a TypeError on open. | open |
+| B8 | `lib/version.ts:57` | A 200 whose body is JSON `null` throws at `body.plugin`, outside the try. | open |
+| B9 | `pages/Support.tsx` | The composer calls `sendTyping` on every keystroke with no debounce. | open |
+| B10 | `lib/dash.ts` | A blank string keeps the old value with no note (`{"name": ""}` answers ok); `heartbeat` ignores a non-string `agent` silently. | open |
+| B11 | `lib/uv-pack.ts:98` | When packing fails completely, `makeRoom` returns an oversized sheet with `at: null`. | open |
+| B12 | `lib/pack.ts:158` | `saysSomething` is true for `toYaml`'s empty stub (it holds `config-version: 1`), so a model with nothing configured still gets a stub file in the configs zip. The README says such models are left out. | open |
+| B13 | `lib/pack.ts` | Textures are deduplicated by path: two models with a texture of the same name collide, and the second is skipped without a message. | open |
+| B14 | `lib/world.ts:289` | The `- 26` in the figure's facing turns its face further from the default camera (checked in Chromium; `+ 26` faces it). | open |
+| B15 | `lib/pack.ts`, `editor/ExportPackDialog.tsx` | `buildConfigs` skips blocks before its `keyConfirmed` check, so the export dialog's "Configs held back" notice can never appear. | open |
+| B16 | `lib/world.ts`, `components/ModelView.css` | View in the real world shades twice: the world texture has Minecraft's face shading baked in, and the viewport's per-face brightness applies on top (a bottom face ends at 0.5 x 0.62). | open |
+
+Unused exports seen on the way: `assets`, `outliner`, `editorTextures`,
+`animations`, `keyframeRows` in `lib/data.ts`; `endpoints`,
+`webhookEvents`, `endpointLabel`, `findEndpoint` outside `lib/api.ts`;
+`usedBy` in `lib/endpoint.ts`; the `event` field in `lib/support.ts`.
 
 ## Scope
 

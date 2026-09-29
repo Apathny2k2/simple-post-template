@@ -51,22 +51,22 @@ export function ScenePanel({
 
   return (
     <>
-      <div className="kv scene-kv">
-        <div className="kv__row">
-          <span className="kv__k">Height</span>
-          <span className="kv__v">
+      <div className="pairs scene-pairs">
+        <div className="pairs__row">
+          <span className="pairs__key">Height</span>
+          <span className="pairs__value">
             {h.toFixed(1)} units &middot; {blocks.toFixed(2)} blocks
           </span>
         </div>
-        <div className="kv__row">
-          <span className="kv__k">Footprint</span>
-          <span className="kv__v">
+        <div className="pairs__row">
+          <span className="pairs__key">Footprint</span>
+          <span className="pairs__value">
             {w.toFixed(1)} x {d.toFixed(1)} units
           </span>
         </div>
-        <div className="kv__row">
-          <span className="kv__k">Beside a player</span>
-          <span className="kv__v">{against(blocks)}</span>
+        <div className="pairs__row">
+          <span className="pairs__key">Beside a player</span>
+          <span className="pairs__value">{against(blocks)}</span>
         </div>
       </div>
 
@@ -75,7 +75,7 @@ export function ScenePanel({
         <label className="field" style={{ marginTop: 12 }}>
           <span className="field__label">Clip the scene loops</span>
           <select
-            className="ed-select"
+            className="editor-select"
             style={{ width: '100%', height: 'auto', padding: '6px 10px' }}
             value={clip?.id ?? ''}
             onChange={(e) => onClip(e.target.value)}
@@ -90,7 +90,7 @@ export function ScenePanel({
       ) : null}
 
       {/* how far a walk carries the mob; clips play in place on the timeline */}
-      <p className="ed-hint scene-travel" data-moving={travel.blocks > 0 || undefined}>
+      <p className="editor-hint scene-travel" data-moving={travel.blocks > 0 || undefined}>
         <Icon name={travel.blocks > 0 ? 'move' : 'info'} size={11} />
         {!clip ? (
           'No clips yet, so it will stand in the world. Key one in Animate.'
@@ -108,7 +108,7 @@ export function ScenePanel({
         <Icon name="scene" size={14} /> View in the real world
       </button>
 
-      <p className="ed-hint" style={{ marginTop: 10 }}>
+      <p className="editor-hint" style={{ marginTop: 10 }}>
         <Icon name="info" size={11} />
         Mobs don&rsquo;t use display slots. Those pose items in a hand, the inventory or an item
         frame. A mob stands in the world at the size above.

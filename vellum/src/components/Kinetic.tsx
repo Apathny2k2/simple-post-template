@@ -6,14 +6,14 @@ export function Kinetic({ text, still = false }: { text: string; still?: boolean
   let i = 0
   return (
     <>
-      <span className="vh">{text}</span>
+      <span className="visually-hidden">{text}</span>
       <span className={still ? 'kinetic kinetic--still' : 'kinetic'} aria-hidden="true">
         {text.split(' ').map((word, w) => (
           <Fragment key={w}>
             {w > 0 ? ' ' : null}
             <span className="kinetic__word">
               {[...word].map((ch) => (
-                <span key={i} className="kinetic__ch" style={{ '--i': i++ } as CSSProperties}>
+                <span key={i} className="kinetic__letter" style={{ '--i': i++ } as CSSProperties}>
                   {ch}
                 </span>
               ))}

@@ -197,7 +197,7 @@ export function WorldScene({
         <footer className="world__bar">
           <div className="world__group" role="group" aria-label="Playback">
             <button
-              className="ed-tool"
+              className="editor-tool"
               onClick={() => setPlaying((p) => !p)}
               title={playing ? 'Pause the scene' : 'Play the scene'}
               aria-label={playing ? 'Pause the scene' : 'Play the scene'}
@@ -205,12 +205,12 @@ export function WorldScene({
             >
               <Icon name={playing ? 'pause' : 'play'} size={14} />
             </button>
-            <button className="ed-tool" onClick={reset} title="Back to the start" aria-label="Back to the start">
+            <button className="editor-tool" onClick={reset} title="Back to the start" aria-label="Back to the start">
               <Icon name="skipBack" size={14} />
             </button>
             {cyclic ? (
               <button
-                className="ed-tool"
+                className="editor-tool"
                 onClick={() => setRunCycle((r) => !r)}
                 title={runCycle ? 'Play the picked clip instead' : 'Run the behaviour cycle'}
                 aria-label={runCycle ? 'Play the picked clip instead' : 'Run the behaviour cycle'}
@@ -231,7 +231,7 @@ export function WorldScene({
             <span>{cycle ? 'Cycle' : 'Animation'}</span>
             {/* while the cycle drives, the disabled picker shows the clip it chose */}
             <select
-              className="ed-select"
+              className="editor-select"
               value={cycle ? (subject?.id ?? '') : (clip?.id ?? '')}
               disabled={!!cycle}
               title={cycle ? 'The behaviour is choosing the clip' : undefined}
@@ -249,7 +249,7 @@ export function WorldScene({
           <label className="world__field">
             <span>Placement</span>
             <select
-              className="ed-select"
+              className="editor-select"
               value={placement}
               onChange={(e) => setPlacement(e.target.value as Placement)}
               title={PLACEMENTS.find((p) => p.id === placement)?.blurb}
@@ -313,14 +313,14 @@ function Effects({ stage, scale }: { stage: BehaviourStage | null; scale: number
   if (!groups.length) return null
 
   return (
-    <div className="world__fx" aria-hidden="true">
+    <div className="world__effects" aria-hidden="true">
       {groups.map((e, g) => {
         const kind = particleById(e.id)
         const n = Math.max(1, Math.min(40, Math.round(e.amount)))
         const life = 1.1 + Math.abs(kind.rise) * 0.9
         const up = (e.at?.[1] ?? 0) * scale
         return (
-          <div className="world__fxgroup" key={`${stage.id}-${g}`} style={{ top: `calc(46% - ${up}px)` }}>
+          <div className="world__effect-group" key={`${stage.id}-${g}`} style={{ top: `calc(46% - ${up}px)` }}>
             {Array.from({ length: n }, (_, i) => (
               <span
                 key={i}

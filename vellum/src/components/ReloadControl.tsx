@@ -49,18 +49,18 @@ export function ReloadControl({
   const landing = state.phase === 'landing' ? state.outcome : null
 
   return (
-    <div className="rl">
-      <div className="rl__row">
+    <div className="reload">
+      <div className="reload__row">
         <button
           type="button"
-          className="rl__go"
+          className="reload__go"
           onClick={onApply}
           disabled={busy || !linked}
           aria-busy={busy}
         >
           {busy ? 'Applying…' : 'Apply on the server'}
         </button>
-        <p className="rl__hint">
+        <p className="reload__hint">
           {!linked
             ? 'No server linked.'
             : hint ?? 'Saving writes the files. This swaps them into the running server.'}
@@ -69,7 +69,7 @@ export function ReloadControl({
 
       {busy ? (
         <Pip
-          className="rl__pip"
+          className="reload__pip"
           label="Applying the files on the server"
           mood={landing ? (landing.kind === 'swapped' ? 'done' : 'failed') : 'working'}
           failure={landing?.kind === 'refused' ? 'wall' : 'lava'}
@@ -85,16 +85,16 @@ function Verdict({ outcome }: { outcome: ReloadOutcome }) {
   if (outcome.kind === 'swapped') {
     const kinds = Object.entries(outcome.counts)
     return (
-      <div className="rl__out" data-kind="swapped" role="status">
-        <p className="rl__head">
+      <div className="reload__outcome" data-kind="swapped" role="status">
+        <p className="reload__head">
           <Icon name="check" size={16} />
           Swapped. The server is running what you saved.
         </p>
         {kinds.length ? (
-          <ul className="rl__counts">
+          <ul className="reload__counts">
             {kinds.map(([kind, n]) => (
               <li key={kind}>
-                <span className="rl__n">{n}</span> {kind}
+                <span className="reload__count">{n}</span> {kind}
               </li>
             ))}
           </ul>
@@ -108,19 +108,19 @@ function Verdict({ outcome }: { outcome: ReloadOutcome }) {
     return (
       /* The request succeeded and the content failed validation. The report
          is written for people, so it is shown as sent. */
-      <div className="rl__out" data-kind="refused" role="status">
-        <p className="rl__head">
+      <div className="reload__outcome" data-kind="refused" role="status">
+        <p className="reload__head">
           <Icon name="warning" size={16} />
           Nothing was swapped. The content failed validation.
         </p>
-        <p className="rl__blast">
+        <p className="reload__impact">
           The server is still running the content it had before. One bad file holds back every mob,
           item, block and furniture piece until you fix it.
         </p>
         {outcome.report ? (
-          <pre className="rl__report">{outcome.report}</pre>
+          <pre className="reload__report">{outcome.report}</pre>
         ) : (
-          <p className="rl__bare">
+          <p className="reload__no-report">
             The server declined without saying why. That's a gap on the server's side. You didn't
             miss a step. Check the server console.
           </p>
@@ -131,8 +131,8 @@ function Verdict({ outcome }: { outcome: ReloadOutcome }) {
   }
 
   return (
-    <div className="rl__out" data-kind="error" role="alert">
-      <p className="rl__head">
+    <div className="reload__outcome" data-kind="error" role="alert">
+      <p className="reload__head">
         <Icon name="warning" size={16} />
         {outcome.status === null
           ? 'The server could not be reached.'
@@ -140,11 +140,11 @@ function Verdict({ outcome }: { outcome: ReloadOutcome }) {
             ? 'The server did not confirm the reload.'
             : `The server answered ${outcome.status}.`}
       </p>
-      <p className="rl__msg">{outcome.message}</p>
+      <p className="reload__message">{outcome.message}</p>
       {/* The URL lets a reader tell a wrong path (404) from an auth gate on
           the right one (403). */}
       {outcome.url ? (
-        <p className="rl__what">
+        <p className="reload__what">
           <code>POST {outcome.url}</code>
           {outcome.status === null ? null : <> → <strong>{outcome.status}</strong></>}
         </p>
@@ -158,7 +158,7 @@ function Stages({ stages, unreadable }: { stages: string[]; unreadable: string[]
   return (
     <>
       {stages.length ? (
-        <ol className="rl__stages">
+        <ol className="reload__stages">
           {stages.map((s, i) => (
             <li key={`${s}-${i}`}>{s}</li>
           ))}
@@ -166,7 +166,7 @@ function Stages({ stages, unreadable }: { stages: string[]; unreadable: string[]
       ) : null}
       {unreadable.length ? (
         /* parts of the response that could not be read, listed by name */
-        <ul className="rl__unread">
+        <ul className="reload__unread">
           {unreadable.map((u, i) => (
             <li key={i}>{u}</li>
           ))}

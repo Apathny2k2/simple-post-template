@@ -51,7 +51,7 @@ export function Timeline({ now }: { now: number }) {
 
   return (
     <div className="feed">
-      <p className="vh">
+      <p className="visually-hidden">
         {shown.length} {shown.length === 1 ? 'report' : 'reports'} from the plugin in the last {WINDOW_S} seconds.
       </p>
       <ul className="feed__names" aria-hidden="true">

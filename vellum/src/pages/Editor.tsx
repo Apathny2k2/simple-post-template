@@ -228,16 +228,16 @@ function MenuBar({
     [actions, undoLabel, redoLabel, hasClip],
   )
   return (
-    <div className="ed-menubar">
+    <div className="editor-menubar">
       <button
-        className="ed-menubar__back"
+        className="editor-menubar__back"
         onClick={() => navigate(`/projects/${scenes[0].id}/${kind === 'mobs' ? 'mobs' : 'items'}`)}
         title="Back to the library"
         aria-label="Back to the library"
       >
         <Icon name="chevronLeft" size={14} />
       </button>
-      <span className="ed-menubar__mark">
+      <span className="editor-menubar__mark">
         <VellumMark size={15} />
       </span>
       {menus.map((m) => (
@@ -246,15 +246,15 @@ function MenuBar({
           align="start"
           entries={m.entries}
           trigger={({ props }) => (
-            <button className="ed-menubar__btn" {...props}>
+            <button className="editor-menubar__button" {...props}>
               {m.label}
             </button>
           )}
         />
       ))}
-      <div className="ed-menubar__title" title={dirty ? 'Unsaved changes' : 'Saved'}>
+      <div className="editor-menubar__title" title={dirty ? 'Unsaved changes' : 'Saved'}>
         {dirty ? (
-          <span className="ed-menubar__dirty" aria-label="Unsaved changes">
+          <span className="editor-menubar__dirty" aria-label="Unsaved changes">
             ●
           </span>
         ) : null}
@@ -372,20 +372,20 @@ function Toolbar({
   redoLabel: string | null
 }) {
   return (
-    <div className="ed-toolbar">
-      <div className="ed-modes" role="group" aria-label="Editor mode">
+    <div className="editor-toolbar">
+      <div className="editor-modes" role="group" aria-label="Editor mode">
         {modesFor(kind).map((m) => (
-          <button key={m.id} className="ed-mode" aria-pressed={m.id === mode} onClick={() => onMode(m.id)}>
+          <button key={m.id} className="editor-mode" aria-pressed={m.id === mode} onClick={() => onMode(m.id)}>
             {m.label}
           </button>
         ))}
       </div>
 
-      <span className="ed-sep" />
+      <span className="editor-separator" />
 
-      <div className="ed-tools" role="group" aria-label="History">
+      <div className="editor-tools" role="group" aria-label="History">
         <button
-          className="ed-tool"
+          className="editor-tool"
           title={undoLabel ? `Undo ${undoLabel} (Ctrl Z)` : 'Nothing to undo'}
           aria-label="Undo"
           disabled={!canUndo}
@@ -394,7 +394,7 @@ function Toolbar({
           <Icon name="undo" size={15} />
         </button>
         <button
-          className="ed-tool"
+          className="editor-tool"
           title={redoLabel ? `Redo ${redoLabel} (Ctrl ⇧ Z)` : 'Nothing to redo'}
           aria-label="Redo"
           disabled={!canRedo}
@@ -404,13 +404,13 @@ function Toolbar({
         </button>
       </div>
 
-      <span className="ed-sep" />
+      <span className="editor-separator" />
 
-      <div className="ed-tools" role="group" aria-label="Tools">
+      <div className="editor-tools" role="group" aria-label="Tools">
         {toolsets[mode].map((t) => (
           <button
             key={t.id}
-            className="ed-tool"
+            className="editor-tool"
             title={t.label}
             aria-label={t.label}
             aria-pressed={t.id === tool}
@@ -421,22 +421,22 @@ function Toolbar({
         ))}
       </div>
 
-      <span className="ed-sep" />
+      <span className="editor-separator" />
 
-      <div className="ed-tools">
-        <button className="ed-tool" title="Add cube" aria-label="Add cube" onClick={onAddCube}>
+      <div className="editor-tools">
+        <button className="editor-tool" title="Add cube" aria-label="Add cube" onClick={onAddCube}>
           <Icon name="cube" size={15} />
         </button>
-        <button className="ed-tool" title="Add bone" aria-label="Add bone" onClick={onAddBone}>
+        <button className="editor-tool" title="Add bone" aria-label="Add bone" onClick={onAddBone}>
           <Icon name="folder" size={15} />
         </button>
       </div>
 
-      <span className="ed-sep" />
+      <span className="editor-separator" />
 
       {mode === 'paint' ? (
         <>
-          <label className="ed-brush">
+          <label className="editor-brush">
             <span>Brush</span>
             <input
               type="range"
@@ -449,11 +449,11 @@ function Toolbar({
             <span className="mono">{brush}px</span>
           </label>
           {tool === 'shape' ? (
-            <div className="ed-tools" role="group" aria-label="Shape">
+            <div className="editor-tools" role="group" aria-label="Shape">
               {(['rect', 'ellipse'] as const).map((k) => (
                 <button
                   key={k}
-                  className="ed-tool"
+                  className="editor-tool"
                   title={k === 'rect' ? 'Rectangle' : 'Ellipse'}
                   aria-label={k === 'rect' ? 'Rectangle' : 'Ellipse'}
                   aria-pressed={shape === k}
@@ -463,7 +463,7 @@ function Toolbar({
                 </button>
               ))}
               <button
-                className="ed-tool"
+                className="editor-tool"
                 title="Fill the shape"
                 aria-label="Fill the shape"
                 aria-pressed={shapeFilled}
@@ -476,15 +476,15 @@ function Toolbar({
         </>
       ) : null}
 
-      <div className="ed-toolbar__right">
-        <button className="ed-tool" title="Toggle grid (G)" aria-pressed={grid} onClick={onGrid}>
+      <div className="editor-toolbar__right">
+        <button className="editor-tool" title="Toggle grid (G)" aria-pressed={grid} onClick={onGrid}>
           <Icon name="grid" size={15} />
         </button>
-        <button className="ed-tool" title="Quad view (Ctrl 4)" aria-pressed={quad} onClick={onQuad}>
+        <button className="editor-tool" title="Quad view (Ctrl 4)" aria-pressed={quad} onClick={onQuad}>
           <Icon name="layers" size={15} />
         </button>
         <button
-          className="ed-tool"
+          className="editor-tool"
           title={snap ? 'Snapping to whole units' : 'Snap to whole units'}
           aria-label="Snap to whole units"
           aria-pressed={snap}
@@ -492,7 +492,7 @@ function Toolbar({
         >
           <Icon name="magnet" size={15} />
         </button>
-        <button className="ed-tool" title="Export the texture as a PNG" aria-label="Export texture" onClick={onExportTexture}>
+        <button className="editor-tool" title="Export the texture as a PNG" aria-label="Export texture" onClick={onExportTexture}>
           <Icon name="image" size={15} />
         </button>
       </div>
@@ -526,7 +526,7 @@ function Panel({
   return (
     <section className={`panel${grow && open ? ' panel--grow' : ''}`} data-open={open}>
       <button className="panel__head" onClick={() => setOpen((o) => !o)} aria-expanded={open}>
-        <Icon name="chevronDown" size={12} className="panel__chev" />
+        <Icon name="chevronDown" size={12} className="panel__chevron" />
         <span className="panel__title">{title}</span>
         {count !== undefined ? <span className="panel__count">{count}</span> : null}
       </button>
@@ -564,9 +564,9 @@ function NumField({
   const [draft, setDraft] = useState<string | null>(null)
 
   return (
-    <div className="nf" data-disabled={disabled || undefined}>
+    <div className="num-field" data-disabled={disabled || undefined}>
       <span
-        className={`nf__axis nf__axis--${axis}`}
+        className={`num-field__axis num-field__axis--${axis}`}
         title={`${name}. Drag to scrub.`}
         aria-hidden="true"
         onPointerDown={(e) => {
@@ -587,7 +587,7 @@ function NumField({
         {axis === 'n' ? '#' : axis.toUpperCase()}
       </span>
       <input
-        className="nf__input"
+        className="num-field__input"
         value={draft ?? String(value)}
         inputMode="decimal"
         aria-label={name}
@@ -639,8 +639,8 @@ function NumRow({
 }) {
   const axes: Array<'x' | 'y' | 'z'> = ['x', 'y', 'z']
   return (
-    <div className="nf-row">
-      <span className="nf-row__label">{label}</span>
+    <div className="num-field-row">
+      <span className="num-field-row__label">{label}</span>
       {axes.map((a, i) => (
         <NumField
           key={a}
@@ -677,7 +677,7 @@ function CubePanel({
   snap: boolean
 }) {
   if (!cube) {
-    return <p className="ed-hint">Select a cube in the outliner to edit it.</p>
+    return <p className="editor-hint">Select a cube in the outliner to edit it.</p>
   }
 
   const size = cubeSize(cube)
@@ -688,12 +688,12 @@ function CubePanel({
   return (
     <>
       {locked ? (
-        <p className="ed-hint ed-hint--warn" style={{ marginBottom: 9 }}>
+        <p className="editor-hint editor-hint--warn" style={{ marginBottom: 9 }}>
           <Icon name="lock" size={11} /> Locked. Unlock it below to move, resize or paint it.
         </p>
       ) : null}
 
-      <div className="nf-grid">
+      <div className="num-field-grid">
         <NumRow
           label="Position"
           value={cube.from}
@@ -716,8 +716,8 @@ function CubePanel({
           step={blockLocked ? 22.5 : 2.5}
           onChange={(rotation) => onChange((c) => ({ ...c, rotation }))}
         />
-        <div className="nf-row">
-          <span className="nf-row__label">Inflate</span>
+        <div className="num-field-row">
+          <span className="num-field-row__label">Inflate</span>
           <NumField
             axis="n"
             name="Inflate"
@@ -725,7 +725,7 @@ function CubePanel({
             disabled={locked}
             onChange={(inflate) => onChange((c) => ({ ...c, inflate }))}
           />
-          <span className="nf-row__label" style={{ textAlign: 'right' }}>
+          <span className="num-field-row__label" style={{ textAlign: 'right' }}>
             Faces
           </span>
           <NumField
@@ -739,7 +739,7 @@ function CubePanel({
       </div>
 
       {blockLocked ? (
-        <p className="ed-hint ed-hint--warn">
+        <p className="editor-hint editor-hint--warn">
           <Icon name="warning" size={11} /> Block models rotate on 1 axis only, at {'\u00b1'}22.5{'\u00b0'} or {'\u00b1'}45{'\u00b0'}.
         </p>
       ) : null}
@@ -800,7 +800,7 @@ function UVPanel({
   const texture = model.textures[0]
   const { width, height } = model.resolution
 
-  if (!cube) return <p className="ed-hint">No cube selected.</p>
+  if (!cube) return <p className="editor-hint">No cube selected.</p>
 
   const pct = (v: number, total: number) => `${(v / total) * 100}%`
   const current = cube.faces[face]
@@ -886,18 +886,18 @@ function UVPanel({
         ))}
       </div>
 
-      <div className="nf-grid" style={{ marginTop: 9 }}>
-        <div className="nf-row">
-          <span className="nf-row__label">UV from</span>
+      <div className="num-field-grid" style={{ marginTop: 9 }}>
+        <div className="num-field-row">
+          <span className="num-field-row__label">UV from</span>
           <NumField axis="x" name="UV from X" value={current.uv[0]} onChange={(v) => onChange((c) => patchUV(c, face, 0, v))} />
           <NumField axis="y" name="UV from Y" value={current.uv[1]} onChange={(v) => onChange((c) => patchUV(c, face, 1, v))} />
-          <span className="nf-row__label" />
+          <span className="num-field-row__label" />
         </div>
-        <div className="nf-row">
-          <span className="nf-row__label">UV to</span>
+        <div className="num-field-row">
+          <span className="num-field-row__label">UV to</span>
           <NumField axis="x" name="UV to X" value={current.uv[2]} onChange={(v) => onChange((c) => patchUV(c, face, 2, v))} />
           <NumField axis="y" name="UV to Y" value={current.uv[3]} onChange={(v) => onChange((c) => patchUV(c, face, 3, v))} />
-          <span className="nf-row__label" />
+          <span className="num-field-row__label" />
         </div>
       </div>
 
@@ -1366,7 +1366,7 @@ function BonePanel({
 }) {
   return (
     <>
-      <div className="nf-grid">
+      <div className="num-field-grid">
         <NumRow
           label="Pivot"
           value={bone.origin}
@@ -1383,7 +1383,7 @@ function BonePanel({
         />
       </div>
 
-      <p className="ed-hint" style={{ marginTop: 10 }}>
+      <p className="editor-hint" style={{ marginTop: 10 }}>
         <Icon name="info" size={11} /> The pivot is the joint this bone turns about, and every cube
         under it turns with it.
       </p>
@@ -1456,13 +1456,13 @@ function Viewport({
   const scale = Math.max(1.5, Math.min(16, Math.min(box.w * 0.6, box.h * 0.44) / extent))
 
   return (
-    <div className="ed-view" data-quad={quad || undefined} data-shading={shading}>
-      <div className="ed-view__scene" ref={scene}>
+    <div className="editor-view" data-quad={quad || undefined} data-shading={shading}>
+      <div className="editor-view__scene" ref={scene}>
         {quad ? (
-          <div className="ed-quad">
+          <div className="editor-quad">
             {quadViews.map((v) => (
-              <div className="ed-quad__cell" key={v.tag}>
-                <span className="ed-quad__tag">{v.tag}</span>
+              <div className="editor-quad__cell" key={v.tag}>
+                <span className="editor-quad__tag">{v.tag}</span>
                 <ModelView
                   model={model}
                   grid={grid}
@@ -1496,25 +1496,25 @@ function Viewport({
           />
         )}
 
-        <div className="ed-view__corner ed-view__corner--tl">
+        <div className="editor-view__corner editor-view__corner--top-left">
           <Icon name="cube" size={11} /> {label}
         </div>
 
-        <div className="ed-view__corner ed-view__corner--tr">
+        <div className="editor-view__corner editor-view__corner--top-right">
           {(['solid', 'wire'] as const).map((s) => (
-            <button key={s} className="ed-view__vbtn" aria-pressed={shading === s} onClick={() => setShading(s)}>
+            <button key={s} className="editor-view__shading" aria-pressed={shading === s} onClick={() => setShading(s)}>
               {s === 'solid' ? 'Solid' : 'Wire'}
             </button>
           ))}
         </div>
 
-        <div className="ed-view__corner ed-view__corner--bl">
+        <div className="editor-view__corner editor-view__corner--bottom-left">
           {onPaint
             ? 'drag a face to paint · right-drag orbit · shift-drag pan · scroll zoom'
             : 'drag orbit · shift-drag pan · scroll zoom'}
         </div>
 
-        <svg className="ed-axis-gizmo" viewBox="0 0 60 60" aria-hidden="true">
+        <svg className="editor-axis-gizmo" viewBox="0 0 60 60" aria-hidden="true">
           <g strokeWidth="1.8" strokeLinecap="round">
             <line x1="30" y1="30" x2="52" y2="38" style={{ stroke: 'var(--axis-x)' }} />
             <line x1="30" y1="30" x2="30" y2="8" style={{ stroke: 'var(--axis-y)' }} />
@@ -1581,7 +1581,7 @@ function AutoAnimate({ anim }: { anim: AnimApi }) {
 
   if (anim.kind !== 'mobs') {
     return (
-      <p className="ed-hint">
+      <p className="editor-hint">
         <Icon name="info" size={11} /> Auto-animation reads a skeleton, so it only works for mobs. This project makes{' '}
         {anim.kind.replace(/s$/, '')} models.
       </p>
@@ -1595,7 +1595,7 @@ function AutoAnimate({ anim }: { anim: AnimApi }) {
 
   return (
     <>
-      <p className="ed-hint" style={{ marginTop: 0 }}>
+      <p className="editor-hint" style={{ marginTop: 0 }}>
         <Icon name="anim" size={11} /> Read {rig.bones.length} bones and found {rig.summary}.{' '}
         {rig.confidence >= 0.6
           ? 'Mostly from their names.'
@@ -1625,8 +1625,8 @@ function AutoAnimate({ anim }: { anim: AnimApi }) {
         })}
       </div>
 
-      {note ? <p className="ed-hint ed-hint--warn">{note}</p> : null}
-      <p className="ed-hint">
+      {note ? <p className="editor-hint editor-hint--warn">{note}</p> : null}
+      <p className="editor-hint">
         <Icon name="info" size={11} /> A starting point. Every key is editable on the timeline.
       </p>
     </>
@@ -1640,7 +1640,7 @@ function AnimationPanel({ anim }: { anim: AnimApi }) {
   if (!clip) {
     return (
       <>
-        <p className="ed-hint">
+        <p className="editor-hint">
           No animations yet.
         </p>
         <div className="chip-row">
@@ -1648,7 +1648,7 @@ function AnimationPanel({ anim }: { anim: AnimApi }) {
             <Icon name="plus" size={11} /> New animation
           </button>
         </div>
-        <div className="ed-rule" />
+        <div className="editor-rule" />
         <AutoAnimate anim={anim} />
       </>
     )
@@ -1656,19 +1656,19 @@ function AnimationPanel({ anim }: { anim: AnimApi }) {
 
   return (
     <>
-      <label className="ed-field">
+      <label className="editor-field">
         <span>Name</span>
         <input
-          className="ed-input"
+          className="editor-input"
           value={clip.name}
           spellCheck={false}
           onChange={(e) => anim.patchClip({ name: e.target.value })}
         />
       </label>
 
-      <div className="nf-grid" style={{ marginTop: 8 }}>
-        <div className="nf-row">
-          <span className="nf-row__label">Length</span>
+      <div className="num-field-grid" style={{ marginTop: 8 }}>
+        <div className="num-field-row">
+          <span className="num-field-row__label">Length</span>
           <NumField
             axis="n"
             name="Clip length in seconds"
@@ -1676,17 +1676,17 @@ function AnimationPanel({ anim }: { anim: AnimApi }) {
             value={clip.length}
             onChange={(v) => anim.patchClip({ length: Math.max(0.1, Number(v.toFixed(3))) })}
           />
-          <span className="nf-row__label" style={{ textAlign: 'right' }}>
+          <span className="num-field-row__label" style={{ textAlign: 'right' }}>
             seconds
           </span>
-          <span className="nf-row__label" />
+          <span className="num-field-row__label" />
         </div>
       </div>
 
-      <label className="ed-field">
+      <label className="editor-field">
         <span>Loop</span>
         <select
-          className="ed-select"
+          className="editor-select"
           value={clip.loop}
           onChange={(e) => anim.patchClip({ loop: e.target.value as Clip['loop'] })}
         >
@@ -1698,10 +1698,10 @@ function AnimationPanel({ anim }: { anim: AnimApi }) {
         </select>
       </label>
 
-      <label className="ed-field">
+      <label className="editor-field">
         <span>Snap</span>
         <select
-          className="ed-select"
+          className="editor-select"
           value={clip.snapping}
           onChange={(e) => anim.patchClip({ snapping: Number(e.target.value) })}
         >
@@ -1728,7 +1728,7 @@ function AnimationPanel({ anim }: { anim: AnimApi }) {
         </button>
       </div>
 
-      <p className="ed-hint" style={{ marginTop: 10 }}>
+      <p className="editor-hint" style={{ marginTop: 10 }}>
         Animating
       </p>
       {/* Roving tabindex: one tab stop for the list, arrows move within
@@ -1753,13 +1753,13 @@ function AnimationPanel({ anim }: { anim: AnimApi }) {
           >
             <Icon name="folder" size={12} className="tree__icon" />
             <span className="tree__name">{b.name}</span>
-            {clip.tracks.some((t) => t.bone === b.id) ? <span className="tl-name__ch">keyed</span> : null}
+            {clip.tracks.some((t) => t.bone === b.id) ? <span className="timeline-name__channel">keyed</span> : null}
           </div>
         ))}
-        {!anim.bones.length ? <p className="ed-hint">This model has no bones to animate.</p> : null}
+        {!anim.bones.length ? <p className="editor-hint">This model has no bones to animate.</p> : null}
       </div>
 
-      <div className="ed-rule" />
+      <div className="editor-rule" />
       <AutoAnimate anim={anim} />
     </>
   )
@@ -1777,7 +1777,7 @@ function KeyframePanel({ anim }: { anim: AnimApi }) {
 
   if (!found) {
     return (
-      <p className="ed-hint">
+      <p className="editor-hint">
         Select a keyframe on the timeline to edit it, or press the <Icon name="key" size={11} /> beside a
         channel to add one at the playhead.
       </p>
@@ -1790,11 +1790,11 @@ function KeyframePanel({ anim }: { anim: AnimApi }) {
 
   return (
     <>
-      <p className="ed-hint" style={{ marginBottom: 8 }}>
-        <Icon name="folder" size={11} /> {boneName} <span className="tl-name__ch">{track.channel}</span>
+      <p className="editor-hint" style={{ marginBottom: 8 }}>
+        <Icon name="folder" size={11} /> {boneName} <span className="timeline-name__channel">{track.channel}</span>
       </p>
 
-      <div className="nf-grid">
+      <div className="num-field-grid">
         <NumRow
           label={track.channel}
           value={key.value}
@@ -1802,8 +1802,8 @@ function KeyframePanel({ anim }: { anim: AnimApi }) {
           onChange={(value) => anim.patchKey(key.id, { value }, true)}
           onCommit={() => anim.patchKey(key.id, {})}
         />
-        <div className="nf-row">
-          <span className="nf-row__label">Time</span>
+        <div className="num-field-row">
+          <span className="num-field-row__label">Time</span>
           <NumField
             axis="n"
             name="Keyframe time in seconds"
@@ -1811,17 +1811,17 @@ function KeyframePanel({ anim }: { anim: AnimApi }) {
             value={key.time}
             onChange={(time) => anim.patchKey(key.id, { time })}
           />
-          <span className="nf-row__label" style={{ textAlign: 'right' }}>
+          <span className="num-field-row__label" style={{ textAlign: 'right' }}>
             of {anim.clip?.length}s
           </span>
-          <span className="nf-row__label" />
+          <span className="num-field-row__label" />
         </div>
       </div>
 
-      <label className="ed-field">
+      <label className="editor-field">
         <span>Easing</span>
         <select
-          className="ed-select"
+          className="editor-select"
           value={key.interp}
           onChange={(e) => anim.patchKey(key.id, { interp: e.target.value as Key['interp'] })}
         >
@@ -1978,13 +1978,13 @@ function Timeline({
   }
 
   return (
-    <div className="ed-timeline">
-      <div className="tl-bar">
-        <button className="ed-tool" title="Jump to start" onClick={() => onTime(0)}>
+    <div className="editor-timeline">
+      <div className="timeline-bar">
+        <button className="editor-tool" title="Jump to start" onClick={() => onTime(0)}>
           <Icon name="skipBack" size={14} />
         </button>
         <button
-          className="ed-tool"
+          className="editor-tool"
           aria-pressed={playing}
           title={playing ? 'Pause' : 'Play'}
           onClick={() => onPlaying(!playing)}
@@ -1992,14 +1992,14 @@ function Timeline({
         >
           <Icon name={playing ? 'pause' : 'play'} size={14} filled={!playing} />
         </button>
-        <button className="ed-tool" title="Jump to end" onClick={() => onTime(length)}>
+        <button className="editor-tool" title="Jump to end" onClick={() => onTime(length)}>
           <Icon name="skipFwd" size={14} />
         </button>
-        <span className="tl-time">{time.toFixed(2)}s</span>
-        <span className="ed-sep" />
+        <span className="timeline-time">{time.toFixed(2)}s</span>
+        <span className="editor-separator" />
 
         <select
-          className="ed-select"
+          className="editor-select"
           value={clip?.id ?? ''}
           onChange={(e) => anim.selectClip(e.target.value)}
           aria-label="Animation"
@@ -2012,7 +2012,7 @@ function Timeline({
             </option>
           ))}
         </select>
-        <button className="ed-tool" title="New animation" aria-label="New animation" onClick={anim.newClip}>
+        <button className="editor-tool" title="New animation" aria-label="New animation" onClick={anim.newClip}>
           <Icon name="plus" size={14} />
         </button>
         <button
@@ -2026,21 +2026,21 @@ function Timeline({
           <Icon name="refresh" size={11} /> {clip?.loop ?? 'once'}
         </button>
 
-        <div className="ed-toolbar__right">
-          <div className="ed-tools" role="group" aria-label="Timeline zoom">
+        <div className="editor-toolbar__right">
+          <div className="editor-tools" role="group" aria-label="Timeline zoom">
             <button
-              className="ed-tool"
+              className="editor-tool"
               title="Zoom the timeline out"
               aria-label="Zoom timeline out"
               onClick={() => setPxPerS((v) => clampPx(v / 1.5))}
             >
               <Icon name="minus" size={14} />
             </button>
-            <button className="ed-tool" title="Fit the clip to the panel" aria-label="Fit timeline" onClick={fit}>
+            <button className="editor-tool" title="Fit the clip to the panel" aria-label="Fit timeline" onClick={fit}>
               <Icon name="resize" size={14} />
             </button>
             <button
-              className="ed-tool"
+              className="editor-tool"
               title="Zoom the timeline in"
               aria-label="Zoom timeline in"
               onClick={() => setPxPerS((v) => clampPx(v * 1.5))}
@@ -2048,9 +2048,9 @@ function Timeline({
               <Icon name="plus" size={14} />
             </button>
           </div>
-          <span className="ed-sep" />
+          <span className="editor-separator" />
           <button
-            className="ed-tool"
+            className="editor-tool"
             title="Add a keyframe to the animated bone's rotation at the playhead"
             aria-label="Add keyframe"
             disabled={!clip || !anim.bone}
@@ -2059,7 +2059,7 @@ function Timeline({
             <Icon name="key" size={14} />
           </button>
           <button
-            className="ed-tool"
+            className="editor-tool"
             title="Delete the selected keyframe"
             aria-label="Delete keyframe"
             disabled={!anim.selectedKey}
@@ -2073,35 +2073,35 @@ function Timeline({
       {clip ? (
         /* names and tracks share one scroller so their rows stay aligned;
            the names column is sticky */
-        <div className="tl-main" ref={main}>
+        <div className="timeline-main" ref={main}>
           <div
-            className="tl-grid"
+            className="timeline-grid"
             style={{ ['--track-w' as string]: `${trackW}px`, ['--px-per-s' as string]: `${pxPerS}px` }}
           >
-            <div className="tl-corner">Channels</div>
-            <div className="tl-ruler" style={{ width: trackW }} onPointerDown={scrub} onPointerMove={scrub}>
+            <div className="timeline-corner">Channels</div>
+            <div className="timeline-ruler" style={{ width: trackW }} onPointerDown={scrub} onPointerMove={scrub}>
               {Array.from({ length: ticks }, (_, i) => (
-                <span className="tl-tick" key={i} style={{ width: tickStep * pxPerS }}>
+                <span className="timeline-tick" key={i} style={{ width: tickStep * pxPerS }}>
                   {Number((i * tickStep).toFixed(2))}s
                 </span>
               ))}
-              <span className="tl-end" style={{ left: length * pxPerS }} title={`Clip ends at ${length}s`} />
+              <span className="timeline-end" style={{ left: length * pxPerS }} title={`Clip ends at ${length}s`} />
             </div>
 
             {rows.map((r) => (
               <Fragment key={r.key}>
-                <div className="tl-name" data-on={r.bone === anim.bone || undefined}>
+                <div className="timeline-name" data-on={r.bone === anim.bone || undefined}>
                   <Icon name="folder" size={11} />
                   <button
-                    className="tl-name__bone"
+                    className="timeline-name__bone"
                     aria-pressed={r.bone === anim.bone}
                     onClick={() => anim.setBone(r.bone)}
                   >
                     {r.boneName}
                   </button>
-                  <span className="tl-name__ch">{r.channel.slice(0, 3)}</span>
+                  <span className="timeline-name__channel">{r.channel.slice(0, 3)}</span>
                   <button
-                    className="tl-name__btn"
+                    className="timeline-name__button"
                     title={`Key ${r.boneName} ${r.channel} at the playhead`}
                     aria-label={`Key ${r.boneName} ${r.channel}`}
                     onClick={(e) => {
@@ -2114,7 +2114,7 @@ function Timeline({
                 </div>
 
                 <div
-                  className="tl-track"
+                  className="timeline-track"
                   style={{ width: trackW }}
                   onDoubleClick={(e) => {
                     const rect = e.currentTarget.getBoundingClientRect()
@@ -2125,7 +2125,7 @@ function Timeline({
                   {(r.track?.keys ?? []).map((kf) => (
                     <button
                       key={kf.id}
-                      className="tl-key"
+                      className="timeline-key"
                       data-interp={kf.interp}
                       data-selected={kf.id === anim.selectedKey || undefined}
                       data-past-end={kf.time > length + 1e-9 || undefined}
@@ -2157,16 +2157,16 @@ function Timeline({
 
             {rows.length ? null : (
               <>
-                <div className="tl-name">Pick a bone to animate</div>
-                <div className="tl-track" style={{ width: trackW }} />
+                <div className="timeline-name">Pick a bone to animate</div>
+                <div className="timeline-track" style={{ width: trackW }} />
               </>
             )}
 
-            <span className="tl-playhead" style={{ left: `calc(var(--names-w) + ${time * pxPerS}px)` }} />
+            <span className="timeline-playhead" style={{ left: `calc(var(--names-w) + ${time * pxPerS}px)` }} />
           </div>
         </div>
       ) : (
-        <div className="tl-empty">
+        <div className="timeline-empty">
           <p>No animation yet.</p>
           <button className="chip chip--go" onClick={anim.newClip}>
             <Icon name="plus" size={11} /> New animation
@@ -2185,7 +2185,7 @@ function Splitter({ onDrag }: { onDrag: (dx: number) => void }) {
 
   return (
     <div
-      className="ed-split"
+      className="editor-split"
       data-dragging={dragging || undefined}
       role="separator"
       aria-orientation="vertical"
@@ -3105,8 +3105,8 @@ export function Editor({ segments }: { segments: string[] }) {
       />
 
       {/* the h1 is visually hidden (.vh) and names the page for screen readers */}
-      <main className="ed-body">
-        <h1 className="vh">
+      <main className="editor-body">
+        <h1 className="visually-hidden">
           {fileName} {'\u2014'} {kind} model, {mode} mode
         </h1>
         <Viewport
@@ -3124,8 +3124,8 @@ export function Editor({ segments }: { segments: string[] }) {
           display={mode === 'display' && kind !== 'mobs' ? displayState[slot] : null}
         />
 
-        <div className="ed-rails">
-          <div className="ed-col ed-col--left">
+        <div className="editor-rails">
+          <div className="editor-column editor-column--left">
             {mode === 'config' && hasConfig(kind) ? (
               <Panel title="Config" count={setFields(kind, config).length || 'none'}>
                 <ConfigPanel kind={kind} config={config} onChange={setConfig} />
@@ -3236,11 +3236,11 @@ export function Editor({ segments }: { segments: string[] }) {
                    accident. It can still be closed afterwards. */
                 forceOpen={hit.mode === 'explicit'}
               >
-                <p className="ed-hint" data-warn={hit.mode !== 'derived' || undefined}>
+                <p className="editor-hint" data-warn={hit.mode !== 'derived' || undefined}>
                   <Icon name={hit.mode === 'derived' ? 'check' : 'warning'} size={11} /> {modeLine(hit)}
                 </p>
                 {hit.mode === 'explicit' ? (
-                  <ul className="ed-issues">
+                  <ul className="editor-issues">
                     <li data-level="warning">
                       <Icon name="warning" size={11} />A bone that draws nothing but holds a hidden cube
                       becomes a marked region. Hiding a cube for any reason can do this.
@@ -3248,14 +3248,14 @@ export function Editor({ segments }: { segments: string[] }) {
                     {hit.lost.slice(0, 8).map((l) => (
                       <li key={l.boneId} data-level="warning">
                         <Icon name="warning" size={11} />
-                        <strong className="ed-translate__where">{l.boneName}</strong>
+                        <strong className="editor-translate__where">{l.boneName}</strong>
                         is drawn but cannot be hit
                       </li>
                     ))}
                   </ul>
                 ) : null}
                 {hit.unknowns.length ? (
-                  <ul className="ed-issues">
+                  <ul className="editor-issues">
                     {hit.unknowns.map((u, n) => (
                       <li key={n} data-level="warning">
                         <Icon name="warning" size={11} />
@@ -3286,12 +3286,12 @@ export function Editor({ segments }: { segments: string[] }) {
               forceOpen={!!openError}
             >
               {openError ? (
-                <p className="ed-hint ed-hint--warn" style={{ marginBottom: 10 }}>
+                <p className="editor-hint editor-hint--warn" style={{ marginBottom: 10 }}>
                   <Icon name="warning" size={11} /> {openError}
                 </p>
               ) : null}
               {issues.length ? (
-                <ul className="ed-issues">
+                <ul className="editor-issues">
                   {issues.slice(0, 12).map((i, n) => (
                     <li key={n} data-level={i.level}>
                       <Icon name={i.level === 'error' ? 'warning' : 'info'} size={11} />
@@ -3300,35 +3300,35 @@ export function Editor({ segments }: { segments: string[] }) {
                   ))}
                 </ul>
               ) : (
-                <p className="ed-hint">
+                <p className="editor-hint">
                   <Icon name="check" size={11} /> No problems.
                 </p>
               )}
 
               {/* whether a resource pack can express the model, separate from the checks above */}
-              <div className="ed-translate">
-                <div className="ed-translate__head">
+              <div className="editor-translate">
+                <div className="editor-translate__head">
                   <Icon name="cube" size={11} />
                   In a resource pack
-                  <span className="ed-translate__n mono">
+                  <span className="editor-translate__count mono">
                     {translate.filter((i) => i.level !== 'note').length || 'exact'}
                   </span>
                 </div>
                 {translate.length ? (
-                  <ul className="ed-issues">
+                  <ul className="editor-issues">
                     {translate.slice(0, 10).map((i, n) => (
                       <li key={n} data-level={i.level}>
                         <Icon
                           name={i.level === 'error' ? 'warning' : i.level === 'warning' ? 'warning' : 'info'}
                           size={11}
                         />
-                        {i.where ? <strong className="ed-translate__where">{i.where}</strong> : null}
+                        {i.where ? <strong className="editor-translate__where">{i.where}</strong> : null}
                         {i.message}
                       </li>
                     ))}
                   </ul>
                 ) : (
-                  <p className="ed-hint">
+                  <p className="editor-hint">
                     <Icon name="check" size={11} /> Translates exactly.
                   </p>
                 )}
@@ -3339,14 +3339,14 @@ export function Editor({ segments }: { segments: string[] }) {
           <Splitter onDrag={onLeft} />
           {/* The middle column is normally empty so the viewport shows
               through. Config mode fills it with the generated config. */}
-          <div className="ed-rails__gap">
+          <div className="editor-rails__gap">
             {mode === 'config' && hasConfig(kind) ? (
               <ConfigOutput id={model.name} kind={kind} config={config} />
             ) : null}
           </div>
           <Splitter onDrag={onRight} />
 
-          <div className="ed-col ed-col--right">
+          <div className="editor-column editor-column--right">
             <Panel title="Colour" count={mode === 'paint' ? tool : undefined}>
               <ColorPanel colour={colour} onColour={setColour} />
             </Panel>
@@ -3375,14 +3375,14 @@ export function Editor({ segments }: { segments: string[] }) {
               {model.textures.map((t, i) => (
                 <button
                   key={t.id}
-                  className="tex-row"
+                  className="texture-row"
                   // aria-selected is not valid on a button; aria-current marks the chosen texture
                   aria-current={i === textureIndex}
                   title={`${t.name}. Click to select, then use View \u25b8 Export texture PNG.`}
                   onClick={() => setTextureIndex(i)}
                 >
                   <span
-                    className="tex-thumb"
+                    className="texture-thumb"
                     style={{
                       backgroundImage: `url(${t.source})`,
                       backgroundSize: 'cover',
@@ -3390,12 +3390,12 @@ export function Editor({ segments }: { segments: string[] }) {
                     }}
                   />
                   <span style={{ flex: 1, textAlign: 'left', minWidth: 0 }}>{t.name}</span>
-                  <span className="tex-row__meta">
+                  <span className="texture-row__meta">
                     {t.width} x {t.height}
                   </span>
                 </button>
               ))}
-              {!model.textures.length ? <p className="ed-hint">No textures on this model.</p> : null}
+              {!model.textures.length ? <p className="editor-hint">No textures on this model.</p> : null}
             </Panel>
           </div>
         </div>
@@ -3433,18 +3433,18 @@ export function Editor({ segments }: { segments: string[] }) {
         <Timeline anim={anim} time={time} onTime={setTime} playing={playing} onPlaying={setPlaying} />
       ) : null}
 
-      <div className="ed-status">
+      <div className="editor-status">
         <span>{fileName}</span>
         <span>{subtype ? `${kind} \u00b7 ${subtype}` : kind}</span>
         <span>{model.cubes.length} cubes</span>
         <span>
           {model.resolution.width} x {model.resolution.height}
         </span>
-        <span className="ed-status__sel">
+        <span className="editor-status__selection">
           {saveNote ?? openError ?? `selected: ${cube?.name ?? selectedBone?.name ?? 'none'} · ${tool}`}
         </span>
-        <div className="ed-status__right">
-          <span className={errors || warnings ? 'ed-status__bad' : undefined}>
+        <div className="editor-status__right">
+          <span className={errors || warnings ? 'editor-status__problems' : undefined}>
             {errors
               ? `${errors} error${errors === 1 ? '' : 's'}`
               : warnings

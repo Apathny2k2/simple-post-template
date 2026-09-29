@@ -15,11 +15,11 @@ function Signal({ server }: { server: LinkedServer }) {
   const ping = server.online ? server.ping : null
   const lit = ping === null ? 0 : ping < 80 ? 4 : ping < 150 ? 3 : ping < 300 ? 2 : 1
   return (
-    <span className="srv-bars" data-lit={lit} title={ping === null ? 'No answer' : `${ping} ms`}>
+    <span className="signal-bars" data-lit={lit} title={ping === null ? 'No answer' : `${ping} ms`}>
       {[1, 2, 3, 4].map((n) => (
         <i key={n} data-on={n <= lit || undefined} />
       ))}
-      <span className="vh">{ping === null ? 'No answer' : `${ping} milliseconds`}</span>
+      <span className="visually-hidden">{ping === null ? 'No answer' : `${ping} milliseconds`}</span>
     </span>
   )
 }
@@ -29,15 +29,15 @@ function ServerRow({ server, last, onEnter }: { server: LinkedServer; last: bool
   const team = server.team
   return (
     <li>
-      <button className="srv" disabled={!open} data-offline={!server.online || undefined} onClick={() => onEnter(server)}>
+      <button className="server" disabled={!open} data-offline={!server.online || undefined} onClick={() => onEnter(server)}>
         <ServerIcon id={server.id} hue={server.hue} size={56} />
-        <span className="srv__main">
-          <span className="srv__top">
-            <span className="srv__name">{server.name}</span>
-            {last ? <span className="srv__last">Last opened</span> : null}
+        <span className="server__main">
+          <span className="server__top">
+            <span className="server__name">{server.name}</span>
+            {last ? <span className="server__last">Last opened</span> : null}
           </span>
-          <span className="srv__motd">{server.motd}</span>
-          <span className="srv__meta">
+          <span className="server__motd">{server.motd}</span>
+          <span className="server__meta">
             <span className="mono">{server.host}</span>
             <span>{server.software}</span>
             {team ? (
@@ -49,8 +49,8 @@ function ServerRow({ server, last, onEnter }: { server: LinkedServer; last: bool
             )}
           </span>
         </span>
-        <span className="srv__side">
-          <span className="srv__players">
+        <span className="server__side">
+          <span className="server__players">
             {server.online ? (
               <>
                 <strong>{server.players}</strong>/{server.maxPlayers} players
@@ -60,7 +60,7 @@ function ServerRow({ server, last, onEnter }: { server: LinkedServer; last: bool
             )}
           </span>
           <Signal server={server} />
-          <span className="srv__go">
+          <span className="server__go">
             {open ? (
               <>
                 Enter <Icon name="arrowRight" size={13} />
@@ -96,10 +96,10 @@ export function Servers() {
   }, [only])
 
   return (
-    <div className="gate">
-      <header className="gate-head">
+    <div className="server-picker">
+      <header className="server-picker-head">
         <a
-          className="gate-head__brand"
+          className="server-picker-head__brand"
           href="#/"
           onClick={(e) => {
             e.preventDefault()

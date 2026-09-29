@@ -138,7 +138,7 @@ function AssetCard({
 
   return (
     <article
-      className="asset lit"
+      className="asset pointer-glow"
       data-open={menuOpen || undefined}
       style={{ '--k': index } as CSSProperties}
       onPointerMove={trackPointer}
@@ -440,15 +440,15 @@ function Gateway() {
         </div>
       </div>
 
-      <div className="gateway">
+      <div className="shelves">
         {tiles.map((t) => (
           <button
             key={t.kind}
-            className="gateway__tile lit"
+            className="shelf-tile pointer-glow"
             onPointerMove={trackPointer}
             onClick={() => navigate(`/projects/${scene.id}/${t.kind}`)}
           >
-            <div className="gateway__art">
+            <div className="shelf-tile__art">
               <Model3D
                 boxes={t.kind === 'mobs' ? lanternModel(t.palette) : blockModel(t.palette)}
                 spin
@@ -456,16 +456,16 @@ function Gateway() {
                 zoom={-260}
               />
             </div>
-            <div className="gateway__top">
-              <span className="gateway__icon">
+            <div className="shelf-tile__top">
+              <span className="shelf-tile__icon">
                 <Icon name={t.icon} size={18} />
               </span>
-              <span className="scene-chip__n mono">x{t.count}</span>
+              <span className="shelf-tile__count mono">x{t.count}</span>
             </div>
-            <div className="gateway__bottom">
-              <div className="gateway__name">{shelfLabel[t.kind]}</div>
-              <p className="gateway__desc">{t.desc}</p>
-              <span className="gateway__go">
+            <div className="shelf-tile__bottom">
+              <div className="shelf-tile__name">{shelfLabel[t.kind]}</div>
+              <p className="shelf-tile__description">{t.desc}</p>
+              <span className="shelf-tile__go">
                 Open library <Icon name="arrowRight" size={13} />
               </span>
             </div>

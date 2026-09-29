@@ -33,23 +33,23 @@ function Rows({
     onChange(value.map((r, n) => (n === i ? { ...r, [key]: v } : r)))
 
   return (
-    <div className="cfg-rows">
+    <div className="config-rows">
       {value.map((row, i) => (
-        <div className="cfg-row" key={i} data-cols={columns.length}>
+        <div className="config-row" key={i} data-cols={columns.length}>
           {columns.map((c: Column) => (
             <input
               key={c.key}
-              className="field__input cfg-row__cell"
+              className="field__input config-row__cell"
               style={{ flexGrow: c.width ?? 1, flexBasis: 0, minWidth: 0 }}
               value={row[c.key] ?? ''}
               placeholder={c.label}
               aria-label={`${field.label} ${i + 1} ${c.label}`}
-              list={c.suggest ? `cfg-${field.key}-${c.key}` : undefined}
+              list={c.suggest ? `config-${field.key}-${c.key}` : undefined}
               onChange={(e) => patch(i, c.key, e.target.value)}
             />
           ))}
           <button
-            className="ed-tool cfg-x"
+            className="editor-tool config-remove"
             onClick={() => onChange(value.filter((_, n) => n !== i))}
             title={`Remove ${field.label.toLowerCase()} ${i + 1}`}
             aria-label={`Remove ${field.label.toLowerCase()} ${i + 1}`}
@@ -59,9 +59,9 @@ function Rows({
         </div>
       ))}
       {columns.filter((c) => c.suggest).map((c) => (
-        <Suggest key={c.key} id={`cfg-${field.key}-${c.key}`} options={c.suggest as readonly string[]} />
+        <Suggest key={c.key} id={`config-${field.key}-${c.key}`} options={c.suggest as readonly string[]} />
       ))}
-      <button className="chip cfg-add" onClick={() => onChange([...value, blank()])}>
+      <button className="chip config-add" onClick={() => onChange([...value, blank()])}>
         <Icon name="plus" size={10} /> Add {field.label.toLowerCase().replace(/s$/, '')}
       </button>
     </div>
@@ -78,19 +78,19 @@ function Lines({
   onChange: (next: string[]) => void
 }) {
   return (
-    <div className="cfg-rows">
+    <div className="config-rows">
       {value.map((line, i) => (
-        <div className="cfg-row" key={i}>
+        <div className="config-row" key={i}>
           <input
-            className="field__input cfg-row__cell"
+            className="field__input config-row__cell"
             style={{ flex: 1, minWidth: 0 }}
             value={line}
             aria-label={`${field.label} ${i + 1}`}
-            list={field.options ? `cfg-${field.key}` : undefined}
+            list={field.options ? `config-${field.key}` : undefined}
             onChange={(e) => onChange(value.map((l, n) => (n === i ? e.target.value : l)))}
           />
           <button
-            className="ed-tool cfg-x"
+            className="editor-tool config-remove"
             onClick={() => onChange(value.filter((_, n) => n !== i))}
             title={`Remove line ${i + 1}`}
             aria-label={`Remove ${field.label.toLowerCase()} ${i + 1}`}
@@ -99,8 +99,8 @@ function Lines({
           </button>
         </div>
       ))}
-      {field.options ? <Suggest id={`cfg-${field.key}`} options={field.options} /> : null}
-      <button className="chip cfg-add" onClick={() => onChange([...value, ''])}>
+      {field.options ? <Suggest id={`config-${field.key}`} options={field.options} /> : null}
+      <button className="chip config-add" onClick={() => onChange([...value, ''])}>
         <Icon name="plus" size={10} /> Add line
       </button>
     </div>
@@ -122,19 +122,19 @@ function Control({
     case 'bool':
       return (
         <button
-          className="cfg-switch"
+          className="config-switch"
           role="switch"
           aria-checked={!!value}
           aria-label={field.label}
           onClick={() => set(!value)}
         >
-          <span className="cfg-switch__dot" />
+          <span className="config-switch__dot" />
         </button>
       )
     case 'number':
       return (
         <input
-          className="field__input cfg-num mono"
+          className="field__input config-number mono"
           type="number"
           min={field.min}
           max={field.max}
@@ -147,7 +147,7 @@ function Control({
     case 'select':
       return (
         <select
-          className="ed-select cfg-wide"
+          className="editor-select config-wide"
           value={String(value ?? '')}
           aria-label={field.label}
           onChange={(e) => set(e.target.value)}
@@ -167,14 +167,14 @@ function Control({
       return (
         <>
           <input
-            className="field__input cfg-wide"
+            className="field__input config-wide"
             value={String(value ?? '')}
             placeholder={field.placeholder}
             aria-label={field.label}
-            list={field.options ? `cfg-${field.key}` : undefined}
+            list={field.options ? `config-${field.key}` : undefined}
             onChange={(e) => set(e.target.value)}
           />
-          {field.options ? <Suggest id={`cfg-${field.key}`} options={field.options} /> : null}
+          {field.options ? <Suggest id={`config-${field.key}`} options={field.options} /> : null}
         </>
       )
   }
@@ -202,7 +202,7 @@ export function ConfigPanel({
 
   return (
     <>
-      <p className="ed-hint cfg-lead">
+      <p className="editor-hint config-lead">
         <Icon name="info" size={11} />
         Settings for what this is in game. Written as YAML under the model&rsquo;s own
         name, so the two stay in sync.
@@ -210,12 +210,12 @@ export function ConfigPanel({
 
       {/* say which schema the form is drawn from */}
       {served.from === 'plugin' ? (
-        <p className="ed-hint cfg-lead">
+        <p className="editor-hint config-lead">
           <Icon name="check" size={11} />
           Fields come from the linked plugin at <code className="mono">GET /api/mob/schema</code>.
         </p>
       ) : served.from === 'built-in' && kind === 'mobs' ? (
-        <p className="ed-hint cfg-lead">
+        <p className="editor-hint config-lead">
           <Icon name="info" size={11} />
           Built-in schema. {served.reason}
         </p>
@@ -224,13 +224,13 @@ export function ConfigPanel({
       {/* Lists what the served schema has that the form doesn't show:
           unknown types, unnamed flags and retired states. */}
       {served.problems.length ? (
-        <div className="cfg-probs">
-          <div className="cfg-probs__head">
+        <div className="config-problems">
+          <div className="config-problems__head">
             {served.problems.length} thing{served.problems.length === 1 ? '' : 's'} from the server that this
             form doesn&rsquo;t show
           </div>
           {served.problems.map((p) => (
-            <p key={`${p.where}:${p.message}`} className="cfg-probs__row">
+            <p key={`${p.where}:${p.message}`} className="config-problems__row">
               <strong>{p.where}</strong> — {p.message}
             </p>
           ))}
@@ -241,23 +241,23 @@ export function ConfigPanel({
         const isOpen = open === sec.id
         const n = sec.fields.filter((f) => touched.includes(f)).length
         return (
-          <section className="cfg-sec" key={sec.id} data-open={isOpen || undefined}>
+          <section className="config-section" key={sec.id} data-open={isOpen || undefined}>
             <button
-              className="cfg-sec__head"
+              className="config-section__head"
               aria-expanded={isOpen}
               onClick={() => setOpen(isOpen ? '' : sec.id)}
             >
               <Icon name={isOpen ? 'chevronDown' : 'chevronRight'} size={12} />
-              <span className="cfg-sec__title">{sec.title}</span>
-              {n ? <span className="cfg-sec__n mono">{n}</span> : null}
+              <span className="config-section__title">{sec.title}</span>
+              {n ? <span className="config-section__count mono">{n}</span> : null}
             </button>
 
             {isOpen ? (
-              <div className="cfg-sec__body">
-                <p className="cfg-sec__blurb">{sec.blurb}</p>
+              <div className="config-section__body">
+                <p className="config-section__blurb">{sec.blurb}</p>
                 {sec.fields.map((f) => (
-                  <div className="cfg-field" key={f.key} data-inline={INLINE.has(f.kind) || undefined}>
-                    <span className="cfg-field__label">{f.label}</span>
+                  <div className="config-field" key={f.key} data-inline={INLINE.has(f.kind) || undefined}>
+                    <span className="config-field__label">{f.label}</span>
                     <Control
                       field={f}
                       /* a rows field is stored as lines of text; rows are
@@ -267,7 +267,7 @@ export function ConfigPanel({
                         set(f.path, f.kind === 'rows' ? linesOf(f, v as never) : v)
                       }
                     />
-                    {f.help ? <span className="cfg-field__help">{f.help}</span> : null}
+                    {f.help ? <span className="config-field__help">{f.help}</span> : null}
                   </div>
                 ))}
               </div>

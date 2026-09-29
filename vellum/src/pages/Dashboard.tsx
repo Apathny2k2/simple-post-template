@@ -53,7 +53,7 @@ function useDash() {
 function SampleBadge({ fed, section }: { fed: Section[]; section: Section }) {
   if (fed.includes(section)) return null
   return (
-    <span className="src-mark" title="No plugin has sent this yet">
+    <span className="sample-badge" title="No plugin has sent this yet">
       sample
     </span>
   )
@@ -116,7 +116,7 @@ export function Dashboard() {
 
   return (
     <main className="page dash">
-      <h1 className="vh">Dashboard</h1>
+      <h1 className="visually-hidden">Dashboard</h1>
       <Toasts items={toasts} />
 
       <Hero
@@ -217,7 +217,7 @@ export function Dashboard() {
                 {files.map((f) => (
                   <tr key={f.id} data-new={rows.fresh.has(f.id) || undefined}>
                     <td className="cell-name">
-                      <span className="cell-name__in">
+                      <span className="cell-name__inner">
                         <FileGlyph where={f.where} />
                         {f.name}
                       </span>

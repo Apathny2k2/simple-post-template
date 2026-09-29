@@ -106,7 +106,7 @@ export function Hero({
                 <Icon name="pause" size={12} /> Stop demo
               </button>
               <p className="hero__note">
-                <span className="hero__rec" aria-hidden="true" />
+                <span className="hero__live" aria-hidden="true" />
                 Demo server running. It sends data through the same API a real plugin uses.
               </p>
             </>

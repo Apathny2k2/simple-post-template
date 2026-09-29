@@ -50,7 +50,7 @@ export function Counter({ value }: { value: number }) {
   return (
     <span className="counter">
       <span aria-hidden="true">{Math.round(shown).toLocaleString()}</span>
-      <span className="vh">{value.toLocaleString()}</span>
+      <span className="visually-hidden">{value.toLocaleString()}</span>
     </span>
   )
 }
@@ -160,7 +160,7 @@ export function CubeStacks({ rows }: { rows: BreakdownRow[] }) {
             <div key={row.label} className="stack" style={vars({ '--hue': HUES[c % HUES.length], '--c': c })}>
               <div className="stack__cubes" aria-hidden="true">
                 {Array.from({ length: cubes }, (_, i) => (
-                  <span key={i} className="iso" style={vars({ '--lv': i })} />
+                  <span key={i} className="cube-icon" style={vars({ '--lv': i })} />
                 ))}
               </div>
               <div className="stack__legend">
@@ -275,7 +275,7 @@ const KIND_HUE: [RegExp, string][] = [
 /** A small cube coloured by the folder the file lives in. */
 export function FileGlyph({ where }: { where: string }) {
   const hue = KIND_HUE.find(([re]) => re.test(where))?.[1] ?? '#5aa2ff'
-  return <span className="iso iso--glyph" style={vars({ '--hue': hue })} aria-hidden="true" />
+  return <span className="cube-icon cube-icon--small" style={vars({ '--hue': hue })} aria-hidden="true" />
 }
 
 export function Person({ name }: { name: string }) {

@@ -192,8 +192,8 @@ function ToggleRow({ id, title, desc, on }: { id: string; title: string; desc: s
   return (
     <div className="toggle-row">
       <div className="toggle-row__text">
-        <div className="toggle-row__t">{title}</div>
-        <div className="toggle-row__d">{desc}</div>
+        <div className="toggle-row__title">{title}</div>
+        <div className="toggle-row__description">{desc}</div>
       </div>
       <Switch id={id} on={on} label={title} />
     </div>
@@ -284,13 +284,13 @@ function About() {
     <>
 
       <Card title="Vellum" note={`Studio ${STUDIO_VERSION} \u00b7 plugin ${PLUGIN_VERSION}`} dividedHead>
-        <div className="kv">
-          <div className="kv__row"><span className="kv__k">Version</span><span className="kv__v">{STUDIO_VERSION}</span></div>
-          <div className="kv__row"><span className="kv__k">Plugin version</span><span className="kv__v">{PLUGIN_VERSION}</span></div>
-          <div className="kv__row"><span className="kv__k">Renderer</span><span className="kv__v">{RENDERER}</span></div>
-          <div className="kv__row"><span className="kv__k">Author</span><span className="kv__v">{AUTHOR}</span></div>
-          <div className="kv__row"><span className="kv__k">Typeface</span><span className="kv__v">Self-hosted, woff2</span></div>
-          <div className="kv__row"><span className="kv__k">Built</span><span className="kv__v">{BUILT}</span></div>
+        <div className="pairs">
+          <div className="pairs__row"><span className="pairs__key">Version</span><span className="pairs__value">{STUDIO_VERSION}</span></div>
+          <div className="pairs__row"><span className="pairs__key">Plugin version</span><span className="pairs__value">{PLUGIN_VERSION}</span></div>
+          <div className="pairs__row"><span className="pairs__key">Renderer</span><span className="pairs__value">{RENDERER}</span></div>
+          <div className="pairs__row"><span className="pairs__key">Author</span><span className="pairs__value">{AUTHOR}</span></div>
+          <div className="pairs__row"><span className="pairs__key">Typeface</span><span className="pairs__value">Self-hosted, woff2</span></div>
+          <div className="pairs__row"><span className="pairs__key">Built</span><span className="pairs__value">{BUILT}</span></div>
         </div>
       </Card>
 
@@ -312,21 +312,21 @@ function About() {
                 <strong>{tone?.label}.</strong> {report.detail}
               </span>
             </p>
-            <div className="kv" style={{ marginTop: 'var(--sp-3)' }}>
-              <div className="kv__row"><span className="kv__k">Studio</span><span className="kv__v">{report.studio}</span></div>
-              <div className="kv__row"><span className="kv__k">Plugin</span><span className="kv__v">{report.plugin ?? 'No answer'}</span></div>
-              <div className="kv__row">
-                <span className="kv__k">Minimum studio</span>
-                <span className="kv__v">{report.studioMin ?? 'Not reported'}</span>
+            <div className="pairs" style={{ marginTop: 'var(--sp-3)' }}>
+              <div className="pairs__row"><span className="pairs__key">Studio</span><span className="pairs__value">{report.studio}</span></div>
+              <div className="pairs__row"><span className="pairs__key">Plugin</span><span className="pairs__value">{report.plugin ?? 'No answer'}</span></div>
+              <div className="pairs__row">
+                <span className="pairs__key">Minimum studio</span>
+                <span className="pairs__value">{report.studioMin ?? 'Not reported'}</span>
               </div>
-              <div className="kv__row">
-                <span className="kv__k">Checked</span>
-                <span className="kv__v">{formatWhen(new Date(report.checkedAt).toISOString(), Date.now())}</span>
+              <div className="pairs__row">
+                <span className="pairs__key">Checked</span>
+                <span className="pairs__value">{formatWhen(new Date(report.checkedAt).toISOString(), Date.now())}</span>
               </div>
             </div>
           </>
         ) : (
-          <p className="ed-hint">
+          <p className="editor-hint">
             <Icon name="info" size={11} /> Checks the linked plugin's version against this studio. A
             mismatch usually means the server runs an older build.
           </p>
@@ -342,19 +342,19 @@ function About() {
         }
         dividedHead
       >
-        <ol className="rel">
+        <ol className="release">
           {releases.map((r) => (
-            <li className="rel__row" key={r.id}>
-              <div className="rel__head">
-                <span className="rel__v mono">{r.version}</span>
-                <span className="rel__ch" data-channel={r.channel}>
+            <li className="release__row" key={r.id}>
+              <div className="release__head">
+                <span className="release__version mono">{r.version}</span>
+                <span className="release__channel" data-channel={r.channel}>
                   {r.channel}
                 </span>
-                <span className="rel__t">{r.title}</span>
-                <span className="rel__at">{formatWhen(r.at, Date.now())}</span>
+                <span className="release__title">{r.title}</span>
+                <span className="release__date">{formatWhen(r.at, Date.now())}</span>
               </div>
               {r.notes.length ? (
-                <ul className="rel__notes">
+                <ul className="release__notes">
                   {r.notes.map((n, i) => (
                     <li key={i}>{n}</li>
                   ))}
@@ -420,12 +420,12 @@ function Cloud() {
           </span>
         </p>
 
-        <div className="kv" style={{ marginTop: 'var(--sp-3)' }}>
-          <div className="kv__row"><span className="kv__k">Database</span><span className="kv__v mono">{cloud.id}</span></div>
-          <div className="kv__row"><span className="kv__k">Region</span><span className="kv__v">{cloud.region}</span></div>
-          <div className="kv__row">
-            <span className="kv__k">Storage</span>
-            <span className="kv__v">
+        <div className="pairs" style={{ marginTop: 'var(--sp-3)' }}>
+          <div className="pairs__row"><span className="pairs__key">Database</span><span className="pairs__value mono">{cloud.id}</span></div>
+          <div className="pairs__row"><span className="pairs__key">Region</span><span className="pairs__value">{cloud.region}</span></div>
+          <div className="pairs__row">
+            <span className="pairs__key">Storage</span>
+            <span className="pairs__value">
               {formatBytes(cloud.usedBytes)} of {formatBytes(cloud.quotaBytes)}
             </span>
           </div>
@@ -441,22 +441,22 @@ function Cloud() {
         note={`${cloud.members.length} ${cloud.members.length === 1 ? 'member' : 'members'} on this workspace.`}
         dividedHead
       >
-        <div className="dir-list">
+        <div className="list-rows">
           {cloud.members.map((m) => (
-            <div className="dir-row" key={m.id}>
+            <div className="list-row" key={m.id}>
               <Icon name={m.role === 'owner' ? 'key' : 'user'} size={14} />
-              <span className="dir-row__path">{m.name}</span>
-              <span className="mem__role" data-role={m.role} title={ROLE_BLURB[m.role]}>
+              <span className="list-row__name">{m.name}</span>
+              <span className="list-row__role" data-role={m.role} title={ROLE_BLURB[m.role]}>
                 {m.role}
               </span>
-              <span className="mem__seen mono">
+              <span className="list-row__when mono">
                 {m.holding ? `${m.holding} open \u00b7 ` : ''}
                 {formatWhen(m.seenAt, Date.now())}
               </span>
             </div>
           ))}
           {!cloud.members.length ? (
-            <p className="ed-hint">Nobody has been reported on this workspace yet.</p>
+            <p className="editor-hint">Nobody has been reported on this workspace yet.</p>
           ) : null}
         </div>
       </Card>
@@ -467,29 +467,29 @@ function Cloud() {
         dividedHead
       >
         {files.length ? (
-          <div className="dir-list">
+          <div className="list-rows">
             {files.slice(0, 8).map((f) => (
-              <div className="dir-row" key={f.id}>
+              <div className="list-row" key={f.id}>
                 <Icon name="file" size={14} />
-                <span className="dir-row__path">
+                <span className="list-row__name">
                   {f.where}/{f.name}
                 </span>
-                <span className="dir-row__tag" data-sync={f.sync}>
+                <span className="list-row__tag" data-sync={f.sync}>
                   {f.sync}
                 </span>
-                <span className="mem__seen mono">
+                <span className="list-row__when mono">
                   {f.by} {'\u00b7'} {formatWhen(f.touchedAt, Date.now())}
                 </span>
               </div>
             ))}
           </div>
         ) : (
-          <p className="ed-hint">No files have been reported yet.</p>
+          <p className="editor-hint">No files have been reported yet.</p>
         )}
       </Card>
 
       <Card title="Who can read this" dividedHead>
-        <p className="ed-hint" style={{ marginTop: 0 }}>
+        <p className="editor-hint" style={{ marginTop: 0 }}>
           <Icon name="info" size={11} /> Vellum sets up and runs the workspace database. The account
           owner listed above controls your team's access to it. Vellum's operator also has admin
           access to every workspace it hosts, for support, migration and abuse handling. Keep files
@@ -555,17 +555,17 @@ function Body({ section }: { section: Section }) {
       return (
         <>
           <Card title="Working directories" note="Vellum only reads files inside these folders." dividedHead>
-            <div className="dir-list">
+            <div className="list-rows">
               {[
                 ['Projects', '~/vellum/scenes'],
                 ['Exports', '~/vellum/out'],
                 ['Texture cache', '~/.cache/vellum/textures'],
                 ['Pack staging', '~/vellum/pack/current'],
               ].map(([tag, path]) => (
-                <div className="dir-row" key={path}>
+                <div className="list-row" key={path}>
                   <Icon name="folder" size={14} />
-                  <span className="dir-row__path">{path}</span>
-                  <span className="dir-row__tag">{tag}</span>
+                  <span className="list-row__name">{path}</span>
+                  <span className="list-row__tag">{tag}</span>
                   <button className="btn btn--sm btn--ghost">Change</button>
                 </div>
               ))}
@@ -591,10 +591,10 @@ function Body({ section }: { section: Section }) {
       return (
         <>
           <Card title="Plan" note="Free tier. No card on file." dividedHead>
-            <div className="kv">
-              <div className="kv__row"><span className="kv__k">Current plan</span><span className="kv__v">Free</span></div>
-              <div className="kv__row"><span className="kv__k">Cloud storage</span><span className="kv__v">N/A</span></div>
-              <div className="kv__row"><span className="kv__k">Renews</span><span className="kv__v">-</span></div>
+            <div className="pairs">
+              <div className="pairs__row"><span className="pairs__key">Current plan</span><span className="pairs__value">Free</span></div>
+              <div className="pairs__row"><span className="pairs__key">Cloud storage</span><span className="pairs__value">N/A</span></div>
+              <div className="pairs__row"><span className="pairs__key">Renews</span><span className="pairs__value">-</span></div>
             </div>
             <div className="row-actions" style={{ marginTop: 'var(--sp-4)' }}>
               <button className="btn btn--primary">Upgrade</button>
@@ -608,12 +608,12 @@ function Body({ section }: { section: Section }) {
       return (
         <>
           <Card title="Seats" note="1 of 1 used on the free tier." dividedHead>
-            <div className="dir-list">
+            <div className="list-rows">
               {[['g.alex', 'Owner'], ['kite', 'Invite pending'], ['nine', 'Invite pending']].map(([who, role]) => (
-                <div className="dir-row" key={who}>
+                <div className="list-row" key={who}>
                   <Icon name="user" size={14} />
-                  <span className="dir-row__path">{who}</span>
-                  <span className="dir-row__tag">{role}</span>
+                  <span className="list-row__name">{who}</span>
+                  <span className="list-row__tag">{role}</span>
                 </div>
               ))}
             </div>

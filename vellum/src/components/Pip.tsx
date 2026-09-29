@@ -154,7 +154,7 @@ export function Pip({
           {quip}
         </p>
       ) : null}
-      {label ? <span className="vh">{said}</span> : null}
+      {label ? <span className="visually-hidden">{said}</span> : null}
     </div>
   )
 }

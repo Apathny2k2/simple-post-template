@@ -87,8 +87,8 @@ export function BehaviourPanel({
   return (
     <>
       {empty ? (
-        <div className="bhv-empty">
-          <p className="ed-hint">
+        <div className="behaviour-empty">
+          <p className="editor-hint">
             <Icon name="info" size={11} />A behaviour decides when clips play: which blocks must be
             nearby, and the cycle that repeats once they are.
           </p>
@@ -99,9 +99,9 @@ export function BehaviourPanel({
       ) : null}
 
       {/* ---------------- what arms it ---------------- */}
-      <div className="bhv-sec">
-        <div className="bhv-sec__head">
-          <span className="bhv-sec__title">Requires</span>
+      <div className="behaviour-section">
+        <div className="behaviour-section__head">
+          <span className="behaviour-section__title">Requires</span>
           <button
             className="chip"
             onClick={() => setRequires([...behaviour.requires, makeRequirement([0, -1, 0], 'minecraft:water')])}
@@ -111,12 +111,12 @@ export function BehaviourPanel({
         </div>
 
         {behaviour.requires.length ? (
-          <div className="bhv-list">
+          <div className="behaviour-list">
             {behaviour.requires.map((r) => (
-              <div className="bhv-req" key={r.id}>
-                <div className="bhv-req__top">
+              <div className="behaviour-requirement" key={r.id}>
+                <div className="behaviour-requirement__top">
                   <select
-                    className="ed-select bhv-req__block"
+                    className="editor-select behaviour-requirement__block"
                     value={COMMON_BLOCKS.includes(r.block) ? r.block : '__other'}
                     onChange={(e) =>
                       setRequires(
@@ -137,7 +137,7 @@ export function BehaviourPanel({
                     <option value="__other">other…</option>
                   </select>
                   <button
-                    className="ed-tool bhv-x"
+                    className="editor-tool behaviour-remove"
                     onClick={() => setRequires(behaviour.requires.filter((x) => x.id !== r.id))}
                     title={`Remove the ${r.block || 'block'} requirement`}
                     aria-label={`Remove the ${r.block || 'block'} requirement`}
@@ -148,7 +148,7 @@ export function BehaviourPanel({
 
                 {!COMMON_BLOCKS.includes(r.block) ? (
                   <input
-                    className="field__input bhv-req__id"
+                    className="field__input behaviour-requirement__id"
                     value={r.block}
                     placeholder="namespace:block"
                     aria-label="Block id"
@@ -160,7 +160,7 @@ export function BehaviourPanel({
                   />
                 ) : null}
 
-                <div className="nf-grid">
+                <div className="num-field-grid">
                   {children([
                     {
                       label: 'At',
@@ -172,22 +172,22 @@ export function BehaviourPanel({
                   ])}
                 </div>
                 {/* the offset in words, since three bare numbers are easy to misread */}
-                <div className="bhv-req__says">{offsetLabel(r.at)}</div>
+                <div className="behaviour-requirement__says">{offsetLabel(r.at)}</div>
               </div>
             ))}
           </div>
         ) : (
-          <p className="bhv-none">
+          <p className="behaviour-none">
             Nothing required. The cycle starts as soon as the block is placed.
           </p>
         )}
       </div>
 
       {/* ---------------- the cycle ---------------- */}
-      <div className="bhv-sec">
-        <div className="bhv-sec__head">
-          <span className="bhv-sec__title">Cycle</span>
-          <span className="bhv-sec__meta mono">{total.toFixed(1)}s</span>
+      <div className="behaviour-section">
+        <div className="behaviour-section__head">
+          <span className="behaviour-section__title">Cycle</span>
+          <span className="behaviour-section__meta mono">{total.toFixed(1)}s</span>
           <button
             className="chip"
             onClick={() => setStages([...behaviour.stages, makeStage(`stage ${behaviour.stages.length + 1}`, 2)])}
@@ -199,14 +199,14 @@ export function BehaviourPanel({
         {behaviour.stages.length ? (
           <>
             <div
-              className="bhv-bar"
+              className="behaviour-bar"
               role="img"
               aria-label={`Cycle of ${behaviour.stages.length} stages, ${total.toFixed(1)} seconds`}
             >
               {behaviour.stages.map((s, i) => (
                 <div
                   key={s.id}
-                  className="bhv-bar__seg"
+                  className="behaviour-bar__segment"
                   data-on={i === now.index || undefined}
                   style={{ flexGrow: Math.max(0.01, s.seconds) }}
                   title={`${s.name} · ${s.seconds}s`}
@@ -216,13 +216,13 @@ export function BehaviourPanel({
               ))}
               {total > 0 ? (
                 <div
-                  className="bhv-bar__head"
+                  className="behaviour-bar__head"
                   style={{ left: `${(elapsed(behaviour, now) / total) * 100}%` }}
                 />
               ) : null}
             </div>
 
-            <div className="row-actions bhv-play">
+            <div className="row-actions behaviour-play">
               <button
                 className="btn btn--sm btn--primary"
                 onClick={() => onPlaying(!playing)}
@@ -230,23 +230,23 @@ export function BehaviourPanel({
               >
                 <Icon name={playing ? 'pause' : 'play'} size={12} /> {playing ? 'Pause' : 'Run the cycle'}
               </button>
-              <span className="bhv-play__now mono">
+              <span className="behaviour-play__now mono">
                 {now.stage ? `${now.stage.name} · ${now.local.toFixed(1)}s` : 'idle'}
               </span>
             </div>
 
-            <div className="bhv-list">
+            <div className="behaviour-list">
               {behaviour.stages.map((s, i) => (
-                <div className="bhv-stage" key={s.id} data-on={i === now.index || undefined}>
-                  <div className="bhv-stage__top">
+                <div className="behaviour-stage" key={s.id} data-on={i === now.index || undefined}>
+                  <div className="behaviour-stage__top">
                     <input
-                      className="field__input bhv-stage__name"
+                      className="field__input behaviour-stage__name"
                       value={s.name}
                       aria-label="Stage name"
                       onChange={(e) => patchStage(s.id, { name: e.target.value })}
                     />
                     <input
-                      className="field__input bhv-stage__secs mono"
+                      className="field__input behaviour-stage__seconds mono"
                       type="number"
                       min={0}
                       step={0.1}
@@ -255,7 +255,7 @@ export function BehaviourPanel({
                       onChange={(e) => patchStage(s.id, { seconds: Number(e.target.value) })}
                     />
                     <button
-                      className="ed-tool bhv-x"
+                      className="editor-tool behaviour-remove"
                       onClick={() => moveStage(i, -1)}
                       disabled={i === 0}
                       title="Earlier in the cycle"
@@ -264,7 +264,7 @@ export function BehaviourPanel({
                       <Icon name="chevronUp" size={12} />
                     </button>
                     <button
-                      className="ed-tool bhv-x"
+                      className="editor-tool behaviour-remove"
                       onClick={() => moveStage(i, 1)}
                       disabled={i === behaviour.stages.length - 1}
                       title="Later in the cycle"
@@ -273,7 +273,7 @@ export function BehaviourPanel({
                       <Icon name="chevronDown" size={12} />
                     </button>
                     <button
-                      className="ed-tool bhv-x"
+                      className="editor-tool behaviour-remove"
                       onClick={() => setStages(behaviour.stages.filter((x) => x.id !== s.id))}
                       title={`Remove ${s.name}`}
                       aria-label={`Remove ${s.name}`}
@@ -283,7 +283,7 @@ export function BehaviourPanel({
                   </div>
 
                   <select
-                    className="ed-select bhv-stage__clip"
+                    className="editor-select behaviour-stage__clip"
                     value={s.clip ?? ''}
                     aria-label={`Clip for ${s.name}`}
                     onChange={(e) => patchStage(s.id, { clip: e.target.value || null })}
@@ -297,9 +297,9 @@ export function BehaviourPanel({
                   </select>
 
                   {s.effects.map((e, n) => (
-                    <div className="bhv-fx" key={n}>
+                    <div className="behaviour-effect" key={n}>
                       <select
-                        className="ed-select bhv-fx__kind"
+                        className="editor-select behaviour-effect__kind"
                         value={e.kind}
                         aria-label="Effect"
                         onChange={(ev) =>
@@ -315,7 +315,7 @@ export function BehaviourPanel({
 
                       {e.kind === 'particles' ? (
                         <select
-                          className="ed-select bhv-fx__id"
+                          className="editor-select behaviour-effect__id"
                           value={particleById(e.id).id}
                           aria-label="Particle"
                           onChange={(ev) => patchEffect(s.id, n, { id: ev.target.value })}
@@ -328,18 +328,18 @@ export function BehaviourPanel({
                         </select>
                       ) : e.kind === 'sound' ? (
                         <input
-                          className="field__input bhv-fx__id"
+                          className="field__input behaviour-effect__id"
                           value={e.id ?? ''}
                           placeholder="namespace:sound"
                           aria-label="Sound id"
                           onChange={(ev) => patchEffect(s.id, n, { id: ev.target.value })}
                         />
                       ) : (
-                        <span className="bhv-fx__id bhv-fx__flat">units</span>
+                        <span className="behaviour-effect__id behaviour-effect__flat">units</span>
                       )}
 
                       <input
-                        className="field__input bhv-fx__amt mono"
+                        className="field__input behaviour-effect__amount mono"
                         type="number"
                         min={0}
                         step={e.kind === 'shake' ? 0.1 : 1}
@@ -348,7 +348,7 @@ export function BehaviourPanel({
                         onChange={(ev) => patchEffect(s.id, n, { amount: Number(ev.target.value) })}
                       />
                       <button
-                        className="ed-tool bhv-x"
+                        className="editor-tool behaviour-remove"
                         onClick={() => dropEffect(s.id, n)}
                         title="Remove this effect"
                         aria-label={`Remove the ${e.kind} effect from ${s.name}`}
@@ -358,7 +358,7 @@ export function BehaviourPanel({
                     </div>
                   ))}
 
-                  <div className="chip-row bhv-stage__add">
+                  <div className="chip-row behaviour-stage__add">
                     {EFFECT_KINDS.map((k) => (
                       <button key={k.id} className="chip" onClick={() => addEffect(s.id, k.id)}>
                         <Icon name="plus" size={10} /> {k.label}
@@ -370,12 +370,12 @@ export function BehaviourPanel({
             </div>
           </>
         ) : (
-          <p className="bhv-none">No stages yet, so meeting the requirements does nothing.</p>
+          <p className="behaviour-none">No stages yet, so meeting the requirements does nothing.</p>
         )}
       </div>
 
       {behaviour !== EMPTY_BEHAVIOUR && !empty ? (
-        <p className="ed-hint" style={{ marginTop: 10 }}>
+        <p className="editor-hint" style={{ marginTop: 10 }}>
           <Icon name="info" size={11} />
           The plugin checks the requirements against the world and runs this clock. Here it runs on
           its own so you can watch it.

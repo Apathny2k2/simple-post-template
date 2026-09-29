@@ -169,7 +169,7 @@
 
 .home-step { position: relative; display: grid; gap: 10px; }
 
-.home-step__n {
+.home-step__number {
   display: grid;
   place-items: center;
   width: 36px;

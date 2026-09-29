@@ -1,8 +1,8 @@
 /* The server picker. Rows follow the game's multiplayer list: icon, name, message of the day, players, signal. */
 
-.gate { min-height: 100vh; display: flex; flex-direction: column; }
+.server-picker { min-height: 100vh; display: flex; flex-direction: column; }
 
-.gate-head {
+.server-picker-head {
   position: sticky;
   top: 0;
   z-index: 40;
@@ -17,7 +17,7 @@
   backdrop-filter: blur(18px) saturate(1.4);
 }
 
-.gate-head__brand {
+.server-picker-head__brand {
   display: inline-flex;
   align-items: center;
   gap: 10px;
@@ -28,7 +28,7 @@
   color: var(--ink);
 }
 
-.gate-head__brand svg { color: var(--accent-mark); }
+.server-picker-head__brand svg { color: var(--accent-mark); }
 
 .servers { max-width: 980px; display: grid; gap: clamp(22px, 3vw, 32px); align-content: start; }
 .servers .page-head { margin-bottom: 0; }
@@ -56,7 +56,7 @@
 
 /* ---------------- a server ---------------- */
 
-.srv {
+.server {
   position: relative;
   isolation: isolate;
   width: 100%;
@@ -73,23 +73,23 @@
   transition: transform 460ms var(--ease-spring), border-color 220ms var(--ease-out), background-color 220ms var(--ease-out);
 }
 
-.srv:hover:not(:disabled) { transform: translateY(-2px); border-color: rgba(90, 162, 255, 0.55); }
-.srv:focus-visible { border-radius: 16px; outline-offset: 2px; }
-.srv:disabled { cursor: default; }
+.server:hover:not(:disabled) { transform: translateY(-2px); border-color: rgba(90, 162, 255, 0.55); }
+.server:focus-visible { border-radius: 16px; outline-offset: 2px; }
+.server:disabled { cursor: default; }
 
-.srv-icon {
+.server-icon {
   display: block;
   border-radius: 8px;
   image-rendering: pixelated;
   box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08), 0 8px 18px -10px rgba(0, 0, 0, 0.8);
 }
 
-.srv[data-offline] .srv-icon { filter: grayscale(1) brightness(0.6); }
+.server[data-offline] .server-icon { filter: grayscale(1) brightness(0.6); }
 
-.srv__main { display: grid; gap: 4px; min-width: 0; }
-.srv__top { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.server__main { display: grid; gap: 4px; min-width: 0; }
+.server__top { display: flex; align-items: center; gap: 10px; min-width: 0; }
 
-.srv__name {
+.server__name {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -99,7 +99,7 @@
   color: var(--ink);
 }
 
-.srv__last {
+.server__last {
   flex: none;
   padding: 2px 8px;
   border: 1px solid rgba(90, 162, 255, 0.45);
@@ -109,7 +109,7 @@
   color: var(--ink);
 }
 
-.srv__motd {
+.server__motd {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -117,7 +117,7 @@
   color: var(--ink-muted);
 }
 
-.srv__meta {
+.server__meta {
   display: flex;
   flex-wrap: wrap;
   gap: 2px 14px;
@@ -125,11 +125,11 @@
   color: var(--ink-faint);
 }
 
-.srv__side { display: grid; justify-items: end; gap: 6px; text-align: right; }
-.srv__players { font-size: var(--fs-xs); color: var(--ink-muted); white-space: nowrap; }
-.srv__players strong { color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; }
+.server__side { display: grid; justify-items: end; gap: 6px; text-align: right; }
+.server__players { font-size: var(--fs-xs); color: var(--ink-muted); white-space: nowrap; }
+.server__players strong { color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; }
 
-.srv__go {
+.server__go {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -140,27 +140,27 @@
   transition: gap 360ms var(--ease-spring);
 }
 
-.srv:hover:not(:disabled) .srv__go { gap: 10px; }
-.srv:disabled .srv__go { font-weight: 400; color: var(--ink-faint); }
+.server:hover:not(:disabled) .server__go { gap: 10px; }
+.server:disabled .server__go { font-weight: 400; color: var(--ink-faint); }
 
 /* four bars, lit from the left by how quickly the server answers */
-.srv-bars { display: inline-flex; align-items: flex-end; gap: 2px; height: 14px; }
-.srv-bars i { width: 3px; border-radius: 1px; background: rgba(255, 255, 255, 0.14); }
-.srv-bars i:nth-child(1) { height: 5px; }
-.srv-bars i:nth-child(2) { height: 8px; }
-.srv-bars i:nth-child(3) { height: 11px; }
-.srv-bars i:nth-child(4) { height: 14px; }
-.srv-bars i[data-on] { background: var(--green); }
-.srv-bars[data-lit='2'] i[data-on] { background: var(--amber); }
-.srv-bars[data-lit='1'] i[data-on] { background: var(--red); }
+.signal-bars { display: inline-flex; align-items: flex-end; gap: 2px; height: 14px; }
+.signal-bars i { width: 3px; border-radius: 1px; background: rgba(255, 255, 255, 0.14); }
+.signal-bars i:nth-child(1) { height: 5px; }
+.signal-bars i:nth-child(2) { height: 8px; }
+.signal-bars i:nth-child(3) { height: 11px; }
+.signal-bars i:nth-child(4) { height: 14px; }
+.signal-bars i[data-on] { background: var(--green); }
+.signal-bars[data-lit='2'] i[data-on] { background: var(--amber); }
+.signal-bars[data-lit='1'] i[data-on] { background: var(--red); }
 
 .servers__note { font-size: var(--fs-xs); color: var(--ink-faint); }
 
 @media (max-width: 640px) {
-  .srv { grid-template-columns: auto minmax(0, 1fr); gap: 12px 14px; }
-  .srv__side { grid-column: 1 / -1; grid-template-columns: 1fr auto auto; align-items: center; justify-items: start; gap: 12px; }
-  .srv__go { justify-self: end; }
-  .srv .srv-icon { width: 44px !important; height: 44px !important; }
+  .server { grid-template-columns: auto minmax(0, 1fr); gap: 12px 14px; }
+  .server__side { grid-column: 1 / -1; grid-template-columns: 1fr auto auto; align-items: center; justify-items: start; gap: 12px; }
+  .server__go { justify-self: end; }
+  .server .server-icon { width: 44px !important; height: 44px !important; }
 }
 
 @media (prefers-reduced-motion: reduce) {

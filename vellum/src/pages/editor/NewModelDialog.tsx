@@ -85,10 +85,10 @@ export function NewModelDialog({
   const create = () => valid && onCreate(kind, subtype, clean)
 
   return (
-    <div className="dlg" role="dialog" aria-modal="true" aria-label={title}>
-      <div className="dlg__scrim" onClick={onClose} />
-      <div className="dlg__panel" ref={panel} style={{ width: 'min(560px, 100%)' }}>
-        <header className="dlg__head">
+    <div className="dialog" role="dialog" aria-modal="true" aria-label={title}>
+      <div className="dialog__scrim" onClick={onClose} />
+      <div className="dialog__panel" ref={panel} style={{ width: 'min(560px, 100%)' }}>
+        <header className="dialog__head">
           <div style={{ flex: 1 }}>
             <div className="eyebrow">Vellum</div>
             <h2 className="card__title">{title}</h2>
@@ -98,10 +98,10 @@ export function NewModelDialog({
           </button>
         </header>
 
-        <div className="dlg__body">
+        <div className="dialog__body">
           {/* radiogroup: one tab stop, and the arrow keys move within it */}
           <div
-            className="newmodel__kinds"
+            className="new-model__kinds"
             role="radiogroup"
             aria-label="Model kind"
             ref={kinds}
@@ -113,29 +113,29 @@ export function NewModelDialog({
                 role="radio"
                 aria-checked={kind === k.id}
                 tabIndex={kind === k.id ? 0 : -1}
-                className="newmodel__kind"
+                className="new-model__kind"
                 onFocus={() => pickKind(k.id)}
                 onClick={() => pickKind(k.id)}
               >
-                <span className="newmodel__icon">
+                <span className="new-model__icon">
                   <Icon name={k.icon} size={18} />
                 </span>
-                <span className="newmodel__label">{k.label}</span>
-                <span className="newmodel__blurb">{k.blurb}</span>
-                <span className="newmodel__detail">{k.detail}</span>
+                <span className="new-model__label">{k.label}</span>
+                <span className="new-model__blurb">{k.blurb}</span>
+                <span className="new-model__detail">{k.detail}</span>
               </button>
             ))}
           </div>
 
           {options.length ? (
-            <div className="newmodel__sub">
-              <span className="field__label" id="newmodel-sub">
+            <div className="new-model__sub">
+              <span className="field__label" id="new-model-sub">
                 What it is for
               </span>
               <div
-                className="newmodel__subrow"
+                className="new-model__subrow"
                 role="radiogroup"
-                aria-labelledby="newmodel-sub"
+                aria-labelledby="new-model-sub"
                 ref={subs}
                 onKeyDown={(e) => arrowNav(subs.current, e, { orientation: 'horizontal' })}
               >
@@ -145,7 +145,7 @@ export function NewModelDialog({
                     role="radio"
                     aria-checked={subtype === o}
                     tabIndex={subtype === o ? 0 : -1}
-                    className="chip newmodel__subchip"
+                    className="chip new-model__subchip"
                     onFocus={() => setSubtype(o)}
                     onClick={() => setSubtype(o)}
                   >
@@ -156,7 +156,7 @@ export function NewModelDialog({
               <span className="field__hint">{subtype ? SUB_NOTE[subtype] : null}</span>
             </div>
           ) : (
-            <p className="ed-hint newmodel__sub">
+            <p className="editor-hint new-model__sub">
               <Icon name="info" size={11} /> Blocks have no subtypes.
             </p>
           )}
@@ -180,8 +180,8 @@ export function NewModelDialog({
           </label>
         </div>
 
-        <footer className="dlg__foot">
-          <span className="cmp__hint mono">Starts from a template you can resize</span>
+        <footer className="dialog__foot">
+          <span className="composer__hint mono">Starts from a template you can resize</span>
           <div className="row-actions">
             <button className="btn btn--ghost" onClick={onClose}>
               Cancel

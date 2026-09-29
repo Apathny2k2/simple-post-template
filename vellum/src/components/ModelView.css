@@ -1,26 +1,26 @@
 /* Bones are nested divs, so a child inherits its parent's transform. */
 
-.bbroot,
-.bbgroup,
-.bbpivot,
-.bbbox {
+.model-root,
+.model-group,
+.model-pivot,
+.model-cube {
   position: absolute;
   transform-style: preserve-3d;
   top: 0;
   left: 0;
 }
 
-.bbbox {
+.model-cube {
   cursor: pointer;
 }
 
 /* the stage opts its whole subtree out of hit-testing; the model opts back in */
-.bbbox,
-.bbface {
+.model-cube,
+.model-face {
   pointer-events: auto;
 }
 
-.bbface {
+.model-face {
   position: absolute;
   left: 50%;
   top: 50%;
@@ -31,7 +31,7 @@
 }
 
 /* The texture is its own layer so a face's UV rotation turns the image without turning the face. */
-.bbface__skin {
+.model-face__skin {
   position: absolute;
   left: 50%;
   top: 50%;
@@ -40,14 +40,14 @@
 }
 
 /* fixed per-face shading: top brightest, bottom darkest */
-.bbface[data-face='up'] { filter: brightness(1.14); }
-.bbface[data-face='down'] { filter: brightness(0.62); }
-.bbface[data-face='north'] { filter: brightness(0.78); }
-.bbface[data-face='south'] { filter: brightness(1); }
-.bbface[data-face='east'] { filter: brightness(0.9); }
-.bbface[data-face='west'] { filter: brightness(0.84); }
+.model-face[data-face='up'] { filter: brightness(1.14); }
+.model-face[data-face='down'] { filter: brightness(0.62); }
+.model-face[data-face='north'] { filter: brightness(0.78); }
+.model-face[data-face='south'] { filter: brightness(1); }
+.model-face[data-face='east'] { filter: brightness(0.9); }
+.model-face[data-face='west'] { filter: brightness(0.84); }
 
-.bbbox--selected .bbface {
+.model-cube--selected .model-face {
   outline: 1px solid var(--accent-mark);
   outline-offset: -1px;
   box-shadow: inset 0 0 0 1px var(--accent);

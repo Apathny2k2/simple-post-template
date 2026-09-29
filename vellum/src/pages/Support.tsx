@@ -70,29 +70,29 @@ function TicketList({
   const drafted = view === 'open' && (composing || draft.text.trim() !== '')
 
   return (
-    <div className="sl">
-      <div className="sl__head">
-        <div className="sl__tabs" role="tablist" aria-label="Tickets">
+    <div className="tickets">
+      <div className="tickets__head">
+        <div className="tickets__tabs" role="tablist" aria-label="Tickets">
           {(['open', 'closed'] as const).map((v) => (
             <button
               key={v}
               role="tab"
-              className="sl__tab"
+              className="tickets__tab"
               aria-selected={v === view}
-              aria-controls="sup-rows"
+              aria-controls="support-rows"
               onClick={() => onView(v)}
             >
               {v === 'open' ? 'Open' : 'Closed'}
-              <span className="sl__count">{count(v)}</span>
+              <span className="tickets__count">{count(v)}</span>
             </button>
           ))}
         </div>
-        <button className="btn btn--primary btn--sm sl__new" onClick={onNew} aria-label="New ticket">
+        <button className="btn btn--primary btn--sm tickets__new" onClick={onNew} aria-label="New ticket">
           <Icon name="plus" size={13} /> New
         </button>
       </div>
 
-      <label className="sl__search">
+      <label className="tickets__search">
         <Icon name="search" size={13} />
         <input
           type="search"
@@ -103,52 +103,52 @@ function TicketList({
         />
       </label>
 
-      <div className="sl__rows" id="sup-rows" role="tabpanel">
+      <div className="tickets__rows" id="support-rows" role="tabpanel">
         {drafted ? (
-          <button className="sl__row sl__row--draft" aria-current={composing ? 'true' : undefined} onClick={onNew}>
-            <span className="sl__line">
+          <button className="tickets__row tickets__row--draft" aria-current={composing ? 'true' : undefined} onClick={onNew}>
+            <span className="tickets__line">
               <Icon name="pencil" size={12} />
-              <span className="sl__subject">{subjectOf(draft.text) || 'New ticket'}</span>
+              <span className="tickets__subject">{subjectOf(draft.text) || 'New ticket'}</span>
             </span>
-            <span className="sl__meta">Draft</span>
+            <span className="tickets__meta">Draft</span>
           </button>
         ) : null}
 
         {rows.map((t) => (
           <button
             key={t.id}
-            className="sl__row"
+            className="tickets__row"
             aria-current={!composing && t.id === activeId ? 'true' : undefined}
             data-unread={t.unread > 0 || undefined}
             data-fresh={t.id === fresh || undefined}
             onClick={() => onPick(t.id)}
           >
-            <span className="sl__line">
-              <span className="sl__subject">{t.subject}</span>
+            <span className="tickets__line">
+              <span className="tickets__subject">{t.subject}</span>
               {t.unread ? (
-                <span className="sl__unread">
+                <span className="tickets__unread">
                   {t.unread}
-                  <span className="vh"> unread</span>
+                  <span className="visually-hidden"> unread</span>
                 </span>
               ) : null}
             </span>
-            <span className="sl__meta">
-              <span className="sl__status" data-status={t.status}>
+            <span className="tickets__meta">
+              <span className="tickets__status" data-status={t.status}>
                 {statusWord[t.status]}
               </span>
               {t.priority === 'high' || t.priority === 'urgent' ? (
-                <span className="sl__prio" data-priority={t.priority}>
+                <span className="tickets__priority" data-priority={t.priority}>
                   {t.priority}
                 </span>
               ) : null}
-              <span className="sl__who">{t.assignee ? t.assignee.name : 'Unassigned'}</span>
-              <span className="sl__when">{relativeTime(t.updatedAt)}</span>
+              <span className="tickets__who">{t.assignee ? t.assignee.name : 'Unassigned'}</span>
+              <span className="tickets__when">{relativeTime(t.updatedAt)}</span>
             </span>
           </button>
         ))}
 
         {loaded && !rows.length && !drafted ? (
-          <p className="sl__empty">
+          <p className="tickets__empty">
             {query.trim() ? 'Nothing matches that search.' : view === 'open' ? 'Nothing open.' : 'Nothing closed yet.'}
           </p>
         ) : null}
@@ -166,7 +166,7 @@ function Delivery({ state }: { state: Message['delivery'] }) {
     <span className="tick" data-read={state === 'read' || undefined}>
       <Icon name="check" size={11} />
       {state === 'delivered' || state === 'read' ? <Icon name="check" size={11} /> : null}
-      <span className="vh">{state}</span>
+      <span className="visually-hidden">{state}</span>
     </span>
   )
 }
@@ -184,7 +184,7 @@ function Bubble({
 }) {
   if (message.author.role === 'system') {
     return (
-      <p className="ev">
+      <p className="system-line">
         {message.body} <span className="mono">{clockTime(message.createdAt)}</span>
       </p>
     )
@@ -193,28 +193,28 @@ function Bubble({
   const mine = message.author.role === 'requester'
   const failed = message.delivery === 'failed'
   return (
-    <div className={`bub${mine ? ' bub--mine' : ''}`} data-lead={lead || undefined}>
-      {lead && !mine ? <span className="bub__who">{message.author.name}</span> : null}
-      <div className="bub__body" data-failed={failed || undefined}>
+    <div className={`message${mine ? ' message--mine' : ''}`} data-lead={lead || undefined}>
+      {lead && !mine ? <span className="message__who">{message.author.name}</span> : null}
+      <div className="message__body" data-failed={failed || undefined}>
         <p>{message.body}</p>
         {message.attachments.length ? (
-          <div className="bub__atts">
+          <div className="message__attachments">
             {message.attachments.map((a) => (
-              <span className="att" key={a.id}>
+              <span className="attachment" key={a.id}>
                 <Icon name={a.mime.startsWith('image/') ? 'image' : 'file'} size={12} />
-                <span className="att__name">{a.name}</span>
-                <span className="att__size mono">{formatBytes(a.bytes)}</span>
+                <span className="attachment__name">{a.name}</span>
+                <span className="attachment__size mono">{formatBytes(a.bytes)}</span>
               </span>
             ))}
           </div>
         ) : null}
       </div>
       {failed ? (
-        <button className="bub__retry" onClick={() => onRetry(message)}>
+        <button className="message__retry" onClick={() => onRetry(message)}>
           <Icon name="refresh" size={11} /> Not sent. Try again
         </button>
       ) : tail ? (
-        <span className="bub__foot mono">
+        <span className="message__foot mono">
           {clockTime(message.createdAt)}
           {mine ? <Delivery state={message.delivery} /> : null}
         </span>
@@ -266,13 +266,13 @@ function Composer({
   }
 
   return (
-    <form className="cmp" onSubmit={submit}>
+    <form className="composer" onSubmit={submit}>
       {attachments.length ? (
-        <div className="cmp__atts">
+        <div className="composer__attachments">
           {attachments.map((a) => (
-            <span className="att att--draft" key={a.id}>
+            <span className="attachment attachment--draft" key={a.id}>
               <Icon name={a.mime.startsWith('image/') ? 'image' : 'file'} size={12} />
-              <span className="att__name">{a.name}</span>
+              <span className="attachment__name">{a.name}</span>
               <button
                 type="button"
                 aria-label={`Remove ${a.name}`}
@@ -285,10 +285,10 @@ function Composer({
         </div>
       ) : null}
 
-      <div className="cmp__field">
+      <div className="composer__field">
         <textarea
           ref={box}
-          className="cmp__box"
+          className="composer__box"
           rows={1}
           value={value}
           placeholder={to ? `Reply to ${to}` : 'Write a reply'}
@@ -307,14 +307,14 @@ function Composer({
         <input ref={picker} type="file" multiple hidden onChange={(e) => void attach(e.target.files)} />
         <button
           type="button"
-          className="cmp__tool"
+          className="composer__tool"
           aria-label="Attach files"
           title="Attach files"
           onClick={() => picker.current?.click()}
         >
           <Icon name="clip" size={16} />
         </button>
-        <button type="submit" className="cmp__send" aria-label="Send" title="Send (Enter)" disabled={!value.trim()}>
+        <button type="submit" className="composer__send" aria-label="Send" title="Send (Enter)" disabled={!value.trim()}>
           <Icon name="arrowUp" size={16} strokeWidth={2} />
         </button>
       </div>
@@ -367,31 +367,31 @@ function Thread({
   const said = (m: Message | undefined) => (m && m.author.role !== 'system' ? m.author.id : null)
 
   return (
-    <section className="th" aria-labelledby="sup-subject">
-      <header className="th__head">
-        <button className="icon-btn th__back" onClick={onBack} aria-label="Back to your tickets">
+    <section className="thread" aria-labelledby="support-subject">
+      <header className="thread__head">
+        <button className="icon-btn thread__back" onClick={onBack} aria-label="Back to your tickets">
           <Icon name="chevronLeft" size={16} />
         </button>
-        <div className="th__title">
-          <h2 className="th__subject" id="sup-subject">
+        <div className="thread__title">
+          <h2 className="thread__subject" id="support-subject">
             {ticket.subject}
           </h2>
-          <p className="th__meta">
-            <span className="sl__status" data-status={ticket.status}>
+          <p className="thread__meta">
+            <span className="tickets__status" data-status={ticket.status}>
               {statusWord[ticket.status]}
             </span>
             <span className="mono">{ticket.id}</span>
             <span>{ticket.assignee ? ticket.assignee.name : 'Not picked up yet'}</span>
           </p>
         </div>
-        <button className="btn btn--sm th__act" onClick={() => onStatus(open ? 'resolved' : 'open')}>
+        <button className="btn btn--sm thread__action" onClick={() => onStatus(open ? 'resolved' : 'open')}>
           <Icon name={open ? 'check' : 'undo'} size={13} />
-          <span className="th__actlabel">{open ? 'Mark resolved' : 'Reopen'}</span>
+          <span className="thread__action-label">{open ? 'Mark resolved' : 'Reopen'}</span>
         </button>
       </header>
 
-      <div className="th__scroll" ref={scroller}>
-        <div className="th__stream">
+      <div className="thread__scroll" ref={scroller}>
+        <div className="thread__stream">
           {messages.map((m, i) => (
             <Bubble
               key={m.id}
@@ -403,18 +403,18 @@ function Thread({
           ))}
 
           {writing ? (
-            <div className="th__writer">
-              <span className="bub__who" role="status">
+            <div className="thread__writer">
+              <span className="message__who" role="status">
                 {writing.name} is writing
               </span>
-              <Pip scene="fish" mood={writing.mood} maxScale={2} onFinish={onWritten} className="th__pip" />
+              <Pip scene="fish" mood={writing.mood} maxScale={2} onFinish={onWritten} className="thread__pip" />
             </div>
           ) : null}
         </div>
       </div>
 
       {ticket.status === 'closed' ? (
-        <p className="th__closed">This ticket is closed. Reopen it to reply.</p>
+        <p className="thread__closed">This ticket is closed. Reopen it to reply.</p>
       ) : (
         <Composer key={ticket.id} ticketId={ticket.id} to={ticket.assignee?.name ?? null} onSend={onSend} />
       )}
@@ -446,16 +446,16 @@ function Compose({
   const subject = subjectOf(draft.text)
 
   return (
-    <section className="th nt" aria-labelledby="sup-subject">
-      <header className="th__head">
-        <button className="icon-btn th__back" onClick={onClose} aria-label="Back to your tickets">
+    <section className="thread new-ticket" aria-labelledby="support-subject">
+      <header className="thread__head">
+        <button className="icon-btn thread__back" onClick={onClose} aria-label="Back to your tickets">
           <Icon name="chevronLeft" size={16} />
         </button>
-        <div className="th__title">
-          <h2 className="th__subject" id="sup-subject" data-empty={!subject || undefined}>
+        <div className="thread__title">
+          <h2 className="thread__subject" id="support-subject" data-empty={!subject || undefined}>
             {subject || 'New ticket'}
           </h2>
-          <p className="th__meta">
+          <p className="thread__meta">
             {sending
               ? 'On its way to the Vellum team'
               : replyHours
@@ -471,11 +471,11 @@ function Compose({
       </header>
 
       {sending ? (
-        <div className="nt__run">
-          <Pip mood={sending} onFinish={onSent} className="nt__pip" label="Sending your ticket" />
+        <div className="new-ticket__run">
+          <Pip mood={sending} onFinish={onSent} className="new-ticket__pip" label="Sending your ticket" />
         </div>
       ) : (
-        <TicketForm draft={draft} onDraft={onDraft} onSend={onSend} failed={failed} autoFocus className="nt__form" />
+        <TicketForm draft={draft} onDraft={onDraft} onSend={onSend} failed={failed} autoFocus className="new-ticket__form" />
       )}
     </section>
   )
@@ -781,7 +781,7 @@ export function Support() {
   const thread = messages.filter((m) => m.ticketId === activeId)
 
   return (
-    <div className="sup" data-pane={pane}>
+    <div className="support" data-pane={pane}>
       <TicketList
         tickets={shown}
         loaded={loaded}
@@ -823,7 +823,7 @@ export function Support() {
           onBack={() => setPane('list')}
         />
       ) : (
-        <div className="th th--empty">
+        <div className="thread thread--empty">
           {loaded ? (
             <>
               <p>No tickets yet.</p>

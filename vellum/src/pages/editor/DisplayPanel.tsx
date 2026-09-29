@@ -101,7 +101,7 @@ export function DisplayPanel({
       <label className="field" style={{ marginBottom: 10 }}>
         <span className="field__label">Slot</span>
         <select
-          className="ed-select"
+          className="editor-select"
           style={{ width: '100%', height: 'auto', padding: '6px 10px' }}
           value={slot}
           onChange={(e) => onSlot(e.target.value as SlotId)}
@@ -114,7 +114,7 @@ export function DisplayPanel({
         </select>
       </label>
 
-      <div className="nf-grid">
+      <div className="num-field-grid">
         {children([
           {
             label: 'Rotation',
@@ -152,9 +152,9 @@ export function DisplayPanel({
         </button>
       </div>
 
-      {note ? <p className="ed-hint ed-hint--warn">{note}</p> : null}
+      {note ? <p className="editor-hint editor-hint--warn">{note}</p> : null}
 
-      <p className="ed-hint" style={{ marginTop: 10 }}>
+      <p className="editor-hint" style={{ marginTop: 10 }}>
         <Icon name="info" size={11} />
         These are a preview. Display transforms live in the resource pack, so they aren't saved in
         the .vellum. Copy them into your pack's item JSON.

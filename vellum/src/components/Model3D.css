@@ -70,12 +70,6 @@
   border: 1px solid color-mix(in srgb, var(--ink-faint) 40%, transparent);
 }
 
-.scene3d__axis {
-  position: absolute;
-  height: 1px;
-  transform-origin: 0 50%;
-}
-
 .box3d {
   position: absolute;
   transform-style: preserve-3d;

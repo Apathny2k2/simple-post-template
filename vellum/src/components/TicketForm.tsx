@@ -23,7 +23,7 @@ export function ToggleChip({
   children: ReactNode
 }) {
   return (
-    <button type="button" className="tf__chip" data-tone={tone} aria-pressed={on} title={title} onClick={onToggle}>
+    <button type="button" className="ticket-form__chip" data-tone={tone} aria-pressed={on} title={title} onClick={onToggle}>
       {icon ? <Icon name={icon} size={12} /> : null}
       {children}
     </button>
@@ -66,10 +66,10 @@ export function TicketForm({
   }
 
   return (
-    <form className={`tf ${className}`} onSubmit={submit}>
+    <form className={`ticket-form ${className}`} onSubmit={submit}>
       <textarea
         ref={box}
-        className="tf__text"
+        className="ticket-form__text"
         value={draft.text}
         aria-label={label}
         placeholder={placeholder}
@@ -79,7 +79,7 @@ export function TicketForm({
         }}
       />
 
-      <div className="tf__chips" role="group" aria-label="What it is about">
+      <div className="ticket-form__chips" role="group" aria-label="What it is about">
         {categories.map((c) => (
           <ToggleChip
             key={c.id}
@@ -92,12 +92,12 @@ export function TicketForm({
       </div>
 
       {failed ? (
-        <p className="tf__error" role="alert">
+        <p className="ticket-form__error" role="alert">
           That did not go through. Your text is still here, so send it again.
         </p>
       ) : null}
 
-      <div className="tf__foot">
+      <div className="ticket-form__foot">
         <ToggleChip
           on={draft.blocking}
           onToggle={() => onDraft({ ...draft, blocking: !draft.blocking })}
@@ -107,7 +107,7 @@ export function TicketForm({
           Blocking my work
         </ToggleChip>
         {toggles}
-        <button type="submit" className="btn btn--primary tf__send" disabled={!ready} title="Send (Ctrl+Enter)">
+        <button type="submit" className="btn btn--primary ticket-form__send" disabled={!ready} title="Send (Ctrl+Enter)">
           Send <Icon name="arrowRight" size={13} />
         </button>
       </div>

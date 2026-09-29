@@ -9,16 +9,16 @@ import type { ProjectKind } from '../../lib/model'
 
 /** Highlights one YAML line (comment, key, list marker, value) with regexes. */
 function line(text: string, i: number) {
-  if (/^\s*#/.test(text)) return <span key={i} className="yml__c">{text || ' '}</span>
+  if (/^\s*#/.test(text)) return <span key={i} className="yaml__comment">{text || ' '}</span>
   const m = /^(\s*)(- )?([A-Za-z0-9_]+)(:)(.*)$/.exec(text)
   if (m) {
     return (
       <span key={i}>
         {m[1]}
-        {m[2] ? <span className="yml__d">{m[2]}</span> : null}
-        <span className="yml__k">{m[3]}</span>
-        <span className="yml__d">{m[4]}</span>
-        <span className="yml__v">{m[5]}</span>
+        {m[2] ? <span className="yaml__punctuation">{m[2]}</span> : null}
+        <span className="yaml__key">{m[3]}</span>
+        <span className="yaml__punctuation">{m[4]}</span>
+        <span className="yaml__value">{m[5]}</span>
       </span>
     )
   }
@@ -27,8 +27,8 @@ function line(text: string, i: number) {
     return (
       <span key={i}>
         {l[1]}
-        <span className="yml__d">{l[2]}</span>
-        <span className="yml__v">{l[3]}</span>
+        <span className="yaml__punctuation">{l[2]}</span>
+        <span className="yaml__value">{l[3]}</span>
       </span>
     )
   }
@@ -65,11 +65,11 @@ export function ConfigOutput({
   }
 
   return (
-    <div className="yml">
-      <header className="yml__head">
+    <div className="yaml">
+      <header className="yaml__head">
         <Icon name="file" size={13} />
-        <span className="yml__file mono">{file}</span>
-        <span className="yml__n mono">{lines.length} lines</span>
+        <span className="yaml__file mono">{file}</span>
+        <span className="yaml__count mono">{lines.length} lines</span>
         <button className="btn btn--sm" onClick={copy}>
           <Icon name="copy" size={12} /> Copy
         </button>
@@ -83,11 +83,11 @@ export function ConfigOutput({
         </button>
       </header>
 
-      <pre className="yml__body" tabIndex={0} aria-label={`${file}, ${lines.length} lines`}>
+      <pre className="yaml__body" tabIndex={0} aria-label={`${file}, ${lines.length} lines`}>
         <code>
           {lines.map((t, i) => (
-            <span className="yml__line" key={i}>
-              <span className="yml__no">{i + 1}</span>
+            <span className="yaml__line" key={i}>
+              <span className="yaml__line-number">{i + 1}</span>
               {line(t, i)}
               {'\n'}
             </span>
@@ -95,7 +95,7 @@ export function ConfigOutput({
         </code>
       </pre>
 
-      {note ? <p className="yml__note">{note}</p> : null}
+      {note ? <p className="yaml__note">{note}</p> : null}
     </div>
   )
 }

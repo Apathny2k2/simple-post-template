@@ -114,7 +114,7 @@ function Face({
 
   return (
     <div
-      className="bbface"
+      className="model-face"
       data-face={name}
       data-spin={spin || undefined}
       style={style}
@@ -132,7 +132,7 @@ function Face({
       }
       onPointerMove={onPaint ? (e) => e.buttons === 1 && report(e, 'move') : undefined}
     >
-      <div className="bbface__skin" style={skin} />
+      <div className="model-face__skin" style={skin} />
     </div>
   )
 }
@@ -181,9 +181,9 @@ function CubeBox({
   ]
 
   return (
-    <div className="bbpivot" style={{ transform: transformOf(pivotAt, cube.rotation, scale) }}>
+    <div className="model-pivot" style={{ transform: transformOf(pivotAt, cube.rotation, scale) }}>
       <div
-        className={`bbbox${selected ? ' bbbox--selected' : ''}`}
+        className={`model-cube${selected ? ' model-cube--selected' : ''}`}
         style={{ transform: transformOf(boxAt, [0, 0, 0], scale) }}
         onPointerDown={onSelect ? (e) => e.button === 0 && onSelect(cube.id) : undefined}
       >
@@ -243,7 +243,7 @@ function BoneNode({
 
   return (
     <div
-      className="bbgroup"
+      className="model-group"
       data-bone={bone.name}
       style={{ transform: transformOf(at, rot, scale, animated?.scale ?? [1, 1, 1]) }}
     >
@@ -550,7 +550,7 @@ export function ModelView({
           {/* invisible; measured before and after each zoom */}
           <div className="scene3d__probe" ref={probe} aria-hidden="true" />
           <div
-            className="bbroot"
+            className="model-root"
             style={{
               transform:
                 `translate3d(${-anchor[0] * scale}px, ${anchor[1] * scale}px, ${-anchor[2] * scale}px)` +

@@ -27,10 +27,10 @@ export function ConfirmDialog({
   }, [])
 
   return (
-    <div className="dlg" role="dialog" aria-modal="true" aria-label={title}>
-      <div className="dlg__scrim" onClick={onCancel} />
-      <div className="dlg__panel" ref={panel} style={{ width: 'min(460px, 100%)' }}>
-        <header className="dlg__head">
+    <div className="dialog" role="dialog" aria-modal="true" aria-label={title}>
+      <div className="dialog__scrim" onClick={onCancel} />
+      <div className="dialog__panel" ref={panel} style={{ width: 'min(460px, 100%)' }}>
+        <header className="dialog__head">
           <div style={{ flex: 1 }}>
             <div className="eyebrow">Unsaved changes</div>
             <h2 className="card__title">{title}</h2>
@@ -40,14 +40,14 @@ export function ConfirmDialog({
           </button>
         </header>
 
-        <div className="dlg__body">
-          <p className="ed-hint ed-hint--warn" style={{ marginTop: 0 }}>
+        <div className="dialog__body">
+          <p className="editor-hint editor-hint--warn" style={{ marginTop: 0 }}>
             <Icon name="warning" size={13} /> {body}
           </p>
         </div>
 
-        <footer className="dlg__foot">
-          <span className="cmp__hint mono">Ctrl S saves first</span>
+        <footer className="dialog__foot">
+          <span className="composer__hint mono">Ctrl S saves first</span>
           <div className="row-actions">
             <button className="btn btn--ghost" ref={cancel} onClick={onCancel}>
               Keep editing

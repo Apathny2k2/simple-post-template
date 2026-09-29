@@ -67,9 +67,9 @@
   box-shadow: none;
 }
 
-.kv { display: grid; gap: 9px; }
+.pairs { display: grid; gap: 9px; }
 
-.kv__row {
+.pairs__row {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
@@ -79,13 +79,13 @@
   border-bottom: 1px solid var(--border);
 }
 
-.kv__row:last-child { border-bottom: none; padding-bottom: 0; }
-.kv__k { color: var(--ink-faint); }
-.kv__v { font-family: var(--font-mono); color: var(--ink); }
+.pairs__row:last-child { border-bottom: none; padding-bottom: 0; }
+.pairs__key { color: var(--ink-faint); }
+.pairs__value { font-family: var(--font-mono); color: var(--ink); }
 
 /* ---------------- dialogs ---------------- */
 
-.dlg {
+.dialog {
   position: fixed;
   inset: 0;
   z-index: 200;
@@ -94,7 +94,7 @@
   padding: var(--sp-4);
 }
 
-.dlg__scrim {
+.dialog__scrim {
   position: absolute;
   inset: 0;
   background: var(--sunken-strong);
@@ -102,9 +102,7 @@
   animation: fade-in var(--dur) var(--ease);
 }
 
-@keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
-
-.dlg__panel {
+.dialog__panel {
   position: relative;
   width: min(680px, 100%);
   max-height: min(86vh, 760px);
@@ -116,15 +114,15 @@
   backdrop-filter: blur(var(--glass-blur-lg)) saturate(var(--glass-sat));
   box-shadow: var(--inner-highlight), var(--shadow-pop);
   overflow: hidden;
-  animation: dlg-in var(--dur-slow) var(--ease);
+  animation: dialog-in var(--dur-slow) var(--ease);
 }
 
-@keyframes dlg-in {
+@keyframes dialog-in {
   from { opacity: 0; transform: translateY(6px); }
   to { opacity: 1; transform: none; }
 }
 
-.dlg__head {
+.dialog__head {
   display: flex;
   align-items: flex-start;
   gap: var(--sp-3);
@@ -132,13 +130,13 @@
   border-bottom: 1px solid var(--border);
 }
 
-.dlg__head > div:first-child { flex: 1; min-width: 0; }
-.dlg__body { padding: var(--sp-4); overflow-y: auto; flex: 1; min-height: 0; }
+.dialog__head > div:first-child { flex: 1; min-width: 0; }
+.dialog__body { padding: var(--sp-4); overflow-y: auto; flex: 1; min-height: 0; }
 
 /* Pip, while the pack builds, between the scrolling body and the buttons */
-.pk-run { padding: var(--sp-3) var(--sp-4) 0; border-top: 1px solid var(--border); }
+.export-run { padding: var(--sp-3) var(--sp-4) 0; border-top: 1px solid var(--border); }
 
-.dlg__foot {
+.dialog__foot {
   display: flex;
   flex-wrap: wrap;
   align-items: center;

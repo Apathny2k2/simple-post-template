@@ -97,10 +97,10 @@ export function ExportPackDialog({
   const downloadConfigs = () => save(`${stem}-configs.zip`, () => packZip(configs))
 
   return (
-    <div className="dlg" role="dialog" aria-modal="true" aria-label="Export a resource pack">
-      <div className="dlg__scrim" onClick={onClose} />
-      <div className="dlg__panel" ref={panel} style={{ width: 'min(620px, 100%)' }}>
-        <header className="dlg__head">
+    <div className="dialog" role="dialog" aria-modal="true" aria-label="Export a resource pack">
+      <div className="dialog__scrim" onClick={onClose} />
+      <div className="dialog__panel" ref={panel} style={{ width: 'min(620px, 100%)' }}>
+        <header className="dialog__head">
           <div style={{ flex: 1 }}>
             <div className="eyebrow">Vellum</div>
             <h2 className="card__title">Export a resource pack</h2>
@@ -110,7 +110,7 @@ export function ExportPackDialog({
           </button>
         </header>
 
-        <div className="dlg__body">
+        <div className="dialog__body">
           <div className="field-grid">
             <label className="field">
               <span className="field__label">Namespace</span>
@@ -159,31 +159,31 @@ export function ExportPackDialog({
             </label>
           </div>
 
-          <div className="pk">
-            <div className="pk__head">
+          <div className="export">
+            <div className="export__head">
               <Icon name="folder" size={12} />
-              <span className="pk__title">
+              <span className="export__title">
                 {models} model{models === 1 ? '' : 's'}
                 {report ? ` · ${KB(packBytes(report))}` : ''}
               </span>
             </div>
 
             {report ? (
-              <ul className="pk__tree">
+              <ul className="export__tree">
                 {report.files.map((f) => (
                   <li key={f.path} data-kind={f.kind}>
-                    <span className="pk__path mono">{f.path}</span>
-                    <span className="pk__size mono">{KB(f.bytes.length)}</span>
+                    <span className="export__path mono">{f.path}</span>
+                    <span className="export__size mono">{KB(f.bytes.length)}</span>
                   </li>
                 ))}
               </ul>
             ) : null}
 
             {report?.skipped.length ? (
-              <div className="pk__out">
-                <div className="pk__outhead">Left out</div>
+              <div className="export__output">
+                <div className="export__output-head">Left out</div>
                 {report.skipped.map((s) => (
-                  <p key={s.id} className="pk__outrow">
+                  <p key={s.id} className="export__output-row">
                     <strong>{s.id}</strong> — {s.why}
                   </p>
                 ))}
@@ -192,12 +192,12 @@ export function ExportPackDialog({
 
             {/* list configs held back because their root key isn't confirmed */}
             {configs.skipped.some((s) => /root collection key/.test(s.why)) ? (
-              <div className="pk__out pk__out--warn">
-                <div className="pk__outhead">Configs held back</div>
+              <div className="export__output export__output--warn">
+                <div className="export__output-head">Configs held back</div>
                 {configs.skipped
                   .filter((s) => /root collection key/.test(s.why))
                   .map((s) => (
-                    <p key={s.id} className="pk__outrow">
+                    <p key={s.id} className="export__output-row">
                       <strong>{s.id}</strong> — its root key isn&rsquo;t confirmed yet. A wrong key
                       is an error that blocks the server&rsquo;s whole content reload, so this file
                       stays out of the zip. You can see it in the Config tab.
@@ -207,12 +207,12 @@ export function ExportPackDialog({
             ) : null}
 
             {configs.files.length ? (
-              <div className="pk__out">
-                <div className="pk__outhead">
+              <div className="export__output">
+                <div className="export__output-head">
                   Also ready: {configs.files.length} config
                   {configs.files.length === 1 ? '' : 's'}
                 </div>
-                <p className="pk__outrow">
+                <p className="export__output-row">
                   <span className="mono">{configs.files.map((f) => f.path).join(', ')}</span>. These
                   say what each model <em>is</em> in game. The Vellum plugin reads them and Minecraft
                   ignores them, so they download separately from the pack.
@@ -221,10 +221,10 @@ export function ExportPackDialog({
             ) : null}
 
             {problems.length ? (
-              <div className="pk__out pk__out--warn">
-                <div className="pk__outhead">Changed on the way in</div>
+              <div className="export__output export__output--warn">
+                <div className="export__output-head">Changed on the way in</div>
                 {problems.map((r) => (
-                  <p key={r.id} className="pk__outrow">
+                  <p key={r.id} className="export__output-row">
                     <strong>{r.id}</strong> — {r.list[0].where ? `${r.list[0].where}: ` : ''}
                     {r.list[0].message}
                     {r.list.length > 1 ? ` (+${r.list.length - 1} more)` : ''}
@@ -234,29 +234,29 @@ export function ExportPackDialog({
             ) : null}
           </div>
 
-          <p className="ed-hint">
+          <p className="editor-hint">
             This pack is for servers with <strong>no Vellum plugin</strong>. With the plugin
             linked, use the pack it builds and serves from the same models. Don&rsquo;t use both.
           </p>
 
-          <p className="ed-hint">
+          <p className="editor-hint">
             Every model ships with Minecraft&rsquo;s default display transforms, because
             <code className="mono"> .vellum</code> doesn&rsquo;t store them. With no display block
             and no <code className="mono">parent</code>, a 16-unit item would look tiny in the
             hand and the inventory.
           </p>
 
-          {note ? <p className="ed-hint ed-hint--warn">{note}</p> : null}
+          {note ? <p className="editor-hint editor-hint--warn">{note}</p> : null}
         </div>
 
         {run ? (
-          <div className="pk-run">
+          <div className="export-run">
             <Pip mood={run.mood} failure={run.failure} onFinish={landed} label="Building the pack" />
           </div>
         ) : null}
 
-        <footer className="dlg__foot">
-          <span className="cmp__hint mono">
+        <footer className="dialog__foot">
+          <span className="composer__hint mono">
             {items.filter((i) => !folderOf(i.kind)).length
               ? 'A mob’s geometry stays in the .vellum and its stats go in the configs zip'
               : 'Drop the zip in resourcepacks/'}

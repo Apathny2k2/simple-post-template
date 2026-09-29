@@ -74,37 +74,3 @@
   justify-content: space-between;
   gap: var(--sp-3);
 }
-
-.card__placeholder {
-  display: grid;
-  place-content: center;
-  justify-items: center;
-  gap: var(--sp-2);
-  text-align: center;
-  padding: clamp(28px, 6vw, 72px) var(--sp-6);
-  color: var(--ink-faint);
-}
-
-.card__placeholder svg {
-  color: var(--ink-faint);
-  opacity: 0.55;
-}
-
-.card__placeholder p { font-size: var(--fs-sm); max-width: 44ch; }
-
-.stale-tag {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 3px 10px;
-  border-radius: var(--r-control);
-  border: 1px solid var(--accent-mark);
-  background: color-mix(in srgb, var(--accent) 12%, transparent);
-  color: var(--warn);
-  font-size: var(--fs-2xs);
-  letter-spacing: var(--tracking-wide);
-  text-transform: uppercase;
-  font-weight: 600;
-  white-space: nowrap;
-  box-shadow: var(--focus-ring);
-}

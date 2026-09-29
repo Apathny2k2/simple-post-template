@@ -26,7 +26,7 @@
   backdrop-filter: blur(var(--glass-blur-lg)) saturate(var(--glass-sat));
   box-shadow: var(--shadow-pop);
   overflow: hidden;
-  animation: panel-open var(--dur) var(--ease);
+  animation: fade-in var(--dur) var(--ease);
 }
 
 .world__head {
@@ -96,7 +96,7 @@
 
 .world__field { display: flex; align-items: center; gap: 7px; }
 .world__field > span { font-size: var(--fs-2xs); color: var(--ink-faint); white-space: nowrap; }
-.world__field .ed-select { min-width: 132px; }
+.world__field .editor-select { min-width: 132px; }
 
 .world__note {
   margin-left: auto;
@@ -107,7 +107,7 @@
 @media (max-width: 720px) {
   .world__panel { height: 100%; }
   .world__note { display: none; }
-  .world__field .ed-select { min-width: 104px; }
+  .world__field .editor-select { min-width: 104px; }
 }
 
 /* ---------------- behaviour effects ---------------- */
@@ -128,7 +128,7 @@
   .world__shake[data-shaking] { animation: none; }
 }
 
-.world__fx {
+.world__effects {
   position: absolute;
   inset: 0;
   z-index: 2;
@@ -136,21 +136,21 @@
   overflow: hidden;
 }
 
-.world__fxgroup { position: absolute; left: 50%; width: 0; height: 0; }
+.world__effect-group { position: absolute; left: 50%; width: 0; height: 0; }
 
-.world__fxgroup > span {
+.world__effect-group > span {
   position: absolute;
   width: var(--sz, 4px);
   height: var(--sz, 4px);
   margin: calc(var(--sz, 4px) / -2);
   border-radius: 1px;
   opacity: 0;
-  animation-name: fx-rise;
+  animation-name: effect-rise;
   animation-iteration-count: infinite;
   animation-timing-function: ease-out;
 }
 
-@keyframes fx-rise {
+@keyframes effect-rise {
   0%   { opacity: 0;    transform: translate(0, 0) scale(0.5); }
   12%  { opacity: 0.95; transform: translate(calc(var(--dx) * 0.2), calc(var(--dy) * 0.14)) scale(1); }
   70%  { opacity: 0.7; }
@@ -158,5 +158,5 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .world__fxgroup > span { animation-duration: 3s !important; }
+  .world__effect-group > span { animation-duration: 3s !important; }
 }
