@@ -325,10 +325,14 @@ export function deleteCube(model: Model, id: string): Model {
 /** Remove a bone and everything under it, cubes included. */
 export function deleteBone(model: Model, id: string): Model {
   const doomed = new Set<string>()
+  const bonesGone = new Set<string>([id])
   const collect = (b: Bone) => {
     for (const c of b.children) {
       if (c.kind === 'cube') doomed.add(c.id)
-      else collect(c.bone)
+      else {
+        bonesGone.add(c.bone.id)
+        collect(c.bone)
+      }
     }
   }
   const find = (bones: Bone[]): Bone | null => {
@@ -357,8 +361,8 @@ export function deleteBone(model: Model, id: string): Model {
     ...model,
     cubes: model.cubes.filter((c) => !doomed.has(c.id)),
     bones: strip(model.bones),
-    // drop this bone's own tracks: a track on a missing bone fails validation
-    clips: model.clips.map((clip) => ({ ...clip, tracks: clip.tracks.filter((t) => t.bone !== id) })),
+    // a track on a missing bone fails validation, so the nested bones' tracks go too
+    clips: model.clips.map((clip) => ({ ...clip, tracks: clip.tracks.filter((t) => !bonesGone.has(t.bone)) })),
   }
 }
 
@@ -474,6 +478,8 @@ export function reparent(model: Model, id: string, parentId: string | null): Mod
   if (!moving) return model
 
   const node = moving as BoneChild
+  // a cube lives in a bone, so dropping it off every bone leaves it where it was
+  if (node.kind === 'cube' && !parentId) return model
   // dropping a bone into its own subtree would orphan the whole branch
   if (node.kind === 'bone' && parentId && contains(node.bone, parentId)) return model
 

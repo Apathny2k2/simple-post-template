@@ -78,7 +78,8 @@ export async function verifyPlugin(
       headers: token ? { Authorization: `Bearer ${token}` } : undefined,
     })
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
-    body = (await res.json()) as PluginVersionBody
+    // `null` is valid JSON; it names no version, like an empty object
+    body = ((await res.json()) ?? {}) as PluginVersionBody
   } catch (err) {
     return {
       state: 'unreachable',

@@ -566,27 +566,30 @@ ready in headless Chromium, which hung the script.
 
 ## Bugs found by the audit
 
-Found while checking comments against code. The audit changes wording
-only, so these are open. The first two were reproduced.
+Found while checking comments against code, and fixed after the audit at
+the operator's word. None was in the plugin. Each fix was reproduced first
+where it could be, then checked (scripts and browser runs in the session;
+the computed styles of the 17 snapshot views are unchanged).
 
-| # | Where | Bug | Status |
+| # | Where | Bug | Now |
 |---|---|---|---|
-| B1 | `lib/config.ts:318` | `coerce` tests a tri-state flag with `v === 'true'`, but a saved `.vellum` holds the boolean. Set a mob's gravity to true, save, reopen: the YAML says `gravity: false`, and the next save keeps it. | open, reproduced |
-| B2 | `lib/texture.ts:117` | The bucket fill never ends when the new colour is within the tolerance (8) of the colour it replaces but not equal to it: a painted pixel still matches and is pushed again. Filling 100,100,100 with 104,100,100 on a 16x16 surface ran for three minutes and grew to 9 GB before it was killed. | open, reproduced |
-| B3 | `lib/config.ts` | `canonicalise` turns an old unset flag (`''`) into `false`, which is then written to the YAML. | open |
-| B4 | `lib/config.ts:365` | Animations are split on whitespace, but clip names are free text: a clip name with a space loses everything after it. | open |
-| B5 | `lib/new-model.ts:452` | Dropping a cube anywhere but on a bone calls `reparent` with a null parent, which takes the cube out of the bone tree. | open |
-| B6 | `lib/new-model.ts:326` | `deleteBone` drops the tracks of the deleted bone only; tracks on bones nested under it stay and fail validation. | open |
-| B7 | `lib/vellum.ts` | A `.vellum` whose `requires`, `stages` or `effects` isn't an array throws a TypeError on open. | open |
-| B8 | `lib/version.ts:57` | A 200 whose body is JSON `null` throws at `body.plugin`, outside the try. | open |
-| B9 | `pages/Support.tsx` | The composer calls `sendTyping` on every keystroke with no debounce. | open |
-| B10 | `lib/dash.ts` | A blank string keeps the old value with no note (`{"name": ""}` answers ok); `heartbeat` ignores a non-string `agent` silently. | open |
-| B11 | `lib/uv-pack.ts:98` | When packing fails completely, `makeRoom` returns an oversized sheet with `at: null`. | open |
-| B12 | `lib/pack.ts:158` | `saysSomething` is true for `toYaml`'s empty stub (it holds `config-version: 1`), so a model with nothing configured still gets a stub file in the configs zip. The README says such models are left out. | open |
-| B13 | `lib/pack.ts` | Textures are deduplicated by path: two models with a texture of the same name collide, and the second is skipped without a message. | open |
-| B14 | `lib/world.ts:289` | The `- 26` in the figure's facing turns its face further from the default camera (checked in Chromium; `+ 26` faces it). | open |
-| B15 | `lib/pack.ts`, `editor/ExportPackDialog.tsx` | `buildConfigs` skips blocks before its `keyConfirmed` check, so the export dialog's "Configs held back" notice can never appear. | open |
-| B16 | `lib/world.ts`, `components/ModelView.css` | View in the real world shades twice: the world texture has Minecraft's face shading baked in, and the viewport's per-face brightness applies on top (a bottom face ends at 0.5 x 0.62). | open |
+| B1 | `lib/config.ts` | `coerce` tested a tri-state switch with `v === 'true'`, but a reopened `.vellum` holds the boolean. Set a mob's gravity to true, save, reopen: the YAML said `gravity: false`, and the next save kept it. A served schema's own copy of the options wasn't recognised at all | Both `true` and `'true'` read as true, and the switch is recognised by its options. True and false survive two saves and reopens |
+| B2 | `lib/texture.ts` | The bucket fill never ended when the new colour was within the tolerance (8) of the one it replaced: a painted pixel still matched and was pushed again. Filling 100,100,100 with 104,100,100 on 16x16 ran three minutes and reached 9 GB | Each pixel is visited once. The same fill takes 0.3 ms and covers the same region as any other colour |
+| B3 | `lib/config.ts` | The upgrade from before v7 turned a blank switch into `false`, written to the YAML | A blank switch stays unset |
+| B4 | `lib/config.ts`, `editor/ConfigPanel.tsx`, `pages/Editor.tsx`, `lib/model.ts` | A goal is written as one space-separated line, so a clip name with a space lost everything after it | Typed spaces become `_` in clip names and goal cells ("melee attack" becomes `melee_attack`). An idle or walk clip with a space is an error, and an old clip name with a space is a warning |
+| B5 | `lib/new-model.ts` | Dropping a cube anywhere but on a bone took it out of the bone tree | The cube stays where it was, and no undo step is added |
+| B6 | `lib/new-model.ts` | Deleting a bone kept the tracks of the bones under it, which then failed validation | Their tracks go too. Deleting the Voidling's torso removes 34 tracks on 10 bones |
+| B7 | `lib/vellum.ts` | A `.vellum` whose `requires`, `stages` or `effects` wasn't a list threw a TypeError on open | Anything that isn't a list of objects reads as empty, and the model opens |
+| B8 | `lib/version.ts` | A 200 whose body was JSON `null` threw outside the try | It reads as an answer that names no version |
+| B9 | `pages/Support.tsx` | The composer sent a typing signal on every keystroke; the contract says 3s | One signal per ticket every 3s at most |
+| B10 | `lib/dash.ts`, `lib/dash-api.ts` | A blank string kept the old value with no note; a heartbeat ignored a non-string `agent` and a non-number `everySeconds` silently | Each is reported in `problems`. `docs/plugin-api.md` says so |
+| B11 | `lib/uv-pack.ts` | When a box fit nowhere, the sheet grew once more after the last search and came back oversized | It stops after the last search, and a total miss returns the model unchanged |
+| B12 | `lib/pack.ts` | A model with nothing configured got a stub file in the configs zip, because the stub has `config-version: 1` | The config body decides, and such a model is left out |
+| B13 | `lib/pack.ts`, `lib/mcmodel.ts` | Two models with different textures of the same name got one file, so the second wore the first one's texture | A clashing texture is written under the model's name, the model file points at it, and the report notes it. An identical image is still shared |
+| B14 | `lib/world.ts` | The comment said the `- 26` turned the stage's figure toward the camera; it turns it away | Measured in the browser, the code is right: the floor carries a walk away from the camera, and a figure turned toward it walks backwards. The comment now says so |
+| B15 | `lib/pack.ts` | The configs export skipped blocks before its collection-key check, so that check could never fire | Kinds without a config form are skipped first; a form added before its key is confirmed will be held back and say so |
+| B16 | `components/ModelView.*`, `lib/world.ts` | The stage shaded its own cubes twice: Minecraft's shading is painted into their sheet, and the viewport dimmed each face again | The stage's sheet is marked as shaded, and the viewport adds nothing to its faces. The model keeps the editor's shading |
+| B17 | `editor/ConfigPanel.tsx` | Found while checking B4: "Add goal" did nothing, because an empty row became an empty line and was dropped, and clearing a cell shifted the cells after it left | The form keeps rows as typed and reads the file again only when it changes from outside, such as on undo |
 
 Unused exports seen on the way: `assets`, `outliner`, `editorTextures`,
 `animations`, `keyframeRows` in `lib/data.ts`; `endpoints`,
@@ -600,7 +603,10 @@ audit covers the studio only.
 
 ## Waiting on the operator
 
-- **More humour (P2-8).** Say which of the listed spots may get a line.
-- **The bugs (B1 to B16).** The audit changes wording, so it left them open.
-  B1 loses a saved setting and B2 hangs the tab. Say which to fix.
+- **More humour (P2-8).** Nine spots were named on 2026-09-29, each with a
+  suggested line: the Support list with nothing open, no tickets at all, a
+  shelf search with no results, the Dash's sample-data note and its empty
+  file list, the empty timeline, and the check panel with nothing to fix.
+  The offline server row and the empty plugin feed are better left plain.
+  Say which to add.
 

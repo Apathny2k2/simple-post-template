@@ -29,12 +29,28 @@ function Rows({
 }) {
   const columns = field.columns ?? []
   const blank = (): Row => Object.fromEntries(columns.map((c) => [c.key, ''])) as Row
+
+  /* The file holds each row as a space-separated line, which can't hold a
+     blank cell or a new empty row. So the rows stay as typed here, and are
+     read back from the file only when it changes from outside (undo). */
+  const stored = linesOf(field, value).join('\n')
+  const [rows, setRows] = useState(value)
+  const [seen, setSeen] = useState(stored)
+  if (stored !== seen) {
+    setSeen(stored)
+    if (linesOf(field, rows).join('\n') !== stored) setRows(value)
+  }
+  const update = (next: Row[]) => {
+    setRows(next)
+    onChange(next)
+  }
+  // each cell is one word of the line
   const patch = (i: number, key: string, v: string) =>
-    onChange(value.map((r, n) => (n === i ? { ...r, [key]: v } : r)))
+    update(rows.map((r, n) => (n === i ? { ...r, [key]: v.replace(/\s+/g, '_') } : r)))
 
   return (
     <div className="config-rows">
-      {value.map((row, i) => (
+      {rows.map((row, i) => (
         <div className="config-row" key={i} data-cols={columns.length}>
           {columns.map((c: Column) => (
             <input
@@ -50,7 +66,7 @@ function Rows({
           ))}
           <button
             className="editor-tool config-remove"
-            onClick={() => onChange(value.filter((_, n) => n !== i))}
+            onClick={() => update(rows.filter((_, n) => n !== i))}
             title={`Remove ${field.label.toLowerCase()} ${i + 1}`}
             aria-label={`Remove ${field.label.toLowerCase()} ${i + 1}`}
           >
@@ -61,7 +77,7 @@ function Rows({
       {columns.filter((c) => c.suggest).map((c) => (
         <Suggest key={c.key} id={`config-${field.key}-${c.key}`} options={c.suggest as readonly string[]} />
       ))}
-      <button className="chip config-add" onClick={() => onChange([...value, blank()])}>
+      <button className="chip config-add" onClick={() => update([...rows, blank()])}>
         <Icon name="plus" size={10} /> Add {field.label.toLowerCase().replace(/s$/, '')}
       </button>
     </div>

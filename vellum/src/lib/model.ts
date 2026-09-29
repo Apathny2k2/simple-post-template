@@ -113,6 +113,8 @@ export type Texture = {
   uvHeight: number
   /** data URI */
   source: string
+  /** the pixels already carry face shading, so the viewport adds none (the stage's sheet) */
+  shaded?: boolean
 }
 
 export type Channel = 'rotation' | 'position' | 'scale'
@@ -399,6 +401,9 @@ export function validateModel(model: Model, kind?: ProjectKind, subtype?: Subtyp
   }
 
   for (const clip of model.clips) {
+    if (/\s/.test(clip.name)) {
+      issues.push({ level: 'warning', message: `"${clip.name}" has a space in its name, so a config can\u2019t name it. Use underscores` })
+    }
     for (const track of clip.tracks) {
       if (!boneById(model, track.bone)) {
         issues.push({ level: 'error', message: `"${clip.name}" drives a bone that is not in the tree` })

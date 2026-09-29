@@ -250,6 +250,8 @@ export function toMinecraftModel(
   display?: Record<string, { rotation: Vec3; translation: Vec3; scale: Vec3 }>,
   /** the model's file stem in the pack, also used for an unnamed texture */
   assetName?: string,
+  /** texture id to file name, when the pack had to rename one */
+  textureNames?: ReadonlyMap<string, string>,
 ): { json: McModel; issues: TranslationIssue[] } {
   const issues = checkTranslation(model, folder === 'block' ? 'blocks' : 'items', 'pack')
 
@@ -260,7 +262,7 @@ export function toMinecraftModel(
   const stem = assetName ?? safeId(model.name)
   const textures: Record<string, string> = {}
   model.textures.forEach((t, i) => {
-    textures[String(i)] = `${namespace}:${folder}/${textureName(t.name, stem)}`
+    textures[String(i)] = `${namespace}:${folder}/${textureNames?.get(t.id) ?? textureName(t.name, stem)}`
   })
   if (model.textures.length) textures.particle = textures['0']
 

@@ -14,7 +14,7 @@ import { safeId, textureName, toMinecraftModel } from './mcmodel'
 import type { TranslationIssue } from './mcmodel'
 import { dataUriBytes, makeZip } from './zip'
 import type { ZipEntry } from './zip'
-import { configPath, keyConfirmed, toYaml } from './config'
+import { bodyOf, configPath, hasConfig, keyConfirmed, toYaml } from './config'
 import type { Model, ProjectKind, Vec3 } from './model'
 
 export type PackItem = {
@@ -88,8 +88,9 @@ export function buildPack(items: PackItem[], opts: PackOptions): PackReport {
     }),
   })
 
-  /* Deduplicated by path, so a texture several models share is written once. */
-  const written = new Set<string>()
+  /* A texture several models share is written once. Two different images
+     with one name get two files, or one model would wear the other's. */
+  const written = new Map<string, string>()
 
   for (const item of items) {
     const folder = folderOf(item.kind)
@@ -105,8 +106,25 @@ export function buildPack(items: PackItem[], opts: PackOptions): PackReport {
     }
 
     const name = safeId(item.id)
-    const built = toMinecraftModel(item.model, ns, folder, item.display, name)
-    issues.push({ id: item.id, issues: built.issues })
+    const texturePath = (file: string) => `assets/${ns}/textures/${folder}/${file}.png`
+    const names = new Map<string, string>()
+    const renamed: TranslationIssue[] = []
+    for (const tex of item.model.textures) {
+      const want = textureName(tex.name, name)
+      let file = want
+      for (let n = 1; written.has(texturePath(file)) && written.get(texturePath(file)) !== tex.source; n++) {
+        file = n === 1 ? `${name}_${want}` : `${name}_${want}_${n}`
+      }
+      names.set(tex.id, file)
+      if (file !== want) {
+        renamed.push({ level: 'note', message: `The texture "${tex.name}" is written as ${file}.png: another texture has its name` })
+      }
+      // claimed now, so this model's own textures can't clash with each other either
+      if (!written.has(texturePath(file)) && tex.source) written.set(texturePath(file), tex.source)
+    }
+
+    const built = toMinecraftModel(item.model, ns, folder, item.display, name, names)
+    issues.push({ id: item.id, issues: [...built.issues, ...renamed] })
 
     const fatal = built.issues.filter((i) => i.level === 'error')
     if (fatal.length) {
@@ -137,14 +155,13 @@ export function buildPack(items: PackItem[], opts: PackOptions): PackReport {
     })
 
     for (const tex of item.model.textures) {
-      const path = `assets/${ns}/textures/${folder}/${textureName(tex.name, name)}.png`
-      if (written.has(path)) continue
+      const path = texturePath(names.get(tex.id) ?? textureName(tex.name, name))
+      if (files.some((f) => f.path === path)) continue
       const bytes = tex.source ? dataUriBytes(tex.source) : null
       if (!bytes) {
         skipped.push({ id: `${item.id} · ${tex.name}`, why: 'the texture carries no image data' })
         continue
       }
-      written.add(path)
       files.push({ path, kind: 'png', bytes })
     }
   }
@@ -154,22 +171,17 @@ export function buildPack(items: PackItem[], opts: PackOptions): PackReport {
 
 /* ---------------- the configs, which are not pack files ---------------- */
 
-/**
- * True when any line is neither blank nor a comment. toYaml's stub for an
- * empty config has `config-version: 1`, so it counts as saying something.
- */
-const saysSomething = (yaml: string) =>
-  yaml.split('\n').some((line) => line.trim() && !line.trimStart().startsWith('#'))
-
 export function buildConfigs(items: PackItem[]): PackReport {
   const files: PackFile[] = []
   const skipped: PackReport['skipped'] = []
 
   for (const item of items) {
-    if (item.kind !== 'mobs' && item.kind !== 'items') continue
+    // blocks have no config form
+    if (!item.kind || !hasConfig(item.kind)) continue
     const name = safeId(item.id)
-    const yaml = item.model.config ? toYaml(name, item.kind, item.model.config) : ''
-    if (!saysSomething(yaml)) {
+    const config = item.model.config
+    // toYaml writes a stub for an empty config, so the config itself decides
+    if (!config || !Object.keys(bodyOf(item.kind, config)).length) {
       skipped.push({ id: item.id, why: 'nothing configured on it yet' })
       continue
     }
@@ -182,7 +194,7 @@ export function buildConfigs(items: PackItem[]): PackReport {
       })
       continue
     }
-    files.push({ path: configPath(item.kind, name), kind: 'text', bytes: utf8(yaml) })
+    files.push({ path: configPath(item.kind, name), kind: 'text', bytes: utf8(toYaml(name, item.kind, config)) })
   }
 
   return { files, issues: [], skipped }

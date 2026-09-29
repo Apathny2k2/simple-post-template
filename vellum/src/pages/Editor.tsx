@@ -1662,7 +1662,7 @@ function AnimationPanel({ anim }: { anim: AnimApi }) {
           className="editor-input"
           value={clip.name}
           spellCheck={false}
-          onChange={(e) => anim.patchClip({ name: e.target.value })}
+          onChange={(e) => anim.patchClip({ name: e.target.value.replace(/\s+/g, '_') })}
         />
       </label>
 

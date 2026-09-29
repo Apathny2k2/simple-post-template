@@ -200,14 +200,18 @@ with their priorities and clips, and the two live animation states (`idle` and
 `walk`). An item config covers `display-name`, `model`, `lore`,
 `max-stack-size` and `durability`.
 
+A goal is written as one line with its parts separated by spaces
+(`melee_attack 2 animation.voidling.strike`), so a clip name can't hold a
+space. The form turns a typed space into `_`, in clip names and in goal
+cells alike.
+
 **Defaults.** The schema states a default only where the runtime applies one:
 `health` is 20, and `movement-speed` has *none*. An unset speed must stay unset,
 or a bat-based mob and a golem-based mob stop keeping their own base speeds.
 Any field whose default is unknown can be left empty. Those numbers are text
 fields where blank means inherit, and the switches are tri-state (blank, `true`
 or `false`). A checkbox cannot express "unset", and treating unset as `false`
-would write `false` over a server default of `true`. (A saved switch does not
-survive a reopen yet: B1 and B3 in `AUDIT.md`.)
+would write `false` over a server default of `true`.
 
 Entity types are offered as *suggestions*, and you can type one that is not on
 the list. A server with other plugins on it has more of them than Vellum could
@@ -691,7 +695,7 @@ about the files it ignored. The paths inside the zip (`mobs/<id>/mob.yml`,
 `items/<id>/item.yml`) are the ones the Config tab shows, so the download
 matches what the panel said. They are relative, because where they land on a
 server is the plugin's convention to set. A model with nothing configured is
-meant to be left out, but still gets a stub file (B12 in `AUDIT.md`).
+left out.
 
 ## What works, and what does not
 

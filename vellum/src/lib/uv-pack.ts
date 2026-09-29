@@ -95,7 +95,10 @@ export function growUvSpace(model: Model, rescale: Rescale, factor = 2): Model {
   }
 }
 
-/** Room for a box. With `rescale`, the sheet doubles after each miss, up to `limit` + 1 times. */
+/**
+ * Room for a box. With `rescale`, the sheet doubles after each miss, up to
+ * `limit` times. With no room even then, the model comes back unchanged.
+ */
 export function makeRoom(
   model: Model,
   size: Vec3,
@@ -107,10 +110,10 @@ export function makeRoom(
   for (let i = 0; i <= limit; i++) {
     const at = findSpot(current, box)
     if (at) return { model: current, at }
-    if (!rescale) break
+    if (!rescale || i === limit) break
     current = growUvSpace(current, rescale)
   }
-  return { model: current, at: null }
+  return { model, at: null }
 }
 
 /** The six faces of a box unwrap at `at`. Each side is at least 1 texel. */

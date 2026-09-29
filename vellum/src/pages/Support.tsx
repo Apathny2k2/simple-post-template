@@ -223,6 +223,8 @@ function Bubble({
   )
 }
 
+const TYPING_EVERY_MS = 3000
+
 function Composer({
   ticketId,
   to,
@@ -236,6 +238,8 @@ function Composer({
   const [attachments, setAttachments] = useState<Attachment[]>([])
   const box = useRef<HTMLTextAreaElement>(null)
   const picker = useRef<HTMLInputElement>(null)
+  // the contract asks for one typing signal per ticket every 3s at most
+  const typed = useRef<{ ticketId: string; at: number } | null>(null)
 
   /* Grows with the text, up to a few lines. Empty, it keeps its CSS height,
      so a narrow screen hiding it does not collapse it. */
@@ -295,7 +299,12 @@ function Composer({
           aria-label="Reply"
           onChange={(e) => {
             setValue(e.target.value)
-            void api.sendTyping(ticketId)
+            const now = Date.now()
+            const last = typed.current
+            if (!last || last.ticketId !== ticketId || now - last.at >= TYPING_EVERY_MS) {
+              typed.current = { ticketId, at: now }
+              void api.sendTyping(ticketId)
+            }
           }}
           onKeyDown={(e) => {
             if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {

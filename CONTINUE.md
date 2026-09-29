@@ -4,7 +4,7 @@ The state of the project for whoever picks it up next. Rewritten on
 2026-09-29, at the end of the wording audit.
 
 **Branch** `claude/blockbench-react-editor-lk38qe` · **PR** #3 (draft) ·
-**Artifact** v42, `https://claude.ai/artifact/BZpDzWLJ4z6soEAmVMcVwN`
+**Artifact** v43, `https://claude.ai/artifact/BZpDzWLJ4z6soEAmVMcVwN`
 
 Read `CLAUDE.md` first. It has the working rules: typecheck with `tsc -b`,
 republish the artifact after every push, how the sample models are made,
@@ -28,7 +28,9 @@ The app is a model studio for Minecraft servers, in `vellum/`:
 The wording audit in `AUDIT-BRIEF.md` ran phases 0 to 7 on 2026-09-29.
 Comments were cut to about half, class names are full words, tokens are
 named by role, and the UI copy and docs were rewritten plainly. Phase 8,
-the plugin, was skipped at the operator's word.
+the plugin, was skipped at the operator's word. Checking comments against
+code turned up 17 bugs, all in the studio, and they were fixed the same
+day (`AUDIT.md`, "Bugs found by the audit").
 
 ## 2. The plugin was rewritten
 
@@ -79,20 +81,14 @@ yet. Until there is, treat the items below as decisions to make:
   the keys are obsolete. The test design is worth keeping: all three are
   `base: PAPER`, which does nothing on its own, so eating probe 1 proves
   the food key worked; probes 2 and 3 differ only in their `food:` block.
-- **Bugs the audit found.** Checking comments against code found 16 bugs
-  that the audit left open, because it changed wording only. They are
-  listed in `AUDIT.md` under "Bugs found by the audit". The worst two: a
-  mob's `true` switch reads back as `false` after save and reopen (B1),
-  and a bucket fill in a colour close to the one it replaces never ends
-  and hangs the tab (B2).
 - **Zoom at the cursor misses off-centre.** `ZOOM-FIX.md` diagnoses it
   and proposes two fixes. Measured on 2026-09-29: 2 px off at the
   viewport centre, 97 px off at 300 px from it.
 - **The styling layer.** Tokens are named by role now, but there is no set
   of shared primitives between the tokens and the page CSS. Ask the
   operator what "styling framework" should mean before building one.
-- **Waiting on the operator** (`AUDIT.md`): which spots may get more
-  humour, and which of the bugs to fix.
+- **Waiting on the operator** (`AUDIT.md`): which of the nine named spots
+  get a humour line.
 - **The `person()` gate on the live box.** A write answered
   `unauthorized`. The operator asked for Studio gating to be switched off
   for testing, behind a switch that announces itself at boot, and prefers

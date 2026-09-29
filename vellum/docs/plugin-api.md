@@ -278,6 +278,8 @@ The rules:
 
 - **A wrong type never overwrites a good value.** It is reported, and the
   previous value is kept.
+- **A blank string doesn't clear a field.** It is reported, and the previous
+  value (or the field's default) is used.
 - **Numbers are clamped and strings are truncated.** One bad field doesn't
   lose the whole write.
 - **Control characters are stripped.**

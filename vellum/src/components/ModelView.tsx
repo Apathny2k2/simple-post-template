@@ -117,6 +117,7 @@ function Face({
       className="model-face"
       data-face={name}
       data-spin={spin || undefined}
+      data-shaded={texture?.shaded || undefined}
       style={style}
       onPointerDown={
         onPaint

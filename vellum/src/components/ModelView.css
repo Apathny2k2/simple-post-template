@@ -46,6 +46,8 @@
 .model-face[data-face='south'] { filter: brightness(1); }
 .model-face[data-face='east'] { filter: brightness(0.9); }
 .model-face[data-face='west'] { filter: brightness(0.84); }
+/* the stage's sheet has Minecraft's face shading painted in */
+.model-face[data-shaded] { filter: none; }
 
 .model-cube--selected .model-face {
   outline: 1px solid var(--accent-mark);

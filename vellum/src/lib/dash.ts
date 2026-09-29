@@ -172,7 +172,11 @@ function str(v: unknown, field: string, max: number, fallback: string, problems:
   // control characters do not render, and a tab breaks a table cell
   // oxlint-disable-next-line no-control-regex -- stripping them is the point
   const clean = v.replace(/[\u0000-\u001f\u007f]/g, ' ').trim()
-  if (!clean) return fallback
+  if (!clean) {
+    // with no fallback the caller drops the entry and says so itself
+    if (fallback) problems.push(`${field}: blank. Used ${JSON.stringify(fallback)}.`)
+    return fallback
+  }
   if (clean.length > max) {
     problems.push(`${field}: truncated to ${max} characters`)
     return clean.slice(0, max)

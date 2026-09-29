@@ -143,7 +143,7 @@ export function bucket(
     Math.abs(data[i + 2] - target[2]) <= tolerance &&
     Math.abs(data[i + 3] - target[3]) <= tolerance
 
-  // already this colour: filling would loop forever for no visible change
+  // already this colour: nothing would change
   if (
     target[0] === colour[0] &&
     target[1] === colour[1] &&
@@ -153,11 +153,17 @@ export function bucket(
     return
   }
 
+  /* A colour within the tolerance still matches once painted, so a pixel is
+     visited once or the fill never ends. */
+  const seen = new Uint8Array(w * h)
   const stack: Array<[number, number]> = [[x, y]]
   while (stack.length) {
     const [px, py] = stack.pop()!
     if (px < x1 || py < y1 || px >= x2 || py >= y2) continue
-    const i = at(px, py)
+    const n = (py - y1) * w + (px - x1)
+    if (seen[n]) continue
+    seen[n] = 1
+    const i = n * 4
     if (!same(i)) continue
     data[i] = colour[0]
     data[i + 1] = colour[1]

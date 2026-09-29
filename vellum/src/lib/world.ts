@@ -189,6 +189,7 @@ class Atlas {
       uvWidth: this.size,
       uvHeight: this.size,
       source: this.canvas.toDataURL('image/png'),
+      shaded: true,
     }
   }
 }
@@ -286,6 +287,8 @@ function playerParts(
   at: Vec3,
 ): { cubes: Cube[]; bone: Bone; rig: PlayerRig } {
   const [x, y, z] = at
+  /* Faces the model, turned 26 degrees toward -z, the way the moving floor
+     carries a walk. Turned toward the camera, it would walk backwards. */
   const facing = (Math.atan2(x, z) * 180) / Math.PI - 26
   const put = (name: string, from: Vec3, to: Vec3, skin: Skin) =>
     block(atlas, t, name, from, to, skin, { fit: true })

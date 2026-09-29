@@ -531,8 +531,14 @@ export const dash = {
     const body = asBody(input) ?? {}
     const problems: string[] = []
     const agent = typeof body.agent === 'string' ? body.agent.trim().slice(0, 64) : dashStore.meta.agent
+    if (body.agent != null && typeof body.agent !== 'string') {
+      problems.push(`agent: expected a string, got ${typeof body.agent}. Kept the previous value.`)
+    }
     let every = Number(body.everySeconds ?? dashStore.meta.heartbeatSeconds)
-    if (!Number.isFinite(every)) every = 30
+    if (!Number.isFinite(every)) {
+      problems.push(`everySeconds: ${JSON.stringify(body.everySeconds)} is not a number. Used 30.`)
+      every = 30
+    }
     if (every < 5 || every > 3600) {
       problems.push(`everySeconds: ${every} is outside 5..3600. Clamped to the nearest limit.`)
       every = Math.max(5, Math.min(3600, every))

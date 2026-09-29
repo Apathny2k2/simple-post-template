@@ -327,23 +327,29 @@ export function writeVellum(model: Model): string {
 
 const EFFECTS: EffectKind[] = ['particles', 'sound', 'shake']
 
+/** The objects in a list off disk. Anything else, the list included, reads as empty. */
+function objects<T>(v: T[] | undefined): T[] {
+  return Array.isArray(v) ? v.filter((x) => !!x && typeof x === 'object' && !Array.isArray(x)) : []
+}
+
 /**
  * A behaviour off disk. Malformed fields get defaults so the model still
- * opens: an offset that isn't three numbers becomes the block below.
+ * opens: an offset that isn't three numbers becomes the block below, and a
+ * list that isn't a list reads as empty.
  */
 function readBehaviour(raw: VellumBehaviour | undefined): Behaviour | undefined {
-  if (!raw) return undefined
-  const requires: BehaviourRequirement[] = (raw.requires ?? []).map((r, i) => ({
+  if (!raw || typeof raw !== 'object') return undefined
+  const requires: BehaviourRequirement[] = objects(raw.requires).map((r, i) => ({
     id: typeof r.id === 'string' && r.id ? r.id : `br${i}`,
     at: vec3(r.at, [0, -1, 0]),
     block: typeof r.block === 'string' ? r.block : '',
   }))
-  const stages: BehaviourStage[] = (raw.stages ?? []).map((st, i) => ({
+  const stages: BehaviourStage[] = objects(raw.stages).map((st, i) => ({
     id: typeof st.id === 'string' && st.id ? st.id : `bs${i}`,
     name: typeof st.name === 'string' && st.name ? st.name : `stage ${i + 1}`,
     seconds: typeof st.seconds === 'number' && Number.isFinite(st.seconds) ? st.seconds : 1,
     clip: typeof st.clip === 'string' && st.clip ? st.clip : null,
-    effects: (st.effects ?? [])
+    effects: objects(st.effects)
       .filter((e): e is { kind: string } & BehaviourEffect => EFFECTS.includes(e.kind as EffectKind))
       .map((e) => ({
         kind: e.kind as EffectKind,

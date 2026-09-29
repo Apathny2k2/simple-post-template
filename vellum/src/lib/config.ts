@@ -299,7 +299,7 @@ export function rowsOf(f: Field, value: ConfigValue | undefined): Row[] {
   const cols = f.columns ?? []
   return value.map((entry) => {
     if (entry && typeof entry === 'object') return entry as Row
-    // split on whitespace, so a value containing a space, such as a clip name, is cut short
+    // split on whitespace; the form keeps spaces out of every cell
     const parts = String(entry).trim().split(/\s+/).filter(Boolean)
     const row: Row = {}
     cols.forEach((c, i) => { row[c.key] = parts[i] ?? '' })
@@ -311,11 +311,16 @@ export function rowsOf(f: Field, value: ConfigValue | undefined): Row[] {
 export const linesOf = (f: Field, rows: Row[]): string[] =>
   rows.map((r) => rowLine(f, r)).filter((l) => l.length > 0)
 
+/** A switch that can be left blank. A served schema brings its own copy of the options. */
+const isTristate = (f: Field) =>
+  f.kind === 'select' && f.options?.length === TRISTATE.length && f.options.every((o, i) => o === TRISTATE[i])
+
 /** One value as the file holds it. Tri-state strings become booleans here, where the field is known. */
 function coerce(f: Field, v: ConfigValue): ConfigValue {
   if (f.kind === 'rows') return linesOf(f, rowsOf(f, v))
   if (f.kind === 'list') return (v as string[]).map((l) => l.trim()).filter(Boolean)
-  if (f.kind === 'select' && f.options === TRISTATE) return v === 'true'
+  // the form holds 'true', and a reopened .vellum holds true
+  if (isTristate(f)) return v === true || v === 'true'
   // numbers sit in text fields so blank can inherit; a typed one is written as a number
   if (f.kind === 'text' && typeof v === 'string' && v.trim() !== '' && Number.isFinite(Number(v))) {
     return Number(v)
@@ -364,8 +369,9 @@ export function configPath(kind: ProjectKind, id: string): string {
 export function canonicalise(kind: ProjectKind, flat: Record<string, unknown>): Config {
   let out: Config = {}
   for (const f of fieldsOf(kind)) {
-    const v = flat[f.key]
-    if (v === undefined) continue
+    const v = flat[f.key] as ConfigValue | undefined
+    // a blank switch stays unset; `coerce` would make it `false`
+    if (!written(f, v)) continue
     // `coerce` turns old rows into lines and tri-state strings into booleans
     out = setAt(out, f.path, coerce(f, v as ConfigValue))
   }
@@ -480,6 +486,9 @@ export function validateConfig(
 
     for (const state of ['idle', 'walk'] as const) {
       const clip = str(state)
+      if (/\s/.test(clip)) {
+        out.push({ level: 'error', message: `"${clip}" as the ${state} clip has a space in it, and clip names can\u2019t` })
+      }
       if (clip && /^(attack|death)$/i.test(clip)) {
         out.push({
           level: 'warning',
