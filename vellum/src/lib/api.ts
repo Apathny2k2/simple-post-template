@@ -94,7 +94,7 @@ export const endpoints: EndpointSpec[] = [
     method: 'DELETE',
     path: '/tickets/{ticketId}',
     group: 'Tickets',
-    summary: 'Archive a ticket. Soft delete - messages are retained for audit.',
+    summary: 'Archive a ticket. This is a soft delete. Messages are kept for audit.',
     returns: '204',
   },
   {
@@ -162,7 +162,7 @@ export const endpoints: EndpointSpec[] = [
     method: 'POST',
     path: '/tickets/{ticketId}/typing',
     group: 'Realtime',
-    summary: 'Signal that the requester is composing. Debounce to one call every 3s.',
+    summary: 'Signal that the requester is composing. Debounce to 1 call every 3 seconds.',
     returns: '202',
     usedBy: 'Composer',
   },
@@ -365,7 +365,7 @@ export const api = {
       author: { id: 'sys', name: 'Vellum', role: 'system' },
       body:
         input.priority === 'urgent'
-          ? 'Ticket opened \u00b7 urgent is a paid tier, so this was filed as high'
+          ? 'Ticket opened \u00b7 urgent needs a paid tier, so this was filed as high'
           : 'Ticket opened',
       createdAt: now,
       attachments: [],

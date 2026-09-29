@@ -86,7 +86,7 @@ export async function fetchMobSchema(signal?: AbortSignal): Promise<SchemaResult
     if (!res.ok) return { ok: false, reason: `The plugin answered ${res.status} ${res.statusText}.` }
     return readMobSchema(await res.json())
   } catch (e) {
-    return { ok: false, reason: `Could not reach the plugin — ${(e as Error).message}` }
+    return { ok: false, reason: `Could not reach the plugin: ${(e as Error).message}` }
   }
 }
 
@@ -118,7 +118,7 @@ function fieldOf(opt: WireOption, path: string, where: string): Field | SchemaPr
   }
 
   if (!(WIRE_TYPES as readonly string[]).includes(opt.type)) {
-    return { where, message: `type "${opt.type}" is not one this form can draw — it has been left out rather than guessed at` }
+    return { where, message: `type "${opt.type}" isn’t one this form can show, so it was left out` }
   }
 
   switch (opt.type) {
@@ -164,11 +164,11 @@ export function readMobSchema(raw: unknown): SchemaResult {
   const identity: Field[] = [
     { key: 'base', label: 'Base entity', kind: 'text', path: 'base', fallback: '',
       placeholder: 'ZOMBIE',
-      help: 'The vanilla mob this one is built on. A Brain-driven base is refused by the server, because it would ignore every goal below.' },
+      help: 'The vanilla mob it’s built on. The server refuses Brain-based mobs because they ignore goals.' },
     { key: 'display', label: 'Display name', kind: 'text', path: 'display-name', fallback: '',
       placeholder: '&5The Voidling', help: 'Colour codes with &.' },
     { key: 'model', label: 'Model', kind: 'text', path: 'model', fallback: '',
-      placeholder: 'vellum:voidling', help: 'A resource key, not a number.' },
+      placeholder: 'vellum:voidling', help: 'A resource key such as vellum:voidling. Not a number.' },
   ]
 
   /* ---- the flags, exactly as declared ---- */
@@ -195,8 +195,8 @@ export function readMobSchema(raw: unknown): SchemaResult {
   const goalField: Field = {
     key: 'goals', label: 'Goals', kind: 'rows', path: 'ai.goals', columns,
     help:
-      `${goals?.priority?.help ?? `Priority runs ${pMin} to ${pMax}, lower first.`}` +
-      (kinds.length ? ` The server implements ${kinds.length} goals.` : ''),
+      `${goals?.priority?.help ?? `Priority is ${pMin} to ${pMax}, lowest first.`}` +
+      (kinds.length ? ` The server supports ${kinds.length} goals.` : ''),
   }
 
   /* ---- the states: ONE list with a `plays` flag, not two lists ----
@@ -219,15 +219,15 @@ export function readMobSchema(raw: unknown): SchemaResult {
   for (const s of retired) {
     problems.push({
       where: `state "${s.name}"`,
-      message: s.note ?? 'retired: accepted, warned about once, then dropped before the definition is built',
+      message: s.note ?? 'retired. The server accepts it, warns once, then ignores it',
     })
   }
 
   const sections: Section[] = [
-    { id: 'identity', title: 'Identity', blurb: 'What it is built on, what renders, and what a player sees above it.', fields: identity },
-    { id: 'flags', title: 'Flags', blurb: `${flags.length} values read straight off the server’s catalogue.`, fields: flags },
-    { id: 'ai', title: 'AI', blurb: `The goals the runtime implements, in priority order.`, fields: [goalField] },
-    { id: 'animations', title: 'Animations', blurb: `${live.length} live states. Everything else plays through a goal.`, fields: animations },
+    { id: 'identity', title: 'Identity', blurb: 'The base mob, the model and the name shown above it.', fields: identity },
+    { id: 'flags', title: 'Flags', blurb: `${flags.length} values from the linked plugin.`, fields: flags },
+    { id: 'ai', title: 'AI', blurb: `The goals the plugin supports, in priority order.`, fields: [goalField] },
+    { id: 'animations', title: 'Animations', blurb: `${live.length} states are set here. Other clips play through a goal.`, fields: animations },
   ].filter((s) => s.fields.length)
 
   return { ok: true, schema: raw as unknown as MobSchema, sections, problems }

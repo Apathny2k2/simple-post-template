@@ -155,9 +155,8 @@ export function ExportPackDialog({
               {/* One integer per Minecraft version, and the wrong one
                   fails with no message worth reading. It is not guessed. */}
               <span className="field__hint">
-                84 is Minecraft 26.1.2. Your server&rsquo;s version decides it, and a newer one
-                declares higher — get it wrong and the pack will not load, with nothing said
-                about why.
+                84 is Minecraft 26.1.2. Newer versions use higher numbers. It must match your
+                server. If it&rsquo;s wrong, the pack won&rsquo;t load and Minecraft won&rsquo;t say why.
               </span>
             </label>
 
@@ -215,9 +214,9 @@ export function ExportPackDialog({
                   .filter((s) => /root collection key/.test(s.why))
                   .map((s) => (
                     <p key={s.id} className="pk__outrow">
-                      <strong>{s.id}</strong> — its root key is not confirmed yet. Shipping the
-                      wrong one is an error that blocks the server&rsquo;s whole content reload,
-                      not just this file, so it is shown in the Config tab and not written here.
+                      <strong>{s.id}</strong> — its root key isn&rsquo;t confirmed yet. A wrong key
+                      is an error that blocks the server&rsquo;s whole content reload, so this file
+                      stays out of the zip. You can see it in the Config tab.
                     </p>
                   ))}
               </div>
@@ -226,14 +225,13 @@ export function ExportPackDialog({
             {configs.files.length ? (
               <div className="pk__out">
                 <div className="pk__outhead">
-                  Also ready — {configs.files.length} config
+                  Also ready: {configs.files.length} config
                   {configs.files.length === 1 ? '' : 's'}
                 </div>
                 <p className="pk__outrow">
-                  <span className="mono">{configs.files.map((f) => f.path).join(', ')}</span> — what
-                  each one <em>is</em>, rather than what it looks like. These are read by the Vellum
-                  plugin, not by Minecraft, so they download separately rather than riding in the
-                  pack.
+                  <span className="mono">{configs.files.map((f) => f.path).join(', ')}</span>. These
+                  say what each model <em>is</em> in game. The Vellum plugin reads them and Minecraft
+                  ignores them, so they download separately from the pack.
                 </p>
               </div>
             ) : null}
@@ -253,16 +251,15 @@ export function ExportPackDialog({
           </div>
 
           <p className="ed-hint">
-            This is the pack for a server with <strong>no Vellum plugin</strong>. With the plugin
-            linked, it builds and serves its own pack from the same models — two pipelines that
-            can disagree would be worse than one.
+            This pack is for servers with <strong>no Vellum plugin</strong>. With the plugin
+            linked, use the pack it builds and serves from the same models. Don&rsquo;t use both.
           </p>
 
           <p className="ed-hint">
             Every model ships with Minecraft&rsquo;s default display transforms, because
-            <code className="mono"> .vellum</code> does not carry them — without a display block
-            and without a <code className="mono">parent</code>, a 16-unit item renders as a speck
-            in the hand and the inventory.
+            <code className="mono"> .vellum</code> doesn&rsquo;t store them. With no display block
+            and no <code className="mono">parent</code>, a 16-unit item would look tiny in the
+            hand and the inventory.
           </p>
 
           {note ? <p className="ed-hint ed-hint--warn">{note}</p> : null}
@@ -277,7 +274,7 @@ export function ExportPackDialog({
         <footer className="dlg__foot">
           <span className="cmp__hint mono">
             {items.filter((i) => !folderOf(i.kind)).length
-              ? 'A mob’s geometry stays in the .vellum — its stats are in the second zip'
+              ? 'A mob’s geometry stays in the .vellum and its stats go in the configs zip'
               : 'Drop the zip in resourcepacks/'}
           </span>
           <div className="row-actions">

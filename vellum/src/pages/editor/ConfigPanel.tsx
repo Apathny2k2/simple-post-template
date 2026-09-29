@@ -214,8 +214,8 @@ export function ConfigPanel({
     <>
       <p className="ed-hint cfg-lead">
         <Icon name="info" size={11} />
-        What this is, rather than what it looks like. Written as YAML, keyed by the
-        model&rsquo;s own name so the two cannot drift apart.
+        Settings for what this is in game. Written as YAML under the model&rsquo;s own
+        name, so the two stay in sync.
       </p>
 
       {/* WHERE THE FIELDS CAME FROM. A form that silently draws a stale
@@ -224,7 +224,7 @@ export function ConfigPanel({
       {served.from === 'plugin' ? (
         <p className="ed-hint cfg-lead">
           <Icon name="check" size={11} />
-          Fields declared by the linked plugin — <code className="mono">GET /api/mob/schema</code>.
+          Fields come from the linked plugin at <code className="mono">GET /api/mob/schema</code>.
         </p>
       ) : served.from === 'built-in' && kind === 'mobs' ? (
         <p className="ed-hint cfg-lead">
@@ -239,8 +239,8 @@ export function ConfigPanel({
       {served.problems.length ? (
         <div className="cfg-probs">
           <div className="cfg-probs__head">
-            {served.problems.length} thing{served.problems.length === 1 ? '' : 's'} the server declared that this
-            form did not draw
+            {served.problems.length} thing{served.problems.length === 1 ? '' : 's'} from the server that this
+            form doesn&rsquo;t show
           </div>
           {served.problems.map((p) => (
             <p key={`${p.where}:${p.message}`} className="cfg-probs__row">

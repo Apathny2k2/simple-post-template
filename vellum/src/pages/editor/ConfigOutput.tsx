@@ -65,7 +65,7 @@ export function ConfigOutput({
   }
 
   const copy = () => {
-    if (!navigator.clipboard?.writeText) return say('This browser exposes no clipboard to the page.')
+    if (!navigator.clipboard?.writeText) return say('Copying isn’t available in this browser.')
     void navigator.clipboard
       .writeText(yaml)
       .then(() => say(`Copied ${lines.length} lines.`))

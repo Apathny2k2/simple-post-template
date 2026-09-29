@@ -63,7 +63,7 @@ export const dashEndpoints: DashEndpoint[] = [
     path: '/dash/snapshot',
     group: 'Feed',
     summary:
-      'Replace every card in one call. The cheapest thing a plugin can do on a timer - send what you know, omit the rest.',
+      'Update every card in one call. Send what you know and leave out the rest. This is the cheapest way to report on a timer.',
     body: [
       { name: 'server', type: 'Server', note: 'Same body as PATCH /dash/server.' },
       { name: 'pack', type: 'Pack', note: 'Same body as PATCH /dash/pack.' },
@@ -80,7 +80,7 @@ export const dashEndpoints: DashEndpoint[] = [
     path: '/dash/snapshot',
     group: 'Feed',
     summary:
-      'Read the current state back. This is the endpoint Vellum polls when you point it at a plugin - implement it and the Dash fills itself.',
+      'Read the current state back. Implement this in your plugin. After you link it, Vellum polls this endpoint to fill the Dash.',
     returns: '{ server, pack, players, subscription, files, meta }',
   },
   {
@@ -88,28 +88,28 @@ export const dashEndpoints: DashEndpoint[] = [
     path: '/dash/heartbeat',
     group: 'Feed',
     summary:
-      'Say the plugin is alive and name itself. Without one, cards fed earlier go stale and then offline rather than pretending to be current.',
+      'Say the plugin is alive and give its name. If Vellum stops hearing from you, the Dash shows your data as stale, then offline.',
     body: [
       { name: 'agent', type: 'string', note: 'Plugin name and version, e.g. "VellumBridge 1.4.0".' },
-      { name: 'everySeconds', type: 'integer', note: 'How often you promise to call. 5-3600, default 30.' },
+      { name: 'everySeconds', type: 'integer', note: 'How often you will call, in seconds. 5 to 3600, default 30.' },
     ],
     returns: '{ ok: true, health: "live" }',
-    usedBy: 'Feed status',
+    usedBy: 'Plugin activity',
   },
   {
     method: 'GET',
     path: '/dash/events',
     group: 'Feed',
     summary:
-      'Server-sent events, so the Dash updates the moment something changes instead of on the next poll. Each event carries one section.',
-    params: [{ name: 'token', type: 'string', note: 'SSE cannot set headers, so the bearer goes here.' }],
+      'Server-sent events, so the Dash updates as soon as something changes. Each event carries one section.',
+    params: [{ name: 'token', type: 'string', note: 'SSE cannot set headers, so pass the bearer token here.' }],
     returns: 'text/event-stream of { section, body }',
   },
   {
     method: 'GET',
     path: '/dash/schema',
     group: 'Feed',
-    summary: 'This contract, as JSON. Check it at startup rather than guessing which Vellum you are feeding.',
+    summary: 'This contract, as JSON. Check it at startup to see which API version and limits this Vellum uses.',
     returns: '{ version: integer, base: string, endpoints: EndpointSpec[], limits: object }',
   },
 
@@ -118,7 +118,7 @@ export const dashEndpoints: DashEndpoint[] = [
     method: 'PATCH',
     path: '/dash/server',
     group: 'Realm',
-    summary: 'The realm card: identity, reachability and what is synced. Every field is optional; omitted fields keep their value.',
+    summary: 'The realm card: name, address, status and synced files. Every field is optional. Fields you leave out keep their value.',
     body: [
       { name: 'name', type: 'string', note: 'Display name. Up to 64 characters.' },
       { name: 'host', type: 'string', note: 'Hostname players connect to.' },
@@ -135,14 +135,14 @@ export const dashEndpoints: DashEndpoint[] = [
     method: 'PATCH',
     path: '/dash/subscription',
     group: 'Realm',
-    summary: 'The realm power card: plan, cloud region and seat usage.',
+    summary: 'The plan card: plan name, cloud region and seat usage.',
     body: [
       { name: 'type', type: 'string', note: 'Plan name.' },
       { name: 'cloud', type: 'string', note: 'Region, or N/A.' },
       { name: 'seats', type: 'string', note: 'Free text, e.g. "3 of 5".' },
     ],
     returns: '{ ok: true, problems: string[] }',
-    usedBy: 'Realm power',
+    usedBy: 'Plan',
   },
 
   /* ---- Pack ---- */
@@ -150,16 +150,16 @@ export const dashEndpoints: DashEndpoint[] = [
     method: 'PATCH',
     path: '/dash/pack',
     group: 'Pack',
-    summary: 'The resource pack card. Send this when you finish building a pack, not on a timer.',
+    summary: "The resource pack card. Send this when you finish building a pack. Don't send it on a timer.",
     body: [
       { name: 'archive', type: 'string', required: true, note: 'File name as served.' },
-      { name: 'bytes', type: 'integer', required: true, note: 'Size on the wire. Vellum does the formatting.' },
-      { name: 'hash', type: 'string', required: true, note: 'The SHA-1 you hand the client. Also what player reports are compared against.' },
-      { name: 'pushedAt', type: 'string | integer', note: 'ISO 8601, epoch ms or epoch seconds. Defaults to now.' },
+      { name: 'bytes', type: 'integer', required: true, note: 'Size in bytes. Vellum formats it for display.' },
+      { name: 'hash', type: 'string', required: true, note: 'The SHA-1 you send to clients. Player reports are compared against it.' },
+      { name: 'pushedAt', type: 'string | integer', note: 'ISO 8601, epoch milliseconds or epoch seconds. Defaults to now when the hash changes.' },
       { name: 'version', type: 'string | null', note: 'Your own build label, if you have one.' },
     ],
     returns: '{ ok: true, problems: string[] }',
-    usedBy: 'Resource pack info',
+    usedBy: 'Resource pack',
   },
 
   /* ---- Players ---- */
@@ -170,25 +170,25 @@ export const dashEndpoints: DashEndpoint[] = [
     summary: 'The adoption card, counted by you. Use this if the plugin already knows both numbers.',
     body: [
       { name: 'correct', type: 'integer', required: true, note: 'Clients on the current pack.' },
-      { name: 'wrong', type: 'integer', required: true, note: 'Clients on an old or no pack.' },
+      { name: 'wrong', type: 'integer', required: true, note: 'Clients on an old pack or no pack.' },
       { name: 'sampledAt', type: 'string | integer', note: 'When you counted. Defaults to now.' },
     ],
     returns: '{ ok: true, correct, wrong }',
-    usedBy: 'Pack adoption',
+    usedBy: 'Players',
   },
   {
     method: 'POST',
     path: '/dash/players/report',
     group: 'Players',
     summary:
-      'One client, one pack hash - which is all a join event knows. Vellum keeps the roster and does the counting, so you can call this straight from PlayerResourcePackStatusEvent.',
+      'Report one client and its pack hash. Vellum keeps the roster and does the counting. You can call this straight from PlayerResourcePackStatusEvent.',
     body: [
       { name: 'player', type: 'string', required: true, note: 'Name or UUID. The roster key.' },
       { name: 'packHash', type: 'string', note: 'What that client acknowledged. Compared against the current pack hash.' },
-      { name: 'left', type: 'boolean', note: 'true removes the player from the roster on quit.' },
+      { name: 'left', type: 'boolean', note: 'Send true when the player quits. It removes them from the roster.' },
     ],
     returns: '{ ok: true, correct, wrong, online }',
-    usedBy: 'Pack adoption',
+    usedBy: 'Players',
   },
 
   /* ---- Files ---- */
@@ -196,7 +196,7 @@ export const dashEndpoints: DashEndpoint[] = [
     method: 'POST',
     path: '/dash/files',
     group: 'Files',
-    summary: 'Append to the recent-files table. Newest first, capped at 50 - older rows fall off.',
+    summary: 'Add rows to the recent files table. It shows the newest first and keeps 50. Older rows are dropped.',
     body: [
       { name: 'name', type: 'string', required: true, note: 'File name. A row without one is dropped.' },
       { name: 'where', type: 'string', note: 'Directory, as you want it displayed.' },
@@ -222,9 +222,9 @@ export const dashEndpoints: DashEndpoint[] = [
     path: '/cloud/workspace',
     group: 'Cloud',
     summary:
-      "The database a paid account is allocated. Send what changed; the panel in Settings \u25b8 Cloud reads exactly this.",
+      "The database a paid account gets. Send only what changed. Settings \u25b8 Cloud shows exactly what you send.",
     body: [
-      { name: 'id', type: 'string', note: 'Workspace id, as your side names it.' },
+      { name: 'id', type: 'string', note: 'Workspace id, as you name it.' },
       { name: 'region', type: 'string', note: 'Where the database lives.' },
       { name: 'status', type: 'synced | syncing | paused | error', note: 'What the sync is doing right now.' },
       { name: 'usedBytes', type: 'integer', note: 'Storage in use.' },
@@ -242,8 +242,8 @@ export const dashEndpoints: DashEndpoint[] = [
     summary:
       'Just the roster, for a plugin that tracks who is connected without touching the rest of the workspace.',
     body: [
-      { name: 'members', type: 'Member[]', required: true, note: 'REPLACES the list.' },
-      { name: 'members[].name', type: 'string', required: true, note: 'One without a name is dropped.' },
+      { name: 'members', type: 'Member[]', required: true, note: 'REPLACES the list. Up to 40.' },
+      { name: 'members[].name', type: 'string', required: true, note: 'A member without a name is dropped.' },
       { name: 'members[].id', type: 'string', note: 'Your own id for them. Generated if absent.' },
       { name: 'members[].role', type: 'owner | editor | viewer', note: 'Defaults to viewer.' },
       { name: 'members[].seenAt', type: 'string | integer', note: 'Last seen. Defaults to now.' },
@@ -259,13 +259,13 @@ export const dashEndpoints: DashEndpoint[] = [
     path: '/console/changelog',
     group: 'Console',
     summary:
-      'Replace the release notes this studio shows in About. Pushed from the Master Console, through the plugin, so a studio learns what changed without anyone visiting a website.',
+      'Replace the release notes shown in About. The Master Console sends them through the plugin, so users see what changed without visiting a website.',
     body: [
       { name: 'releases', type: 'Release[]', required: true, note: 'REPLACES the list. Newest 30 kept, sorted by date.' },
       { name: 'releases[].version', type: 'string', required: true, note: 'An entry without one is dropped.' },
-      { name: 'releases[].channel', type: 'studio | plugin', note: 'Which half the note is about. Defaults to studio.' },
+      { name: 'releases[].channel', type: 'studio | plugin', note: 'Whether the note is about the studio or the plugin. Defaults to studio.' },
       { name: 'releases[].at', type: 'string | integer', note: 'Release date. Defaults to now.' },
-      { name: 'releases[].title', type: 'string', note: 'One line. Defaults to the version.' },
+      { name: 'releases[].title', type: 'string', note: 'One line, up to 96 characters. Defaults to the version.' },
       { name: 'releases[].notes', type: 'string[]', note: 'Up to 12 lines, 200 characters each.' },
     ],
     returns: '{ ok: true, kept: integer, problems: string[] }',
@@ -276,7 +276,7 @@ export const dashEndpoints: DashEndpoint[] = [
     path: '/plugin/version',
     group: 'Console',
     summary:
-      'Served BY the plugin, called by the studio: About checks the two halves are compatible rather than letting a version gap look like a bug.',
+      'Your plugin serves this and the studio calls it. About uses it to check that the plugin and studio versions are compatible.',
     returns: '{ plugin: string, studioMin?: string, api?: integer }',
     usedBy: 'About \u25b8 Versions',
   },
@@ -334,13 +334,13 @@ export const dash = {
       const sub = asBody(raw)
       if (!sub) {
         problems.push(
-          `${key}: expected an object, got ${Array.isArray(raw) ? 'array' : raw === null ? 'null' : typeof raw} - skipped`,
+          `${key}: expected an object, got ${Array.isArray(raw) ? 'array' : raw === null ? 'null' : typeof raw}. The section was skipped.`,
         )
         return
       }
       const r = read(sub)
       if (!r.touched.length) {
-        problems.push(`${key}: carried none of ${r.known.join(', ')} - skipped`)
+        problems.push(`${key}: has none of ${r.known.join(', ')}. The section was skipped.`)
         return
       }
       problems.push(...r.problems)
@@ -356,7 +356,7 @@ export const dash = {
 
     if (body.files !== undefined) {
       if (!Array.isArray(body.files)) {
-        problems.push('files: expected an array - the table was left alone')
+        problems.push('files: expected an array. The table was left alone.')
       } else {
         const rows = (body.files as unknown[])
           .map((row, i) => readFile(asBody(row) ?? {}, i, problems))
@@ -426,7 +426,7 @@ export const dash = {
     const firstPack = !dashStore.meta.fed.includes('pack')
     const missing = firstPack ? ['archive', 'bytes', 'hash'].filter((k) => body[k] === undefined) : []
     if (missing.length) {
-      return reject('PATCH /dash/pack', `the first pack report must carry ${missing.join(', ')}`, via)
+      return reject('PATCH /dash/pack', `the first pack report must include ${missing.join(', ')}`, via)
     }
     const r = readPack(body, dashStore.snapshot.pack)
     if (!r.touched.length) {
@@ -522,7 +522,7 @@ export const dash = {
     if (!body) return reject('PATCH /cloud/workspace', 'body must be a JSON object', via)
     const r = readCloud(body, dashStore.snapshot.cloud)
     if (!r.touched.length)
-      return reject('PATCH /cloud/workspace', `carried none of ${r.known.join(', ')}`, via)
+      return reject('PATCH /cloud/workspace', `nothing to apply: send one of ${r.known.join(', ')}`, via)
     dashStore.snapshot.cloud = r.value
     dashStore.accept('cloud', 'PATCH /cloud/workspace', r.problems, via)
     return { ok: true, problems: r.problems }
@@ -570,7 +570,7 @@ export const dash = {
     let every = Number(body.everySeconds ?? dashStore.meta.heartbeatSeconds)
     if (!Number.isFinite(every)) every = 30
     if (every < 5 || every > 3600) {
-      problems.push(`everySeconds: ${every} is outside 5..3600 - clamped`)
+      problems.push(`everySeconds: ${every} is outside 5..3600. Clamped to the nearest limit.`)
       every = Math.max(5, Math.min(3600, every))
     }
     dashStore.setAgent(agent || null, Math.round(every))
@@ -744,7 +744,10 @@ export function connect(link: Link, onState: (s: LinkState) => void): () => void
     source.onmessage = (e) => {
       everArrived = true
       try {
-        apply(JSON.parse(e.data), 'stream')
+        // an event is one section, { section, body }; a whole snapshot is taken too
+        const data = JSON.parse(e.data)
+        const one = data && typeof data === 'object' && typeof data.section === 'string' && 'body' in data
+        apply(one ? { [data.section]: data.body } : data, 'stream')
       } catch {
         onState({ link, status: 'error', detail: 'an event was not valid JSON' })
       }

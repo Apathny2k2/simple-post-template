@@ -749,7 +749,7 @@ export function readVellum(raw: string | object): Model {
   }
   if (header.format !== FORMAT) {
     throw new VellumFormatError(
-      `This is a Vellum "${header.format}" document; this editor reads "${FORMAT}" documents.`,
+      `This is a Vellum "${header.format}" document. This editor opens "${FORMAT}" documents.`,
     )
   }
   if (typeof header.version !== 'number') {
@@ -757,8 +757,8 @@ export function readVellum(raw: string | object): Model {
   }
   if (header.version > CURRENT_VERSION) {
     throw new VellumFormatError(
-      `This model was written by a newer Vellum (version ${header.version}) than this one, ` +
-        `which cannot know what it means. This editor reads up to version ${CURRENT_VERSION}.`,
+      `This model was saved by a newer Vellum (version ${header.version}). ` +
+        `This editor reads up to version ${CURRENT_VERSION}, so it can’t open it.`,
     )
   }
 

@@ -133,7 +133,7 @@ export function hitReport(model: Model): HitReport {
       empty.push({
         boneId: bone.id,
         boneName: bone.name,
-        why: 'draws nothing and has no hidden cube to measure, so it has no bounds and no effect on hittability',
+        why: 'draws nothing and has no hidden cube, so it has no bounds and doesn’t change what can be hit',
       })
     }
   }
@@ -145,7 +145,7 @@ export function hitReport(model: Model): HitReport {
       lost: drawn.map((r) => ({
         boneId: r.boneId,
         boneName: r.boneName,
-        why: 'marked regions exist on this rig, and they win outright',
+        why: 'this rig has marked regions, and they take priority over drawn bones',
       })),
       empty,
       unknowns,
@@ -165,13 +165,13 @@ export function hitReport(model: Model): HitReport {
 export function modeLine(r: HitReport): string {
   if (r.mode === 'explicit') {
     const n = r.regions.length
-    return `Explicit hit regions: ${n} marked bone${n === 1 ? '' : 's'}. Every drawn bone has stopped being a target.`
+    return `Explicit hit regions: ${n} marked bone${n === 1 ? '' : 's'}. Drawn bones can’t be hit.`
   }
   if (r.mode === 'derived') {
     const n = r.regions.length
-    return `Derived hit regions: all ${n} drawn bone${n === 1 ? ' is a target' : 's are targets'}, following the animation, for free.`
+    return `Derived hit regions: all ${n} drawn bone${n === 1 ? ' is a target' : 's are targets'}. Regions follow the animation automatically.`
   }
-  return 'Nothing is hittable: this rig draws nothing and marks nothing.'
+  return 'Nothing can be hit. This rig has no visible cubes and no marked regions.'
 }
 
 /* ---------------- authoring ----------------

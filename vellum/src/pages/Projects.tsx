@@ -36,7 +36,7 @@ function useAssetActions() {
     if (!asset.sampleId) return
     const texture = sampleById(asset.sampleId).model.textures[0]
     if (!texture) {
-      say('That model carries no texture.')
+      say('That model has no texture.')
       return
     }
     void saveDataUrl(texture.name.replace(/\.png$/i, '') + '.png', texture.source).then(say)
@@ -173,11 +173,11 @@ function AssetCard({
           entries={
             real
               ? [
-                  { label: 'Open in Editor', icon: 'cube', onSelect: () => navigate(`/editor/${asset.sampleId}`) },
+                  { label: 'Open in the editor', icon: 'cube', onSelect: () => navigate(`/editor/${asset.sampleId}`) },
                   { label: 'Download .vellum', icon: 'download', onSelect: () => onDownload(asset) },
                   { label: 'Export texture PNG', icon: 'image', onSelect: () => onTexture(asset) },
                 ]
-              : [{ kind: 'label', label: 'Placeholder card - nothing to open' }]
+              : [{ kind: 'label', label: 'Placeholder card. Nothing to open.' }]
           }
           trigger={({ props }) => (
             <button className="icon-btn" {...props} aria-label={`Actions for ${asset.name}`}>
@@ -468,7 +468,7 @@ function Gateway() {
             <Kinetic key="first-scene" text="First scene" />
           </h1>
           <p className="page-sub">
-            Choose a scene, then a shelf.
+            Choose a shelf to open.
           </p>
         </div>
       </div>

@@ -22,15 +22,15 @@ const KINDS: Array<{
     id: 'mobs',
     label: 'Mob',
     icon: 'anim',
-    blurb: 'A six-part rig on a 64 x 64 sheet.',
-    detail: 'Head, torso, two arms and two legs, each on its own bone with the pivot on the joint.',
+    blurb: 'A 6-part rig on a 64 x 64 sheet.',
+    detail: 'Head, torso, 2 arms and 2 legs, each on its own bone with the pivot on the joint.',
   },
   {
     id: 'blocks',
     label: 'Block',
     icon: 'grid',
     blurb: 'A full 16-unit cube on a 64 x 64 sheet.',
-    detail: 'Validated against the block rules: inside -16..32, one rotated axis, fixed angles.',
+    detail: 'Checked against the block rules: inside -16..32, 1 rotated axis, fixed angles.',
   },
 ]
 
@@ -39,9 +39,9 @@ const KINDS: Array<{
 const SUB_NOTE: Record<Subtype, string> = {
   weapon: 'Swung. Dropped on the ground in the world view.',
   tool: 'Held and used on a block. Dropped on the ground in the world view.',
-  consumable: 'Starts as a flask that already carries its use clip — the clip the rules ask for.',
+  consumable: 'Starts as a flask with a use clip. Consumables need one.',
   misc: 'An ordinary item. Hangs in the air in the world view.',
-  hostile: 'Comes at the player. The rules ask for an attack clip.',
+  hostile: 'Comes at the player. Give it an attack clip.',
   neutral: 'Fights back when hit.',
   docile: 'Never attacks.',
 }
@@ -162,8 +162,7 @@ export function NewModelDialog({
             </div>
           ) : (
             <p className="ed-hint newmodel__sub">
-              <Icon name="info" size={11} /> A block is one thing, so there is nothing further to say
-              about it here.
+              <Icon name="info" size={11} /> Blocks have no subtypes.
             </p>
           )}
 

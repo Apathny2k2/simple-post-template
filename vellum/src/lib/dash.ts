@@ -195,7 +195,7 @@ const show = (v: unknown) =>
 function str(v: unknown, field: string, max: number, fallback: string, problems: Problems): string {
   if (v === undefined || v === null) return fallback
   if (typeof v !== 'string') {
-    problems.push(`${field}: expected a string, got ${typeof v} - kept the previous value`)
+    problems.push(`${field}: expected a string, got ${typeof v}. Kept the previous value.`)
     return fallback
   }
   // a control character would not render; a tab in a table cell is a mess
@@ -218,12 +218,12 @@ function num(
   if (v === undefined || v === null) return opts.fallback
   const n = typeof v === 'number' ? v : Number(v)
   if (!Number.isFinite(n)) {
-    problems.push(`${field}: ${show(v)} is not a finite number - kept the previous value`)
+    problems.push(`${field}: ${show(v)} is not a finite number. Kept the previous value.`)
     return opts.fallback
   }
   const rounded = opts.integer === false ? n : Math.round(n)
   if (rounded < opts.min || rounded > opts.max) {
-    problems.push(`${field}: ${rounded} is outside ${opts.min}..${opts.max} - clamped`)
+    problems.push(`${field}: ${rounded} is outside ${opts.min}..${opts.max}. Clamped to the nearest limit.`)
     return Math.max(opts.min, Math.min(opts.max, rounded))
   }
   return rounded
@@ -236,10 +236,10 @@ function bool(v: unknown, field: string, fallback: boolean, problems: Problems):
      is the field that says whether the realm is up - silently keeping
      the old value was the worst place in the API to do that. */
   if (v === 1 || v === 0) {
-    problems.push(`${field}: got ${v}, read as ${v === 1} - send a boolean`)
+    problems.push(`${field}: got ${v}, read as ${v === 1}. Send a boolean.`)
     return v === 1
   }
-  problems.push(`${field}: expected a boolean, got ${typeof v} - kept the previous value`)
+  problems.push(`${field}: expected a boolean, got ${typeof v}. Kept the previous value.`)
   return fallback
 }
 
@@ -270,7 +270,7 @@ function when(v: unknown, field: string, fallback: string, problems: Problems): 
 function oneOf<T extends string>(v: unknown, field: string, allowed: readonly T[], fallback: T, problems: Problems): T {
   if (v === undefined || v === null) return fallback
   if (typeof v === 'string' && (allowed as readonly string[]).includes(v)) return v as T
-  problems.push(`${field}: ${show(v)} is not one of ${allowed.join(' | ')} - used ${fallback}`)
+  problems.push(`${field}: ${show(v)} is not one of ${allowed.join(' | ')}. Used ${fallback}.`)
   return fallback
 }
 
@@ -468,7 +468,7 @@ export function readServer(body: Record<string, unknown>, current: ServerState) 
   let breakdown = current.breakdown
   if (body.breakdown !== undefined) {
     if (!Array.isArray(body.breakdown)) {
-      problems.push('breakdown: expected an array - kept the previous value')
+      problems.push('breakdown: expected an array. Kept the previous value.')
     } else {
       const rows = body.breakdown as Array<Record<string, unknown>>
       if (rows.length > LIMITS.breakdownRows) {
@@ -504,7 +504,13 @@ export function readPack(body: Record<string, unknown>, current: PackState) {
     archive: str(body.archive, 'archive', LIMITS.archive, current.archive, problems),
     bytes: num(body.bytes, 'bytes', { min: 0, max: 1e12, fallback: current.bytes }, problems),
     hash: str(body.hash, 'hash', LIMITS.hash, current.hash, problems),
-    pushedAt: when(body.pushedAt, 'pushedAt', current.pushedAt, problems),
+    // a new pack is pushed now unless it says otherwise; a repeat keeps its date
+    pushedAt: when(
+      body.pushedAt,
+      'pushedAt',
+      typeof body.hash === 'string' && body.hash !== current.hash ? new Date().toISOString() : current.pushedAt,
+      problems,
+    ),
     version:
       body.version === undefined || body.version === null
         ? current.version
@@ -538,7 +544,7 @@ export function readSubscription(body: Record<string, unknown>, current: Subscri
 export function readMember(body: Record<string, unknown>, index: number, problems: Problems): Member | null {
   const name = str(body?.name, `members[${index}].name`, LIMITS.name, '', problems)
   if (!name) {
-    problems.push(`members[${index}]: dropped, it has no name`)
+    problems.push(`members[${index}]: dropped because it has no name`)
     return null
   }
   return {
@@ -558,7 +564,7 @@ export function readCloud(body: Record<string, unknown>, current: Workspace) {
   let members = current.members
   if (body.members !== undefined) {
     if (!Array.isArray(body.members)) {
-      problems.push('members: expected an array - kept the previous list')
+      problems.push('members: expected an array. Kept the previous list.')
     } else {
       if (body.members.length > LIMITS.members)
         problems.push(`members: ${body.members.length} listed, kept the first ${LIMITS.members}`)
@@ -584,7 +590,7 @@ export function readCloud(body: Record<string, unknown>, current: Workspace) {
 export function readFile(body: Record<string, unknown>, index: number, problems: Problems): FileTouch | null {
   const name = str(body?.name, `files[${index}].name`, LIMITS.fileName, '', problems)
   if (!name) {
-    problems.push(`files[${index}]: dropped, it has no name`)
+    problems.push(`files[${index}]: dropped because it has no name`)
     return null
   }
   return {
@@ -610,14 +616,14 @@ export function readFile(body: Record<string, unknown>, index: number, problems:
 export function readRelease(body: Record<string, unknown>, index: number, problems: Problems): Release | null {
   const version = str(body?.version, `releases[${index}].version`, LIMITS.version, '', problems)
   if (!version) {
-    problems.push(`releases[${index}]: dropped, it names no version`)
+    problems.push(`releases[${index}]: dropped because it has no version`)
     return null
   }
 
   let notes: string[] = []
   if (body?.notes !== undefined) {
     if (!Array.isArray(body.notes)) {
-      problems.push(`releases[${index}].notes: expected an array - dropped`)
+      problems.push(`releases[${index}].notes: expected an array. The notes were dropped.`)
     } else {
       if (body.notes.length > LIMITS.releaseNotes)
         problems.push(
@@ -643,17 +649,16 @@ export function readRelease(body: Record<string, unknown>, index: number, proble
 /** The whole changelog, newest first, however the console ordered it. */
 export function readReleases(value: unknown, problems: Problems): Release[] {
   if (!Array.isArray(value)) {
-    problems.push('releases: expected an array - nothing applied')
+    problems.push('releases: expected an array. Nothing was applied.')
     return []
   }
   if (value.length > LIMITS.releases)
     problems.push(`releases: ${value.length} entries, kept the newest ${LIMITS.releases}`)
   const out = value
-    .slice(0, LIMITS.releases)
     .map((r, i) => readRelease((r ?? {}) as Record<string, unknown>, i, problems))
     .filter((r): r is Release => r !== null)
   out.sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0))
-  return out
+  return out.slice(0, LIMITS.releases)
 }
 
 /* ---------------- derived ---------------- */

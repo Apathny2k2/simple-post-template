@@ -136,13 +136,13 @@ export function checkTranslation(
   const out: TranslationIssue[] = []
   /* Fatal to a pack, merely a fact on a linked server. */
   const boneLevel = target === 'pack' ? 'error' : 'warning'
-  const carried = target === 'pack' ? '' : ' — the plugin carries it as the bone’s rest rotation'
+  const carried = target === 'pack' ? '' : '. The plugin applies it as the bone’s rest rotation'
 
   if (kind === 'mobs') {
     out.push({
       level: 'note',
       message:
-        'A mob has no model file in vanilla Minecraft — entity models are not part of a resource pack. This is the plugin’s to render.',
+        'A mob has no model file in vanilla Minecraft. Resource packs can’t hold entity models, so the plugin renders it.',
     })
 
     /* Where it can be hit is NOT a resource-pack question and does not
@@ -160,7 +160,7 @@ export function checkTranslation(
   if (model.clips.length) {
     out.push({
       level: 'note',
-      message: `A model file holds one pose. ${model.clips.length} clip${model.clips.length === 1 ? '' : 's'} stay in the .vellum for the plugin to play — the pack gets the rest pose.`,
+      message: `A model file holds a single pose, so the pack gets the rest pose. ${model.clips.length} clip${model.clips.length === 1 ? ' stays' : 's stay'} in the .vellum for the plugin to play.`,
     })
   }
 
@@ -175,13 +175,13 @@ export function checkTranslation(
       out.push({
         level: 'error',
         where: tag,
-        message: `"${cube.name}" turns on more than one axis — an element rotates on exactly one`,
+        message: `"${cube.name}" turns on 2 or more axes, but an element can only turn on 1 axis`,
       })
     } else if (own && !(LEGAL_ANGLES as readonly number[]).includes(own.angle)) {
       out.push({
         level: 'warning',
         where: tag,
-        message: `${own.owner} turns ${own.angle}°, which is not one of ${LEGAL_ANGLES.join(', ')} — it exports as ${nearestLegal(own.angle)}°`,
+        message: `${own.owner} turns ${own.angle}°, which isn’t one of ${LEGAL_ANGLES.join(', ')}. It exports as ${nearestLegal(own.angle)}°`,
       })
     }
 
@@ -190,7 +190,7 @@ export function checkTranslation(
       out.push({
         level: boneLevel,
         where: tag,
-        message: `${owner} turns on more than one axis, which no model file can hold${carried}`,
+        message: `${owner} turns on 2 or more axes, which a model file can’t hold${carried}`,
       })
     }
 
@@ -202,13 +202,13 @@ export function checkTranslation(
       out.push({
         level: boneLevel,
         where: tag,
-        message: `rotated about ${pivots} pivots (${names.join(', ')}) — an element has one${carried}`,
+        message: `rotated about ${pivots} pivots (${names.join(', ')}), but an element can only have 1 pivot${carried}`,
       })
     } else if (bones.turns.length === 1 && !(LEGAL_ANGLES as readonly number[]).includes(bones.turns[0].angle)) {
       out.push({
         level: boneLevel === 'error' ? 'warning' : 'note',
         where: tag,
-        message: `${bones.turns[0].owner} turns ${bones.turns[0].angle}°, which is not one of ${LEGAL_ANGLES.join(', ')} — it exports as ${nearestLegal(bones.turns[0].angle)}°${carried}`,
+        message: `${bones.turns[0].owner} turns ${bones.turns[0].angle}°, which isn’t one of ${LEGAL_ANGLES.join(', ')}. It exports as ${nearestLegal(bones.turns[0].angle)}°${carried}`,
       })
     }
 
@@ -226,8 +226,8 @@ export function checkTranslation(
              scale. So it is fatal to a pack and a fact on a server. */
           level: target === 'pack' ? 'error' : 'warning',
           where: tag,
-          message: `${AXES[i]} runs ${from[i]} to ${to[i]}${cube.inflate ? ' once inflated' : ''} — an element lives inside -16..32${
-            target === 'pack' ? '' : ' — the plugin scales the bone down to fit'
+          message: `${AXES[i]} runs ${from[i]} to ${to[i]}${cube.inflate ? ' once inflated' : ''}, but an element must stay inside -16..32${
+            target === 'pack' ? '' : '. The plugin scales the bone down to fit'
           }`,
         })
       }
@@ -235,7 +235,7 @@ export function checkTranslation(
 
     const blank = FACES.filter((f) => !cube.faces[f].texture)
     if (blank.length === 6) {
-      out.push({ level: 'warning', where: tag, message: 'no textured faces — it exports invisible' })
+      out.push({ level: 'warning', where: tag, message: 'has no textured faces, so it exports invisible' })
     } else if (blank.length) {
       out.push({
         level: 'note',

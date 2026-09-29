@@ -45,7 +45,7 @@ export function Hero({
       ? 'Live'
       : health === 'stale'
         ? `Quiet for ${quiet}`
-        : `No word for ${quiet}`
+        : `No reports for ${quiet}`
 
   return (
     <section className="hero" aria-labelledby="dash-server-name">
@@ -107,7 +107,7 @@ export function Hero({
               </button>
               <p className="hero__note">
                 <span className="hero__rec" aria-hidden="true" />
-                Demo server running. It talks to this page through the plugin API.
+                Demo server running. It sends data through the same API a real plugin uses.
               </p>
             </>
           ) : !live && !linked ? (

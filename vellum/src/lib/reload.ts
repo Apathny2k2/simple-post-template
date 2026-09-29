@@ -88,7 +88,7 @@ function readCounts(raw: unknown): { counts: Record<string, number>; unreadable:
 function errorMessage(status: number, body: unknown): string {
   if (isObj(body) && typeof body.error === 'string' && body.error.trim()) return body.error
   if (status === 409) return 'The coordinator refused the reload.'
-  if (status === 504) return 'The reload is still running — check the server console.'
+  if (status === 504) return 'The reload is still running. Check the server console.'
   if (status === 500) return 'The server was interrupted while applying the reload.'
   return `The plugin answered ${status}.`
 }
@@ -117,7 +117,7 @@ export async function requestReload(signal?: AbortSignal): Promise<ReloadOutcome
       signal,
     })
   } catch (e) {
-    return { kind: 'error', status: null, url, message: `Could not reach the server — ${(e as Error).message}` }
+    return { kind: 'error', status: null, url, message: `Could not reach the server (${(e as Error).message})` }
   }
 
   let body: unknown

@@ -35,8 +35,8 @@ const freeSections: Section[] = [
   { id: 'account', label: 'Account', icon: 'user', blurb: 'Sign-in and sessions.' },
   { id: 'profile', label: 'Profile', icon: 'book', blurb: 'What collaborators see next to your uploads.' },
   { id: 'directory', label: 'Directory', icon: 'directory', blurb: 'Where Vellum reads and writes on disk.' },
-  { id: 'report-a-bug', label: 'Report A Bug', icon: 'bug', blurb: 'Send a report with the current session log attached.' },
-  { id: 'about', label: 'About', icon: 'info', blurb: 'Build, licences and what changed recently.' },
+  { id: 'report-a-bug', label: 'Report a bug', icon: 'bug', blurb: 'Send a report with the current session log attached.' },
+  { id: 'about', label: 'About', icon: 'info', blurb: 'Build, versions and what changed recently.' },
 ]
 
 const paidSections: Section[] = [
@@ -54,7 +54,7 @@ const paidSections: Section[] = [
     label: 'Support',
     icon: 'support',
     paid: true,
-    blurb: 'Tickets you have opened. In this build they stay in your browser and a mock answers them.',
+    blurb: 'Tickets you have opened. In this build they stay in your browser and get sample replies.',
   },
 ]
 
@@ -225,10 +225,10 @@ const BUILT_IN_RELEASES: Release[] = [
     at: '2026-09-19T00:00:00.000Z',
     title: 'Reachable without a mouse',
     notes: [
-      'Dialogs trap focus and hand it back; menus and the model-kind picker take the arrow keys.',
-      'Every number field is named and steps on the arrows.',
+      'Dialogs keep focus inside and return it when they close. Menus and the model-kind picker work with the arrow keys.',
+      'Every number field has a screen reader label and steps with the arrow keys.',
       'Touch drags work on the UV sheet, the scrub handles and the timeline.',
-      'Text clears AA contrast on every route, and the viewport fits the model it is given.',
+      'Text meets AA contrast on every page. The viewport fits each model you open.',
     ],
   },
   {
@@ -236,11 +236,11 @@ const BUILT_IN_RELEASES: Release[] = [
     version: '0.8.0',
     channel: 'studio',
     at: '2026-09-19T00:00:00.000Z',
-    title: 'The outliner became an outliner',
+    title: 'Outliner, timeline and locking',
     notes: [
-      'Bones have an inspector; rows rename in place and drag to reparent.',
+      'Bones have an inspector. Rows rename in place and drag to a new parent.',
       'The timeline zooms and fits, and playback runs at 1.00x.',
-      'Locking refuses edits, paint and delete instead of doing nothing quietly.',
+      'Locking now blocks edits, paint and delete. Before, it did nothing.',
     ],
   },
   {
@@ -248,9 +248,9 @@ const BUILT_IN_RELEASES: Release[] = [
     version: '0.7.0',
     channel: 'plugin',
     at: '2026-09-19T00:00:00.000Z',
-    title: 'The dashboard opened to a feed',
+    title: 'A data feed for the Dash',
     notes: [
-      'Twelve ingest endpoints, a window bridge and a postMessage door.',
+      '12 ingest endpoints, a window bridge and postMessage support.',
       'Every correction Vellum makes comes back in problems[].',
     ],
   },
@@ -273,7 +273,7 @@ const VERSION_TONE: Record<VersionReport['state'], { icon: IconName; tone: strin
   'plugin-behind': { icon: 'warning', tone: 'warn', label: 'Plugin is behind' },
   'studio-behind': { icon: 'warning', tone: 'warn', label: 'Studio is behind' },
   unreachable: { icon: 'warning', tone: 'warn', label: 'No answer' },
-  unlinked: { icon: 'info', tone: 'idle', label: 'Standalone' },
+  unlinked: { icon: 'info', tone: 'idle', label: 'No plugin linked' },
 }
 
 function About() {
@@ -307,7 +307,7 @@ function About() {
 
       <Card
         title="Versions"
-        note={`Shipped inside plugin ${PLUGIN_VERSION}; still talks to ${PLUGIN_MIN} and newer.`}
+        note={`Ships inside plugin ${PLUGIN_VERSION}. Works with plugin ${PLUGIN_MIN} and newer.`}
         dividedHead
         actions={
           <button className="btn btn--sm btn--primary" onClick={() => void check()} disabled={checking}>
@@ -325,10 +325,10 @@ function About() {
             </p>
             <div className="kv" style={{ marginTop: 'var(--sp-3)' }}>
               <div className="kv__row"><span className="kv__k">Studio</span><span className="kv__v">{report.studio}</span></div>
-              <div className="kv__row"><span className="kv__k">Plugin</span><span className="kv__v">{report.plugin ?? 'no answer'}</span></div>
+              <div className="kv__row"><span className="kv__k">Plugin</span><span className="kv__v">{report.plugin ?? 'No answer'}</span></div>
               <div className="kv__row">
-                <span className="kv__k">Plugin wants studio</span>
-                <span className="kv__v">{report.studioMin ?? 'did not say'}</span>
+                <span className="kv__k">Minimum studio</span>
+                <span className="kv__v">{report.studioMin ?? 'Not reported'}</span>
               </div>
               <div className="kv__row">
                 <span className="kv__k">Checked</span>
@@ -338,10 +338,8 @@ function About() {
           </>
         ) : (
           <p className="ed-hint">
-            <Icon name="info" size={11} /> Studio and plugin ship together, so they should never
-            disagree. When they do, it is because this studio was opened against a server running an
-            older build &mdash; which looks exactly like a bug. This asks the linked plugin what it
-            is and compares.
+            <Icon name="info" size={11} /> Checks the linked plugin's version against this studio. A
+            mismatch usually means the server runs an older build.
           </p>
         )}
       </Card>
@@ -351,7 +349,7 @@ function About() {
         note={
           pushed.length
             ? `${pushed.length} release${pushed.length === 1 ? '' : 's'} pushed from the Master Console.`
-            : 'What this build knows about itself. The Master Console replaces this when it pushes.'
+            : 'Notes that ship with this build. The Master Console replaces them when it pushes a changelog.'
         }
         dividedHead
       >
@@ -386,13 +384,13 @@ function About() {
 const ROLE_BLURB: Record<Member['role'], string> = {
   owner: 'Full access, including the workspace itself.',
   editor: 'Opens and saves files in the workspace.',
-  viewer: 'Opens files; cannot save over them.',
+  viewer: 'Opens files. Cannot save over them.',
 }
 
 const SYNC_TONE: Record<Workspace['status'], { tone: string; say: string }> = {
   synced: { tone: 'ok', say: 'In sync with the plugin.' },
   syncing: { tone: 'idle', say: 'A sync is running.' },
-  paused: { tone: 'idle', say: 'Nothing is syncing - no plugin has reported.' },
+  paused: { tone: 'idle', say: 'Nothing is syncing. No plugin has reported.' },
   error: { tone: 'warn', say: 'The last sync failed.' },
 }
 
@@ -457,7 +455,7 @@ function Cloud() {
 
       <Card
         title="Members"
-        note={`${cloud.members.length} ${cloud.members.length === 1 ? 'identity' : 'identities'} on this workspace.`}
+        note={`${cloud.members.length} ${cloud.members.length === 1 ? 'member' : 'members'} on this workspace.`}
         dividedHead
       >
         <div className="dir-list">
@@ -482,7 +480,7 @@ function Cloud() {
 
       <Card
         title="Shared files"
-        note="The same list the plugin syncs, so a team opens the same files from the same place."
+        note="The files the plugin syncs. Everyone on your team opens them from the same place."
         dividedHead
       >
         {files.length ? (
@@ -512,11 +510,10 @@ function Cloud() {
           "cloud workspace" means. */}
       <Card title="Who can read this" dividedHead>
         <p className="ed-hint" style={{ marginTop: 0 }}>
-          <Icon name="info" size={11} /> The workspace database is allocated and administered by
-          Vellum. The account owner listed above administers your team's access to it, and Vellum's
-          operator retains administrative access to every workspace it hosts - for support, for
-          migration and for abuse handling. Files you do not want held that way belong in a local
-          project, which is what Vellum opens by default.
+          <Icon name="info" size={11} /> Vellum sets up and runs the workspace database. The account
+          owner listed above controls your team's access to it. Vellum's operator also has admin
+          access to every workspace it hosts, for support, migration and abuse handling. Keep files
+          you don't want stored this way in a local project. Vellum opens local projects by default.
         </p>
       </Card>
     </>
@@ -528,7 +525,7 @@ function Body({ section }: { section: Section }) {
     case 'account':
       return (
         <>
-          <Card title="Sign-in" note="Used to sync scenes between machines." dividedHead>
+          <Card title="Sign-in" note="Lets you sync scenes between machines." dividedHead>
             <div className="field-grid">
               <label className="field">
                 <span className="field__label">Email</span>
@@ -537,7 +534,7 @@ function Body({ section }: { section: Section }) {
               <label className="field">
                 <span className="field__label">Password</span>
                 <input className="field__input" type="password" defaultValue="placeholder" />
-                <span className="field__hint">Last rotated 04/02/26.</span>
+                <span className="field__hint">Last changed 04/02/26.</span>
               </label>
             </div>
             {/* "Revoke other sessions" needed a session store that does not
@@ -580,7 +577,7 @@ function Body({ section }: { section: Section }) {
     case 'directory':
       return (
         <>
-          <Card title="Working directories" note="Vellum only reads inside these roots." dividedHead>
+          <Card title="Working directories" note="Vellum only reads files inside these folders." dividedHead>
             <div className="dir-list">
               {[
                 ['Projects', '~/vellum/scenes'],
@@ -599,7 +596,7 @@ function Body({ section }: { section: Section }) {
           </Card>
           <Card title="Watchers" dividedHead>
             <ToggleRow id="reload" title="Reload on external change" desc="Pick up edits made outside the editor." on />
-            <ToggleRow id="subfolders" title="Index subfolders" desc="Walk nested directories when building the library." on />
+            <ToggleRow id="subfolders" title="Index subfolders" desc="Include nested folders when building the library." on />
           </Card>
         </>
       )
@@ -616,7 +613,7 @@ function Body({ section }: { section: Section }) {
     case 'billing':
       return (
         <>
-          <Card title="Plan" note="Free tier - no card on file." dividedHead>
+          <Card title="Plan" note="Free tier. No card on file." dividedHead>
             <div className="kv">
               <div className="kv__row"><span className="kv__k">Current plan</span><span className="kv__v">Free</span></div>
               <div className="kv__row"><span className="kv__k">Cloud storage</span><span className="kv__v">N/A</span></div>

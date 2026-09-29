@@ -95,7 +95,7 @@ export function Timeline({ now }: { now: number }) {
         <span className="feed__playhead" />
       </div>
 
-      {shown.length ? null : <p className="feed__empty">No reports yet. Each one lands here as it arrives.</p>}
+      {shown.length ? null : <p className="feed__empty">No reports yet. Reports from the plugin show up here.</p>}
     </div>
   )
 }

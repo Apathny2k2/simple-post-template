@@ -218,7 +218,7 @@ export function readRig(model: Model): RigReading {
     tailChain,
     height,
     confidence: bones.length ? named / bones.length : 0,
-    summary: parts.length ? parts.join(', ') : 'nothing it recognises',
+    summary: parts.length ? parts.join(', ') : 'no known parts',
   }
 }
 
@@ -553,8 +553,8 @@ export const AUTO_PRESETS: Preset[] = [
   {
     id: 'walk',
     label: 'Walk',
-    blurb: 'Legs counter-phase, arms against them, one bob per footfall. The stride follows leg length.',
-    needs: (rig) => (rig.byRole.leg.length ? null : 'no legs it can find'),
+    blurb: 'Legs alternate, arms swing against them, and the body bobs once per step. Stride follows leg length.',
+    needs: (rig) => (rig.byRole.leg.length ? null : 'no legs found'),
     build: walk,
   },
   {

@@ -154,7 +154,7 @@ export function Dashboard() {
           <ReloadControl
             key={demo ? 'demo' : 'live'}
             linked={linked || demo}
-            hint={demo ? 'The demo server answers too. Apply a few times to see it swap, refuse and fail.' : undefined}
+            hint={demo ? 'This works on the demo server too. Apply a few times to see a swap, a refusal and an error.' : undefined}
             request={demo ? demoReload : undefined}
           />
         </Tile>
@@ -231,7 +231,7 @@ export function Dashboard() {
                       {f.sync === 'outdated' ? (
                         <span className="pack-chip pack-chip--old">
                           <Icon name="warning" size={10} />
-                          {f.staleClients ? ` old on ${f.staleClients} clients` : ' outdated'}
+                          {f.staleClients ? ` old on ${f.staleClients} client${f.staleClients === 1 ? '' : 's'}` : ' outdated'}
                         </span>
                       ) : f.sync === 'in-sync' ? (
                         <span className="pack-chip pack-chip--ok">

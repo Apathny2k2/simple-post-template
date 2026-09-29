@@ -151,33 +151,33 @@ const MOB_SECTIONS: Section[] = [
   {
     id: 'identity',
     title: 'Identity',
-    blurb: 'What it is built on, what renders, and what a player sees above it.',
+    blurb: 'The base mob, the model and the name shown above it.',
     fields: [
       { key: 'base', label: 'Base entity', kind: 'text', path: 'base', options: BASES,
         placeholder: 'ZOMBIE', fallback: '',
-        help: 'The vanilla mob this one is built on - its hitbox, sounds and swimming come from here. A Brain-driven base is refused by the server, because it would ignore every goal below.' },
+        help: 'The vanilla mob it\u2019s built on. Hitbox, sounds and swimming come from here. The server refuses Brain-based mobs because they ignore goals.' },
       { key: 'display', label: 'Display name', kind: 'text', path: 'display-name',
         placeholder: '&5The Voidling', fallback: '',
         help: 'Colour codes with &. Shown on the name plate.' },
       { key: 'model', label: 'Model', kind: 'text', path: 'model',
         placeholder: 'vellum:voidling', fallback: '',
-        help: 'A resource key, not a number. This is what the rig is baked under.' },
+        help: 'A resource key such as vellum:voidling. Not a number. The plugin saves the rig under this key.' },
     ],
   },
   {
     id: 'flags',
     title: 'Flags',
-    blurb: 'Nine values. Leave one blank to use the base mob\u2019s value.',
+    blurb: '9 values. Leave one blank to use the base mob\u2019s value.',
     fields: [
       { key: 'health', label: 'Health', kind: 'number', path: 'health',
         min: 0.5, max: 1024, step: 0.5, fallback: 20,
-        help: 'Half a heart to 1024. The default is 20, and writing 20 writes nothing.' },
+        help: '0.5 to 1024. Default 20, so 20 isn\u2019t written to the file.' },
       { key: 'speed', label: 'Movement speed', kind: 'text', path: 'movement-speed',
         placeholder: 'inherit', fallback: '',
-        help: '0 to 2. Blank inherits the base entity\u2019s own speed, which is why this is not a slider - there is no default to slide away from.' },
+        help: '0 to 2. Leave blank to use the base mob\u2019s speed.' },
       { key: 'scale', label: 'Scale', kind: 'text', path: 'scale',
         placeholder: 'inherit', fallback: '',
-        help: '0.0625 to 16. Blank leaves it to the base entity.' },
+        help: '0.0625 to 16. Leave blank to use the base mob\u2019s scale.' },
       flag('gravity', 'Gravity', 'Blank inherits. false makes it hover.'),
       flag('invulnerable', 'Invulnerable', 'Blank inherits. true makes it immune to all damage.'),
       flag('silent', 'Silent', 'Blank inherits. true suppresses its vanilla sounds.'),
@@ -189,7 +189,7 @@ const MOB_SECTIONS: Section[] = [
   {
     id: 'ai',
     title: 'AI',
-    blurb: 'The eight goals the runtime implements, in priority order.',
+    blurb: 'The 8 goals the plugin supports, in priority order.',
     fields: [
       { key: 'goals', label: 'Goals', kind: 'rows', path: 'ai.goals',
         columns: [
@@ -197,13 +197,13 @@ const MOB_SECTIONS: Section[] = [
           { key: 'priority', label: 'Priority', width: 1 },
           { key: 'animation', label: 'Animation', width: 2 },
         ],
-        help: 'Priority runs 1 to 32, lower first. 0 is excluded on purpose, so no config can outrank a mob\u2019s ability to swim. Every goal but vellum:target_nearest can name a clip to play while it runs.' },
+        help: 'Priority is 1 to 32, lowest first. Swimming always comes first. Every goal except vellum:target_nearest can play a clip.' },
     ],
   },
   {
     id: 'animations',
     title: 'Animations',
-    blurb: 'Only two states are live. Everything else plays through a goal.',
+    blurb: 'Only idle and walk are set here. Other clips play through a goal.',
     fields: [
       { key: 'idle', label: 'Idle clip', kind: 'text', path: 'animations.idle',
         placeholder: 'idle', fallback: '', help: 'The clip that plays when it is doing nothing else.' },
@@ -217,7 +217,7 @@ const ITEM_SECTIONS: Section[] = [
   {
     id: 'identity',
     title: 'Identity',
-    blurb: 'What it is called, what it renders as, and how it stacks.',
+    blurb: 'Its name, model, lore, stack size and durability.',
     fields: [
       { key: 'display', label: 'Display name', kind: 'text', path: 'display-name',
         placeholder: '&bRunic Blade', fallback: '', help: 'Colour codes with &.' },
@@ -558,7 +558,7 @@ export function validateConfig(
   if (!touched) return []
 
   if (!ID_RULE.test(id)) {
-    out.push({ level: 'error', message: `"${id}" cannot be an id - letters, digits and underscores only` })
+    out.push({ level: 'error', message: `"${id}" can\u2019t be an id. Use letters, digits and underscores only` })
   }
 
   /** A blank stays blank: the runtime inherits it. Only a typed value is checked. */
@@ -569,7 +569,7 @@ export function validateConfig(
     if (!Number.isFinite(n)) {
       out.push({ level: 'error', message: `${label} is "${raw}", which is not a number` })
     } else if (n < lo || n > hi) {
-      out.push({ level: 'error', message: `${label} is ${n}; the runtime accepts ${lo} to ${hi}` })
+      out.push({ level: 'error', message: `${label} is ${n}. The plugin accepts ${lo} to ${hi}` })
     }
   }
 
@@ -580,7 +580,7 @@ export function validateConfig(
 
     const hp = Number(at('health') ?? 20)
     if (Number.isFinite(hp) && (hp < 0.5 || hp > 1024)) {
-      out.push({ level: 'error', message: `Health is ${hp}; the runtime accepts 0.5 to 1024` })
+      out.push({ level: 'error', message: `Health is ${hp}. The plugin accepts 0.5 to 1024` })
     }
     range('speed', 'Movement speed', 0, 2)
     range('scale', 'Scale', 0.0625, 16)
@@ -596,7 +596,7 @@ export function validateConfig(
       const g = (r.goal ?? '').trim()
       if (!g) continue
       if (!(GOALS as readonly string[]).includes(g)) {
-        out.push({ level: 'error', message: `"${g}" is not a goal - the runtime implements ${GOALS.join(', ')}` })
+        out.push({ level: 'error', message: `"${g}" isn\u2019t a goal. Use one of ${GOALS.join(', ')}` })
       }
       if (seen.has(g)) out.push({ level: 'warning', message: `"${g}" is listed twice` })
       seen.add(g)
@@ -607,8 +607,8 @@ export function validateConfig(
           out.push({
             level: 'error',
             message: p === 0
-              ? 'A priority of 0 is excluded on purpose, so no config can outrank a mob\u2019s ability to swim - 1 is the highest'
-              : `A priority of ${r.priority}: priorities run 1 to 32, lower first`,
+              ? 'Priority 0 isn\u2019t allowed, so swimming always comes first. 1 is the highest'
+              : `Priority ${r.priority} isn\u2019t valid. Use 1 to 32, where lower runs first`,
           })
         }
       }
@@ -616,7 +616,7 @@ export function validateConfig(
       if (g === 'vellum:target_nearest' && (r.animation ?? '').trim()) {
         out.push({
           level: 'warning',
-          message: 'vellum:target_nearest is the one goal that carries no animation - the clip here is ignored',
+          message: 'vellum:target_nearest can\u2019t play a clip, so the clip here is ignored',
         })
       }
     }
@@ -624,7 +624,7 @@ export function validateConfig(
     if (goals.length && !seen.has('vellum:target_nearest')) {
       out.push({
         level: 'warning',
-        message: 'Goals but no vellum:target_nearest: it will decide how to fight and never decide whom',
+        message: 'Goals but no vellum:target_nearest, so it won\u2019t pick a target',
       })
     }
 
@@ -633,7 +633,7 @@ export function validateConfig(
       if (clip && /^(attack|death)$/i.test(clip)) {
         out.push({
           level: 'warning',
-          message: `"${clip}" as the ${state} clip looks like a retired state - attack and death are accepted and then dropped; a goal\u2019s own animation is how a clip like that plays`,
+          message: `"${clip}" as the ${state} clip looks like a retired state. Attack and death are accepted, then dropped. To play a clip like that, set it as a goal\u2019s animation`,
         })
       }
     }
@@ -644,7 +644,7 @@ export function validateConfig(
     if (model && /^[0-9]+$/.test(model)) {
       out.push({
         level: 'error',
-        message: `A model of "${model}": this is a resource key like vellum:${id}, not a custom-model-data number`,
+        message: `"${model}" looks like a custom-model-data number. Use a resource key such as vellum:${id}`,
       })
     }
     range('stack', 'Max stack size', 1, 99)

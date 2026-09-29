@@ -423,7 +423,7 @@ export function validateModel(model: Model, kind?: ProjectKind, subtype?: Subtyp
       }
       const spun = cube.rotation.filter((r) => r !== 0)
       if (spun.length > 1) {
-        issues.push({ level: 'error', message: `"${tag}" rotates on ${spun.length} axes; a block allows one` })
+        issues.push({ level: 'error', message: `"${tag}" rotates on ${spun.length} axes, but a block can only rotate on 1` })
       }
       for (const r of cube.rotation) {
         if (!BLOCK_ROTATIONS.has(r)) {
@@ -469,7 +469,7 @@ export function validateModel(model: Model, kind?: ProjectKind, subtype?: Subtyp
              outright, which is the thing worth avoiding. */
           issues.push({
             level: 'warning',
-            message: `"${clip.name}" has a key at ${key.time}s, past its ${clip.length}s end - it will not play`,
+            message: `"${clip.name}" has a key at ${key.time}s, past its ${clip.length}s end, so that key won't play`,
           })
         }
       }
@@ -506,7 +506,7 @@ export function validateModel(model: Model, kind?: ProjectKind, subtype?: Subtyp
       if (span > 16.001) {
         issues.push({
           level: 'warning',
-          message: `${span.toFixed(1)} units across ${axis[i]} — an item is rendered in a 16-unit slot, so this is ${(span / 16).toFixed(2)} blocks in hand`,
+          message: `${span.toFixed(1)} units across ${axis[i]} is ${(span / 16).toFixed(2)} blocks in hand, because items render in a 16-unit slot`,
         })
       }
     }
@@ -529,7 +529,7 @@ export function validateModel(model: Model, kind?: ProjectKind, subtype?: Subtyp
   if (sub === 'hostile' && model.clips.length && !model.clips.some((c) => ATTACK_CLIP.test(c.name))) {
     issues.push({
       level: 'warning',
-      message: 'A hostile mob with no attack clip: it will swing on its idle, which reads as nothing happening',
+      message: 'A hostile mob with no attack clip plays its idle while attacking, so nothing seems to happen',
     })
   }
 

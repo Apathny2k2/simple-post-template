@@ -41,7 +41,7 @@ function against(blocks: number): string {
   if (ratio < 0.95) return 'shorter than a player'
   if (ratio <= 1.08) return 'about player height'
   if (ratio < 1.8) return 'taller than a player'
-  return `${ratio.toFixed(1)}x a player — it will not fit through a door`
+  return `${ratio.toFixed(1)}x a player, too tall to fit through a door`
 }
 
 export function ScenePanel({
@@ -67,13 +67,13 @@ export function ScenePanel({
         <div className="kv__row">
           <span className="kv__k">Height</span>
           <span className="kv__v">
-            {h.toFixed(1)}u &middot; {blocks.toFixed(2)} blocks
+            {h.toFixed(1)} units &middot; {blocks.toFixed(2)} blocks
           </span>
         </div>
         <div className="kv__row">
           <span className="kv__k">Footprint</span>
           <span className="kv__v">
-            {w.toFixed(1)} x {d.toFixed(1)}u
+            {w.toFixed(1)} x {d.toFixed(1)} units
           </span>
         </div>
         <div className="kv__row">
@@ -111,11 +111,11 @@ export function ScenePanel({
           'No clips yet, so it will stand in the world. Key one in Animate.'
         ) : travel.blocks > 0 ? (
           <>
-            Its legs ask for <strong>{travel.blocks}</strong> block{travel.blocks === 1 ? '' : 's'} a
-            stride, so the ground moves at {(travel.speed / BLOCK).toFixed(2)} blocks/s under it.
+            Its legs cover <strong>{travel.blocks}</strong> block{travel.blocks === 1 ? '' : 's'} a
+            stride, so the ground moves under it at {(travel.speed / BLOCK).toFixed(2)} blocks per second.
           </>
         ) : (
-          `"${clip.name}" does not travel — it plays in place, which is right for an idle or an attack and a moonwalk for a walk.`
+          `"${clip.name}" plays in place. That’s right for an idle or an attack, but a walk will look like a moonwalk.`
         )}
       </p>
 
@@ -125,8 +125,8 @@ export function ScenePanel({
 
       <p className="ed-hint" style={{ marginTop: 10 }}>
         <Icon name="info" size={11} />
-        No display slots: those pose an item in a hand, a GUI cell or an item frame, and a mob is
-        never in one. It stands in the world at the size above.
+        Mobs don&rsquo;t use display slots. Those pose items in a hand, the inventory or an item
+        frame. A mob stands in the world at the size above.
       </p>
     </>
   )

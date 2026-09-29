@@ -214,7 +214,7 @@ export function WorldScene({
 
           {withPlayer ? (
             <span className="world__hint">
-              <Icon name="user" size={11} /> The player is two blocks tall. Yours is {label}.
+              <Icon name="user" size={11} /> The player is 2 blocks tall. Yours is {label}.
             </span>
           ) : null}
         </div>
@@ -264,7 +264,7 @@ export function WorldScene({
               title={cycle ? 'The behaviour is choosing the clip' : undefined}
               onChange={(e) => onClip(e.target.value || null)}
             >
-              <option value="">none</option>
+              <option value="">None</option>
               {clips.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.name}
@@ -294,7 +294,7 @@ export function WorldScene({
               className="chip"
               aria-pressed={walking}
               onClick={() => setWalking((v) => !v)}
-              title={`Derived from the leg swing: ${travel.asked.toFixed(1)} units a cycle, rounded to ${travel.blocks} block${travel.blocks === 1 ? '' : 's'} so the field loops without a seam`}
+              title={`From the leg swing: ${travel.asked.toFixed(1)} units a cycle, rounded to ${travel.blocks} block${travel.blocks === 1 ? '' : 's'} so the floor loops smoothly`}
             >
               <Icon name="move" size={11} /> {(travel.speed / BLOCK).toFixed(2)} blocks/s
             </button>
@@ -311,10 +311,10 @@ export function WorldScene({
 
           <span className="world__note">
             {!playing
-              ? 'Paused — drag to look around the pose'
+              ? 'Paused. Drag to look around the pose.'
               : moving.speed > 0
-                ? 'Walking — the ground moves, so the cycle never ends'
-                : 'Drag to orbit while it plays'}
+                ? 'Walking. The ground moves, so the cycle never ends.'
+                : 'Drag to orbit while it plays.'}
           </span>
         </footer>
       </div>

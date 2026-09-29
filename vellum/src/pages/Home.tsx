@@ -258,7 +258,7 @@ export function Home() {
               </Reveal>
             ))}
           </div>
-          <p className="home-plans__note">Paid plans open soon, and their prices go up here when they do.</p>
+          <p className="home-plans__note">Paid plans open soon. Their prices will be listed here at launch.</p>
         </section>
 
         <Reveal className="home-cta">

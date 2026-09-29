@@ -131,7 +131,7 @@ export function buildPack(items: PackItem[], opts: PackOptions): PackReport {
         id: item.id,
         why:
           item.kind === 'mobs'
-            ? 'a mob has no model file in a resource pack — the plugin renders it'
+            ? 'resource packs can’t hold a mob model, so the plugin renders it'
             : `nothing in a pack holds a "${item.kind ?? 'kind-less'}" model`,
       })
       continue
@@ -235,7 +235,7 @@ export function buildConfigs(items: PackItem[]): PackReport {
     if (!keyConfirmed(item.kind)) {
       skipped.push({
         id: item.id,
-        why: 'its root collection key is not confirmed yet — shipping the wrong one would block the server’s whole content reload, so it is previewed in the Config tab rather than written here',
+        why: 'its root collection key isn’t confirmed yet. A wrong key would block the server’s whole content reload, so it’s left out of the zip. You can preview it in the Config tab',
       })
       continue
     }

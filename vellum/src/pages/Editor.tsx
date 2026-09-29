@@ -158,8 +158,8 @@ function buildMenus(
           onSelect: actions.onRedo,
         },
         { kind: 'separator' },
-        { label: 'Add Cube', icon: 'cube', onSelect: actions.onAddCube },
-        { label: 'Add Bone', icon: 'folder', onSelect: actions.onAddBone },
+        { label: 'Add cube', icon: 'cube', onSelect: actions.onAddCube },
+        { label: 'Add bone', icon: 'folder', onSelect: actions.onAddBone },
         { kind: 'separator' },
         { label: 'Duplicate', icon: 'copy', shortcut: 'Ctrl D', onSelect: actions.onDuplicate },
         { label: 'Delete', icon: 'trash', shortcut: 'Del', danger: true, onSelect: actions.onDelete },
@@ -191,8 +191,8 @@ function buildMenus(
     {
       label: 'View',
       entries: [
-        { label: 'Quad View', icon: 'layers', shortcut: 'Ctrl 4', onSelect: actions.onQuad },
-        { label: 'Toggle Grid', icon: 'grid', shortcut: 'G', onSelect: actions.onGrid },
+        { label: 'Quad view', icon: 'layers', shortcut: 'Ctrl 4', onSelect: actions.onQuad },
+        { label: 'Toggle grid', icon: 'grid', shortcut: 'G', onSelect: actions.onGrid },
         { kind: 'separator' },
         /* "Screenshot Model" used to sit here doing nothing, and there is
            no honest way to implement it: the viewport is composed from
@@ -205,7 +205,7 @@ function buildMenus(
     {
       label: 'Help',
       entries: [
-        { label: 'Report a Bug', icon: 'bug', onSelect: () => navigate('/settings/report-a-bug') },
+        { label: 'Report a bug', icon: 'bug', onSelect: () => navigate('/settings/report-a-bug') },
         { label: 'About Vellum', icon: 'info', onSelect: () => navigate('/settings/about') },
       ],
     },
@@ -284,22 +284,22 @@ const toolsets: Record<Mode, Array<{ id: string; icon: IconName; label: string }
     { id: 'move', icon: 'move', label: 'Move' },
     { id: 'resize', icon: 'resize', label: 'Resize' },
     { id: 'rotate', icon: 'rotate', label: 'Rotate' },
-    { id: 'pivot', icon: 'pivot', label: 'Pivot Tool' },
-    { id: 'vertex', icon: 'vertex', label: 'Vertex Snap' },
+    { id: 'pivot', icon: 'pivot', label: 'Pivot tool' },
+    { id: 'vertex', icon: 'vertex', label: 'Vertex snap' },
     { id: 'knife', icon: 'knife', label: 'Knife' },
   ],
   paint: [
     { id: 'brush', icon: 'brush', label: 'Brush' },
     { id: 'eraser', icon: 'eraser', label: 'Eraser' },
-    { id: 'bucket', icon: 'bucket', label: 'Paint Bucket' },
-    { id: 'pipette', icon: 'pipette', label: 'Colour Picker' },
-    { id: 'shape', icon: 'shape', label: 'Draw Shape' },
+    { id: 'bucket', icon: 'bucket', label: 'Paint bucket' },
+    { id: 'pipette', icon: 'pipette', label: 'Colour picker' },
+    { id: 'shape', icon: 'shape', label: 'Draw shape' },
   ],
   animate: [
     { id: 'move', icon: 'move', label: 'Move' },
     { id: 'resize', icon: 'resize', label: 'Resize' },
     { id: 'rotate', icon: 'rotate', label: 'Rotate' },
-    { id: 'pivot', icon: 'pivot', label: 'Pivot Tool' },
+    { id: 'pivot', icon: 'pivot', label: 'Pivot tool' },
   ],
   display: [
     { id: 'move', icon: 'move', label: 'Move' },
@@ -435,10 +435,10 @@ function Toolbar({
       <span className="ed-sep" />
 
       <div className="ed-tools">
-        <button className="ed-tool" title="Add Cube" aria-label="Add Cube" onClick={onAddCube}>
+        <button className="ed-tool" title="Add cube" aria-label="Add cube" onClick={onAddCube}>
           <Icon name="cube" size={15} />
         </button>
-        <button className="ed-tool" title="Add Bone" aria-label="Add Bone" onClick={onAddBone}>
+        <button className="ed-tool" title="Add bone" aria-label="Add bone" onClick={onAddBone}>
           <Icon name="folder" size={15} />
         </button>
       </div>
@@ -583,7 +583,7 @@ function NumField({
     <div className="nf" data-disabled={disabled || undefined}>
       <span
         className={`nf__axis nf__axis--${axis}`}
-        title={`${name} \u2014 drag to scrub`}
+        title={`${name}. Drag to scrub.`}
         aria-hidden="true"
         onPointerDown={(e) => {
           if (disabled) return
@@ -757,7 +757,7 @@ function CubePanel({
 
       {blockLocked ? (
         <p className="ed-hint ed-hint--warn">
-          <Icon name="warning" size={11} /> Block models rotate on one axis only, at {'\u00b1'}22.5{'\u00b0'} or {'\u00b1'}45{'\u00b0'}.
+          <Icon name="warning" size={11} /> Block models rotate on 1 axis only, at {'\u00b1'}22.5{'\u00b0'} or {'\u00b1'}45{'\u00b0'}.
         </p>
       ) : null}
 
@@ -939,7 +939,7 @@ function UVPanel({
         </button>
         <button
           className="chip"
-          title="Swap the UV horizontally - a reversed rectangle is how a face mirrors"
+          title="Mirror the texture on this face by swapping its UV horizontally"
           onClick={() =>
             onChange((c) => {
               const uv = c.faces[face].uv
@@ -1321,7 +1321,7 @@ function Outliner({
                   className="tree__toggle"
                   data-on
                   data-region
-                  title={`${node.name} is a hit region — remove it`}
+                  title={`${node.name} is a hit region. Click to remove it.`}
                   aria-label={`Remove the hit region ${node.name}`}
                   onClick={(e) => {
                     e.stopPropagation()
@@ -1374,7 +1374,7 @@ function Outliner({
           </div>
         )
       })}
-      <div className="tree__root-drop">{dragId ? 'release here to make it a root' : null}</div>
+      <div className="tree__root-drop">{dragId ? 'Release here to make it a root' : null}</div>
     </div>
   )
 }
@@ -1625,8 +1625,8 @@ function AutoAnimate({ anim }: { anim: AnimApi }) {
   if (anim.kind !== 'mobs') {
     return (
       <p className="ed-hint">
-        <Icon name="info" size={11} /> Auto-animation reads a skeleton, so it is for mobs. This is a{' '}
-        {anim.kind.replace(/s$/, '')} project.
+        <Icon name="info" size={11} /> Auto-animation reads a skeleton, so it only works for mobs. This project makes{' '}
+        {anim.kind.replace(/s$/, '')} models.
       </p>
     )
   }
@@ -1644,7 +1644,7 @@ function AutoAnimate({ anim }: { anim: AnimApi }) {
           ? 'Mostly from their names.'
           : rig.confidence > 0
             ? 'Mostly from their shape, since the names say little.'
-            : 'From their shape alone - nothing is named in a way it recognises.'}
+            : 'From their shape alone, because no bone names were recognised.'}
       </p>
 
       <div className="auto-grid">
@@ -1658,7 +1658,7 @@ function AutoAnimate({ anim }: { anim: AnimApi }) {
               title={missing ? `Cannot: ${missing}` : preset.blurb}
               onClick={() => {
                 const name = anim.autoAnimate(preset.id)
-                say(name ? `Built ${name}. Edit it like any other clip.` : `Nothing to drive for ${preset.label}.`)
+                say(name ? `Built ${name}. Edit it like any other clip.` : `No bones for ${preset.label} to move.`)
               }}
             >
               <span className="auto__name">{preset.label}</span>
@@ -1670,8 +1670,7 @@ function AutoAnimate({ anim }: { anim: AnimApi }) {
 
       {note ? <p className="ed-hint ed-hint--warn">{note}</p> : null}
       <p className="ed-hint">
-        <Icon name="info" size={11} /> These are a starting pose set, not a finished animation - every
-        key lands on the timeline and edits like one you placed yourself.
+        <Icon name="info" size={11} /> A starting point. Every key is editable on the timeline.
       </p>
     </>
   )
@@ -1685,7 +1684,7 @@ function AnimationPanel({ anim }: { anim: AnimApi }) {
     return (
       <>
         <p className="ed-hint">
-          This model has no animations yet. An animation is a name, a length and the bones it drives.
+          No animations yet.
         </p>
         <div className="chip-row">
           <button className="chip chip--go" onClick={anim.newClip}>
@@ -2059,7 +2058,7 @@ function Timeline({
           aria-label="Animation"
           disabled={!anim.clips.length}
         >
-          {anim.clips.length ? null : <option value="">no animations</option>}
+          {anim.clips.length ? null : <option value="">No animations</option>}
           {anim.clips.map((c) => (
             <option key={c.id} value={c.id}>
               {clipLabel(c.name)} · {c.length}s
@@ -2142,7 +2141,7 @@ function Timeline({
                   {Number((i * tickStep).toFixed(2))}s
                 </span>
               ))}
-              <span className="tl-end" style={{ left: length * pxPerS }} title={`clip ends at ${length}s`} />
+              <span className="tl-end" style={{ left: length * pxPerS }} title={`Clip ends at ${length}s`} />
             </div>
 
             {rows.map((r) => (
@@ -2217,7 +2216,7 @@ function Timeline({
 
             {rows.length ? null : (
               <>
-                <div className="tl-name">pick a bone to animate</div>
+                <div className="tl-name">Pick a bone to animate</div>
                 <div className="tl-track" style={{ width: trackW }} />
               </>
             )}
@@ -2673,7 +2672,7 @@ export function Editor({ segments }: { segments: string[] }) {
 
   /** Say why nothing happened, once, rather than ignoring the gesture. */
   const refuseLocked = useCallback((what: string) => {
-    setSaveNote(`${what} is locked \u2014 unlock it in the outliner first.`)
+    setSaveNote(`${what} is locked. Unlock it in the outliner first.`)
     window.setTimeout(() => setSaveNote(null), 3000)
   }, [])
 
@@ -2692,7 +2691,7 @@ export function Editor({ segments }: { segments: string[] }) {
     return () => window.removeEventListener('beforeunload', onBeforeUnload)
   }, [dirty])
 
-  const unsaved = `${fileName} has changes that have not been saved, and undo does not reach back across a model change.`
+  const unsaved = `${fileName} has unsaved changes. Undo can\u2019t bring them back once you leave this model.`
 
   useEffect(() => {
     if (!dirty) return
@@ -2764,7 +2763,7 @@ export function Editor({ segments }: { segments: string[] }) {
         // a transparent texel used to be indistinguishable from a missed click
         if (!sampled) return
         if (sampled[3] === 0) {
-          setSaveNote('That texel is transparent \u2014 nothing to pick.')
+          setSaveNote('That texel is transparent, so there\u2019s no colour to pick.')
           window.setTimeout(() => setSaveNote(null), 2500)
           return
         }
@@ -3381,8 +3380,8 @@ export function Editor({ segments }: { segments: string[] }) {
                 {hit.mode === 'explicit' ? (
                   <ul className="ed-issues">
                     <li data-level="warning">
-                      <Icon name="warning" size={11} />A bone becomes a marked region by drawing nothing
-                      while holding a hidden cube — so hiding a cube for any reason at all can do this.
+                      <Icon name="warning" size={11} />A bone that draws nothing but holds a hidden cube
+                      becomes a marked region. Hiding a cube for any reason can do this.
                     </li>
                     {hit.lost.slice(0, 8).map((l) => (
                       <li key={l.boneId} data-level="warning">
@@ -3419,7 +3418,7 @@ export function Editor({ segments }: { segments: string[] }) {
 
             <Panel
               title="Validation"
-              count={errors ? `${errors} errors` : warnings ? `${warnings} warnings` : 'clean'}
+              count={errors ? `${errors} error${errors === 1 ? '' : 's'}` : warnings ? `${warnings} warning${warnings === 1 ? '' : 's'}` : 'clean'}
               defaultOpen={errors > 0 || warnings > 0 || !!openError}
               // a refused file arrives long after mount, and in silence otherwise
               forceOpen={!!openError}
@@ -3440,7 +3439,7 @@ export function Editor({ segments }: { segments: string[] }) {
                 </ul>
               ) : (
                 <p className="ed-hint">
-                  <Icon name="check" size={11} /> Nothing the writer would refuse.
+                  <Icon name="check" size={11} /> No problems.
                 </p>
               )}
 
@@ -3522,7 +3521,7 @@ export function Editor({ segments }: { segments: string[] }) {
                   /* aria-selected means nothing on a button; this is
                      "the one of the set you are on", which is aria-current */
                   aria-current={i === textureIndex}
-                  title={`${t.name} \u2014 click to select, then View \u25b8 Export texture PNG`}
+                  title={`${t.name}. Click to select, then use View \u25b8 Export texture PNG.`}
                   onClick={() => setTextureIndex(i)}
                 >
                   <span

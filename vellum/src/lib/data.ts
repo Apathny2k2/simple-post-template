@@ -81,7 +81,7 @@ export const scenes: Scene[] = [
   {
     id: 'aurelian',
     name: 'Aurelian Keep',
-    blurb: 'Survival flagship - stone, brass and lantern light.',
+    blurb: 'Survival flagship. Stone, brass and lantern light.',
     counts: { items: 0, mobs: 0 },
   },
   {
@@ -162,9 +162,9 @@ export const assets: Asset[] = scenes.flatMap((scene, s) => [
 /* `.vellum` carries no format string - the project kind does that job,
    which is what keeps one model from claiming two different formats. */
 const KIND_LABEL: Record<string, string> = {
-  items: 'Item Model',
-  mobs: 'Rigged Entity',
-  blocks: 'Block Model',
+  items: 'Item model',
+  mobs: 'Rigged entity',
+  blocks: 'Block model',
 }
 
 /* Where a subtype says something a kind cannot, it is what the card
@@ -173,9 +173,9 @@ const SUBTYPE_FORMAT: Partial<Record<Subtype, string>> = {
   weapon: 'Weapon',
   tool: 'Tool',
   consumable: 'Consumable',
-  hostile: 'Hostile Mob',
-  neutral: 'Neutral Mob',
-  docile: 'Docile Mob',
+  hostile: 'Hostile mob',
+  neutral: 'Neutral mob',
+  docile: 'Docile mob',
 }
 
 /* The three models the probes built. These are the only cards whose

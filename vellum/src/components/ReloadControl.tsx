@@ -125,18 +125,18 @@ function Verdict({ outcome }: { outcome: ReloadOutcome }) {
       <div className="rl__out" data-kind="refused" role="status">
         <p className="rl__head">
           <Icon name="warning" size={16} />
-          Nothing was swapped — the content did not pass validation.
+          Nothing was swapped. The content failed validation.
         </p>
         <p className="rl__blast">
-          The server is still running what it had. One bad file holds back every mob, item, block
-          and furniture piece, so this blocks the whole set rather than just the file below.
+          The server is still running the content it had before. One bad file holds back every mob,
+          item, block and furniture piece until you fix it.
         </p>
         {outcome.report ? (
           <pre className="rl__report">{outcome.report}</pre>
         ) : (
           <p className="rl__bare">
-            The server declined without saying why. That is a gap on its side, not a step you
-            missed — check the server console.
+            The server declined without saying why. That's a gap on the server's side. You didn't
+            miss a step. Check the server console.
           </p>
         )}
         <Stages stages={outcome.stages} unreadable={outcome.unreadable} />
@@ -151,7 +151,7 @@ function Verdict({ outcome }: { outcome: ReloadOutcome }) {
         {outcome.status === null
           ? 'The server could not be reached.'
           : outcome.status < 400
-            ? 'The server gave no verdict.'
+            ? 'The server did not confirm the reload.'
             : `The server answered ${outcome.status}.`}
       </p>
       <p className="rl__msg">{outcome.message}</p>

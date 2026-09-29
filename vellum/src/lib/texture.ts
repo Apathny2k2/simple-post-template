@@ -29,7 +29,7 @@ export function loadSurface(tex: Texture): Promise<PixelSurface> {
     canvas.height = Math.max(1, tex.height)
     const ctx = canvas.getContext('2d', { willReadFrequently: true })
     if (!ctx) {
-      reject(new Error('This browser gave us no 2D context, so painting is unavailable.'))
+      reject(new Error('This browser has no 2D canvas, so painting is unavailable.'))
       return
     }
     ctx.imageSmoothingEnabled = false

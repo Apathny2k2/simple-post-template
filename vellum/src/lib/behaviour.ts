@@ -189,17 +189,17 @@ export function validateBehaviour(model: Model, b: Behaviour | undefined): Behav
     out.push({
       level: 'warning',
       message:
-        'A behaviour on a mob: a mob is animated by what it is doing, not by the blocks around it. This will not be read.',
+        'A behaviour on a mob won’t be read. Mobs animate based on what they’re doing, and nearby blocks don’t affect them.',
     })
   }
 
   const seenAt = new Set<string>()
   for (const r of b.requires) {
     if (r.at.every((v) => v === 0)) {
-      out.push({ level: 'error', message: 'A requirement on this block itself can never be a condition' })
+      out.push({ level: 'error', message: 'A requirement can’t check this block itself' })
     }
     if (r.at.some((v) => !Number.isInteger(v))) {
-      out.push({ level: 'error', message: `"${r.block}" is half a block away — offsets are whole blocks` })
+      out.push({ level: 'error', message: `"${r.block}" is half a block away. Offsets must be whole blocks` })
     }
     if (!r.block.trim()) {
       out.push({ level: 'error', message: `The requirement ${offsetLabel(r.at)} names no block` })
@@ -208,7 +208,7 @@ export function validateBehaviour(model: Model, b: Behaviour | undefined): Behav
     if (seenAt.has(key)) {
       out.push({
         level: 'warning',
-        message: `Two requirements look at the same place (${offsetLabel(r.at)}) — one block cannot be two things`,
+        message: `2 requirements check the same place (${offsetLabel(r.at)}). A block there can’t match both`,
       })
     }
     seenAt.add(key)

@@ -96,7 +96,7 @@ export function DisplayPanel({
         .then(() => done(only ? `Copied ${only}.` : `Copied ${Object.keys(display).length} slots.`))
         .catch(() => done('This browser would not let the page use the clipboard.'))
     } else {
-      done('This browser exposes no clipboard to the page.')
+      done('Copying isn’t available in this browser.')
     }
   }
 
@@ -164,8 +164,8 @@ export function DisplayPanel({
 
       <p className="ed-hint" style={{ marginTop: 10 }}>
         <Icon name="info" size={11} />
-        Display transforms belong to the resource pack, not the model, so these are a preview and
-        are not written into the .vellum — copy them into your pack's item JSON.
+        These are a preview. Display transforms live in the resource pack, so they aren't saved in
+        the .vellum. Copy them into your pack's item JSON.
       </p>
     </>
   )

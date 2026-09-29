@@ -95,8 +95,8 @@ export function BehaviourPanel({
       {empty ? (
         <div className="bhv-empty">
           <p className="ed-hint">
-            <Icon name="info" size={11} />A clip says how this moves. A behaviour says when: what has
-            to be around it before anything runs, and the cycle it repeats once that holds.
+            <Icon name="info" size={11} />A behaviour decides when clips play: which blocks must be
+            nearby, and the cycle that repeats once they are.
           </p>
           <button className="btn btn--sm btn--block" onClick={onGeyser} style={{ marginTop: 10 }}>
             <Icon name="bucket" size={13} /> Start from the geyser
@@ -184,7 +184,7 @@ export function BehaviourPanel({
           </div>
         ) : (
           <p className="bhv-none">
-            Nothing required — the cycle runs from the moment the block is placed.
+            Nothing required. The cycle starts as soon as the block is placed.
           </p>
         )}
       </div>
@@ -295,7 +295,7 @@ export function BehaviourPanel({
                     aria-label={`Clip for ${s.name}`}
                     onChange={(e) => patchStage(s.id, { clip: e.target.value || null })}
                   >
-                    <option value="">No clip — hold the rest pose</option>
+                    <option value="">No clip (hold the rest pose)</option>
                     {clips.map((c) => (
                       <option key={c.id} value={c.id}>
                         {c.name}

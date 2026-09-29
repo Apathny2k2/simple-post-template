@@ -266,7 +266,7 @@ const seedMessages: Message[] = [
     'm-22',
     'TCK-1031',
     system,
-    'Waiting on triage - no agent assigned',
+    'Waiting on triage \u00b7 no agent assigned',
     t(3, 12, 9),
     { event: 'assignment' },
   ),

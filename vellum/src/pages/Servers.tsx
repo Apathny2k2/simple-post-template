@@ -151,7 +151,7 @@ export function Servers() {
           </ul>
         </section>
 
-        <p className="servers__note">These are sample servers. A server your account links shows up here.</p>
+        <p className="servers__note">These are sample servers. Servers you link to your account show up here.</p>
       </main>
     </div>
   )

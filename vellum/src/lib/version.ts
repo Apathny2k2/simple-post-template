@@ -88,8 +88,7 @@ export async function verifyPlugin(
       plugin: null,
       studio: STUDIO_VERSION,
       studioMin: null,
-      detail:
-        'Running standalone, which is the whole of the Free tier. Link a plugin on the dashboard to open the paid half and to check versions.',
+      detail: 'Standalone (Free tier). Link a plugin on the Dash to check versions and use paid features.',
       checkedAt: now,
     }
 
@@ -106,7 +105,7 @@ export async function verifyPlugin(
       plugin: null,
       studio: STUDIO_VERSION,
       studioMin: null,
-      detail: `Could not reach ${at}/plugin/version — ${err instanceof Error ? err.message : 'no answer'}.`,
+      detail: `Could not reach ${at}/plugin/version (${err instanceof Error ? err.message : 'no answer'}).`,
       checkedAt: now,
     }
   }
@@ -129,7 +128,7 @@ export async function verifyPlugin(
       plugin,
       studio: STUDIO_VERSION,
       studioMin,
-      detail: `The plugin reports ${plugin}; this studio needs ${PLUGIN_MIN} or newer. The server is running an older build than the one this studio shipped inside - update the plugin there.`,
+      detail: `The plugin reports ${plugin}, and this studio needs ${PLUGIN_MIN} or newer. The server's plugin is older than the build this studio shipped in. Update the plugin on the server.`,
       checkedAt: now,
     }
 
@@ -139,7 +138,7 @@ export async function verifyPlugin(
       plugin,
       studio: STUDIO_VERSION,
       studioMin,
-      detail: `The plugin wants studio ${studioMin} or newer, and this one is ${STUDIO_VERSION}. Update Vellum.`,
+      detail: `The plugin needs studio ${studioMin} or newer. This studio is ${STUDIO_VERSION}. Update Vellum.`,
       checkedAt: now,
     }
 
@@ -150,7 +149,7 @@ export async function verifyPlugin(
     studioMin,
     detail:
       compareVersions(plugin, PLUGIN_VERSION) > 0
-        ? `The plugin is ${plugin}, ahead of the ${PLUGIN_VERSION} this studio was built against, and still compatible.`
+        ? `The plugin is ${plugin}, newer than the ${PLUGIN_VERSION} this studio was built for. They're still compatible.`
         : `Plugin ${plugin} and studio ${STUDIO_VERSION} are compatible.`,
     checkedAt: now,
   }

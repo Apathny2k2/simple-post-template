@@ -57,7 +57,7 @@ export async function saveFile(name: string, text: string): Promise<string> {
     await api.save({ filename, data: text })
     return filename === name
       ? `Saved ${filename}`
-      : `Saved as ${filename} \u2014 this viewer does not allow a .vellum extension`
+      : `Saved as ${filename}, because this viewer blocks the .vellum extension`
   } catch (e) {
     const code = (e as { code?: string })?.code ?? 'failed'
     return code === 'declined' ? 'Save cancelled' : `Could not save (${code})`
