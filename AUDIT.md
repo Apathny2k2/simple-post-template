@@ -309,8 +309,12 @@ narrow screen, and every menu opens in full on desktop and at 390px.
 and skips a screenshot that stalls: the home page's font set never reports
 ready in headless Chromium, which hung the script.
 
+## Scope
+
+The operator took the plugin out of the audit: phase 8 is not run, and this
+audit covers the studio only.
+
 ## Waiting on the operator
 
 - **More humour (P2-8).** Say which of the listed spots may get a line.
-- **Plugin (Phase 8).** Skipped this round at the operator's word. It needs
-  the plugin's `owner/repo` and the Claude GitHub App installed on it.
+
