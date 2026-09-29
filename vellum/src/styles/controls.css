@@ -11,7 +11,6 @@
   border: 1px solid var(--line-strong);
   background-color: var(--glass-thin);
   backdrop-filter: blur(var(--glass-blur-sm)) saturate(var(--glass-sat));
-  -webkit-backdrop-filter: blur(var(--glass-blur-sm)) saturate(var(--glass-sat));
   color: var(--ink);
   font-size: var(--fs-sm);
   font-weight: 500;
@@ -102,7 +101,6 @@
   inset: 0;
   background: var(--well-deep);
   backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
   animation: fade-in var(--dur) var(--ease);
 }
 
@@ -118,7 +116,6 @@
   border: 1px solid var(--glass-rim);
   background-color: var(--glass-solid);
   backdrop-filter: blur(var(--glass-blur-lg)) saturate(var(--glass-sat));
-  -webkit-backdrop-filter: blur(var(--glass-blur-lg)) saturate(var(--glass-sat));
   box-shadow: var(--bevel), var(--shadow-pop);
   overflow: hidden;
   animation: dlg-in var(--dur-slow) var(--ease);

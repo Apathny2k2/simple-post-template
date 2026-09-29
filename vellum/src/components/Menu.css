@@ -14,7 +14,6 @@
      samples nothing and a thin tint would render see-through. */
   background-color: var(--glass-solid);
   backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat));
-  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat));
   border: 1px solid var(--glass-rim);
   box-shadow: var(--bevel), var(--shadow-lg);
   isolation: isolate;

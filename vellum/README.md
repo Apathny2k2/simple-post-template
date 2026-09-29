@@ -438,7 +438,7 @@ by about half a point, because the panel is white over a tinted ground.
 `scripts/contrast-audit.mjs` walks every route against a dev server and reports
 text runs under 4.5:1; it reads zero on all five.
 
-Two notes on `backdrop-filter`, both of which bit during the build:
+Three notes on `backdrop-filter`, all of which bit during the build:
 
 - An ancestor with `backdrop-filter` becomes the *backdrop root*, so a popover
   inside the menu bar or the library panel samples nothing and a thin tint
@@ -446,6 +446,12 @@ Two notes on `backdrop-filter`, both of which bit during the build:
 - `height: 100%` collapses to zero when the parent's height comes from
   `min-height` or flex sizing rather than a definite height, so `.scene3d`
   fills its parent by `inset` instead.
+- Write `backdrop-filter` on its own. The build minifies CSS with Lightning
+  CSS, which adds `-webkit-backdrop-filter` for Safari by itself. When the
+  source also carries a prefixed line after the standard one, the minifier
+  keeps only the prefixed line, which Chrome and Firefox ignore. For a while
+  every glass surface in the bundle drew no blur while the dev server, which
+  does not minify, still showed it.
 
 **Type.** Inter and JetBrains Mono, self-hosted as `woff2` under `public/fonts`
 with latin + latin-ext subsets and `unicode-range` splits. No request leaves

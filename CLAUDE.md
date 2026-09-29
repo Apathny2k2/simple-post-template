@@ -29,6 +29,15 @@ Then publish `vellum/dist/vellum.html` to the existing artifact:
 project-reference stub with `files: []`, so it typechecks nothing and
 exits 0. Use `tsc -b` (which is what `pnpm build` runs).
 
+### Vendor prefixes in CSS
+
+Write `backdrop-filter` alone, never followed by a hand-written
+`-webkit-backdrop-filter`. The build's minifier (Lightning CSS) adds the
+prefix for Safari itself, and given both in that order it keeps only the
+prefixed line, so Chrome and Firefox draw no blur. The dev server does
+not minify, so this only shows in `dist/`. Check a computed style in the
+bundle, not in dev.
+
 ### The sample models
 
 `vellum/src/models/*.vellum` are generated, not hand-written. They are

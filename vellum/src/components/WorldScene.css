@@ -24,7 +24,6 @@
   border: 1px solid var(--glass-rim);
   background: var(--glass-thick);
   backdrop-filter: blur(var(--glass-blur-lg)) saturate(var(--glass-sat));
-  -webkit-backdrop-filter: blur(var(--glass-blur-lg)) saturate(var(--glass-sat));
   box-shadow: var(--shadow-pop);
   overflow: hidden;
   animation: panel-open var(--dur) var(--ease);

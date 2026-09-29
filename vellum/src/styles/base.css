@@ -132,7 +132,6 @@ svg { display: block; flex: none; }
   position: relative;
   background-color: var(--glass);
   backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat));
-  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat));
   border: 1px solid var(--glass-rim);
   box-shadow: var(--bevel), var(--shadow);
   isolation: isolate;
@@ -153,13 +152,11 @@ svg { display: block; flex: none; }
 .glass--thin {
   background-color: var(--glass-thin);
   backdrop-filter: blur(var(--glass-blur-sm)) saturate(var(--glass-sat));
-  -webkit-backdrop-filter: blur(var(--glass-blur-sm)) saturate(var(--glass-sat));
 }
 
 .glass--thick {
   background-color: var(--glass-thick);
   backdrop-filter: blur(var(--glass-blur-lg)) saturate(var(--glass-sat));
-  -webkit-backdrop-filter: blur(var(--glass-blur-lg)) saturate(var(--glass-sat));
 }
 
 /* ---------------- shared primitives ---------------- */

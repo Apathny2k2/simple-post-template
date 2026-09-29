@@ -23,7 +23,6 @@
   border-radius: var(--r-pill);
   background-color: var(--glass-thin);
   backdrop-filter: blur(var(--glass-blur-sm)) saturate(var(--glass-sat));
-  -webkit-backdrop-filter: blur(var(--glass-blur-sm)) saturate(var(--glass-sat));
   color: var(--ink-faint);
   box-shadow: var(--bevel-soft);
   transition: border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
@@ -407,7 +406,6 @@ html[data-surface='dark'] .settings__search {
   border-radius: 10px;
   background: rgba(0, 0, 0, 0.22);
   backdrop-filter: none;
-  -webkit-backdrop-filter: none;
   box-shadow: none;
 }
 

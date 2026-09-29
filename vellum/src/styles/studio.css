@@ -181,7 +181,6 @@ html[data-surface='dark'] .card {
   border-color: var(--line);
   background: var(--panel);
   backdrop-filter: none;
-  -webkit-backdrop-filter: none;
   box-shadow: var(--panel-shadow);
   transition: transform 520ms var(--ease-spring), border-color 300ms var(--ease-out);
   animation: studio-rise 760ms var(--ease-out) backwards;

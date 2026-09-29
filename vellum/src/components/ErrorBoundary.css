@@ -14,7 +14,6 @@
   border: 1px solid var(--wax-500, #762224);
   background-color: var(--glass, color-mix(in srgb, var(--ink) 30%, transparent));
   backdrop-filter: blur(var(--glass-blur, 16px)) saturate(var(--glass-sat, 1.4));
-  -webkit-backdrop-filter: blur(var(--glass-blur, 16px)) saturate(var(--glass-sat, 1.4));
   box-shadow: var(--bevel), var(--shadow-lg);
 }
 
