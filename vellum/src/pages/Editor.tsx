@@ -976,6 +976,22 @@ function hsvToHex(h: number, s: number, v: number) {
   return `#${f(5)}${f(3)}${f(1)}`
 }
 
+/** Starting colours for texture painting, after blocks everyone knows. */
+const PAINTS: [name: string, hex: string][] = [
+  ['Coal', '#1f1f23'],
+  ['Stone', '#7d7d7d'],
+  ['Snow', '#eef2f2'],
+  ['Dirt', '#86603f'],
+  ['Oak', '#a2824e'],
+  ['Sand', '#d9cb9a'],
+  ['Grass', '#5f9a3a'],
+  ['Water', '#3f76e4'],
+  ['Diamond', '#4ecdc4'],
+  ['Amethyst', '#8a5ec2'],
+  ['Redstone', '#b3261e'],
+  ['Gold', '#f2c53d'],
+]
+
 function hexToHsv(hex: string): [number, number, number] {
   const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255)
   const max = Math.max(r, g, b)
@@ -1087,13 +1103,12 @@ function ColorPanel({ colour, onColour }: { colour: string; onColour: (hex: stri
       </div>
 
       <div className="palette">
-        {['#cd594e', '#b4403a', '#952f2e', '#eda99a', '#92a5ca', '#3d5287', '#2b3d69', '#0a1022',
-          '#e3a96f', '#6fae84', '#6f7684', '#f1e8d6'].map((c) => (
+        {PAINTS.map(([name, c]) => (
           <button
             key={c}
             className="palette__dot"
             style={{ background: c }}
-            title={c}
+            title={`${name} ${c}`}
             onClick={() => {
               const [h, s2, v] = hexToHsv(c)
               setHue(h)
@@ -1538,9 +1553,9 @@ function Viewport({
 
         <svg className="ed-axis-gizmo" viewBox="0 0 60 60" aria-hidden="true">
           <g strokeWidth="1.8" strokeLinecap="round">
-            <line x1="30" y1="30" x2="52" y2="38" stroke="#c2544a" />
-            <line x1="30" y1="30" x2="30" y2="8" stroke="#6f9268" />
-            <line x1="30" y1="30" x2="9" y2="39" stroke="#5877a8" />
+            <line x1="30" y1="30" x2="52" y2="38" style={{ stroke: 'var(--axis-x)' }} />
+            <line x1="30" y1="30" x2="30" y2="8" style={{ stroke: 'var(--axis-y)' }} />
+            <line x1="30" y1="30" x2="9" y2="39" style={{ stroke: 'var(--axis-z)' }} />
           </g>
           <g fontSize="8" fill="currentColor" opacity="0.8">
             <text x="53" y="41">X</text>
@@ -2323,7 +2338,7 @@ export function Editor({ segments }: { segments: string[] }) {
   const [selectedKey, setSelectedKey] = useState<string | null>(null)
 
   // paint
-  const [colour, setColour] = useState('#cd594e')
+  const [colour, setColour] = useState(PAINTS[1][1])
   const [brush, setBrush] = useState(1)
   const [shape, setShape] = useState<ShapeKind>('rect')
   const [shapeFilled, setShapeFilled] = useState(false)

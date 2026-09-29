@@ -1,38 +1,11 @@
-/* ---------------------------------------------------------------
-   The scene a model is actually going to live in.
+/* The stage for "View in the real world": a black stage, a floor that
+   moves under a walking model, and a figure two blocks tall for scale.
+   The world is a .vellum model like any other, so the renderer, camera
+   and animation code work on it unchanged.
 
-   The Display tab shows a model on a tilted grid with nothing to judge
-   it against: no ground, and above all nothing of a known size.
-   A mob that looks right floating in a void is routinely twice the
-   height of a player, and you find that out in game.
-
-   So: a flat field, a figure of a known two blocks beside it, and the
-   model's animation played there. The world is a `.vellum` model like
-   any other - the same cubes, bones, UVs and clips - which means the
-   renderer, the camera and the animation system all work on it
-   unchanged.
-
-   The field is deliberately empty. It is not scenery; it is a ruler and
-   a treadmill. A walk cycle played in place tells you the legs move; it
-   does not tell you whether the mob covers ground or moonwalks, which
-   is the thing you cannot see in the timeline and cannot unsee in game.
-   So the ground travels under the model at the speed the legs are
-   actually asking for, and a walk loops forever.
-
-   Three things make it read as Minecraft rather than as coloured boxes:
-
-   1. One texel per unit, always. A block face is 16 texels across
-      because it is 16 units across, so a 4-unit fence post shows a
-      4-texel slice of the plank pattern rather than the whole thing
-      squeezed. That is how Minecraft's own small models work.
-   2. Minecraft's directional shading, which is fixed rather than
-      computed: top 1.0, north and south 0.8, east and west 0.6, bottom
-      0.5. It is baked into the texture per face, which is also what
-      Minecraft does with its lightmap.
-   3. Sky light as a multiplier on that bake. Night is not a filter over
-      the finished picture - it is the world being darker, which is why
-      the model keeps its own colours and stands out of it.
-   --------------------------------------------------------------- */
+   Faces follow Minecraft's rules: one texel per unit, and fixed
+   directional shading (top 1.0, north and south 0.8, east and west 0.6,
+   bottom 0.5) baked into each face's texture. */
 
 import { FACES } from './model'
 import type { Bone, BoneChild, Clip, Cube, Face, FaceKey, Key, Model, ProjectKind, Subtype, Texture, Track, UVRect, Vec3 } from './model'
@@ -51,16 +24,6 @@ const FACE_SHADE: Record<FaceKey, number> = {
   west: 0.6,
 }
 
-
-/** Sky light, and the colour the world is tinted toward under it. */
-/**
- * There is no sky to light this any more, so there is one exposure and
- * it is the model's own. The directional shading table still applies -
- * that belongs to the geometry, not to the weather - but nothing tints
- * or dims the stage, which is what lets a glow read as a glow against
- * the black rather than against a field at dusk.
- */
-const STAGE_LIGHT = 1
 
 /* ---------------- the atlas ---------------- */
 
@@ -138,7 +101,7 @@ function texel(kind: TileKind, tx: number, ty: number): Paint | null {
 
 /**
  * Shelf-packs one region per (block type, size, shade) and paints it on
- * first request, so nine ground slabs share the one patch of grass.
+ * first request, so identical faces share one region.
  */
 class Atlas {
   readonly size: number
@@ -163,7 +126,7 @@ class Atlas {
   }
 
   /**
-   * `emissive` ignores the stage exposure, for a flame. `fit` scales the 16x16
+   * `emissive` skips the face shading, for a flame. `fit` scales the 16x16
    * motif onto the region instead of slicing it: a fence post wants a
    * 4-texel slice of the plank pattern, but a player's 8-unit head
    * wants the whole face on it, not the top-left corner of one.
@@ -210,7 +173,7 @@ class Atlas {
     const [x0, y0, x1, y1] = at
     const w = x1 - x0
     const h = y1 - y0
-    const k = emissive ? 1 : shade * STAGE_LIGHT
+    const k = emissive ? 1 : shade
 
     /* One ImageData rather than a fillRect per texel. The field is a
        960 x 640 patch - six hundred thousand of them - and painting it
@@ -314,7 +277,7 @@ function block(
  * One cube, not a grid of them. A tiled field needs its cubes to
  * overlap or antialiasing leaves a hairline of the stage along every join,
  * and once they overlap their coplanar tops fight over which is in
- * front - either way a grid gets drawn across the grass. Offsetting
+ * front - either way a grid gets drawn across the floor. Offsetting
  * them in height trades that for a sliver of transparency at each
  * step, because the sides are void. There is no arrangement of many
  * cubes that has no seam; one cube has no join to show.
@@ -527,7 +490,6 @@ export type WorldOptions = {
   placement: Placement
   /** a player entity beside the model, for height and for reach */
   withPlayer: boolean
-  /** night darkens the world, not the model - which is the point of it */
 }
 
 export type BuiltWorld = {
@@ -540,7 +502,7 @@ export type BuiltWorld = {
   player: PlayerRig | null
   /** how tall the model is, in blocks, for the caption */
   blocks: number
-  /** the middle of the subject, so the camera can look at it rather than at the island */
+  /** the middle of the subject, for the camera to look at */
   focus: Vec3
   /** what it decided to do with it */
   placement: Placement

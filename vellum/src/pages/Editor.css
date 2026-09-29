@@ -352,14 +352,12 @@
   transition: color var(--dur-fast) var(--ease);
 }
 
-/* The letter carries the axis, not a filled block behind it. Four
-   gradient-filled chips on every one of a dozen number fields put more
-   colour in the properties panel than in the model. These are the
-   standard X/Y/Z hues, darkened to carry on paper. */
+/* Only the letter is coloured, so a dozen number fields don't fill the
+   panel with colour. */
 .nf__axis:hover { color: var(--ink); }
-.nf__axis--x { color: #a93b2f; }
-.nf__axis--y { color: #3f7042; }
-.nf__axis--z { color: #34588c; }
+.nf__axis--x { color: var(--axis-x); }
+.nf__axis--y { color: var(--axis-y); }
+.nf__axis--z { color: var(--axis-z); }
 .nf__axis--n { color: var(--ink-faint); }
 
 .nf__input {
@@ -437,7 +435,7 @@
   background: color-mix(in srgb, var(--accent) 26%, transparent);
   border-color: var(--wax-300);
   box-shadow: 0 0 0 1px var(--wax-400);
-  color: #fff1ec;
+  color: var(--accent-ink);
 }
 
 .uv__ruler {

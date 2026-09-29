@@ -1,38 +1,14 @@
-/* ---------------------------------------------------------------
-   Vellum design tokens.
+/* Design tokens for the paper surface, which the editor uses.
+   studio.css re-points them for the dark surface on every other page.
 
-   One scheme: paper and ink, cut with a knife. Per SPEC-light-theme.md
-   the white scheme replaces the navy one outright rather than sitting
-   behind a toggle, so the light values live here on :root and
-   theme-light.css is gone. The stage follows the UI into the light -
-   that was the one open decision in the spec and the operator picked
-   the fully-white variant.
-
-   Three rules hold the look together:
-
-   1. A line does the work a shadow used to. Shadows survive only
-      where something genuinely floats over the page: menus, popovers,
-      dialogs. Everything else is separated by one hairline.
-   2. Nothing is a pill. Radii top out at 8px and most controls sit at
-      3-4px, so edges read as cut rather than moulded.
-   3. Red is structural. It marks the one thing that is active or the
-      one thing that is wrong, and nothing else.
-
-   The neutrals are deliberately NOT blue. The previous ground was
-   #f3f6fb over navy ink, which tinted every panel, hairline and label
-   toward blue and left white cards on a blue-white page with almost
-   nothing between them. Neutral grey gives the hairlines somewhere to
-   register and lets the single red be the only colour in the room.
-   --------------------------------------------------------------- */
+   On paper, hairlines separate panels and only menus, popovers and
+   dialogs cast a shadow. Radii stay at 8px or under. Red marks what is
+   active or wrong. */
 
 :root {
   color-scheme: light;
 
-  /* --- the neutral ramp ----------------------------------------
-     Kept named `navy` because ~40 call sites use it directly, but
-     the hue is gone: these are true greys with a trace of warmth.
-     The dark end is still real - the UV sheet is painted from it on
-     purpose (see --uv-field). */
+  /* Neutral greys. The name is left from an older navy palette. */
   --navy-990: #0d0d0f;
   --navy-970: #131315;
   --navy-950: #191919;
@@ -49,10 +25,7 @@
   --navy-100: #e2e2e4;
   --navy-050: #f2f2f1;
 
-  /* --- red: one colour, fully saturated, spent rarely -----------
-     The old ramp was a dusty brick that went pink as it lightened,
-     so it read washed wherever it landed. This one holds its chroma.
-     --wax-500 carries text at 6.0:1 on paper. */
+  /* The red accent. --wax-500 is 5.9:1 on white and 5.4:1 on the page. */
   --wax-950: #2a0a06;
   --wax-900: #3f0f09;
   --wax-800: #5a160f;
@@ -63,17 +36,11 @@
   --wax-300: #a52a19;
   --wax-200: #8f2416;
 
-  /* The one warm signal that is not the accent, for live values.
-     Darkened for paper: the light amber it used to be read 1.9:1 and
-     made the Support "pending" pill illegible. */
+  /* Amber for live values. */
   --flame-400: #8a5209;
 
-  /* --- glass ---------------------------------------------------
-     Still glass: translucent, blurred, saturating what it samples.
-     But thin and crisp. A heavy blur turns whatever is behind it to
-     fog, which is the opposite of sharp; at 14px you still read the
-     shape underneath, and the panel gets a real edge instead of a
-     glow to tell you where it stops. */
+  /* Glass: translucent panels over a backdrop blur. At 14px the shape
+     behind a panel stays readable. */
   --glass-blur: 14px;
   --glass-blur-sm: 9px;
   --glass-blur-lg: 20px;
@@ -85,20 +52,16 @@
   --glass-thick: rgba(255, 255, 255, 0.91);
   --glass-solid: rgba(255, 255, 255, 0.98);
 
-  /* The edge. One crisp hairline, dark on paper, and it has to be
-     visible - it is carrying the whole job the shadows used to. */
+  /* Panel edges. On paper these do the work of shadows. */
   --glass-rim: rgba(24, 24, 27, 0.14);
   --glass-rim-lit: rgba(24, 24, 27, 0.22);
   --glass-rim-wax: rgba(187, 47, 28, 0.55);
-  /* White over white is not a highlight. Kept defined so the tokens
-     still resolve at the ~20 call sites that paint them. */
+  /* No highlight on paper. Rules still reference these, so they stay. */
   --sheen: none;
   --sheen-strong: none;
 
-  /* --- semantic ------------------------------------------------ */
   --bg: #f4f4f3;
-  /* Deliberately not white. A panel needs a ground to sit on, and a
-     white panel on a white page has no edge at all. */
+  /* Off-white, so white panels have an edge against it. */
   --bg-deep: #eaeae8;
   --surface: var(--glass);
   --surface-2: var(--glass-thin);
@@ -107,16 +70,14 @@
 
   --ink: #18181b;
   --ink-muted: #52525b;
-  /* Measured against the TRANSLUCENT panel, not pure white: the panel
-     is white over a tinted ground, so a swatch check against #fff
-     overstates the headroom by about half a point. */
+  /* Contrast for these is measured on the translucent panel over the
+     page, which is darker than pure white. */
   --ink-faint: #65656d;
   --ink-invert: #fafafa;
 
   --line: var(--glass-rim);
   --line-strong: rgba(24, 24, 27, 0.24);
-  /* Dashed says provisional on its own; it does not also need to be
-     red. Red is reserved for the one thing active or the one wrong. */
+  /* For provisional things. */
   --line-dashed: rgba(24, 24, 27, 0.26);
 
   --accent: var(--wax-500);
@@ -130,19 +91,14 @@
   --warn: #8a5209;
   --danger: #a3281a;
 
-  /* --- depth ---------------------------------------------------
-     --shadow-sm and --shadow are deliberately almost nothing: the
-     ~70 call sites that reach for them now get a hairline's worth of
-     separation, which is the point. Only menus, popovers and dialogs
-     genuinely float, and they keep real depth. */
+  /* --shadow-sm and --shadow are next to nothing, so hairlines separate
+     panels. Menus use --shadow-lg and dialogs --shadow-pop. */
   --shadow-sm: none;
   --shadow: 0 1px 1px rgba(24, 24, 27, 0.05);
   --shadow-lg: 0 10px 24px -14px rgba(24, 24, 27, 0.22), 0 0 0 1px rgba(24, 24, 27, 0.1);
   --shadow-pop: 0 18px 40px -20px rgba(24, 24, 27, 0.26), 0 0 0 1px rgba(24, 24, 27, 0.12);
 
-  /* One lit hairline along the top edge. The old bevel drew a dark
-     line underneath as well, which at small sizes only muddied the
-     bottom border. */
+  /* A lit hairline along a panel's top edge. */
   --bevel: inset 0 1px 0 rgba(255, 255, 255, 0.9);
   --bevel-soft: inset 0 1px 0 rgba(255, 255, 255, 0.7);
   --glow-wax: 0 0 0 1px rgba(187, 47, 28, 0.55);
@@ -150,28 +106,25 @@
 
   --grid-line: rgba(24, 24, 27, 0.075);
 
-  /* Chrome bars: top bar, menubar, editor toolbar, status bar. Flat
-     now. A vertical gradient across a 40px strip is a gradient nobody
-     can see, and it cost every bar a repaint. */
+  /* Bars: the top bar, the editor's menu bar, toolbar and status bar. */
   --chrome: rgba(255, 255, 255, 0.88);
   --chrome-strong: rgba(255, 255, 255, 0.93);
   --chrome-soft: rgba(255, 255, 255, 0.78);
   --chrome-status: rgba(255, 255, 255, 0.88);
-  /* Sunken wells: search fields, log strips, the composer, tree
-     gutters. Every one of these was a navy literal at the call site. */
+  /* Sunken areas: search fields, log strips, tree gutters. */
   --well: rgba(24, 24, 27, 0.045);
   --well-deep: rgba(24, 24, 27, 0.08);
-  /* The UV sheet's backdrop, and the one surface that does NOT follow
-     the UI into the light: a texture is judged against a neutral dark
-     field, and on white every pale texel disappears into the page. */
+  /* Behind the UV sheet. Dark, because pale texels vanish on white. */
   --uv-field: #17171a;
 
-  /* The viewport behind the model. Light, per the spec's one open
-     decision - the operator saw both and chose the fully-white app.
-     A shade below the page so the stage still reads as its own well. */
+  /* Behind the model in the editor's viewport, a shade below the page. */
   --stage-wash: #e7e7e5;
 
-  /* --- type ---------------------------------------------------- */
+  /* Axis colours, dark enough to read as text on paper. */
+  --axis-x: #a93b2f;
+  --axis-y: #3f7042;
+  --axis-z: #34588c;
+
   --font-sans: 'Vellum Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
   --font-mono: 'Vellum Mono', ui-monospace, 'SF Mono', Menlo, monospace;
 
@@ -188,10 +141,7 @@
   --tracking-wide: 0.06em;
   --tracking-caps: 0.11em;
 
-  /* --- geometry ------------------------------------------------
-     Sharp. Nothing is a pill: --r-pill resolves to a small radius
-     rather than 999px, so the toggles, chips and tab groups that
-     reach for it come out cut instead of moulded. */
+  /* --r-pill is 4px on paper, so pills come out square-cornered. */
   --r-xs: 2px;
   --r-sm: 3px;
   --r-md: 4px;
@@ -213,10 +163,8 @@
   --shell-max: 1680px;
   --topbar-h: 52px;
 
-  /* --- motion --------------------------------------------------
-     One curve, short, no overshoot. The three spring tokens are gone
-     along with their callers: an overshoot reads as bounce, and every
-     hover that moved an element has been cut back to colour instead. */
+  /* Paper motion: one short curve with no overshoot. The dark surface
+     adds its own springs in studio.css. */
   --dur-fast: 90ms;
   --dur: 140ms;
   --dur-slow: 220ms;

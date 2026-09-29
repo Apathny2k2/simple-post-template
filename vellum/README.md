@@ -29,7 +29,7 @@ than shipping a page that silently 404s its own assets.
 | `#/` | - | The home page, vellumdev.com: what Vellum is, the plans, and the way into the Studio. |
 | `#/servers` | - | "What server would you like to enter?" The servers you own and your seats on other teams. |
 | `#/dash` | sheet 3 | Dash. Fed by a plugin through the documented API; the built-in sample until one reports. |
-| `#/projects` | sheet 2 | First scene. Pick a shelf: Items, or Mobs & Anim. |
+| `#/projects` | sheet 2 | First scene. Pick a shelf: Items or Mobs. |
 | `#/projects/:scene/:shelf` | sheet 2 | The shared library panel. `< Back`, shelf tabs, **New model**, card grid, `< 1 2 3 >`. Cards are grouped by what each model is for. |
 | `#/settings/:section` | sheet 1 | Search + section list, free sections above the `Manage` divider. |
 | `#/editor/:sampleId` | - | The editor. Opens `.vellum`, imports `.bbmodel`, saves `.vellum`. |
@@ -73,7 +73,7 @@ with a Vellum-owned schema. The extension is ours; the encoding is JSON so
 `git diff` on a model keeps working.
 
 ```
-{"vellum":{"format":"model","version":6},"name":"voidling","kind":"mobs","subtype":"hostile","resolution":{…},"bones":[…],"cubes":[…],"textures":[…],"clips":[…],"behaviour":{…},"config":{…}}
+{"vellum":{"format":"model","version":7},"name":"voidling","kind":"mobs","subtype":"hostile","resolution":{…},"bones":[…],"cubes":[…],"textures":[…],"clips":[…],"behaviour":{…},"config":{…}}
 ```
 
 Four properties are load-bearing, and the round-trip test asserts each rather
@@ -377,21 +377,18 @@ endpoints above are expected to exchange.
 
 ## The material
 
-One surface: **paper**. There is no theme toggle - the whole app lives on a
-single warm-grey field, defined once in `src/styles/tokens.css`. That paper is
-now the editor's; the rest of the studio is a dark room, described at the end
-of this section.
-It replaced a midnight navy one outright rather than sitting behind a switch
-(see `SPEC-light-theme.md`), which is why the neutral ramp is still named
-`navy`: about forty call sites reach for it by name, but the hue is gone and
-the values are true greys.
+Two surfaces and no theme toggle. The editor sits on **paper**, a warm-grey
+field defined in `src/styles/tokens.css`. Every other page is a dark room,
+described at the end of this section. The paper replaced a midnight navy theme
+(see `SPEC-light-theme.md`), which is why its grey ramp is still named `navy`.
+Only four of its fifteen steps are used.
 
 Three rules hold the look together, and they are written at the top of
 `tokens.css` because every decision below falls out of them:
 
 1. **A line does the work a shadow used to.** `--shadow-sm` resolves to
-   `none` and `--shadow` to a single hairline's worth of lift, so the ~70
-   call sites that reach for them get an edge instead of a bloom. Real depth
+   `none` and `--shadow` to a single hairline's worth of lift, so panels get
+   an edge instead of a bloom. Real depth
    survives only where something genuinely floats: menus, popovers, dialogs.
 2. **Nothing is a pill.** Radii top out at 8px and most controls sit at 3-4px.
    `--r-pill` resolves to 4px rather than 999px, so the toggles, chips and tab
@@ -404,7 +401,7 @@ recipe: a translucent tint, a `backdrop-filter` blur that saturates what it
 samples, and a rim. But the blur is 14px rather than 28px - a heavy blur turns
 whatever is behind it to fog, which is the opposite of sharp - and the rim is a
 crisp dark hairline rather than a lit bevel with a specular sheen over it.
-`--sheen` resolves to `none`, so the ~20 call sites that paint it cost nothing.
+`--sheen` resolves to `none`.
 The one panel that is *not* glass is the config listing: it covers the viewport
 and you read it line by line, and at 98% the model behind it still ghosted
 through as a grey cloud over the code.
@@ -569,7 +566,7 @@ survives is what was doing work rather than decoration:
   equation for its own leg length.
 
 There is no day/night any more, because there is no sky to change. The stage
-stays black even though the rest of the app is paper: a texture is judged
+stays black even inside the paper editor: a texture is judged
 against a neutral dark field, and on white every pale texel disappears into
 the page. Its frame does not - the dialog's chrome is light, and only the
 stage between the two bars is black.
@@ -639,13 +636,9 @@ That goes in the file on both paths.
 The check runs in the Validation panel beside the model's other rules, so it
 is not something you go and ask for.
 
-**Mobs report that they are not a resource-pack thing at all.** A pack has no
-custom entity model; a mob is somebody's runtime, not a file under
-`models/`. `buildPack()` leaves mobs out and names each one it left — and the
-reason is stronger than "nothing to write": the plugin's own `RigBaker`
-already bakes a rigged project into one item model per bone plus the skeleton
-that positions them. A second exporter would produce a *conflicting* set, not
-a missing one.
+**Mobs are left out of the pack.** A resource pack can't hold a custom entity
+model, so the plugin draws mobs in game. `buildPack()` names each mob it leaves
+out.
 
 ### The zip
 

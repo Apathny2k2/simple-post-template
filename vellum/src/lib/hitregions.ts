@@ -1,38 +1,19 @@
-/* ---------------------------------------------------------------
-   Where a mob can be hit, derived from the rig the way the plugin's
-   baker derives it.
+/* Where a mob can be hit, worked out from its rig. There is no
+   hit-region field in .vellum.
 
-   THERE IS NO HIT-REGION FIELD IN `.vellum`, AND THERE DOES NOT NEED
-   TO BE. The plugin's `RigBaker` decides a bone's kind and bounds from
-   what the bone draws:
+   The rule comes from the original plugin. That repository has been
+   deleted, and the rewritten plugin has not been checked against it.
 
-     measure(drawable.isEmpty() ? hidden : drawable, pivot)
-     drawable.isEmpty()  ->  BoneKind.LOCATOR, bounds from the HIDDEN
-                             cubes (null if it has none)
-     otherwise           ->  BoneKind.RENDER, bounds from what it draws
+     - A bone that draws nothing is a locator. Its bounds come from its
+       hidden cubes, if it has any.
+     - A bone that draws something is a render bone, bounded by what it
+       draws.
+     - If any locator has bounds, only locators can be hit. Otherwise
+       every render bone can.
 
-   and `HitRegions` then picks:
-
-     explicit = locator bones that have bounds
-     drawn    = render bones
-     regions  = explicit.isEmpty() ? drawn : explicit
-
-   So a hit region is authored as A HIDDEN CUBE IN A BONE THAT DRAWS
-   NOTHING ELSE, using `hidden`, which the format has carried since v6.
-
-   THE TRAP THIS MODULE EXISTS FOR. That last line is one ternary with
-   whole-mob consequences: the instant ONE locator has bounds, every
-   drawn bone stops being a target. An author who hides a cube for an
-   ordinary reason - roughing a shape out, pulling a horn off for a
-   minute - flips the entire mob from derived to explicit without going
-   near anything labelled "hit region", and the engine says nothing.
-   The mob simply cannot be hit where it looks.
-
-   So the readout keys off the REAL condition - any locator bone with
-   bounds - and never off whether the author used a hit-region control.
-   A readout that only catches the deliberate case documents the one
-   that was never dangerous.
-   --------------------------------------------------------------- */
+   So hiding one cube in an otherwise empty bone switches the whole mob
+   to explicit regions. The readout warns on that condition itself,
+   whether or not the author used the hit-region controls. */
 
 import type { Bone, Cube, Model, Vec3 } from './model'
 
@@ -114,11 +95,8 @@ function measure(cubes: Cube[], pivot: Vec3): Box | null {
 }
 
 /**
- * What the plugin would make of this rig's hittability.
- *
- * Only a bone's OWN cubes count, not its descendants' - the baker emits
- * one spec per bone and measures that bone's own geometry, so a parent
- * holding nothing but child bones draws nothing itself.
+ * Which bones can be hit. A bone counts only its own cubes, so a bone
+ * that holds nothing but child bones draws nothing itself.
  */
 export function hitReport(model: Model): HitReport {
   const byId = new Map(model.cubes.map((c) => [c.id, c]))
@@ -133,12 +111,11 @@ export function hitReport(model: Model): HitReport {
     const shown = own.filter((c) => c.visible)
     const hidden = own.filter((c) => !c.visible)
 
-    /* A hidden BONE holding visible cubes is the one case the quoted
-       baker code does not settle, and inventing an answer here is how
-       the `hitbox` mistake happened. Named instead. */
+    /* The old plugin's rule did not cover a hidden bone holding visible
+       cubes, so it is reported instead of guessed. */
     if (!bone.visible && shown.length) {
       unknowns.push(
-        `"${bone.name}" is hidden but holds ${shown.length} visible cube${shown.length === 1 ? '' : 's'} — whether the baker treats those as drawn is not something the model can say`,
+        `"${bone.name}" is hidden but holds ${shown.length} visible cube${shown.length === 1 ? '' : 's'}. It isn't known whether the plugin treats them as drawn.`,
       )
     }
 

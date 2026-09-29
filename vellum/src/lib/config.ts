@@ -1,44 +1,13 @@
-/* ---------------------------------------------------------------
-   The configuration half.
+/* Mob and item config, written beside the model and exported as YAML.
 
-   A `.vellum` says what something looks like and how it moves. None of
-   that makes it a mob: a model with 400 health, an armour value, a
-   faction, a boss bar and a skill on a timer is a boss, and not one of
-   those is geometry. Modelling one here and then writing its stats
-   somewhere else by hand is where the two drift apart - the model says
-   `geyser_block` and the config says `geyserblock`, and nothing tells
-   you.
+   Each field is declared once in SCHEMA, and the form, the checks and the
+   YAML all read that declaration, so a key can't show in one and be
+   missing from another. The keys and ranges are Vellum's own (base,
+   display-name, ai.goals). They came from the original plugin's loader
+   and haven't been checked against the rewritten plugin yet.
 
-   So the config is authored beside the model and written out of it.
-
-   THIS IS OURS TO IMPLEMENT, NOT SOMEONE ELSE'S TO READ. Vellum
-   replicates this behaviour in-house; there is no third-party plugin
-   on the other end of it. That is not a naming detail - it decides who
-   owns every default and every range in SCHEMA below. Nothing here can
-   be justified with "that is what their docs say", because the
-   behaviour is ours: if a field reads 0 to 1 it is because our runtime
-   reads 0 to 1, and the plugin half has to implement it.
-
-   The SHAPE is ours as well, and this is the part that changed. An
-   earlier draft of this file borrowed another plugin's spelling -
-   `Type`, `Health`, `BossBar`, `AIGoalSelectors`, `~onTimer` - on the
-   grounds that operators already knew it. That was overturned: a
-   borrowed spelling for a config only our own runtime reads buys
-   familiarity and costs a permanent translation layer, and it implies
-   a compatibility we do not have. The keys in SCHEMA are the ones the
-   plugin's loader actually reads - `base`, `display-name`, `ai.goals`
-   - not a second spelling of them. See the vocabularies note below.
-
-   One description drives everything. A field is declared once, in
-   SCHEMA below, and the form, the rules and the YAML all read the same
-   declaration - which is why a key cannot appear in the editor and be
-   missing from the export, or be spelled two ways.
-
-   Where a field offers a vocabulary - entity types, AI selectors, bar
-   colours - it carries it as suggestions rather than as a closed list,
-   because a server with other plugins on it has more of them than we
-   could know.
-   --------------------------------------------------------------- */
+   Vocabularies such as entity types are suggestions, because a server
+   with other plugins installed has more of them than Vellum can know. */
 
 import type { ProjectKind } from './model'
 
@@ -122,13 +91,8 @@ export type Field = {
 
 export type Section = { id: string; title: string; blurb: string; fields: Field[] }
 
-/* ---------------- vocabularies ----------------
-
-   These are the plugin's, not MythicMobs'. The operator settled it:
-   borrowing another plugin's spelling for a config only our own runtime
-   reads buys familiarity and costs a permanent translation layer, plus
-   it implies a compatibility we do not have.
-   --------------------------------------------------------------- */
+/* Vocabularies, in Vellum's own spelling. MythicMobs names such as
+   AIGoalSelectors aren't used. */
 
 /**
  * The vanilla entity a custom mob is built on.
@@ -203,7 +167,7 @@ const MOB_SECTIONS: Section[] = [
   {
     id: 'flags',
     title: 'Flags',
-    blurb: 'Nine values read straight off the server\u2019s catalogue. Leave one blank to inherit it.',
+    blurb: 'Nine values. Leave one blank to use the base mob\u2019s value.',
     fields: [
       { key: 'health', label: 'Health', kind: 'number', path: 'health',
         min: 0.5, max: 1024, step: 0.5, fallback: 20,
@@ -259,7 +223,7 @@ const ITEM_SECTIONS: Section[] = [
         placeholder: '&bRunic Blade', fallback: '', help: 'Colour codes with &.' },
       { key: 'model', label: 'Model', kind: 'text', path: 'model',
         placeholder: 'vellum:runic_blade', fallback: '',
-        help: 'A resource key naming the item definition, NOT a custom-model-data number. The number was the other plugin\u2019s idea and has no counterpart here.' },
+        help: 'A resource key such as vellum:runic_blade. Not a custom-model-data number.' },
       { key: 'lore', label: 'Lore', kind: 'list', path: 'lore',
         help: 'One line per entry, shown under the name.' },
       { key: 'stack', label: 'Max stack size', kind: 'text', path: 'max-stack-size',

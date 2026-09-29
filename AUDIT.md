@@ -67,6 +67,32 @@ Longest block: 41 lines at `vellum/src/lib/config.ts:1`.
 | `src/pages/Projects.tsx` | 54 | 441 | 0.12 | 0 | 9 | 19 |
 | `src/lib/texture.ts` | 50 | 207 | 0.24 | 4 | 11 | 10 |
 
+## Phase 1: untrue and stale statements
+
+| ID | Sev | Where | Was | Now | Status |
+|---|---|---|---|---|---|
+| F1 | S1 | `styles/tokens.css`, `vellum/README.md` "The material" | `navy` kept because "~40 call sites" use it | Measured 7 call sites using 4 of 15 steps. Comment says the name is left from the navy palette; README says only four steps are used | Fixed |
+| F2 | S1 | `styles/tokens.css`, README | "~20 call sites" paint `--sheen` | Measured 6. Counts removed | Fixed |
+| F3 | S1 | `styles/tokens.css` | "~70 call sites" use `--shadow` and `--shadow-sm` | Measured 7 and 0 (18 for every `--shadow*`). Count removed | Fixed |
+| F4 | S1 | `lib/world.ts` header | Sky light, night and a field | Black stage, moving floor, two-block figure, fixed face shading | Fixed |
+| F5 | S1 | `lib/world.ts` | `STAGE_LIGHT = 1` under two doc comments, one about sky light | Constant removed (it multiplied by 1), plus a doc comment left on a removed `night` option and an "island" the camera no longer looks at | Fixed |
+| F6 | S1 | `lib/hitregions.ts` | Cites the deleted plugin's `RigBaker` and `HitRegions` as current | Says the rule came from the original plugin and hasn't been checked against the rewrite. A warning users see named "the baker"; now it names the plugin | Fixed |
+| F7 | S1 | README format example | `"version":6` | `7`, matching `CURRENT_VERSION` | Fixed |
+| F8 | S1 | README screens table | "Mobs & Anim." | "Mobs" | Fixed |
+| F9 | S1 | `lib/config.ts` Flags blurb, item Model help | "read straight off the server's catalogue", "the other plugin's idea" | "Nine values. Leave one blank to use the base mob's value." and "A resource key such as vellum:runic_blade. Not a custom-model-data number." | Fixed |
+| F10 | S1 | `components/ErrorBoundary.css` | `var()` fallbacks in the old navy theme | Fallbacks removed. The tokens are always in the bundle | Fixed |
+| F11 | S1 | `pages/Editor.tsx` paint palette | Old UI colours, default brush `#cd594e` | Twelve block colours with names (Coal, Stone, Snow, Dirt, Oak, Sand, Grass, Water, Diamond, Amethyst, Redstone, Gold). Default brush is Stone | Fixed |
+| F12 | S1 | `pages/Editor.css`, `pages/Editor.tsx` gizmo | Two X/Y/Z colour sets | `--axis-x/y/z` on paper (5.3 to 6.5:1 as text), used by the number fields and the gizmo. The dark surface already overrides them | Fixed |
+| F13 | S1 | `pages/Editor.css` | `#fff1ec` for text on the accent | `var(--accent-ink)`. The `#fff2ee` in Support went with the Support rebuild | Fixed |
+| P1-1 | S1 | `styles/tokens.css` header | "One scheme: paper and ink", and "every hover that moved an element has been cut back to colour" | Says these are the paper tokens and `studio.css` re-points them for the dark pages. Every comment in the file shortened | Fixed |
+| P1-2 | S1 | README "The material", "The stage" | "the whole app lives on a single warm-grey field", "the rest of the app is paper" | Two surfaces: paper for the editor, dark elsewhere | Fixed |
+| P1-3 | S1 | README "Into the game" | Mobs left out of the pack because "the plugin's own `RigBaker`" bakes them | Says a pack can't hold a custom entity model, so the plugin draws mobs | Fixed |
+| P1-4 | S1 | `lib/world.ts` atlas and terrain | "nine ground slabs share the one patch of grass", "a grid gets drawn across the grass" | Grass is gone. Now "identical faces share one region" and "the floor" | Fixed |
+| P1-5 | S1 | `components/WorldScene.tsx` | Placement blurb "Standing on the grass" and a header about the removed sky | "Standing on the floor". Header rewritten | Fixed |
+| P1-6 | S1 | `lib/config.ts` header | "The keys in SCHEMA are the ones the plugin's loader actually reads" | Says the keys came from the original plugin and haven't been checked against the rewrite | Fixed |
+
+Scanner after phase 1: 1100 candidates (was 1186), 3251 comment lines (was 3402), 221 banners (was 234).
+
 ## Waiting on the operator
 
 - **Plugin repository (Phase 8).** Only `Apathny2k2/simple-post-template`

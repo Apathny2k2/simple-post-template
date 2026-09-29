@@ -10,31 +10,16 @@ import type { Clip, Model, ProjectKind, Subtype } from '../lib/model'
 import './WorldScene.css'
 
 const PLACEMENTS: Array<{ id: Placement; label: string; blurb: string }> = [
-  { id: 'ground', label: 'On the ground', blurb: 'Standing on the grass, at its real size.' },
+  { id: 'ground', label: 'On the ground', blurb: 'Standing on the floor, at its real size.' },
   { id: 'air', label: 'Held in the air', blurb: 'Hovering and turning, the way an item model is inspected.' },
   { id: 'dropped', label: 'Dropped', blurb: 'On the floor at a quarter size, turning and bobbing.' },
 ]
 
 /**
- * A model, on a stage, at a size you can judge.
- *
- * There used to be a world here - a sky, a sun, clouds, stars and a
- * grass field - and it was the wrong idea. A modeller looking at their
- * model does not want a landscape competing with it for attention, and
- * a green field is a colour cast over everything they are trying to
- * judge. So the stage is black and the floor is near enough black to
- * disappear.
- *
- * What survives is what was doing work rather than decoration: the
- * floor still travels, because a walk that covers no ground is the
- * thing you cannot see in the timeline; it carries one line per block,
- * because a floor that vanishes entirely takes that with it; and the
- * two-block figure stays, because nothing else in the game tells you
- * how big something is.
- *
- * The scene is an ordinary `.vellum` - the floor, the figure and the
- * model itself are all cubes on bones - so the renderer, the camera and
- * the animation system need to know nothing about any of this.
+ * "View in the real world": the model on a black stage at its real size,
+ * with a floor that moves under a walk and a two-block figure for scale.
+ * The scene is an ordinary .vellum model, so the renderer, camera and
+ * animation code need nothing special for it.
  */
 export function WorldScene({
   model,
