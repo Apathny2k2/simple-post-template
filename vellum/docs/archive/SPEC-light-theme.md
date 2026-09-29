@@ -1,5 +1,7 @@
 # Spec — make the light scheme the only scheme
 
+> **Archived.** This spec was carried out: the editor runs on the light scheme in `vellum/src/styles/tokens.css`. Since then every other page moved to a dark surface (`vellum/src/styles/studio.css`), and the editor's palette changed again in the audit (see `AUDIT.md`). Kept as a record.
+
 **Decision:** Vellum's midnight-navy scheme is replaced by the white one.
 Light is not an alternative theme; it becomes the app's appearance, and
 the dark values are removed rather than kept behind a toggle.

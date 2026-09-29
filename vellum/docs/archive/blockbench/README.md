@@ -1,5 +1,7 @@
 # Blockbench reference
 
+> **Archived.** Research notes from before Vellum had its own format. Kept as a record.
+
 Two probes built assets against Blockbench's `.bbmodel` format and wrote up the
 tools that produce each part of it. Their findings are what `src/lib/model.ts`
 and `src/components/ModelView.tsx` implement.
@@ -17,7 +19,7 @@ and `src/components/ModelView.tsx` implement.
 | [`voidling-and-resonator-notes.md`](voidling-and-resonator-notes.md) | The same ground for rigging, then **Animate mode** in depth — the timeline, channels, keyframes, interpolation modes, how a bone animator binds to a group — and what `java_block` enforces that `free` does not. |
 | [`validate.mjs`](validate.mjs) | The probes' standalone structural checker, written against `.bbmodel`. Kept as evidence of how the models were verified; it does not read `.vellum`. |
 
-The models themselves live in [`../src/models/`](../src/models) as `.vellum` and
+The models themselves live in [`../src/models/`](../../../src/models) as `.vellum` and
 load as samples in the editor; their standalone PNGs are in
 [`textures/`](textures).
 

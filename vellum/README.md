@@ -34,7 +34,7 @@ than shipping a page that silently 404s its own assets.
 | `#/projects` | sheet 2 | First scene. Pick a shelf: Items or Mobs. |
 | `#/projects/:scene/:shelf` | sheet 2 | The shared library panel. `< Back`, shelf tabs, **New model**, card grid, `< 1 2 3 >`. Cards are grouped by what each model is for. |
 | `#/settings/:section` | sheet 1 | Search + section list, free sections above the `Manage` divider. |
-| `#/editor/:sampleId` | - | The editor. Opens `.vellum`, imports `.bbmodel`, saves `.vellum`. |
+| `#/editor/:sampleId` | - | The editor. Opens and saves `.vellum`. |
 | `#/editor/new/:kind/:subtype/:name` | - | The same editor, on a model built from the URL. This is where **New model** lands. |
 
 ## Before the Studio: the home page and the server list
@@ -64,11 +64,10 @@ entered server's.
 
 ## `.vellum` — the native model format
 
-Every model this engine writes is a `.vellum`. A `.bbmodel` is an **import
-source**: opening one and saving is the migration, and after that the model is a
-`.vellum` forever. `src/lib/vellum.ts` implements the format; the `.bbmodel`
-sources for the bundled samples are kept under `docs/blockbench/source` as the
-import record only.
+Every model Vellum opens or writes is a `.vellum`, implemented in
+`src/lib/vellum.ts`. It no longer reads `.bbmodel`. The bundled samples were
+migrated from Blockbench files, and those sources have been removed;
+`docs/archive/blockbench/` keeps the research notes.
 
 Not a zip and not a custom binary: a compact, key-ordered UTF-8 JSON document
 with a Vellum-owned schema. The extension is ours; the encoding is JSON so
@@ -78,8 +77,7 @@ with a Vellum-owned schema. The extension is ours; the encoding is JSON so
 {"vellum":{"format":"model","version":7},"name":"voidling","kind":"mobs","subtype":"hostile","resolution":{…},"bones":[…],"cubes":[…],"textures":[…],"clips":[…],"behaviour":{…},"config":{…}}
 ```
 
-Four properties are load-bearing, and the round-trip test asserts each rather
-than trusting good intentions:
+The format holds to four rules:
 
 1. **No magic number.** Identity is the *first JSON key*, so a well-formed file
    begins byte-for-byte with `HEADER_PREFIX`.
@@ -264,11 +262,11 @@ Two more that bite. A content file's root takes **exactly two keys**,
 error. And a mob's collection key is **`entities`, not `mobs`**: the directory
 moved at some point and the key did not.
 
-`entities` is confirmed. `items` is *not* — it is inferred from the directory
-name, and the mob case is the proof that inference is unsound. So an item
-config is previewed with the caveat written into the file and is held out of
-the export until the plugin confirms it, because a root key the parser refuses
-is exactly the error that holds back everything else on the server.
+The original plugin confirmed `entities` for mobs and `items` for items, so both
+export. Blocks have no confirmed key, so a block config is previewed in the
+Config tab and held out of the export. A root key the parser refuses would hold
+back everything else on the server. None of the three has been checked against
+the rewritten plugin yet.
 
 ### What the shape buys
 
@@ -297,9 +295,8 @@ const bytes = writeVellum(model)    // always stamps CURRENT_VERSION
 isVellum(text)                      // cheap sniff: does it start with {"vellum"
 ```
 
-`src/lib/bbmodel.ts` keeps `parseBBModel` / `serializeBBModel` for the import and
-interop paths, plus `validateModel(model, kind)` — the rules the editor refuses to
-write past, including the Java block volume and its single-axis ±22.5°/±45°
+`validateModel(model, kind)` in `src/lib/model.ts` holds the rules the editor
+won't save past, including the Java block volume and its single-axis ±22.5°/±45°
 rotation limit.
 
 > The Studio's HTTP surface (`/api/mob/project`, the upload/apply pipeline, leases,
@@ -382,7 +379,7 @@ endpoints above are expected to exchange.
 Two surfaces and no theme toggle. The editor sits on **paper**, a warm-grey
 field defined in `src/styles/tokens.css`. Every other page is a dark room,
 described at the end of this section. The paper replaced a midnight navy theme
-(see `SPEC-light-theme.md`), which is why its grey ramp is still named `navy`.
+(see `docs/archive/SPEC-light-theme.md`), which is why its grey ramp is still named `navy`.
 Only four of its fifteen steps are used.
 
 Three rules hold the look together, and they are written at the top of

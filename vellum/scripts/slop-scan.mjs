@@ -347,7 +347,8 @@ const flag = (name) => args.includes(`--${name}`)
 const option = (name) => args.find((a) => a.startsWith(`--${name}=`))?.split('=').slice(1).join('=')
 
 const sources = walk(path.join(app, 'src'), (n) => /\.(tsx?|css)$/.test(n))
-const docs = walk(repo, (n) => n.endsWith('.md') && !SKIP_FILES.has(n))
+// archived docs are a record of their time and are left as written
+const docs = walk(repo, (n) => n.endsWith('.md') && !SKIP_FILES.has(n)).filter((f) => !f.includes(`${path.sep}archive${path.sep}`))
 const hits = []
 const files = []
 
