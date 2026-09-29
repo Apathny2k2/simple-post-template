@@ -371,11 +371,11 @@ were rewritten to match the code; the code was not changed.
 | `pages/Settings.css:355` | the "How Vellum ships" list on About | no page renders it (removed in phase 5) |
 | `styles/controls.css:1` | buttons and key/value rows | also the dialogs |
 
-### UI text found wrong on the way (S2, fixed in the next commit)
+### UI text found wrong on the way (S2, fixed)
 
-| Where | Said | Does |
-|---|---|---|
-| `editor/DisplayPanel.tsx`, Copy all tooltip | "Every slot that differs from vanilla" | copies every slot with a transform set; slots at the identity are left out, and nothing is compared with vanilla |
+| Where | Said | Does | Now |
+|---|---|---|---|
+| `editor/DisplayPanel.tsx`, Copy all tooltip | "Every slot that differs from vanilla" | copies every slot with a transform set; nothing is compared with vanilla | "Every slot with a transform set" |
 
 ## Bugs found by the audit
 

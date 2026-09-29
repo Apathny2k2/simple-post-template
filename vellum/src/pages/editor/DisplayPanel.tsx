@@ -147,7 +147,7 @@ export function DisplayPanel({
         <button className="chip" onClick={() => copy(slot)} title="This slot, as Minecraft expects it">
           <Icon name="copy" size={11} /> Copy slot
         </button>
-        <button className="chip" onClick={() => copy(null)} title="Every slot that differs from vanilla">
+        <button className="chip" onClick={() => copy(null)} title="Every slot with a transform set">
           <Icon name="copy" size={11} /> Copy all
         </button>
       </div>
