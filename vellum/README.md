@@ -309,9 +309,10 @@ pieces below.
   form keeps the draft. The form is `src/components/TicketForm.tsx`, and Report
   A Bug uses the same one with a chip for the session log.
 - **On a phone** the list and the thread take turns, with a back arrow.
-- **The miner** digs while a new ticket is on its way and goes through the
-  portal before the thread opens, and digs where the reply will appear while
-  someone on the team is writing (see *Waiting has a miner* below).
+- **Pip** mines while a new ticket is on its way and goes through the portal
+  before the thread opens. While someone on the team is writing he fishes where
+  their reply will appear, and it shows once he has landed a letter (see
+  *Waiting has Pip* below).
 
 ### API
 
@@ -468,12 +469,12 @@ next, because the marker is its own element with its own
 `view-transition-name`. Without the API, or with reduced motion on, the page
 simply swaps.
 
-**Waiting has a miner.** `src/components/Miner.tsx` is the studio's loading
-scene, drawn in one colour after the offline dinosaur game: a horizon line, a
-couple of clouds, and a small miner in a hard hat. He is Vellum's mascot, and
-he is only on screen while something runs. While it runs he mines the block in front of him; when a block
-breaks the next one rises out of the ground a few steps on, and a counter in the
-corner keeps score. When the answer comes he lands the swing he is on, then:
+**Waiting has Pip.** `src/components/Pip.tsx` is the studio's loading scene,
+drawn in one colour after the offline dinosaur game: a horizon line, a couple
+of clouds, and a small miner in a hard hat called Pip, Vellum's mascot. He is
+only on screen while something runs. For work that runs he mines the block in
+front of him; when a block breaks the next one rises out of the ground a few
+steps on. When the answer comes he lands the swing he is on, then:
 
 - on success a portal rises ahead and he fades into it, leaving a check mark;
 - on a refusal (the request worked, the content did not pass) a wall rises, he
@@ -481,23 +482,28 @@ corner keeps score. When the answer comes he lands the swing he is on, then:
 - on an error the ground opens into lava and he walks in; his pickaxe lands on
   the far bank.
 
-Where the wait is short and holding the answer back would be a nuisance,
-`success="gem"` swaps the portal for a quicker ending: he stops, the gem from
-the block he just broke floats up over his hat, and he hops. It takes a second
-or two.
+For waiting on a person rather than a job, `scene="fish"` puts him on a bank
+with his legs over the edge and a rod in his hands. The float rides the water,
+and now and then something nibbles and tugs it under. When the answer comes,
+something bites: a mark pops over his head, he strikes, and a letter comes up
+out of the water to hang over his hat, which takes a second or two. If it
+fails the line snaps and he slumps under a rain cloud.
 
 The result is held back until the ending has played, then the scene goes and
 the message takes its place. It is used by Apply on the server, which sits in
 the Dash's Players card; by Report a bug in Settings; by the pack builder in
 Export pack, where a cancelled save is the wall and a failed one is lava; and
-by Support, where he digs while a new ticket is sent and goes through the
-portal before its thread opens, and digs in the thread while someone on the
-team is writing, their reply appearing once the gem is up. While the demo
-server runs it answers Apply too, swapping, refusing and failing in turn.
+by Support, where he mines while a new ticket is sent and goes through the
+portal before its thread opens, and fishes in the thread while someone on the
+team is writing, their reply appearing once he has landed the letter. While
+the demo server runs it answers Apply too, swapping, refusing and failing in
+turn.
 
-It is drawn by hand in `src/lib/miner/`: one canvas pixel per art pixel, scaled
-up by a whole number so pixels stay square, in the text colour of wherever it
-sits, and limbs that swing by nearest-neighbour rotation so they never blur. The
+It is drawn by hand in `src/lib/pip/`: `figure.ts` is Pip himself, `mine.ts`
+and `fish.ts` are the two scenes, and `scene.ts` holds what they share. One
+canvas pixel per art pixel, scaled up by a whole number so pixels stay square,
+in the text colour of wherever it sits, and limbs that swing by
+nearest-neighbour rotation so they never blur. The
 art is our own. Under reduced motion there is no ending to wait for and the
 result shows at once, and a result is never held back more than six seconds. It
 is decoration, so it is hidden from screen readers; the text beside it says

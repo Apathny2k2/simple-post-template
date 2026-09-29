@@ -1,4 +1,4 @@
-/* The miner and his props, drawn for this app in one colour, after the
+/* Pip and his props, drawn for this app in one colour, after the
    offline dinosaur game: solid figures with holes for the details, and
    the world around them in thin lines. */
 
@@ -122,16 +122,19 @@ export const FLAMES = [
   mask(['...#.', '..##.', '..##.', '.###.', '.####', '##.##']),
 ]
 
-/** 3x5 figures for the counter in the corner. */
-export const DIGITS = [
-  ['###', '#.#', '#.#', '#.#', '###'],
-  ['.#.', '##.', '.#.', '.#.', '###'],
-  ['###', '..#', '###', '#..', '###'],
-  ['###', '..#', '.##', '..#', '###'],
-  ['#.#', '#.#', '###', '..#', '..#'],
-  ['###', '#..', '###', '..#', '###'],
-  ['###', '#..', '###', '#.#', '###'],
-  ['###', '..#', '.#.', '.#.', '.#.'],
-  ['###', '#.#', '###', '#.#', '###'],
-  ['###', '#.#', '###', '..#', '###'],
-].map(mask)
+/** A fishing float on its stick: the top half an outline and the bottom
+    half solid, the way the game's red-and-white one reads in one colour. */
+export const FLOAT = mask(['.#.', '.#.', '#.#', '###', '###'])
+
+/** A letter, with the flap folded down. */
+export const LETTER = mask([
+  '#########', //
+  '##.....##',
+  '#.#...#.#',
+  '#..#.#..#',
+  '#...#...#',
+  '#########',
+])
+
+/** The mark over his head when something bites. */
+export const ALERT = mask(['#', '#', '#', '.', '#'])

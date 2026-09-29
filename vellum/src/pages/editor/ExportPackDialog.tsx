@@ -13,8 +13,8 @@ import { useModal } from '../../lib/a11y'
 import { buildConfigs, buildPack, folderOf, isNamespace, packBytes, packZip, safeId } from '../../lib/pack'
 import type { PackItem } from '../../lib/pack'
 import { saveBlob } from '../../lib/download'
-import { Miner } from '../../components/Miner'
-import type { MinerFailure, MinerMood } from '../../components/Miner'
+import { Pip } from '../../components/Pip'
+import type { PipFailure, PipMood } from '../../components/Pip'
 
 const KB = (n: number) => (n < 1024 ? `${n} B` : `${(n / 1024).toFixed(1)} KB`)
 
@@ -69,10 +69,10 @@ export function ExportPackDialog({
 
   const stem = safeId(suggestedName)
 
-  /* The miner works while the zip is built and saved, then plays out how
+  /* Pip works while the zip is built and saved, then plays out how
      it went; what happened is only said once he is done. A save the
      person cancelled is a wall, one that broke is lava. */
-  const [run, setRun] = useState<{ mood: MinerMood; failure: MinerFailure; said: string | null } | null>(null)
+  const [run, setRun] = useState<{ mood: PipMood; failure: PipFailure; said: string | null } | null>(null)
 
   const save = (name: string, build: () => Uint8Array) => {
     if (run) return
@@ -270,7 +270,7 @@ export function ExportPackDialog({
 
         {run ? (
           <div className="pk-run">
-            <Miner mood={run.mood} failure={run.failure} onFinish={landed} />
+            <Pip mood={run.mood} failure={run.failure} onFinish={landed} />
           </div>
         ) : null}
 

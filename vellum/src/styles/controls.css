@@ -140,7 +140,7 @@
 .dlg__head > div:first-child { flex: 1; min-width: 0; }
 .dlg__body { padding: var(--sp-4); overflow-y: auto; flex: 1; min-height: 0; }
 
-/* the pack builder's miner, between the scrolling body and the buttons */
+/* Pip, while the pack builds, between the scrolling body and the buttons */
 .pk-run { padding: var(--sp-3) var(--sp-4) 0; border-top: 1px solid var(--glass-rim); }
 
 .dlg__foot {

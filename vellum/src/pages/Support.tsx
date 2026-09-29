@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
-import { Miner } from '../components/Miner'
-import type { MinerMood } from '../components/Miner'
+import { Pip } from '../components/Pip'
+import type { PipMood } from '../components/Pip'
 import { TicketForm } from '../components/TicketForm'
 import { Icon } from '../lib/icons'
 import { api } from '../lib/api'
@@ -10,8 +10,8 @@ import type { Attachment, Message, Ticket, TicketDraft, TicketStatus } from '../
 import './Support.css'
 
 /* Support is your tickets, one thread at a time, and a form that is one
-   text box. The miner shows up while something is on its way: he digs
-   while a new ticket is sent and while someone on the team is writing
+   text box. Pip shows up while something is on its way: he mines while
+   a new ticket is sent and fishes while someone on the team is writing
    back, and what he was waiting for appears once he is done. */
 
 type View = 'open' | 'closed'
@@ -346,7 +346,7 @@ function Thread({
   const scroller = useRef<HTMLDivElement>(null)
   const last = messages[messages.length - 1]?.id
 
-  // new messages, and the miner, arrive at the bottom
+  // new messages, and Pip, arrive at the bottom
   useLayoutEffect(() => {
     const el = scroller.current
     if (el) el.scrollTop = el.scrollHeight
@@ -409,7 +409,7 @@ function Thread({
               <span className="bub__who" role="status">
                 {writing.name} is writing
               </span>
-              <Miner mood={writing.mood} success="gem" maxScale={2} onFinish={onWritten} className="th__miner" />
+              <Pip scene="fish" mood={writing.mood} maxScale={2} onFinish={onWritten} className="th__pip" />
             </div>
           ) : null}
         </div>
@@ -437,7 +437,7 @@ function Compose({
   onClose,
 }: {
   draft: TicketDraft
-  sending: MinerMood | null
+  sending: PipMood | null
   failed: boolean
   replyHours: number | null
   onDraft: (d: TicketDraft) => void
@@ -474,7 +474,7 @@ function Compose({
 
       {sending ? (
         <div className="nt__run">
-          <Miner mood={sending} onFinish={onSent} className="nt__miner" />
+          <Pip mood={sending} onFinish={onSent} className="nt__pip" />
         </div>
       ) : (
         <TicketForm draft={draft} onDraft={onDraft} onSend={onSend} failed={failed} autoFocus className="nt__form" />
@@ -498,7 +498,7 @@ export function Support() {
   const [messages, setMessages] = useState<Message[]>([])
   const [writing, setWritingState] = useState<Writing | null>(null)
   const [draft, setDraft] = useState<TicketDraft>(blankDraft)
-  const [sending, setSending] = useState<MinerMood | null>(null)
+  const [sending, setSending] = useState<PipMood | null>(null)
   const [sendFailed, setSendFailed] = useState(false)
   const [fresh, setFresh] = useState<string | null>(null)
   const [replyHours, setReplyHours] = useState<number | null>(null)
@@ -510,7 +510,7 @@ export function Support() {
     composing: false,
     writing: null,
   })
-  /** replies that came in while the miner was still digging for them */
+  /** replies that came in while Pip was still fishing for them */
   const held = useRef<Message[]>([])
   /** who is typing where, and until when */
   const typing = useRef(new Map<string, { name: string; until: number }>())
@@ -522,7 +522,7 @@ export function Support() {
     setWritingState(w)
   }
 
-  /** What came in while the miner was digging goes into the thread. */
+  /** What came in while Pip was fishing goes into the thread. */
   const release = () => {
     const replies = held.current
     held.current = []
@@ -580,7 +580,7 @@ export function Support() {
     }
   }, [activeId])
 
-  /** The miner, for someone typing into the open thread. He goes if they stop without sending. */
+  /** Pip fishes while someone types into the open thread, and goes if they stop without sending. */
   const watchWriter = (ticketId: string) => {
     const t = typing.current.get(ticketId)
     if (!t) return
@@ -725,7 +725,7 @@ export function Support() {
     }
   }
 
-  /** The miner is through the portal, or in the lava. */
+  /** Pip is through the portal, or in the lava. */
   const sent = () => {
     const ticket = created.current
     created.current = null

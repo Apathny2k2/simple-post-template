@@ -350,9 +350,9 @@
 .att--draft button { display: inline-flex; color: var(--ink-faint); }
 .att--draft button:hover { color: var(--ink); }
 
-/* someone on the team is writing: the miner digs where their reply will be */
+/* someone on the team is writing: Pip fishes where their reply will be */
 .th__writer { display: grid; justify-items: start; gap: 2px; margin-top: 10px; }
-.th__miner { width: 256px; max-width: 100%; justify-content: flex-start; color: var(--ink-muted); }
+.th__pip { width: 256px; max-width: 100%; justify-content: flex-start; color: var(--ink-muted); }
 
 .th__closed {
   padding: 16px 20px;
@@ -435,7 +435,7 @@
   padding: 20px;
 }
 
-.nt__miner { max-width: 480px; }
+.nt__pip { max-width: 480px; }
 
 /* ---------------- focus ----------------
    The fields show focus on their frame, so the text areas inside them

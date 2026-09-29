@@ -371,9 +371,9 @@
 .ships__t { font-size: var(--fs-sm); color: var(--ink); }
 .ships__d { margin-top: 3px; font-size: var(--fs-xs); color: var(--ink-faint); line-height: 1.55; }
 
-/* while a report sends, the miner takes the form's place at about its height */
+/* while a report sends, Pip takes the form's place at about its height */
 .bug-run { display: grid; place-items: center; min-height: 260px; }
-.bug-miner { max-width: 420px; }
+.bug-pip { max-width: 420px; }
 
 .bug-sent {
   display: flex;

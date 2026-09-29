@@ -1,8 +1,8 @@
 import { useCallback, useMemo, useState, useSyncExternalStore } from 'react'
 import { Card } from '../components/Card'
 import { Kinetic } from '../components/Kinetic'
-import { Miner } from '../components/Miner'
-import type { MinerMood } from '../components/Miner'
+import { Pip } from '../components/Pip'
+import type { PipMood } from '../components/Pip'
 import { TicketForm, ToggleChip } from '../components/TicketForm'
 import { Icon } from '../lib/icons'
 import type { IconName } from '../lib/icons'
@@ -106,15 +106,15 @@ function Switch({ id, on, label }: { id: string; on: boolean; label: string }) {
 
 /**
  * A bug report is a support ticket, written in the same form Support
- * uses, with the session log as one more chip. The miner runs while it
- * sends, and the result shows once he is done.
+ * uses, with the session log as one more chip. Pip mines while it sends,
+ * and the result shows once he is done.
  */
 function ReportABug() {
   const [draft, setDraft] = useState<TicketDraft>(blankDraft)
   const [withLog, setWithLog] = useState(true)
   const [sent, setSent] = useState<string | null>(null)
   const [failed, setFailed] = useState(false)
-  const [run, setRun] = useState<MinerMood | null>(null)
+  const [run, setRun] = useState<PipMood | null>(null)
 
   const sessionLog = () =>
     [
@@ -158,7 +158,7 @@ function ReportABug() {
     >
       {run ? (
         <div className="bug-run">
-          <Miner mood={run} onFinish={() => setRun(null)} className="bug-miner" />
+          <Pip mood={run} onFinish={() => setRun(null)} className="bug-pip" />
         </div>
       ) : (
         <>

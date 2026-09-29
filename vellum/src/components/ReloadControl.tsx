@@ -16,11 +16,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { requestReload, type ReloadOutcome } from '../lib/reload'
 import { Icon } from '../lib/icons'
-import { Miner } from './Miner'
+import { Pip } from './Pip'
 import './ReloadControl.css'
 
-/* While the request runs the miner mines. When the answer is in he plays
-   it out, and only then does the verdict appear. */
+/* While the request runs Pip mines. When the answer is in he plays it
+   out, and only then does the verdict appear. */
 type State =
   | { phase: 'idle' }
   | { phase: 'asking' }
@@ -81,8 +81,8 @@ export function ReloadControl({
       </div>
 
       {busy ? (
-        <Miner
-          className="rl__miner"
+        <Pip
+          className="rl__pip"
           mood={landing ? (landing.kind === 'swapped' ? 'done' : 'failed') : 'working'}
           failure={landing?.kind === 'refused' ? 'wall' : 'lava'}
           onFinish={onLanded}
