@@ -67,6 +67,33 @@ Longest block: 41 lines at `vellum/src/lib/config.ts:1`.
 | `src/pages/Projects.tsx` | 54 | 441 | 0.12 | 0 | 9 | 19 |
 | `src/lib/texture.ts` | 50 | 207 | 0.24 | 4 | 11 | 10 |
 
+### After the audit
+
+| Rule | Comments | Copy | Docs | Total |
+|---|---:|---:|---:|---:|
+| "X, not Y" and "rather than" | 0 | 2 | 10 | 12 |
+| "the one" and "the only" | 0 | 0 | 6 | 6 |
+| one-line morals ("A is a B.") | 0 | 0 | 0 | 0 |
+| history ("used to", "no longer") | 0 | 0 | 3 | 3 |
+| shouting (4+ capitalised words) | 0 | 0 | 0 | 0 |
+| stock phrases | 0 | 0 | 1 | 1 |
+| "which is why" and "which is the point" | 0 | 0 | 2 | 2 |
+| numbered framing ("Two notes") | 0 | 0 | 5 | 5 |
+| unmeasured counts | 0 | 0 | 0 | 0 |
+| dash asides | 4 | 4 | 11 | 19 |
+| marketing words | 0 | 1 | 0 | 1 |
+| emoji | 0 | 0 | 0 | 0 |
+| semicolons in UI text | 0 | 0 | 0 | 0 |
+| **All rules** | **4** | **7** | **38** | **49** |
+
+Comment lines: 1581 across 96 source files, against 23962 code lines (0.07
+per code line), down from 3402. Blocks of 8 lines or more: 7, down from 90.
+The 4 comment hits are false positives (minus signs, and an oxlint
+directive). The 7 copy hits are six sample support replies written to read
+like a person typing and one "Unlock" meaning a locked cube. Most doc hits
+left are in `ZOOM-FIX.md`, a work order for a fix that hasn't been made, and
+`CLAUDE.md`.
+
 ## Phase 1: untrue and stale statements
 
 | ID | Sev | Where | Was | Now | Status |
@@ -498,6 +525,44 @@ narrow screen, and every menu opens in full on desktop and at 390px.
 `contrast-audit.mjs` also takes `BASE=` now, so it can check the built file,
 and skips a screenshot that stalls: the home page's font set never reports
 ready in headless Chromium, which hung the script.
+
+## Phase 7: docs
+
+- **`vellum/README.md`.** "The material" was rewritten in phase 6 to match
+  what shipped. The rest of the README, the root `README.md` and
+  `docs/backlog.md` were rewritten plainly in this phase (README hits 92 to
+  4, all in wording kept on purpose; root README 1 to 0; backlog 7 to 0),
+  and every fact was checked against the code. Fixed on the way: all the
+  samples were said to come from Blockbench (two do); the boss example
+  listed features the config no longer has; the name-drift example was a
+  block, which has no config; blocks were said to have a Config tab; the
+  config zip paths were flat; `kind` was said to live outside the file;
+  the editor was said to refuse to save past validation errors;
+  `Model3D.tsx` was called the renderer (it is `ModelView.tsx`); an
+  off-angle warning was said to have a one-click fix; the pretty-printed
+  sizes were wrong (the Alien Sword is 16.6 KB and 10.3 KB, not 16 and
+  8.8); the stage was described on white paper; a `.vellum` was said to
+  keep `git diff` useful (it is one line); the rig was said to be
+  regenerated on save; every page was said to be built from Card (only
+  Settings is); dropped items were said to be a quarter size (0.45); the
+  About version was "approaching v8/v9" (0.9.0). What the README says about
+  the plugin now says it describes the original plugin, and the
+  `#/projects/:scene/:shelf/new` route is in the screens table.
+- **`CONTINUE.md`.** Rewritten in full at the operator's word: where things
+  stand, the plugin decisions that are still open, what's not done
+  (including the bugs this audit found), the live server, the traps, and
+  the standing instructions.
+- **Finished docs.** `SPEC-light-theme.md` and the Blockbench research
+  notes moved to `vellum/docs/archive/` (`ce34c97`). `ZOOM-FIX.md` stays:
+  its fix never landed (`git log -S zoomAnchor` finds only the first
+  implementation and the diagnosis), and today the zoom misses by 2 px at
+  the centre and 97 px at 300 px out.
+- **`vellum/docs/plugin-api.md`.** Rewritten plainly and brought in line
+  with the contract the code serves (`65a1364`): the event stream, the Plan
+  card, the pack date and the problem messages. It documents the Studio's
+  own contract, which any plugin implements, so it doesn't depend on the
+  old plugin. Whether the new plugin implements it was phase 8, which is
+  out of scope.
 
 ## Bugs found by the audit
 
