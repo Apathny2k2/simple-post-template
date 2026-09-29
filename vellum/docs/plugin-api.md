@@ -1,30 +1,27 @@
 # Feeding the Dashboard
 
-Every number on Vellum's Dash describes a Minecraft realm that Vellum
-does not run — the server's identity, the pack it is serving, who is
-still on an old copy, what the team touched last. None of that is
-knowable from inside a browser tab, so all of it is fed in.
-
-This is the contract for feeding it.
+Every number on Vellum's Dash describes a server Vellum doesn't run: its
+name, the pack it serves, who still has an old copy, what the team touched
+last. A browser tab can't know any of that, so your plugin sends it. This is
+the contract for sending it.
 
 - **Base**: `/api/v1`
-- **Schema version**: 1 — `GET /api/v1/dash/schema` returns this document's
-  machine-readable half, so a plugin can check at startup rather than guess.
-- **Every field is optional unless marked required.** An omitted field keeps
-  its current value; you never have to send state you do not know.
-- **Corrections come back**, they are not applied silently. See
+- **Schema version**: 1. `GET /api/v1/dash/schema` returns the
+  machine-readable part of this document, so a plugin can check it at startup.
+- **Every field is optional unless marked required.** A field you leave out
+  keeps its current value, so you never have to send what you don't know.
+- **Vellum tells you what it corrected.** See
   [What Vellum corrects](#what-vellum-corrects).
 
 ---
 
-## The three ways in
+## Ways in
 
-A published Vellum is a static page. It cannot listen on a port, so
-"endpoint" means one of three things depending on where your plugin sits.
-All three land in the same validator — none of them can feed a card the
-others would refuse.
+A published Vellum is a static page. It can't listen on a port, so an
+"endpoint" is one of three things, depending on where your plugin runs. All
+three go through the same validator.
 
-### 1. Vellum polls you — the one a server plugin uses
+### 1. Vellum polls you (for a server plugin)
 
 Serve `GET {base}/dash/snapshot` and point Vellum at it in **Plugin feed**
 on the Dash. Vellum reads it on an interval and applies whatever it finds.
@@ -48,28 +45,28 @@ Authorization: Bearer <token>
 }
 ```
 
-Two things your HTTP server must do:
+Your HTTP server must:
 
-- **CORS.** The page's origin has to be allowed, or the browser refuses the
-  response before Vellum sees it: `Access-Control-Allow-Origin: <the Vellum
-  origin>` and `Access-Control-Allow-Headers: Authorization`.
+- **Allow the page's origin (CORS)**, or the browser refuses the response
+  before Vellum sees it: `Access-Control-Allow-Origin: <the Vellum origin>`
+  and `Access-Control-Allow-Headers: Authorization`.
 - **Answer `OPTIONS`.** The `Authorization` header makes it a preflighted
   request.
 
 If you also serve `GET {base}/dash/events` as `text/event-stream`, Vellum
-uses that instead and the cards move the moment you push a build rather
-than up to a minute later. Each event's `data` is a snapshot body — the
-same shape as above, with only the keys that changed. Vellum falls back
-to polling on its own if the stream is absent or drops.
+uses it and the cards update as soon as you push a build, instead of on the
+next poll. Each event's `data` is one section, `{ "section": "pack", "body":
+{ … } }`, or a snapshot body holding only the keys that changed. Vellum takes
+both. If the stream is missing or drops, Vellum goes back to polling.
 
-> `EventSource` cannot set headers, so the bearer travels as
-> `?token=…` on the stream URL. It will appear in your access logs.
-> Issue the stream a separate, short-lived token if that matters to you.
+> `EventSource` can't set headers, so the bearer token goes in the stream URL
+> as `?token=…`, where it shows up in your access logs. Give the stream its
+> own short-lived token if that matters to you.
 
 ### 2. Push into the page — `window.Vellum.dash`
 
-If your code shares the document — a launcher's web view, a companion
-script, or you in devtools — every endpoint is a method:
+If your code runs in the same page (a launcher's web view, a companion
+script, or you in devtools), every endpoint is a method:
 
 ```js
 Vellum.dash.pack({ archive: 'aurelian_v12.zip', bytes: 43834572, hash: 'sha1:9f2c04e1' })
@@ -77,8 +74,8 @@ Vellum.dash.report({ player: 'kite', packHash: 'sha1:9f2c04e1' })
 Vellum.dash.heartbeat({ agent: 'VellumBridge 1.4.0', everySeconds: 30 })
 ```
 
-Each returns `{ ok, problems: string[] }` synchronously. This is the
-fastest way to check a payload before you write the plugin.
+Each returns `{ ok, problems: string[] }` straight away. It's the quickest
+way to check a payload before you write the plugin.
 
 ### 3. Push from an embedding page — `postMessage`
 
@@ -95,9 +92,8 @@ vellumFrame.contentWindow.postMessage(
 `dash.schema`, `dash.read`. Vellum replies to `event.source` with
 `{ vellum: 1, id, result }`.
 
-**The origin allowlist has no wildcard and is not optional.** Out of the
-box only the page's own origin is accepted; a dashboard that takes
-numbers from any frame that can reach it is not a dashboard.
+**Only listed origins are accepted, and there is no wildcard.** By default
+the list holds the page's own origin.
 
 ---
 
@@ -107,20 +103,19 @@ numbers from any frame that can reach it is not a dashboard.
 
 | | |
 |---|---|
-| `POST /dash/snapshot` | Replace every card in one call. Send what you know, omit the rest. The cheapest thing to do on a timer. |
-| `GET /dash/snapshot` | Read it back. **This is the one you implement** if you want Vellum to poll you. |
-| `POST /dash/heartbeat` | `{ agent, everySeconds }`. Say you are alive and name yourself. |
-| `GET /dash/events` | SSE. Optional, but the difference between live and eventually. |
+| `POST /dash/snapshot` | Update every card in one call. Send what you know and leave out the rest. The cheapest way to report on a timer. |
+| `GET /dash/snapshot` | Read it back. **Implement this one** if you want Vellum to poll you. |
+| `POST /dash/heartbeat` | `{ agent, everySeconds }`. Say the plugin is alive and give its name. |
+| `GET /dash/events` | SSE. Optional. Cards update as soon as you send, without waiting for a poll. |
 | `GET /dash/schema` | This contract as JSON: `{ version, base, endpoints }`. |
 
-**Heartbeats are how the Dash stays honest.** Miss two and every fed card
-is marked *stale*; miss six and it reads *no feed*. A dashboard that keeps
-showing yesterday's numbers as though they were current is worse than one
-that admits it lost the plugin.
+**Heartbeats.** Up to twice your `everySeconds` without one, the Dash shows
+your data as live. Up to six times, it shows it as *stale*. After that it
+shows the feed as *offline*.
 
 ### Realm
 
-`PATCH /dash/server` — the Server card.
+`PATCH /dash/server` updates the Server card.
 
 | field | type | note |
 |---|---|---|
@@ -132,34 +127,34 @@ that admits it lost the plugin.
 | `breakdown` | `{label,count}[]` | Up to 12 rows |
 | `total` | integer | Total files synced. **Omit it and Vellum sums the breakdown.** |
 
-`PATCH /dash/subscription` — the Realm power card: `type`, `cloud`, `seats`
-(all free text; `seats` is a label like `"4 of 5"`, not a number).
+`PATCH /dash/subscription` updates the Plan card: `type`, `cloud` and `seats`,
+all free text. `seats` is a label such as `"4 of 5"`.
 
 ### Pack
 
-`PATCH /dash/pack` — send this when you finish building a pack, not on a timer.
+`PATCH /dash/pack`: send this when you finish building a pack. Don't send it on
+a timer.
 
 | field | type | note |
 |---|---|---|
-| `archive` | string | **required** — file name as served |
-| `bytes` | integer | **required** — size on the wire; Vellum formats it |
-| `hash` | string | **required** — the SHA-1 you hand the client |
-| `pushedAt` | string \| integer | ISO 8601, epoch ms, or epoch seconds. Defaults to now |
+| `archive` | string | **required**. The file name as served |
+| `bytes` | integer | **required**. Size in bytes; Vellum formats it |
+| `hash` | string | **required**. The SHA-1 you send to clients |
+| `pushedAt` | string \| integer | ISO 8601, epoch ms or epoch seconds. Defaults to now when the hash changes; a repeat of the same pack keeps its date |
 | `version` | string \| null | Your own build label |
 
-`hash` is load-bearing: it is what player reports are compared against.
-**Pushing a new hash re-counts adoption immediately**, so the card cannot
-claim everyone is up to date the instant you publish a build nobody has
-downloaded yet.
+Player reports are compared against `hash`. **A new hash re-counts the
+players straight away**, so the card doesn't show everyone as up to date the
+moment you publish a build nobody has downloaded yet.
 
 ### Players
 
 Two ways, pick one.
 
-`PUT /dash/players` — you did the counting: `{ correct, wrong, sampledAt? }`.
+`PUT /dash/players`: you did the counting. `{ correct, wrong, sampledAt? }`.
 
-`POST /dash/players/report` — **one client, one hash**, which is all a join
-event knows. Vellum keeps the roster and does the counting.
+`POST /dash/players/report`: report **one client and its pack hash**, which is
+all a join event knows. Vellum keeps the roster and does the counting.
 
 ```java
 @EventHandler
@@ -175,17 +170,17 @@ public void onQuit(PlayerQuitEvent e) {
 }
 ```
 
-Send `{ "player": "...", "left": true }` on quit or the roster keeps
-counting players who went home.
+Send `{ "player": "...", "left": true }` when a player quits, or the roster
+keeps counting them.
 
 ### Files
 
-`POST /dash/files` — append one row, or an array of them. Newest first,
-capped at 50; older rows fall off.
+`POST /dash/files` adds one row, or an array of them. The table shows the
+newest first and keeps 50. Older rows are dropped.
 
 | field | type | note |
 |---|---|---|
-| `name` | string | **required** — a row without one is dropped |
+| `name` | string | **required**. A row without one is dropped |
 | `where` | string | Directory, as you want it displayed |
 | `touchedAt` | string \| integer | Defaults to now |
 | `by` | string | Who touched it |
@@ -197,103 +192,99 @@ each cycle.
 
 ### Cloud
 
-The workspace a paid account is allocated. Vellum shows exactly what you
-send here in **Settings ▸ Cloud** and invents nothing when you send
-nothing.
+The workspace a paid account gets. **Settings ▸ Cloud** shows exactly what
+you send here, and shows nothing until you send something.
 
-`PATCH /cloud/workspace` — send what changed.
+`PATCH /cloud/workspace`: send only what changed.
 
 | field | type | note |
 |---|---|---|
-| `id` | string | Workspace id, as your side names it |
+| `id` | string | Workspace id, as you name it |
 | `region` | string | Where the database lives |
 | `status` | `synced` \| `syncing` \| `paused` \| `error` | What the sync is doing right now |
 | `usedBytes` | integer | Storage in use |
 | `quotaBytes` | integer | What the plan allows |
 | `syncedAt` | string \| integer | When the last sync completed |
-| `members` | Member[] | REPLACES the roster, up to 40 |
+| `members` | Member[] | REPLACES the roster. Up to 40 |
 
-`PUT /cloud/members` — just the roster, for a plugin that tracks who is
+`PUT /cloud/members`: just the roster, for a plugin that tracks who is
 connected without touching the rest of the workspace.
 
 | field | type | note |
 |---|---|---|
-| `members[].name` | string | **required** — one without a name is dropped |
+| `members[].name` | string | **required**. A member without a name is dropped |
 | `members[].id` | string | Your own id for them; generated if absent |
 | `members[].role` | `owner` \| `editor` \| `viewer` | Defaults to `viewer` |
 | `members[].seenAt` | string \| integer | Last seen. Defaults to now |
 | `members[].holding` | integer | Files they currently have open |
 
-The shared-file list in that panel is the same one `POST /dash/files`
-feeds — there is one list of files, not two.
+The shared files in that panel are the list `POST /dash/files` feeds.
 
 ### Console
 
-Two calls that are not about cards. The first is fed to Vellum like any
-other; the second is the one call Vellum makes **to you**.
+Two calls that aren't about cards. You send the changelog to Vellum like any
+other call. `GET /plugin/version` is the call Vellum makes **to your plugin**.
 
-`PUT /console/changelog` — replace the release notes shown in
-**Settings ▸ About ▸ Changelog**. This is how the Master Console tells a
-studio what changed without anybody visiting a website. Newest 30 kept,
-sorted by date.
+`PUT /console/changelog` replaces the release notes shown in
+**Settings ▸ About ▸ Changelog**. The Master Console sends them through the
+plugin, so users see what changed without visiting a website. Vellum keeps
+the newest 30, sorted by date.
 
 | field | type | note |
 |---|---|---|
-| `releases` | Release[] | **required** — REPLACES the list |
-| `releases[].version` | string | **required** — an entry without one is dropped |
-| `releases[].channel` | `studio` \| `plugin` | Which half the note is about. Defaults to `studio` |
+| `releases` | Release[] | **required**. REPLACES the list |
+| `releases[].version` | string | **required**. An entry without one is dropped |
+| `releases[].channel` | `studio` \| `plugin` | Whether the note is about the studio or the plugin. Defaults to `studio` |
 | `releases[].at` | string \| integer | Release date. Defaults to now |
-| `releases[].title` | string | One line, 96 characters. Defaults to the version |
+| `releases[].title` | string | One line, up to 96 characters. Defaults to the version |
 | `releases[].notes` | string[] | Up to 12 lines, 200 characters each |
 
-`GET /plugin/version` — **served by the plugin**, called by the studio.
-Settings ▸ About ▸ Versions asks for it so that a version gap between the
-two halves reads as a version gap rather than as a bug:
+`GET /plugin/version`: **your plugin serves this**, and the studio calls it.
+Settings ▸ About ▸ Versions uses it to check the plugin and studio versions
+work together:
 
 ```json
 { "plugin": "0.2a", "studioMin": "0.8.0", "api": 1 }
 ```
 
-`plugin` is required; without it the studio reports "no answer" rather
-than guessing. `studioMin` is the oldest studio you will talk to — leave
-it out and the studio only checks its own minimum, which is plugin
-`0.2a`. Version strings are dotted numbers with an optional trailing
-letter, so `0.2a` is newer than `0.2` and older than `0.2b`.
+`plugin` is required. Without it the studio shows "No answer". `studioMin` is
+the oldest studio your plugin works with. Leave it out and the studio only
+checks its own minimum, which is plugin `0.2a`. Versions are dotted numbers
+with an optional trailing letter, so `0.2a` is newer than `0.2` and older than
+`0.2b`.
 
 ---
 
 ## What Vellum corrects
 
-Every write returns `problems: string[]`. It is **not** an error list — the
-write succeeded. It is the list of things Vellum had to change to be able
-to render your data, and a plugin author should read it in development:
+Every write returns `problems: string[]`. The write still succeeded:
+`problems` lists what Vellum changed so it could show your data. Read it while
+you develop.
 
 ```json
 { "ok": true, "problems": [
   "ignored unknown field(s): nonsense",
   "breakdown: kept the first 12 of 20 rows",
-  "breakdown[3].count: -5 is outside 0..1000000000 - clamped",
+  "breakdown[3].count: -5 is outside 0..1000000000. Clamped to the nearest limit.",
   "name: truncated to 64 characters",
-  "ip: expected a string, got number - kept the previous value"
+  "ip: expected a string, got number. Kept the previous value."
 ]}
 ```
 
-The same list appears in the **Ingest log** on the Dash, so you can see
-what your plugin is sending without instrumenting your plugin.
+The same list shows in the **Ingest log** on the Dash, so you can see what
+your plugin sends without adding logging to it.
 
-The rules, so none of this surprises you:
+The rules:
 
-- **A wrong type never overwrites a good value.** It is reported and the
+- **A wrong type never overwrites a good value.** It is reported, and the
   previous value is kept.
-- **Numbers are clamped, not rejected**; strings are truncated, not rejected.
-  One bad field does not lose the whole write.
-- **Control characters are stripped** — a tab in a table cell is a mess and a
-  `\u0007` is not a status.
-- **Unknown fields are ignored and named.** If you think you are sending
-  something and the card does not move, this is where you will find out.
-- **Timestamps accept ISO 8601, epoch millis or epoch seconds**, because
-  every plugin language reaches for a different one. A value under 10^11 is
-  read as seconds.
+- **Numbers are clamped and strings are truncated.** One bad field doesn't
+  lose the whole write.
+- **Control characters are stripped.**
+- **Unknown fields are ignored and named.** If a card doesn't move when you
+  think you're sending something, look here.
+- **Timestamps can be ISO 8601, epoch milliseconds or epoch seconds.** A value
+  under 10^11 is read as seconds.
 
 Limits: name 64, host 120, ip 45, status 32, archive 96, hash 80, file name
 120, path 160, author 48, breakdown 12 rows, files 50 rows, counts 0…10⁹.
@@ -341,16 +332,15 @@ public final class VellumBridge extends JavaPlugin {
 }
 ```
 
-Note what this plugin does **not** do: it never counts players itself, and
-it never formats a byte count or a timestamp. It reports facts it already
-has, and the Dash does the rest.
+This plugin doesn't count players or format bytes and timestamps. It reports
+what it already knows, and the Dash does the rest.
 
 ---
 
 ## Trying it without a plugin
 
 **Run a demo server** on the Dash starts a pretend server that feeds the page
-through these same endpoints, via the same validator and log. Players join,
+through these endpoints, the same validator and the same log. Players join,
 someone saves a file, a new pack goes out and players pick it up one by one,
 then the server restarts. While it runs, **Apply on the server** in the Players
 card answers as well, so the three reload outcomes can be seen: the first press
@@ -358,6 +348,6 @@ swaps, the second is refused with a validation report, the third fails.
 **Stop demo** puts the sample back. You can also push your own payloads from the
 console through `window.Vellum.dash` before writing any Java.
 
-Until a card is fed it shows the built-in sample and says **sample** in its
-header. Each card goes live on its own: a plugin that only knows about the
-pack does not have to invent a player count.
+Until a card is fed, it shows the built-in sample and says **sample** in its
+header. Each card goes live on its own, so a plugin that only knows about the
+pack doesn't have to invent a player count.
