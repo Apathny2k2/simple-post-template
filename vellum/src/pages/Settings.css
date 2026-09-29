@@ -399,6 +399,10 @@ html[data-surface='dark'] .settings__nav {
   animation: studio-rise 700ms var(--ease-out) backwards 80ms;
 }
 
+/* after the first section, a section's cards and panels appear in place */
+html[data-surface='dark'] .settings__panel[data-still] .card,
+html[data-surface='dark'] .settings__panel[data-still] .sup { animation: none; }
+
 html[data-surface='dark'] .settings__search {
   border-radius: 10px;
   background: rgba(0, 0, 0, 0.22);

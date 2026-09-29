@@ -144,6 +144,8 @@ html[data-surface='dark'] .dir-row__tag[data-sync='outdated'] { border-color: rg
   100% { transform: none; }
 }
 
+.kinetic--still .kinetic__ch { animation: none; }
+
 .kinetic__ch:hover { transform: translateY(-0.14em) rotate(-5deg) scale(1.06); }
 
 .kinetic__ch:hover + .kinetic__ch,

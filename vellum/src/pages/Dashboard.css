@@ -38,14 +38,14 @@
   animation: hero-in 900ms var(--ease-out) backwards;
 }
 
-.hero:has(.showcase[data-model='voidling']) { --tint: #9b6bff; }
-.hero:has(.showcase[data-model='geyser_block']) { --tint: #2ec5b6; }
-.hero:has(.showcase[data-model='emberfang']) { --tint: #ff7a45; }
-.hero:has(.showcase[data-model='tide_flask']) { --tint: #3ec5ff; }
-.hero:has(.showcase[data-model='alien_sword']) { --tint: #7cf06b; }
-.hero:has(.showcase[data-model='resonator_block']) { --tint: #5aa2ff; }
-.hero:has(.showcase[data-model='runic_blade']) { --tint: #b594ff; }
-.hero:has(.showcase[data-model='honeyed_loaf']) { --tint: #ffb547; }
+:is(.hero, .home-hero):has(.showcase[data-model='voidling']) { --tint: #9b6bff; }
+:is(.hero, .home-hero):has(.showcase[data-model='geyser_block']) { --tint: #2ec5b6; }
+:is(.hero, .home-hero):has(.showcase[data-model='emberfang']) { --tint: #ff7a45; }
+:is(.hero, .home-hero):has(.showcase[data-model='tide_flask']) { --tint: #3ec5ff; }
+:is(.hero, .home-hero):has(.showcase[data-model='alien_sword']) { --tint: #7cf06b; }
+:is(.hero, .home-hero):has(.showcase[data-model='resonator_block']) { --tint: #5aa2ff; }
+:is(.hero, .home-hero):has(.showcase[data-model='runic_blade']) { --tint: #b594ff; }
+:is(.hero, .home-hero):has(.showcase[data-model='honeyed_loaf']) { --tint: #ffb547; }
 
 @keyframes hero-in {
   from { opacity: 0; transform: translateY(16px) scale(0.985); }

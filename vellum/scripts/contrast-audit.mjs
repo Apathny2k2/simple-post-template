@@ -1,7 +1,9 @@
 import { chromium } from 'playwright'
 const b = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium', args: ['--no-sandbox'] })
 const screens = [
-  ['dash',     '#/'],
+  ['home',     '#/'],
+  ['servers',  '#/servers'],
+  ['dash',     '#/dash'],
   ['projects', '#/projects'],
   ['settings', '#/settings/appearance'],
   ['support',  '#/settings/support'],

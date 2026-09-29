@@ -2,7 +2,9 @@ import { useLayoutEffect } from 'react'
 import { TopBar } from './components/TopBar'
 import { Dashboard } from './pages/Dashboard'
 import { Editor } from './pages/Editor'
+import { Home } from './pages/Home'
 import { Projects } from './pages/Projects'
+import { Servers } from './pages/Servers'
 import { Settings } from './pages/Settings'
 import { Icon } from './lib/icons'
 import { navigate, useRoute, useTitle } from './lib/router'
@@ -26,7 +28,7 @@ function NotFound({ path }: { path: string }) {
         </div>
       </div>
       <div className="row-actions" style={{ justifyContent: 'flex-start' }}>
-        <button className="btn btn--primary" onClick={() => navigate('/')}>
+        <button className="btn btn--primary" onClick={() => navigate('/dash')}>
           <Icon name="grid" size={14} /> Back to the dashboard
         </button>
         <button className="btn btn--ghost" onClick={() => navigate('/projects')}>
@@ -43,6 +45,9 @@ export default function App() {
 
   // Every page is the dark studio except the editor, which stays on paper.
   const surface = root === 'editor' ? 'paper' : 'dark'
+  // The home page and the server picker come before the Studio, so they
+  // carry their own headers instead of its top bar.
+  const outside = root === undefined || root === 'servers'
   useLayoutEffect(() => {
     const html = document.documentElement
     if (surface === 'dark') html.dataset.surface = 'dark'
@@ -66,9 +71,13 @@ export default function App() {
         Skip to content
       </button>
 
-      <TopBar segments={segments} />
+      {outside ? null : <TopBar segments={segments} />}
 
       {root === undefined ? (
+        <Home />
+      ) : root === 'servers' ? (
+        <Servers />
+      ) : root === 'dash' ? (
         <Dashboard />
       ) : root === 'projects' ? (
         <Projects segments={segments} />

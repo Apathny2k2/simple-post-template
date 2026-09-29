@@ -658,6 +658,13 @@ export function Settings({ segments }: { segments: string[] }) {
   const section = allSections.find((s) => s.id === active)!
   useTitle(section.label)
 
+  /* The page plays in when you arrive. Moving between its sections swaps
+     the title and the cards in place; replaying the entrance on every
+     click got in the way. */
+  const [arrivedOn] = useState(active)
+  const [moved, setMoved] = useState(false)
+  if (!moved && active !== arrivedOn) setMoved(true)
+
   const q = query.trim().toLowerCase()
   const match = (list: Section[]) =>
     q ? list.filter((s) => s.label.toLowerCase().includes(q) || s.blurb.toLowerCase().includes(q)) : list
@@ -684,7 +691,7 @@ export function Settings({ segments }: { segments: string[] }) {
         <div>
           <div className="eyebrow">Settings</div>
           <h1 className="page-title">
-            <Kinetic key={section.id} text={section.label} />
+            <Kinetic key={section.id} text={section.label} still={moved} />
           </h1>
           <p className="page-sub">{section.blurb}</p>
         </div>
@@ -718,7 +725,7 @@ export function Settings({ segments }: { segments: string[] }) {
           ) : null}
         </nav>
 
-        <div className="settings__panel">
+        <div className="settings__panel" data-still={moved || undefined}>
           <Body section={section} />
         </div>
       </div>

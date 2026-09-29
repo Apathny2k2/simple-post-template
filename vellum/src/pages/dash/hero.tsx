@@ -115,7 +115,7 @@ export function Hero({
               <button className="btn btn--primary hero__btn" onClick={() => onDemo(true)}>
                 <Icon name="play" size={12} /> Run a demo server
               </button>
-              <p className="hero__note">No server connected yet.</p>
+              <p className="hero__note">Sample data until {server.name} reports.</p>
             </>
           ) : !live ? (
             <p className="hero__note">Linked. Waiting for the plugin's first report.</p>

@@ -31,6 +31,28 @@
   color: var(--wax-400);
 }
 
+.topbar__left { display: flex; align-items: center; gap: 14px; min-width: 0; }
+
+/* the server the Studio is open on */
+.topbar__server {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  max-width: 220px;
+  padding: 4px 10px 4px 5px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  font-size: var(--fs-xs);
+  color: var(--ink-muted);
+  transition: color 180ms var(--ease-out), border-color 180ms var(--ease-out), background-color 180ms var(--ease-out);
+}
+
+.topbar__server:hover { color: var(--ink); border-color: var(--line-strong); background: rgba(255, 255, 255, 0.04); }
+.topbar__server .srv-icon { flex: none; border-radius: 4px; }
+.topbar__server-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.topbar__server svg { flex: none; color: var(--ink-faint); }
+
 /* the ringed nav from the sketch, cast in glass */
 .nav-pill {
   display: inline-flex;
@@ -145,8 +167,9 @@
     padding-block: 10px;
     row-gap: 10px;
   }
-  .topbar__brand { grid-area: brand; }
+  .topbar__left { grid-area: brand; }
   .topbar__right { grid-area: right; }
+  .topbar__server { max-width: 150px; }
   .topbar__nav { grid-area: nav; justify-self: center; }
   .topbar__clock { display: none; }
 }

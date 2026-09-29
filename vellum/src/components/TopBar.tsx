@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react'
 import { Icon, VellumMark } from '../lib/icons'
 import { navigate } from '../lib/router'
+import { useCurrentServer } from '../lib/servers'
+import { ServerIcon } from './ServerIcon'
 import './TopBar.css'
 
 const links = [
-  { path: '/', label: 'Dash', match: (s: string[]) => s.length === 0 },
+  { path: '/dash', label: 'Dash', match: (s: string[]) => s[0] === 'dash' },
   { path: '/projects', label: 'Projects', match: (s: string[]) => s[0] === 'projects' },
   { path: '/settings', label: 'Settings', match: (s: string[]) => s[0] === 'settings', icon: 'gear' as const },
 ]
@@ -17,6 +19,7 @@ function stamp(d: Date) {
 
 export function TopBar({ segments }: { segments: string[] }) {
   const [now, setNow] = useState(() => new Date())
+  const server = useCurrentServer()
 
   useEffect(() => {
     const id = window.setInterval(() => setNow(new Date()), 30_000)
@@ -25,17 +28,30 @@ export function TopBar({ segments }: { segments: string[] }) {
 
   return (
     <header className="topbar">
-      <a
-        className="topbar__brand"
-        href="#/"
-        onClick={(e) => {
-          e.preventDefault()
-          navigate('/')
-        }}
-      >
-        <VellumMark />
-        Vellum
-      </a>
+      <div className="topbar__left">
+        <a
+          className="topbar__brand"
+          href="#/dash"
+          onClick={(e) => {
+            e.preventDefault()
+            navigate('/dash')
+          }}
+        >
+          <VellumMark />
+          Vellum
+        </a>
+        {/* the server the Studio is open on; it leads back to the list */}
+        <button
+          className="topbar__server"
+          onClick={() => navigate('/servers')}
+          aria-label={`${server.name}. Choose another server`}
+          title="Choose another server"
+        >
+          <ServerIcon id={server.id} hue={server.hue} size={18} />
+          <span className="topbar__server-name">{server.name}</span>
+          <Icon name="chevronDown" size={12} />
+        </button>
+      </div>
 
       <nav className="topbar__nav nav-pill glass" aria-label="Primary">
         {links.map((l) => {

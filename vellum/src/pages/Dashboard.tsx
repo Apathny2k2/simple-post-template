@@ -8,6 +8,7 @@ import { dashStore, formatWhen, healthOf } from '../lib/dash'
 import type { Section } from '../lib/dash'
 import { connect, dash, disconnect, loadLink } from '../lib/dash-api'
 import { saveBlob } from '../lib/download'
+import { useCurrentServer } from '../lib/servers'
 import { Hero } from './dash/hero'
 import {
   AdoptionRing,
@@ -97,7 +98,10 @@ export function Dashboard() {
     void saveBlob('recent-files.csv', new Blob([[head, ...rows].join('\n')], { type: 'text/csv' }))
   }, [])
 
-  const { server, pack, players, subscription, files } = snapshot
+  const { pack, players, subscription, files } = snapshot
+  // until a plugin reports its own, the sample stands in for the server you entered
+  const entered = useCurrentServer()
+  const server = meta.fed.includes('server') ? snapshot.server : { ...snapshot.server, name: entered.name, host: entered.host }
 
   // Rows that arrive after the page loaded are highlighted once.
   const fileIds = files.map((f) => f.id).join(',')

@@ -26,12 +26,39 @@ than shipping a page that silently 404s its own assets.
 
 | Route | Sheet | What it is |
 | --- | --- | --- |
-| `#/` | sheet 3 | Dash. Fed by a plugin through the documented API; the built-in sample until one reports. |
+| `#/` | - | The home page, vellumdev.com: what Vellum is, the plans, and the way into the Studio. |
+| `#/servers` | - | "What server would you like to enter?" The servers you own and your seats on other teams. |
+| `#/dash` | sheet 3 | Dash. Fed by a plugin through the documented API; the built-in sample until one reports. |
 | `#/projects` | sheet 2 | First scene. Pick a shelf: Items, or Mobs & Anim. |
 | `#/projects/:scene/:shelf` | sheet 2 | The shared library panel. `< Back`, shelf tabs, **New model**, card grid, `< 1 2 3 >`. Cards are grouped by what each model is for. |
 | `#/settings/:section` | sheet 1 | Search + section list, free sections above the `Manage` divider. |
 | `#/editor/:sampleId` | - | The editor. Opens `.vellum`, imports `.bbmodel`, saves `.vellum`. |
 | `#/editor/new/:kind/:subtype/:name` | - | The same editor, on a model built from the URL. This is where **New model** lands. |
+
+## Before the Studio: the home page and the server list
+
+`#/` is the public page (`src/pages/Home.tsx`) and has its own header; the
+Studio's top bar starts at the Dash. It shows what Vellum does, the three steps
+to a first model in game, and the plans. The plans list seats, one for Free,
+three for Pro and five for Studio Engineer, and leave paid prices off: those are
+not settled, so the paid plans say they open soon. Its sections rise in as they
+scroll into view, once, and under reduced motion they are simply there. The
+footer carries the notice Mojang asks of anything built for Minecraft.
+
+**Open the Studio** leads to `#/servers` (`src/pages/Servers.tsx`), which asks
+which server to enter. Rows read like the game's own multiplayer list: an icon,
+the name, the message of the day, the address, players and signal bars. The
+servers you own come first, then your seats on other teams, each saying whose
+team it is and what your seat lets you do. A server that is offline shows when
+it was last seen and cannot be entered. With only one server to go to, the list
+steps aside and goes straight in, replacing itself in history so Back does not
+bounce through it.
+
+The servers are a sample in `src/lib/servers.ts`, shaped like the answer the
+account service should give. The one you enter is kept per browser, shown in
+the Studio's top bar next to the logo, and a click on it goes back to the list.
+Until a plugin reports its own name and address, the Dash's sample wears the
+entered server's.
 
 ## `.vellum` — the native model format
 
@@ -451,7 +478,10 @@ menu items, urgent tickets and failed messages keep a warning colour. The rules
 above bend in the dark on purpose: panels are rounded and lit under the pointer,
 titles drop in a letter at a time, motion springs, and on the Dash the
 turntable, the adoption ring, the file stacks and the plugin timeline all move.
-Under reduced motion every loop stops and nothing is staggered.
+Settings plays its entrance once, when you arrive: moving between its sections
+swaps the title and the cards in place, with no cross-fade, because replaying
+it on every click got in the way. Under reduced motion every loop stops and
+nothing is staggered.
 
 White text on Blockbench's `#3e90ff` measures 3.2:1, so filled buttons use a
 deeper `#2a6ad8` and the bright blue is kept for light and lines. The contrast

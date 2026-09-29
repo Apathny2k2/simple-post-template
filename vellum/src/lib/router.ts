@@ -44,20 +44,25 @@ export function blockNavigation(fn: Guard): () => void {
   }
 }
 
-export function navigate(path: string) {
+/** `replace` swaps the current history entry, for a page that moves on by itself. */
+export function navigate(path: string, { replace = false }: { replace?: boolean } = {}) {
   const next = path.startsWith('/') ? path : `/${path}`
   if (window.location.hash === `#${next}`) return
   if (guard && !guard(next)) return
   approved = next
-  window.location.hash = `#${next}`
+  if (replace) window.location.replace(`#${next}`)
+  else window.location.hash = `#${next}`
 }
 
 /* Pages cross-fade where the browser can, using a view transition. The
    update has to land inside the transition's callback, so it is flushed
-   synchronously there. */
-function swap(apply: () => void) {
+   synchronously there. Moving between the sections of Settings is not a
+   new page, so it swaps in place. */
+const inPlace = (from: string, to: string) => from.startsWith('/settings') && to.startsWith('/settings')
+
+function swap(apply: () => void, quiet = false) {
   const still = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
-  if (typeof document.startViewTransition !== 'function' || still) {
+  if (typeof document.startViewTransition !== 'function' || still || quiet) {
     apply()
     return
   }
@@ -83,8 +88,9 @@ export function useRoute(): Route {
         window.location.hash = `#${current.current}`
         return
       }
+      const from = current.current
       current.current = next.path
-      swap(() => setRoute(next))
+      swap(() => setRoute(next), inPlace(from, next.path))
     }
     window.addEventListener('hashchange', onChange)
     return () => window.removeEventListener('hashchange', onChange)

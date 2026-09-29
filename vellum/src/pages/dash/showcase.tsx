@@ -121,8 +121,10 @@ function Gizmo({ yaw }: { yaw: number }) {
  * The studio's own models on a turntable, each playing its idle clip. One
  * hands over to the next every few seconds; resting the pointer on the
  * stage holds the current one, and clicking the model plays its action.
+ * `linked` offers to open the model in the editor; the home page, which
+ * has its own way in, turns that off.
  */
-export const Showcase = memo(function Showcase() {
+export const Showcase = memo(function Showcase({ linked = true }: { linked?: boolean }) {
   const reduced = useReducedMotion()
   const frame = useRef<HTMLDivElement>(null)
   const visible = useInView(frame)
@@ -197,13 +199,20 @@ export const Showcase = memo(function Showcase() {
       </div>
 
       <div className="showcase__foot">
-        <button className="showcase__caption" key={`caption-${sample.id}`} onClick={() => navigate(`/editor/${sample.id}`)}>
-          <span className="showcase__kind">{KIND[sample.kind] ?? 'Model'}</span>
-          <span className="showcase__name">{sample.label}</span>
-          <span className="showcase__open">
-            Open in the editor <Icon name="arrowRight" size={12} />
-          </span>
-        </button>
+        {linked ? (
+          <button className="showcase__caption" key={`caption-${sample.id}`} onClick={() => navigate(`/editor/${sample.id}`)}>
+            <span className="showcase__kind">{KIND[sample.kind] ?? 'Model'}</span>
+            <span className="showcase__name">{sample.label}</span>
+            <span className="showcase__open">
+              Open in the editor <Icon name="arrowRight" size={12} />
+            </span>
+          </button>
+        ) : (
+          <div className="showcase__caption" key={`caption-${sample.id}`}>
+            <span className="showcase__kind">{KIND[sample.kind] ?? 'Model'}</span>
+            <span className="showcase__name">{sample.label}</span>
+          </div>
+        )}
 
         <div className="showcase__dots" role="group" aria-label="Models">
           {REEL.map((s, i) => (
