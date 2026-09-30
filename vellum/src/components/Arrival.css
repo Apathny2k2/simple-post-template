@@ -1,4 +1,4 @@
-/* The walk into a server, over its Dash as it opens, then its title. */
+/* The walk into a server, over the page it started from, then its title. */
 
 .arrival {
   position: fixed;
@@ -6,6 +6,23 @@
   z-index: 1000;
   overflow: hidden;
   cursor: pointer;
+  view-transition-name: arrival;
+}
+
+/* The Studio opens through the swirl: the new page is revealed in a circle
+   growing from the swirl's middle (openStudio sets the point). The scene is
+   its own layer, drawn live over both pages while that runs. */
+::view-transition-old(arrival) { display: none; }
+::view-transition-new(arrival) { animation: none; }
+
+html[data-arriving] .topbar,
+html[data-arriving] .nav-pill__mark { view-transition-name: none; }
+html[data-arriving]::view-transition-old(root) { animation: none; }
+html[data-arriving]::view-transition-new(root) { animation: open-through 750ms cubic-bezier(0.6, 0, 0.3, 1) both; }
+
+@keyframes open-through {
+  from { clip-path: circle(0 at var(--arrive-x) var(--arrive-y)); }
+  to { clip-path: circle(var(--arrive-r) at var(--arrive-x) var(--arrive-y)); }
 }
 
 .arrival__scene {
@@ -16,7 +33,7 @@
   image-rendering: pixelated;
 }
 
-/* bottom middle, clear of the Dash's toasts on the right */
+/* bottom middle, clear of the toasts the Dash shows as it opens */
 .arrival__skip {
   position: absolute;
   left: 50%;

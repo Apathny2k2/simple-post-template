@@ -1,6 +1,6 @@
-/* Entering a server's Studio: the portal scene, then the server's title
-   over the Dash. The Studio opens underneath as the scene starts, so Pip
-   walks over it while it loads, and the scene never waits on the page. */
+/* Entering a server's Studio: the walk into the swirl, played over the
+   page it started from, then the server's title over the Dash. The Studio
+   opens through the swirl once Pip is in, so the scene never waits on it. */
 
 import { useSyncExternalStore } from 'react'
 import { navigate } from './router'
@@ -31,20 +31,32 @@ function publish(next: Arrival | null) {
 
 const reduced = () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false
 
-/** Opens `server` and starts the walk over it. With motion reduced there is no walk, only the title. */
+/** Starts the walk into `server`. With motion reduced there is no walk: the Dash opens and the title shows. */
 export function arrive(server: LinkedServer, { replace = false }: { replace?: boolean } = {}) {
   publish({ key: ++count, server, stage: 'portal', opened: false, replace })
-  openStudio()
   if (reduced()) toTitle()
 }
 
-/** Enters the server and opens its Dash. Safe to call twice. */
-export function openStudio() {
+/** Enters the server and opens its Dash, from a point on the screen when `through` is given. Safe to call twice. */
+export function openStudio(through?: { x: number; y: number }) {
   if (!current || current.opened) return
   enterServer(current.server.id)
   live = true
+  if (through) revealFrom(through)
   navigate('/dash', { replace: current.replace })
   publish({ ...current, opened: true })
+}
+
+/* The page change that follows is revealed in a circle growing from `at`,
+   by the view transition the router starts (see Arrival.css). */
+function revealFrom(at: { x: number; y: number }) {
+  const root = document.documentElement
+  const far = Math.hypot(Math.max(at.x, window.innerWidth - at.x), Math.max(at.y, window.innerHeight - at.y))
+  root.style.setProperty('--arrive-x', `${Math.round(at.x)}px`)
+  root.style.setProperty('--arrive-y', `${Math.round(at.y)}px`)
+  root.style.setProperty('--arrive-r', `${Math.ceil(far)}px`)
+  root.dataset.arriving = ''
+  window.setTimeout(() => delete root.dataset.arriving, 1200)
 }
 
 export function toTitle() {

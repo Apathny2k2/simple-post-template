@@ -65,17 +65,25 @@ in, replacing itself in history so Back does not bounce through it.
 
 ### Entering a server
 
-Entering a server opens its Dash at once and plays a scene over it while it
-loads (`src/components/Arrival.tsx`, `src/lib/pip/arrive.ts`). The scene has
-no backdrop: only Pip, the portal and its light are drawn, and the Dash shows
-through everywhere else. Pip, in a light tint of the server's colour and with
-a dark rim so he reads over any card, walks up the middle of the screen while
-a purple portal grows in front of him, with sparks drifting into it. He walks
-in and fades into the purple, and the portal swells a little and shuts behind
-him with a flash and a burst of sparks, three seconds in. Skip, a click or
-Escape ends it early. Unlike Pip's other scenes this one is in colour, so it
-has its own RGBA buffer, and each frame depends only on the time, which lets
-a test draw any moment.
+Entering a server plays a scene over the server list (`src/components/Arrival.tsx`,
+`src/lib/pip/arrive.ts`), drawn after a sketch from the operator. There is no
+backdrop: only the scene is drawn, and the list shows through. A ground line
+runs out across the middle of the screen, along a gap between two rows of the
+list rather than through one. Pip, in a light tint of the server's colour and
+with a dark rim so he reads over any page, walks along it towards a round
+purple swirl that grows on the line in front of him: three arms turning round
+a white-hot middle, with sparks pulled round and in. When he reaches it he is
+pulled in, turning and shrinking towards its middle.
+
+Then the Studio opens out of the swirl. The router's view transition reveals
+the Dash in a circle that grows from the swirl's middle (`openStudio` in
+`src/lib/arrival.ts` sets the point, `Arrival.css` has the animation), while
+the swirl swells a little and shuts with a flash. The Dash takes a moment to
+draw, and the page cannot paint while it does, so the swirl waits: it stays
+open until the Dash is on screen and shuts while the circle grows. Skip, a
+click or Escape ends the scene early. Unlike Pip's other scenes this one is in
+colour, so it has its own RGBA buffer, and each frame depends only on the time
+and on when the Dash was drawn, which lets a test draw any moment.
 
 Then the server's name shows in the middle of the screen for three seconds,
 the way the game shows a title, with its message of the day under it

@@ -85,7 +85,7 @@ export default function App() {
         <NotFound path={path} />
       )}
 
-      <Arrival />
+      <Arrival path={path} />
     </div>
   )
 }
