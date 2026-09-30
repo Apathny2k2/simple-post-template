@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
+import { AccountChip } from '../components/AccountChip'
 import { Kinetic } from '../components/Kinetic'
 import { Icon, VellumMark } from '../lib/icons'
 import type { IconName } from '../lib/icons'
 import { navigate, useTitle } from '../lib/router'
 import { trackPointer, useReducedMotion } from '../lib/motion'
+import { useSession } from '../lib/session'
 import { Showcase } from './dash/showcase'
 import './Home.css'
 
@@ -108,7 +110,9 @@ function Reveal({ children, delay = 0, className = '' }: { children: ReactNode; 
 export function Home() {
   useTitle(null)
   const reduced = useReducedMotion()
-  const studio = () => navigate('/servers')
+  const session = useSession()
+  // the Studio's servers belong to an account, so a visitor signs in first
+  const studio = () => navigate(session ? '/servers' : '/login')
   const toSection = (id: string) =>
     document.getElementById(id)?.scrollIntoView({ behavior: reduced ? 'auto' : 'smooth', block: 'start' })
 
@@ -132,9 +136,16 @@ export function Home() {
           <button onClick={() => toSection('plans')}>Plans</button>
         </nav>
         <div className="site-head__right">
-          <button className="btn btn--primary btn--sm" onClick={studio}>
-            Open the Studio
-          </button>
+          {session ? (
+            <>
+              <AccountChip />
+              <button className="btn btn--primary btn--sm" onClick={studio}>
+                Open the Studio
+              </button>
+            </>
+          ) : (
+            <AccountChip />
+          )}
         </div>
       </header>
 

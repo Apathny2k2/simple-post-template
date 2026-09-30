@@ -1,11 +1,14 @@
 import { useEffect } from 'react'
+import { AccountChip } from '../components/AccountChip'
 import { Kinetic } from '../components/Kinetic'
 import { ServerIcon } from '../components/ServerIcon'
 import { Icon, VellumMark } from '../lib/icons'
 import { navigate, useTitle } from '../lib/router'
+import { arrive } from '../lib/arrival'
 import { formatWhen } from '../lib/dash'
-import { currentServer, enterServer, enterable, roleLabel, servers } from '../lib/servers'
+import { currentServer, enterable, roleLabel, servers } from '../lib/servers'
 import type { LinkedServer } from '../lib/servers'
+import { useSession } from '../lib/session'
 import './Servers.css'
 
 /* Every server this account can open: its own, and those where another team gave it a seat. */
@@ -82,18 +85,23 @@ export function Servers() {
   const ready = servers.filter(enterable)
   const only = ready.length === 1 ? ready[0].id : null
   const last = currentServer().id
+  const session = useSession()
 
-  const enter = (s: LinkedServer) => {
-    enterServer(s.id)
-    navigate('/dash')
-  }
+  const enter = (s: LinkedServer) => arrive(s)
+
+  // the list is the account's, so it needs someone signed in; signing out here has already left
+  useEffect(() => {
+    if (!session && window.location.hash.startsWith('#/servers')) navigate('/login', { replace: true })
+  }, [session])
 
   // with only one server to enter, go straight in
   useEffect(() => {
-    if (!only) return
-    enterServer(only)
-    navigate('/dash', { replace: true })
-  }, [only])
+    if (!only || !session) return
+    const s = servers.find((x) => x.id === only)
+    if (s) arrive(s, { replace: true })
+  }, [only, session])
+
+  if (!session) return null
 
   return (
     <div className="server-picker">
@@ -109,10 +117,7 @@ export function Servers() {
           <VellumMark />
           Vellum
         </a>
-        <span className="topbar__who glass" title="Signed in as g.alex">
-          <span className="topbar__dot" />
-          g.alex
-        </span>
+        <AccountChip servers={false} />
       </header>
 
       <main className="page servers">

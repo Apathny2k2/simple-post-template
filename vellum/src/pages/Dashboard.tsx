@@ -9,6 +9,7 @@ import type { Section } from '../lib/dash'
 import { connect, dash, disconnect, loadLink } from '../lib/dash-api'
 import { saveBlob } from '../lib/download'
 import { useCurrentServer } from '../lib/servers'
+import { isLive, setLive } from '../lib/arrival'
 import { Hero } from './dash/hero'
 import {
   AdoptionRing,
@@ -73,10 +74,19 @@ export function Dashboard() {
   }, [])
 
   const [linked, setLinked] = useState(() => !!loadLink()?.baseUrl)
-  const [demo, setDemo] = useState(false)
+  // a server entered through the portal is live: the demo feed runs until it's stopped here
+  const [demo, setDemo] = useState(() => isLive() && !loadLink()?.baseUrl)
+  const onDemo = useCallback((on: boolean) => {
+    setDemo(on)
+    setLive(on)
+  }, [])
+  const entered = useCurrentServer()
 
   // Stopping the demo, or leaving the page, puts the sample back.
-  useEffect(() => (demo ? startDemo() : undefined), [demo])
+  useEffect(
+    () => (demo ? startDemo({ name: entered.name, host: entered.host }) : undefined),
+    [demo, entered.name, entered.host],
+  )
 
   const onUnlink = useCallback(() => {
     disconnect()
@@ -100,7 +110,6 @@ export function Dashboard() {
 
   const { pack, players, subscription, files } = snapshot
   // until a plugin reports its own, the sample stands in for the server you entered
-  const entered = useCurrentServer()
   const server = meta.fed.includes('server') ? snapshot.server : { ...snapshot.server, name: entered.name, host: entered.host }
 
   // Rows that arrive after the page loaded are highlighted once.
@@ -127,7 +136,7 @@ export function Dashboard() {
         now={now}
         demo={demo}
         linked={linked}
-        onDemo={setDemo}
+        onDemo={onDemo}
         badge={<SampleBadge fed={meta.fed} section="server" />}
         menu={
           <Menu
@@ -246,7 +255,7 @@ export function Dashboard() {
                 {files.length ? null : (
                   <tr>
                     <td colSpan={5} className="dash-empty">
-                      Nothing touched yet. Saves to this pack show up here.
+                      Nothing touched yet, a freshly generated world. Saves to this pack show up here.
                     </td>
                   </tr>
                 )}

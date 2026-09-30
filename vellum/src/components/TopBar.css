@@ -121,6 +121,9 @@
   white-space: nowrap;
 }
 
+.account-chip { border: 1px solid var(--border); cursor: pointer; font: inherit; font-size: var(--fs-xs); }
+.account-chip:hover { color: var(--ink); border-color: var(--border-strong); }
+
 .topbar__dot {
   width: 7px;
   height: 7px;

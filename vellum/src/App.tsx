@@ -1,4 +1,5 @@
 import { useLayoutEffect } from 'react'
+import { Arrival } from './components/Arrival'
 import { TopBar } from './components/TopBar'
 import { Dashboard } from './pages/Dashboard'
 import { Editor } from './pages/Editor'
@@ -6,6 +7,7 @@ import { Home } from './pages/Home'
 import { Projects } from './pages/Projects'
 import { Servers } from './pages/Servers'
 import { Settings } from './pages/Settings'
+import { SignIn } from './pages/SignIn'
 import { Icon } from './lib/icons'
 import { navigate, useRoute, useTitle } from './lib/router'
 
@@ -39,8 +41,8 @@ export default function App() {
   const root = segments[0]
 
   const surface = root === 'editor' ? 'paper' : 'dark'
-  // The home page and the server picker come before the Studio and have their own headers.
-  const outside = root === undefined || root === 'servers'
+  // The home page, sign-in and the server picker come before the Studio and have their own headers.
+  const outside = root === undefined || root === 'login' || root === 'servers'
   useLayoutEffect(() => {
     const html = document.documentElement
     if (surface === 'dark') html.dataset.surface = 'dark'
@@ -65,6 +67,8 @@ export default function App() {
 
       {root === undefined ? (
         <Home />
+      ) : root === 'login' ? (
+        <SignIn />
       ) : root === 'servers' ? (
         <Servers />
       ) : root === 'dash' ? (
@@ -80,6 +84,8 @@ export default function App() {
       ) : (
         <NotFound path={path} />
       )}
+
+      <Arrival />
     </div>
   )
 }

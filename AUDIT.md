@@ -135,7 +135,7 @@ sending a ticket or a bug report runs Pip. What was left:
 | P2-5 | `App.tsx` 404 | "No such page" / "Nothing is routed at" → "This chunk never generated" / "There's no page at". Buttons say "Go to the Dash" and "Go to Projects" | Fixed |
 | P2-6 | `components/ErrorBoundary.tsx` | "Vellum stopped rendering" and two long paragraphs → "Vellum tripped over a block", "Something went wrong while drawing this page. Files you've saved are safe." The note keeps the fact that reloading loses unsaved work | Fixed |
 | P2-7 | `pages/Settings.tsx` | The busy label "Checking" → "Checking…", like the other busy buttons | Fixed |
-| P2-8 | Other humour candidates | Empty states (no tickets, an empty shelf), the Dash's "Sample data" note, the server list's offline row. Not changed; the brief asks to list them and ask | Waiting |
+| P2-8 | Other humour candidates | Nine spots named, seven approved on 2026-09-30. A line added after the plain text: Support with nothing open ("Mushroom-island quiet.") and with no tickets ("The creepers are behaving."), a shelf search with no results ("Checked every chest."), the Dash's sample-data note ("Creative mode, for now.") and its empty file list ("A freshly generated world."), the empty timeline ("It's a statue for now.") and the check panel with nothing to fix ("Every cube in bounds."). The offline server row and the empty plugin feed stay plain: the owner may be looking at a real outage | Fixed |
 
 Checked in a browser: the label is set, the quip changes after the first
 block breaks (at 1.3s on a demo reload), reduced motion keeps one line, the
@@ -603,10 +603,5 @@ audit covers the studio only.
 
 ## Waiting on the operator
 
-- **More humour (P2-8).** Nine spots were named on 2026-09-29, each with a
-  suggested line: the Support list with nothing open, no tickets at all, a
-  shelf search with no results, the Dash's sample-data note and its empty
-  file list, the empty timeline, and the check panel with nothing to fix.
-  The offline server row and the empty plugin feed are better left plain.
-  Say which to add.
+Nothing. The humour spots (P2-8) were answered on 2026-09-30.
 

@@ -22,6 +22,7 @@ import {
 } from '../lib/version'
 import type { VersionReport } from '../lib/version'
 import type { TicketDraft } from '../lib/support'
+import { useSession } from '../lib/session'
 import { Support } from './Support'
 import './Settings.css'
 
@@ -501,6 +502,7 @@ function Cloud() {
 }
 
 function Body({ section }: { section: Section }) {
+  const session = useSession()
   switch (section.id) {
     case 'account':
       return (
@@ -509,7 +511,7 @@ function Body({ section }: { section: Section }) {
             <div className="field-grid">
               <label className="field">
                 <span className="field__label">Email</span>
-                <input className="field__input" defaultValue="galex0952@gmail.com" />
+                <input className="field__input" defaultValue={session?.email ?? 'galex0952@gmail.com'} />
               </label>
               <label className="field">
                 <span className="field__label">Password</span>
@@ -536,7 +538,7 @@ function Body({ section }: { section: Section }) {
             <div className="field-grid">
               <label className="field">
                 <span className="field__label">Display name</span>
-                <input className="field__input" defaultValue="g.alex" />
+                <input className="field__input" defaultValue={session?.name ?? 'g.alex'} />
               </label>
               <label className="field">
                 <span className="field__label">Handle</span>

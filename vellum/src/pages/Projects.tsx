@@ -374,7 +374,7 @@ function Library({ sceneId, shelf, openNew }: { sceneId: string; shelf: Shelf; o
             </section>
           ))
         ) : (
-          <div className="library__empty">Nothing on this shelf matches &ldquo;{query}&rdquo;.</div>
+          <div className="library__empty">Nothing on this shelf matches &ldquo;{query}&rdquo;. Checked every chest.</div>
         )}
 
         <Pager page={current} pages={pages} onPage={setPage} />

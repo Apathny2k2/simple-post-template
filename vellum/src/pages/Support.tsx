@@ -149,7 +149,7 @@ function TicketList({
 
         {loaded && !rows.length && !drafted ? (
           <p className="tickets__empty">
-            {query.trim() ? 'Nothing matches that search.' : view === 'open' ? 'Nothing open.' : 'Nothing closed yet.'}
+            {query.trim() ? 'Nothing matches that search.' : view === 'open' ? 'Nothing open. Mushroom-island quiet.' : 'Nothing closed yet.'}
           </p>
         ) : null}
       </div>
@@ -835,7 +835,7 @@ export function Support() {
         <div className="thread thread--empty">
           {loaded ? (
             <>
-              <p>No tickets yet.</p>
+              <p>No tickets yet. The creepers are behaving.</p>
               <button className="btn btn--primary btn--sm" onClick={startNew}>
                 <Icon name="plus" size={13} /> New ticket
               </button>

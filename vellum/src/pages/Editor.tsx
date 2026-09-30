@@ -2167,7 +2167,7 @@ function Timeline({
         </div>
       ) : (
         <div className="timeline-empty">
-          <p>No animation yet.</p>
+          <p>No animation yet. It&rsquo;s a statue for now.</p>
           <button className="chip chip--go" onClick={anim.newClip}>
             <Icon name="plus" size={11} /> New animation
           </button>
@@ -3301,7 +3301,7 @@ export function Editor({ segments }: { segments: string[] }) {
                 </ul>
               ) : (
                 <p className="editor-hint">
-                  <Icon name="check" size={11} /> No problems.
+                  <Icon name="check" size={11} /> No problems. Every cube in bounds.
                 </p>
               )}
 

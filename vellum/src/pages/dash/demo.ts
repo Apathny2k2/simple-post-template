@@ -6,8 +6,8 @@ const NAMES = ['kite', 'nine', 'aurelia', 'juno', 'pike', 'moss', 'wren', 'ash',
 const SAVES = ['ember_hound.vellum', 'tide_crawler.vellum', 'brass_golem.vellum', 'moth_king.vellum']
 const hashOf = (build: number) => `sha1:${(Math.imul(build + 101, 2654435761) >>> 0).toString(16).padStart(8, '0')}`
 
-/** A pretend server feeding the Dash through the plugin API. The returned stop function restores the sample. */
-export function startDemo(): () => void {
+/** A pretend server feeding the Dash through the plugin API, under `as`'s name. The returned stop function restores the sample. */
+export function startDemo(as: { name: string; host: string } = { name: 'Demo SMP', host: 'play.demo.vellum.gg' }): () => void {
   const timers = new Set<number>()
   let stopped = false
   const later = (ms: number, fn: () => void) => {
@@ -34,7 +34,7 @@ export function startDemo(): () => void {
   const minutes = (n: number) => Date.now() - n * 60_000
   dash.snapshot(
     {
-      server: { name: 'Demo SMP', host: 'play.demo.vellum.gg', ip: '127.0.0.1', status: 'Online', online: true, breakdown: breakdown() },
+      server: { name: as.name, host: as.host, ip: '127.0.0.1', status: 'Online', online: true, breakdown: breakdown() },
       pack: { archive: 'demo-pack.zip', bytes: 18_874_368, hash: hashOf(build), pushedAt: minutes(180), version: `1.${build}` },
       subscription: { type: 'Free', cloud: 'N/A', seats: '1 of 1' },
       files: [

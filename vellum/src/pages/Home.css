@@ -42,7 +42,7 @@
 }
 
 .site-head__nav button:hover { color: var(--ink); background: rgba(255, 255, 255, 0.05); }
-.site-head__right { display: flex; justify-content: flex-end; }
+.site-head__right { display: flex; align-items: center; justify-content: flex-end; gap: 10px; }
 
 /* ---------------- the page ---------------- */
 

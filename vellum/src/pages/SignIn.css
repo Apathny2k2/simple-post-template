@@ -1,0 +1,89 @@
+/* The sample sign-in: one card in the middle of the dark room. */
+
+.sign-in { min-height: 100vh; display: flex; flex-direction: column; }
+
+.sign-in__main {
+  flex: 1;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: var(--sp-4);
+  padding: clamp(28px, 8vh, 88px) var(--gutter);
+}
+
+.sign-in__card {
+  position: relative;
+  width: min(400px, 100%);
+  display: grid;
+  gap: var(--sp-4);
+  padding: clamp(22px, 4vw, 32px);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--glass-thick);
+  backdrop-filter: blur(var(--glass-blur-lg)) saturate(var(--glass-sat));
+  box-shadow: var(--shadow-pop);
+  animation: studio-rise 700ms var(--ease-out) backwards;
+}
+
+/* a soft light behind the card, in the accent */
+.sign-in__card::before {
+  content: '';
+  position: absolute;
+  inset: -40% -30%;
+  z-index: -1;
+  background: radial-gradient(closest-side, color-mix(in srgb, var(--accent-mark) 18%, transparent), transparent);
+  pointer-events: none;
+}
+
+.sign-in__mark {
+  display: inline-grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--sunken);
+  color: var(--accent-mark);
+}
+
+.sign-in__mark svg { width: 22px; height: 22px; }
+
+.sign-in__title { margin: 0; font-size: var(--fs-2xl); font-weight: 600; letter-spacing: -0.01em; color: var(--ink); }
+.sign-in__sub { margin: -8px 0 4px; font-size: var(--fs-sm); color: var(--ink-muted); }
+
+.sign-in__error { font-size: var(--fs-xs); color: var(--danger); }
+.sign-in__card .field__input[aria-invalid='true'] { border-color: var(--danger); }
+
+.sign-in__go { margin-top: 4px; padding-block: 10px; }
+
+.sign-in__note {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  margin: 0;
+  font-size: var(--fs-xs);
+  line-height: 1.5;
+  color: var(--ink-faint);
+}
+
+.sign-in__note svg { flex: none; margin-top: 2px; }
+
+.sign-in__already,
+.sign-in__alt { margin: 0; font-size: var(--fs-sm); color: var(--ink-muted); text-align: center; }
+
+.sign-in__link {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: var(--accent-text);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.sign-in__link:hover { color: var(--ink); }
+
+@media (prefers-reduced-motion: reduce) {
+  .sign-in__card { animation: none; }
+}

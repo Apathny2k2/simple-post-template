@@ -28,7 +28,8 @@ un-inlined fails the build, so a page that 404s its own assets never ships.
 | Route | Sheet | What it is |
 | --- | --- | --- |
 | `#/` | - | The home page, vellumdev.com: what Vellum is, the plans, and the way into the Studio. |
-| `#/servers` | - | "What server would you like to enter?" The servers you own and your seats on other teams. |
+| `#/login` | - | The sample sign-in. |
+| `#/servers` | - | "What server would you like to enter?" The servers you own and your seats on other teams. Needs someone signed in. |
 | `#/dash` | sheet 3 | Dash. Fed by a plugin through the documented API; the built-in sample until one reports. |
 | `#/projects` | sheet 2 | First scene. Pick a shelf: Items or Mobs. |
 | `#/projects/:scene/:shelf` | sheet 2 | The shared library panel. `< Back`, shelf tabs, **New model**, card grid, `< 1 2 3 >`. Cards are grouped by what each model is for. |
@@ -47,14 +48,45 @@ not settled, so the paid plans say they open soon. Its sections rise in as they
 scroll into view, once, and under reduced motion they are there from the start.
 The footer carries the notice Mojang asks of anything built for Minecraft.
 
-**Open the Studio** leads to `#/servers` (`src/pages/Servers.tsx`), which asks
-which server to enter. Rows read like the game's own multiplayer list: an icon,
-the name, the message of the day, the address, players and signal bars. The
-servers you own come first, then your seats on other teams, each saying whose
-team it is and what your seat lets you do. A server that is offline shows when
-it was last seen and cannot be entered. With only one server to go to, the list
-steps aside and goes straight in, replacing itself in history so Back does not
-bounce through it.
+**Sign in**, and **Open the Studio** for a visitor, lead to `#/login`
+(`src/pages/SignIn.tsx`). It is a sample: the demo account is filled in, any
+email and password work, and nothing leaves the page. The name and email are
+kept in `localStorage` (`src/lib/session.ts`); the password is never kept. The
+account chip in each header shows the name and has **Sign out**. Signing in
+replaces the form in history, so Back from the Studio goes home.
+
+Then `#/servers` (`src/pages/Servers.tsx`) asks which server to enter. Rows
+read like the game's own multiplayer list: an icon, the name, the message of
+the day, the address, players and signal bars. The servers you own come first,
+then your seats on other teams, each saying whose team it is and what your seat
+lets you do. A server that is offline shows when it was last seen and cannot be
+entered. With only one server to go to, the list steps aside and goes straight
+in, replacing itself in history so Back does not bounce through it.
+
+### Entering a server
+
+Entering a server plays a scene (`src/components/Arrival.tsx`,
+`src/lib/pip/arrive.ts`): Pip, in a light tint of the server's colour, walks
+up the middle of a dark screen while a purple portal grows in front of him,
+with sparks drifting into it. He walks in and fades into the purple, and the
+portal spreads until it fills the screen, as standing in one does in the game.
+The Dash opens underneath while the screen is purple (at 2.6 seconds), and the
+screen fades away onto it. Skip, a click or Escape ends the scene early. Unlike
+Pip's other scenes this one is in colour, so it has its own RGBA buffer, and
+each frame depends only on the time, which lets a test draw any moment.
+
+Then the server's name shows in the middle of the screen for three seconds,
+the way the game shows a title, with its message of the day under it
+(`src/lib/title.ts`). The letters are Vellum's own 5x7 set, drawn bold with a
+stepped edge three pixels deep and a dark outline, after the way the game's
+logo is built. The colours are generated per server: the icon's hue, a second
+hue a random distance from it, and a grain, all seeded by the server's id, so
+a server keeps its title and no two look alike. The page underneath dims and
+stays usable. With reduced motion there is no walk: the Dash opens at once and
+the title shows without moving.
+
+A server entered this way is live: its Dash runs the demo feed under the
+server's own name and address until **Stop demo** is pressed.
 
 The servers are a sample in `src/lib/servers.ts`, shaped like the answer the
 account service should give. The one you enter is kept per browser, shown in

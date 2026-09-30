@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Icon, VellumMark } from '../lib/icons'
 import { navigate } from '../lib/router'
 import { useCurrentServer } from '../lib/servers'
+import { AccountChip } from './AccountChip'
 import { ServerIcon } from './ServerIcon'
 import './TopBar.css'
 
@@ -76,10 +77,7 @@ export function TopBar({ segments }: { segments: string[] }) {
 
       <div className="topbar__right">
         <span className="topbar__clock">{stamp(now)}</span>
-        <span className="topbar__who glass" title="Signed in as g.alex">
-          <span className="topbar__dot" />
-          g.alex
-        </span>
+        <AccountChip />
       </div>
     </header>
   )

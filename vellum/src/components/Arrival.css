@@ -1,0 +1,85 @@
+/* The walk into a server, and its title over the Dash. */
+
+.arrival {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  overflow: hidden;
+  background: rgb(12 10 20);
+  cursor: pointer;
+  transition: opacity 450ms var(--ease);
+}
+
+.arrival[data-leaving] { opacity: 0; pointer-events: none; }
+
+.arrival__scene {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  image-rendering: pixelated;
+}
+
+.arrival__skip {
+  position: absolute;
+  right: 20px;
+  bottom: 20px;
+  padding: 7px 14px;
+  border: 1px solid rgba(217, 184, 255, 0.35);
+  border-radius: var(--r-control);
+  background: rgba(12, 10, 20, 0.6);
+  color: rgb(217 184 255);
+  font: inherit;
+  font-size: var(--fs-xs);
+  letter-spacing: 0.04em;
+  cursor: pointer;
+}
+
+.arrival__skip:hover,
+.arrival__skip:focus-visible { border-color: rgb(217 184 255); color: #fff; }
+
+/* the server's name, as the game shows a title: in, a pause, out */
+.server-title {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 18px;
+  pointer-events: none;
+  animation: server-title 3000ms linear forwards;
+}
+
+/* the page dims behind the words, most of all in the middle, so they read over any card */
+.server-title::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: radial-gradient(ellipse 70% 45% at 50% 50%, rgba(6, 7, 10, 0.86), rgba(6, 7, 10, 0.5) 60%, rgba(6, 7, 10, 0.3));
+}
+
+.server-title__name { image-rendering: pixelated; }
+
+.server-title__motd {
+  margin: 0;
+  max-width: min(640px, 86vw);
+  font-size: clamp(0.95rem, 1.6vw, 1.15rem);
+  font-weight: 500;
+  color: #fff;
+  text-align: center;
+  text-shadow: 2px 2px 0 rgba(0, 0, 0, 0.7);
+}
+
+@keyframes server-title {
+  0% { opacity: 0; transform: scale(0.94); }
+  12% { opacity: 1; transform: scale(1); }
+  78% { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; transform: scale(1.02); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .server-title { animation: none; }
+  .arrival { transition: none; }
+}
