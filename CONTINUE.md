@@ -4,7 +4,7 @@ The state of the project for whoever picks it up next. Rewritten on
 2026-09-29, at the end of the wording audit, and updated on 2026-09-30.
 
 **Branch** `claude/blockbench-react-editor-lk38qe` · **PR** #3 (draft) ·
-**Artifact** v44, `https://claude.ai/artifact/BZpDzWLJ4z6soEAmVMcVwN`
+**Artifact** v45, `https://claude.ai/artifact/BZpDzWLJ4z6soEAmVMcVwN`
 
 Read `CLAUDE.md` first. It has the working rules: typecheck with `tsc -b`,
 republish the artifact after every push, how the sample models are made,
@@ -20,13 +20,13 @@ The app is a model studio for Minecraft servers, in `vellum/`:
   kept, in `localStorage`, and nothing leaves the page. `#/servers` lists
   the servers you have access to and needs someone signed in. The servers
   are samples in `src/lib/servers.ts`.
-- Entering a server plays the arrival (`src/components/Arrival.tsx`): Pip,
-  in the server's colour, walks into a purple portal that grows in front
-  of him (`src/lib/pip/arrive.ts`), the portal floods the screen while the
-  Dash opens underneath, and the server's name shows in the middle in
-  blocky letters with a stepped edge, coloured from the server's id
-  (`src/lib/title.ts`). The Dash then runs the demo feed under that
-  server's name until someone presses Stop demo.
+- Entering a server opens its Dash at once and plays the arrival over it
+  (`src/components/Arrival.tsx`), with no backdrop: Pip, in the server's
+  colour, walks into a purple portal that grows in front of him and shuts
+  behind him (`src/lib/pip/arrive.ts`). Then the server's name shows in the
+  middle in blocky letters with a stepped edge, coloured from the server's
+  id (`src/lib/title.ts`). The Dash runs the demo feed under that server's
+  name until someone presses Stop demo.
 - `#/dash`, `#/projects` and `#/settings/*` are dark, in the style of
   Blockbench (`src/styles/studio.css`).
 - `#/editor/*` uses Minecraft's inventory greys (`src/styles/tokens.css`).

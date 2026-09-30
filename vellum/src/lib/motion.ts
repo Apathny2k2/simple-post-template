@@ -39,7 +39,9 @@ export function useTween(target: number, ms = 900): number {
     const a = from.current
     let raf = 0
     const step = (t: number) => {
-      const k = Math.min(1, (t - start) / ms)
+      // a frame's timestamp can be a little older than start; below 0 the
+      // easing runs backwards and the number jumps the wrong way first
+      const k = Math.max(0, Math.min(1, (t - start) / ms))
       const v = a + (target - a) * (1 - Math.pow(1 - k, 4))
       from.current = v
       setValue(v)

@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { ARRIVE, ArriveScene, arriveScale } from '../lib/pip/arrive'
-import { finishArrival, openStudio, toTitle, useArrival } from '../lib/arrival'
+import { finishArrival, toTitle, useArrival } from '../lib/arrival'
 import type { Arrival as ArrivalState } from '../lib/arrival'
 import { renderTitle, serverColours } from '../lib/title'
 import { useModal } from '../lib/a11y'
@@ -29,7 +29,6 @@ function Portal({ arrival }: { arrival: ArrivalState }) {
   // Tab stays on Skip, and Escape skips
   useModal(box, toTitle)
   const [size, setSize] = useState(measure)
-  const [leaving, setLeaving] = useState(false)
   const pip = useMemo(() => serverColours(server.id, server.hue).pip, [server.id, server.hue])
 
   useEffect(() => {
@@ -38,7 +37,7 @@ function Portal({ arrival }: { arrival: ArrivalState }) {
     skip.current?.focus()
     return () => {
       window.removeEventListener('resize', on)
-      // the list that opened this is gone, so focus goes to the Dash
+      // the list that started this is gone, so focus goes to the Dash
       const main = document.querySelector('main')
       if (!main) return
       main.tabIndex = -1
@@ -51,26 +50,23 @@ function Portal({ arrival }: { arrival: ArrivalState }) {
     if (!ctx) return
     const scene = new ArriveScene(size.w, size.h)
     let raf = 0
-    // the swirl keeps moving while the overlay fades
     const frame = (now: number) => {
       started.current ??= now
       const t = (now - started.current) / 1000
+      if (t >= ARRIVE.end) return toTitle()
       scene.render(t, pip)
       ctx.putImageData(new ImageData(scene.data, size.w, size.h), 0, 0)
-      if (t >= ARRIVE.open) openStudio()
-      if (t >= ARRIVE.end) setLeaving(true)
       raf = requestAnimationFrame(frame)
     }
     raf = requestAnimationFrame(frame)
     return () => cancelAnimationFrame(raf)
   }, [size, pip])
 
-  // the fade out hands over to the title; the timer covers a tab that stops painting
+  // the scene ends itself; this is for a tab that stops painting, or a canvas that never drew
   useEffect(() => {
-    if (!leaving) return
-    const id = window.setTimeout(toTitle, 700)
+    const id = window.setTimeout(toTitle, (ARRIVE.end + 1) * 1000)
     return () => window.clearTimeout(id)
-  }, [leaving])
+  }, [])
 
   return (
     <div
@@ -79,11 +75,7 @@ function Portal({ arrival }: { arrival: ArrivalState }) {
       role="dialog"
       aria-modal="true"
       aria-label={`Entering ${server.name}`}
-      data-leaving={leaving || undefined}
       onClick={() => toTitle()}
-      onTransitionEnd={(e) => {
-        if (leaving && e.target === e.currentTarget) toTitle()
-      }}
     >
       <canvas
         ref={canvas}

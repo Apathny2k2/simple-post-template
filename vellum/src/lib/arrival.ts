@@ -1,6 +1,6 @@
 /* Entering a server's Studio: the portal scene, then the server's title
-   over the Dash. The Studio opens underneath while the portal floods the
-   screen, so the scene never waits on the page. */
+   over the Dash. The Studio opens underneath as the scene starts, so Pip
+   walks over it while it loads, and the scene never waits on the page. */
 
 import { useSyncExternalStore } from 'react'
 import { navigate } from './router'
@@ -31,13 +31,11 @@ function publish(next: Arrival | null) {
 
 const reduced = () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false
 
-/** Starts the walk into `server`. With motion reduced it opens at once and shows only the title. */
+/** Opens `server` and starts the walk over it. With motion reduced there is no walk, only the title. */
 export function arrive(server: LinkedServer, { replace = false }: { replace?: boolean } = {}) {
   publish({ key: ++count, server, stage: 'portal', opened: false, replace })
-  if (reduced()) {
-    openStudio()
-    toTitle()
-  }
+  openStudio()
+  if (reduced()) toTitle()
 }
 
 /** Enters the server and opens its Dash. Safe to call twice. */

@@ -348,6 +348,8 @@ export function ModelView({
   const drag = useRef<{ x: number; y: number; yaw: number; pitch: number } | null>(null)
   const panning = useRef<{ x: number; y: number; pan: { x: number; y: number } } | null>(null)
   const root = useRef<HTMLDivElement>(null)
+  // where the last press began, and whether that was on empty space
+  const press = useRef<{ x: number; y: number; empty: boolean } | null>(null)
   const pinch = useRef(new Map<number, { x: number; y: number }>())
   const pinchStart = useRef<{ span: number; factor: number } | null>(null)
 
@@ -521,10 +523,17 @@ export function ModelView({
           cursor: onPaint ? 'crosshair' : orbit ? 'grab' : undefined,
         } as React.CSSProperties
       }
+      onPointerDownCapture={(e) => {
+        press.current = { x: e.clientX, y: e.clientY, empty: e.target === e.currentTarget }
+      }}
       onPointerDown={onPointerDown}
       onClick={(e) => {
-        // the scene itself is only ever hit when nothing else was
-        if (onDeselect && e.target === e.currentTarget) onDeselect()
+        /* The orbit drag captures the pointer, so the click lands on the scene
+           even when the press was on a cube. Only a still click that began
+           on empty space deselects. */
+        const at = press.current
+        press.current = null
+        if (onDeselect && at?.empty && Math.hypot(e.clientX - at.x, e.clientY - at.y) < 4) onDeselect()
       }}
       // the browser's middle-click autoscroll widget fights a pan drag
       onMouseDown={orbit ? (e) => e.button === 1 && e.preventDefault() : undefined}

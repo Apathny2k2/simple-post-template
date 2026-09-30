@@ -5,6 +5,7 @@ import { navigate } from '../../lib/router'
 import { formatBytes, formatWhen } from '../../lib/dash'
 import type { BreakdownRow, PackState, PlayerCensus, SubscriptionState } from '../../lib/dash'
 import { trackPointer, useTween } from '../../lib/motion'
+import { KindIcon } from './kinds'
 import type { Toast } from './toasts'
 
 const vars = (v: Record<string, string | number>) => v as CSSProperties
@@ -90,13 +91,7 @@ export function AdoptionRing({ players, now }: { players: PlayerCensus; now: num
             ? Array.from({ length: total }, (_, i) => {
                 const d = arc((i / total) * Math.PI * 2 + gap / 2, ((i + 1) / total) * Math.PI * 2 - gap / 2)
                 return (
-                  <path
-                    key={i}
-                    d={d}
-                    className="adopt__slice"
-                    data-old={i >= correct || undefined}
-                    style={vars({ '--i': i, d: `path("${d}")` })}
-                  />
+                  <path key={i} d={d} className="adopt__slice" data-old={i >= correct || undefined} />
                 )
               })
             : null}
@@ -164,6 +159,7 @@ export function CubeStacks({ rows }: { rows: BreakdownRow[] }) {
                 ))}
               </div>
               <div className="stack__legend">
+                <KindIcon label={row.label} />
                 <p className="stack__count">
                   <Counter value={row.count} />
                 </p>

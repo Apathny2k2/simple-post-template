@@ -1,16 +1,12 @@
-/* The walk into a server, and its title over the Dash. */
+/* The walk into a server, over its Dash as it opens, then its title. */
 
 .arrival {
   position: fixed;
   inset: 0;
   z-index: 1000;
   overflow: hidden;
-  background: rgb(12 10 20);
   cursor: pointer;
-  transition: opacity 450ms var(--ease);
 }
-
-.arrival[data-leaving] { opacity: 0; pointer-events: none; }
 
 .arrival__scene {
   position: absolute;
@@ -20,10 +16,12 @@
   image-rendering: pixelated;
 }
 
+/* bottom middle, clear of the Dash's toasts on the right */
 .arrival__skip {
   position: absolute;
-  right: 20px;
+  left: 50%;
   bottom: 20px;
+  translate: -50% 0;
   padding: 7px 14px;
   border: 1px solid rgba(217, 184, 255, 0.35);
   border-radius: var(--r-control);
@@ -81,5 +79,4 @@
 
 @media (prefers-reduced-motion: reduce) {
   .server-title { animation: none; }
-  .arrival { transition: none; }
 }

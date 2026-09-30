@@ -355,14 +355,21 @@
   100% { opacity: 0; transform: translate(-50%, -50%) scale(1.7); }
 }
 
-/* The viewer's origin sits in the middle of this box; shifting the box
-   puts the model's feet on the disc. */
+/* The viewer's origin sits in the middle of this box, and the viewer clips
+   to the box. So the box runs from the top of the stage to well past its
+   bottom: its middle, where the model's feet go, lands on the disc, and a
+   tall model is not cut off at the top. */
 .showcase__model {
   position: absolute;
-  inset: 0;
-  translate: 0 28%;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 156%;
   pointer-events: none;
 }
+
+/* the vanishing point stays at 74% of the stage's height */
+.showcase__model .scene3d { perspective-origin: 50% 47.44%; }
 
 .showcase__model[data-state='in'] { animation: model-in 1000ms var(--ease-spring) backwards; }
 .showcase__model[data-state='out'] { animation: model-out 650ms var(--ease-out) forwards; }
@@ -687,23 +694,15 @@
 
 .adopt__track { fill: none; stroke: rgba(255, 255, 255, 0.06); stroke-width: 12; }
 
+/* No entrance and no morph: a join or a leave re-slices the ring in place */
 .adopt__slice {
   fill: none;
   stroke: var(--blue-bright);
   stroke-width: 12;
-  transform-box: view-box;
-  transform-origin: 0 0;
-  transition: stroke 600ms var(--ease-out), d 700ms var(--ease-out);
-  transition-delay: calc(var(--i) * 22ms);
-  animation: slice-in 800ms var(--ease-spring) backwards;
-  animation-delay: calc(420ms + var(--i) * 38ms);
+  transition: stroke 600ms var(--ease-out);
 }
 
 .adopt__slice[data-old] { stroke: var(--amber); }
-
-@keyframes slice-in {
-  from { opacity: 0; transform: rotate(-40deg) scale(0.7); }
-}
 
 .adopt__arc {
   fill: none;
@@ -772,7 +771,7 @@
 }
 
 .stacks__row {
-  --legend: 46px;
+  --legend: 86px;
   position: relative;
   display: flex;
   align-items: flex-end;
@@ -870,6 +869,19 @@
   align-content: start;
   height: var(--legend);
 }
+
+/* a pixel icon for the kind of file, in the stack's colour */
+.kind-icon { display: block; margin-bottom: 8px; }
+.kind-icon__o { fill: color-mix(in srgb, var(--hue) 22%, #07080b); }
+.kind-icon__d { fill: color-mix(in srgb, var(--hue), #000 38%); }
+.kind-icon__a { fill: var(--hue); }
+.kind-icon__l { fill: color-mix(in srgb, var(--hue), #fff 42%); }
+.kind-icon__w { fill: #f4f6fb; }
+.kind-icon__k { fill: #101218; }
+.kind-icon__r { fill: #ff6b6b; }
+.kind-icon__g { fill: #7ee081; }
+.kind-icon__b { fill: #5aa2ff; }
+.kind-icon__y { fill: #ffd166; }
 
 .stack__count {
   font-size: var(--fs-lg);

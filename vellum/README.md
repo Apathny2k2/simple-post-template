@@ -65,15 +65,17 @@ in, replacing itself in history so Back does not bounce through it.
 
 ### Entering a server
 
-Entering a server plays a scene (`src/components/Arrival.tsx`,
-`src/lib/pip/arrive.ts`): Pip, in a light tint of the server's colour, walks
-up the middle of a dark screen while a purple portal grows in front of him,
-with sparks drifting into it. He walks in and fades into the purple, and the
-portal spreads until it fills the screen, as standing in one does in the game.
-The Dash opens underneath while the screen is purple (at 2.6 seconds), and the
-screen fades away onto it. Skip, a click or Escape ends the scene early. Unlike
-Pip's other scenes this one is in colour, so it has its own RGBA buffer, and
-each frame depends only on the time, which lets a test draw any moment.
+Entering a server opens its Dash at once and plays a scene over it while it
+loads (`src/components/Arrival.tsx`, `src/lib/pip/arrive.ts`). The scene has
+no backdrop: only Pip, the portal and its light are drawn, and the Dash shows
+through everywhere else. Pip, in a light tint of the server's colour and with
+a dark rim so he reads over any card, walks up the middle of the screen while
+a purple portal grows in front of him, with sparks drifting into it. He walks
+in and fades into the purple, and the portal swells a little and shuts behind
+him with a flash and a burst of sparks, three seconds in. Skip, a click or
+Escape ends it early. Unlike Pip's other scenes this one is in colour, so it
+has its own RGBA buffer, and each frame depends only on the time, which lets
+a test draw any moment.
 
 Then the server's name shows in the middle of the screen for three seconds,
 the way the game shows a title, with its message of the day under it
@@ -512,7 +514,18 @@ audit reads every page in the state it ships in.
 
 The turntable turns on a JavaScript clock, and the axis gizmo in its corner
 reads the same yaw, so the two cannot drift apart. `ModelView` takes a `yaw`
-prop for this. The clock stops while the hero is scrolled out of view.
+prop for this. The clock stops while the hero is scrolled out of view. The
+viewer clips to its own box, so the model's box runs from the top of the stage
+to well past its bottom, with its middle on the disc; a stage-sized box moved
+down to the disc cut the top off tall models.
+
+The adoption ring has one slice per player and re-slices in place when someone
+joins or leaves. Slices that spun in and paths that morphed between counts
+jumped about while the demo changed the count every few seconds. Under each
+file stack is a pixel icon for its kind (`src/pages/dash/kinds.tsx`), picked
+from what the plugin's label mentions: a wireframe cube for models, a bone for
+rigs, a mob's face, a palette for textures, a chest for assets, and a page for
+anything it does not recognise.
 
 **Pages cross-fade.** `useRoute` wraps each route change in a view transition
 and flushes the update inside its callback. The page fades up into place, the
