@@ -112,17 +112,7 @@ html[data-surface='dark'] .list-row__tag[data-sync='outdated'] { border-color: r
   background-clip: text;
   color: transparent;
   transition: transform 560ms var(--ease-spring);
-  animation: letter-in 1100ms var(--ease-spring) backwards;
-  animation-delay: calc(160ms + min(var(--i), 24) * 42ms);
 }
-
-@keyframes letter-in {
-  0% { opacity: 0; transform: translateY(0.5em) rotateX(-95deg) scale(0.9); filter: blur(8px); }
-  55% { opacity: 1; filter: blur(0); }
-  100% { transform: none; }
-}
-
-.kinetic--still .kinetic__letter { animation: none; }
 
 .kinetic__letter:hover { transform: translateY(-0.14em) rotate(-5deg) scale(1.06); }
 
@@ -141,17 +131,6 @@ html[data-surface='dark'] .page-title {
 
 html[data-surface='dark'] .page-sub { margin-top: 10px; font-size: var(--fs-md); color: var(--ink-muted); }
 
-/* ---------------- entrances ---------------- */
-
-@keyframes studio-rise {
-  from { opacity: 0; transform: translateY(18px) scale(0.99); filter: blur(6px); }
-}
-
-html[data-surface='dark'] .page:not(.dash) > * { animation: none; }
-html[data-surface='dark'] .page:not(.dash) > .page-head .eyebrow,
-html[data-surface='dark'] .page:not(.dash) > .page-head .page-sub { animation: studio-rise 700ms var(--ease-out) backwards; }
-html[data-surface='dark'] .page:not(.dash) > .page-head .page-sub { animation-delay: 260ms; }
-
 /* ---------------- cards become tiles ---------------- */
 
 html[data-surface='dark'] .card {
@@ -161,14 +140,7 @@ html[data-surface='dark'] .card {
   backdrop-filter: none;
   box-shadow: var(--panel-shadow);
   transition: transform 520ms var(--ease-spring), border-color 300ms var(--ease-out);
-  animation: studio-rise 760ms var(--ease-out) backwards;
-  animation-delay: 120ms;
 }
-
-html[data-surface='dark'] .card:nth-child(2) { animation-delay: 190ms; }
-html[data-surface='dark'] .card:nth-child(3) { animation-delay: 260ms; }
-html[data-surface='dark'] .card:nth-child(4) { animation-delay: 330ms; }
-html[data-surface='dark'] .card:nth-child(n + 5) { animation-delay: 400ms; }
 
 html[data-surface='dark'] .card:hover { border-color: var(--border-strong); }
 
@@ -268,7 +240,5 @@ html[data-surface='dark'] .dialog__panel {
 html[data-surface='dark'] .dialog__foot { background: rgba(0, 0, 0, 0.18); }
 
 @media (prefers-reduced-motion: reduce) {
-  html[data-surface='dark'] .card,
-  html[data-surface='dark'] .dialog__panel,
-  html[data-surface='dark'] .page-head * { animation-delay: 0s !important; }
+  html[data-surface='dark'] .dialog__panel { animation-delay: 0s !important; }
 }

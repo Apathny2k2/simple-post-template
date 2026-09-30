@@ -284,7 +284,7 @@ function Library({ sceneId, shelf, openNew }: { sceneId: string; shelf: Shelf; o
         <div>
           <div className="eyebrow">{scene.name}</div>
           <h1 className="page-title">
-            <Kinetic key={shelf} text={shelfLabel[shelf]} />
+            <Kinetic text={shelfLabel[shelf]} />
           </h1>
           <p className="page-sub">{scene.blurb}</p>
         </div>
@@ -432,7 +432,7 @@ function Gateway() {
         <div>
           <div className="eyebrow">Projects</div>
           <h1 className="page-title">
-            <Kinetic key="first-scene" text="First scene" />
+            <Kinetic text="First scene" />
           </h1>
           <p className="page-sub">
             Choose a shelf to open.

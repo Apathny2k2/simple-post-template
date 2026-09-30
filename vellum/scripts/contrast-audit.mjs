@@ -6,7 +6,8 @@ const screens = [
   ['servers',  '#/servers'],
   ['dash',     '#/dash'],
   ['projects', '#/projects'],
-  ['settings', '#/settings/appearance'],
+  ['settings', '#/settings/account'],
+  ['plugin',   '#/settings/plugin'],
   ['support',  '#/settings/support'],
   ['editor',   '#/editor/voidling'],
 ]

@@ -9,7 +9,6 @@
   background: var(--panel);
   box-shadow: var(--panel-shadow);
   overflow: hidden;
-  animation: studio-rise 760ms var(--ease-out) backwards 160ms;
 }
 
 /* ---------------- the list ---------------- */
@@ -275,15 +274,10 @@
   justify-items: start;
   gap: 4px;
   max-width: min(82%, 560px);
-  animation: message-in 420ms var(--ease-out);
 }
 
 .message[data-lead] { margin-top: 10px; }
 .message--mine { align-self: flex-end; justify-items: end; }
-
-@keyframes message-in {
-  from { opacity: 0; transform: translateY(6px); }
-}
 
 .message__who { padding-left: 2px; font-size: var(--fs-2xs); color: var(--ink-faint); }
 

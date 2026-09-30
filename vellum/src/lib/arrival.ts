@@ -19,8 +19,8 @@ export type Arrival = {
 
 let current: Arrival | null = null
 let count = 0
-/* A server entered through the portal is live: its Dash runs the demo feed
-   until someone stops it there. */
+/* A server entered through the portal is live: the demo server runs for it,
+   on every page, until someone stops it on the Dash (see useDemoServer). */
 let live = false
 const listeners = new Set<() => void>()
 
@@ -41,7 +41,7 @@ export function arrive(server: LinkedServer, { replace = false }: { replace?: bo
 export function openStudio(through?: { x: number; y: number }) {
   if (!current || current.opened) return
   enterServer(current.server.id)
-  live = true
+  setLive(true)
   if (through) revealFrom(through)
   navigate('/dash', { replace: current.replace })
   publish({ ...current, opened: true })
@@ -69,7 +69,9 @@ export const finishArrival = () => publish(null)
 
 export const isLive = () => live
 export function setLive(on: boolean) {
+  if (live === on) return
   live = on
+  for (const fn of [...listeners]) fn()
 }
 
 const subscribe = (fn: () => void) => {
@@ -82,4 +84,8 @@ const read = () => current
 
 export function useArrival(): Arrival | null {
   return useSyncExternalStore(subscribe, read)
+}
+
+export function useLive(): boolean {
+  return useSyncExternalStore(subscribe, isLive)
 }

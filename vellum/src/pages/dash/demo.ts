@@ -1,10 +1,30 @@
-import { dash } from '../../lib/dash-api'
+import { useEffect } from 'react'
+import { dash, loadLink } from '../../lib/dash-api'
+import { setLive, useLive } from '../../lib/arrival'
+import { useCurrentServer } from '../../lib/servers'
+import { useSession } from '../../lib/session'
 import type { ReloadOutcome } from '../../lib/reload'
 
 const via = 'ui' as const
 const NAMES = ['kite', 'nine', 'aurelia', 'juno', 'pike', 'moss', 'wren', 'ash', 'bram', 'ivy', 'quill', 'sable', 'tove', 'orrin', 'lark', 'fen']
 const SAVES = ['ember_hound.vellum', 'tide_crawler.vellum', 'brass_golem.vellum', 'moth_king.vellum']
 const hashOf = (build: number) => `sha1:${(Math.imul(build + 101, 2654435761) >>> 0).toString(16).padStart(8, '0')}`
+/** Each build is a little bigger than the last. */
+const bytesOf = (build: number) => 18_874_368 + (build - 14) * 40_960
+
+/** Runs the demo server while the entered server is live and no real plugin is linked. Signing out stops it. */
+export function useDemoServer() {
+  const live = useLive()
+  const session = useSession()
+  const entered = useCurrentServer()
+  useEffect(() => {
+    if (!session) setLive(false)
+  }, [session])
+  useEffect(
+    () => (live && !loadLink()?.baseUrl ? startDemo({ name: entered.name, host: entered.host }) : undefined),
+    [live, entered.name, entered.host],
+  )
+}
 
 /** A pretend server feeding the Dash through the plugin API, under `as`'s name. The returned stop function restores the sample. */
 export function startDemo(as: { name: string; host: string } = { name: 'Demo SMP', host: 'play.demo.vellum.gg' }): () => void {
@@ -32,10 +52,15 @@ export function startDemo(as: { name: string; host: string } = { name: 'Demo SMP
   beat()
 
   const minutes = (n: number) => Date.now() - n * 60_000
+  // the two builds before this one, as the Studio saw them go out, with the players each reached
+  for (const [n, ago, on, of] of [[12, 1500, 14, 16], [13, 380, 11, 13]]) {
+    dash.pack({ archive: 'demo-pack.zip', bytes: bytesOf(n), hash: hashOf(n), version: `1.${n}`, pushedAt: minutes(ago) }, via)
+    dash.players({ correct: on, wrong: of - on }, via)
+  }
   dash.snapshot(
     {
       server: { name: as.name, host: as.host, ip: '127.0.0.1', status: 'Online', online: true, breakdown: breakdown() },
-      pack: { archive: 'demo-pack.zip', bytes: 18_874_368, hash: hashOf(build), pushedAt: minutes(180), version: `1.${build}` },
+      pack: { archive: 'demo-pack.zip', bytes: bytesOf(build), hash: hashOf(build), pushedAt: minutes(180), version: `1.${build}` },
       subscription: { type: 'Free', cloud: 'N/A', seats: '1 of 1' },
       files: [
         { name: 'keep_warden.vellum', where: '/demo/mobs', by: 'kite', touchedAt: minutes(50), sync: 'in-sync' },
@@ -62,7 +87,7 @@ export function startDemo(as: { name: string; host: string } = { name: 'Demo SMP
 
     later(4500, () => {
       build += 1
-      dash.pack({ archive: 'demo-pack.zip', bytes: 18_874_368 + build * 40_960, hash: hashOf(build), version: `1.${build}`, pushedAt: Date.now() }, via)
+      dash.pack({ archive: 'demo-pack.zip', bytes: bytesOf(build), hash: hashOf(build), version: `1.${build}`, pushedAt: Date.now() }, via)
     })
 
     const updating = Math.max(0, online.length - stragglers)

@@ -4,6 +4,7 @@ import { Icon } from '../../lib/icons'
 import type { IconName } from '../../lib/icons'
 import { dashStore } from '../../lib/dash'
 import type { IngestRecord } from '../../lib/dash'
+import './timeline.css'
 
 const WINDOW_S = 90
 

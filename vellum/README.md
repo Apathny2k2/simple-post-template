@@ -95,8 +95,9 @@ a server keeps its title and no two look alike. The page underneath dims and
 stays usable. With reduced motion there is no walk: the Dash opens at once and
 the title shows without moving.
 
-A server entered this way is live: its Dash runs the demo feed under the
-server's own name and address until **Stop demo** is pressed.
+A server entered this way is live: the demo server runs for it under the
+server's own name and address, on every page, until **Stop demo** is pressed on
+the Dash or you sign out (`useDemoServer` in `src/pages/dash/demo.ts`).
 
 The servers are a sample in `src/lib/servers.ts`, shaped like the answer the
 account service should give. The one you enter is kept per browser, shown in
@@ -510,11 +511,10 @@ turn back to the editor's grey when you open a model. The accent is blue there
 too, in brighter steps: `--accent-mark` `#5aa2ff` for lines and marks,
 `--accent-text` `#a9ccff` for text. Errors and warnings use `--danger` and
 `--warn` on both surfaces. The dark pages are livelier. Panels are rounded and
-lit under the pointer, titles drop in a letter at a time, motion springs, and on
-the Dash the turntable, the adoption ring, the file stacks and the plugin
-timeline all move. Settings plays its entrance once, when you arrive. Moving
-between its sections swaps the title and the cards in place. Under reduced
-motion every loop stops and nothing is staggered.
+lit under the pointer, a title's letters lean as the pointer passes over them,
+and on the Dash the turntable, the adoption ring and the file stacks move. Text
+never fades or slides into view: a page's words are there as it opens. Under
+reduced motion every loop stops.
 
 White text on Blockbench's `#3e90ff` measures 3.2:1, so filled buttons use a
 deeper `#2a6ad8` and the bright blue is kept for light and lines. The contrast
@@ -535,12 +535,24 @@ from what the plugin's label mentions: a wireframe cube for models, a bone for
 rigs, a mob's face, a palette for textures, a chest for assets, and a page for
 anything it does not recognise.
 
-**Pages cross-fade.** `useRoute` wraps each route change in a view transition
-and flushes the update inside its callback. The page fades up into place, the
-top bar holds still, and the nav's active marker slides from one link to the
-next, because the marker is its own element with its own
-`view-transition-name`. Without the API, or with reduced motion on, the page
-swaps at once.
+**Pack builds** lists the newest packs the server has sent
+(`src/pages/dash/builds.tsx`): when each went out, its size and how much it
+grew, and how many players had it. The store keeps them (`builds` in
+`src/lib/dash.ts`). A pack with a new hash starts a build with no count until
+the next census, the newest build carries the live count, and an older one
+keeps the count it had when the next went out. The plugin's first pack replaces
+the sample's history.
+
+What the plugin sends, write by write, is in **Settings › Plugin**, with
+whether it is reporting, what is reporting, and how often it checks in. The
+chip beside the server's address at the top of the Dash (Live, Quiet for 20s,
+Sample data) links there.
+
+**Pages swap at once.** `useRoute` wraps each route change in a view transition
+and flushes the update inside its callback, but the page itself neither fades
+nor slides. The nav's active marker slides from one link to the next, because
+the marker is its own element with its own `view-transition-name`, and entering
+a server uses the same transition to open the Dash out of Pip's swirl.
 
 **Waiting has Pip.** `src/components/Pip.tsx` is the studio's loading scene,
 drawn in one colour after the offline dinosaur game: a horizon line, a couple

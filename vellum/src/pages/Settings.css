@@ -359,12 +359,7 @@ html[data-surface='dark'] .settings__nav {
   border-radius: 18px;
   background: var(--panel);
   box-shadow: var(--panel-shadow);
-  animation: studio-rise 700ms var(--ease-out) backwards 80ms;
 }
-
-/* after the first section, a section's cards and panels appear in place */
-html[data-surface='dark'] .settings__panel[data-still] .card,
-html[data-surface='dark'] .settings__panel[data-still] .support { animation: none; }
 
 html[data-surface='dark'] .settings__search {
   border-radius: 10px;

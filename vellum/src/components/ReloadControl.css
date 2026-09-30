@@ -147,8 +147,3 @@
 
 .reload__pip { align-items: flex-start; }
 
-.reload__outcome { animation: reload-in 360ms cubic-bezier(0.22, 1, 0.36, 1) both; }
-
-@keyframes reload-in {
-  from { opacity: 0; transform: translateY(6px); }
-}

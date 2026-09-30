@@ -8,6 +8,7 @@ import { Projects } from './pages/Projects'
 import { Servers } from './pages/Servers'
 import { Settings } from './pages/Settings'
 import { SignIn } from './pages/SignIn'
+import { useDemoServer } from './pages/dash/demo'
 import { Icon } from './lib/icons'
 import { navigate, useRoute, useTitle } from './lib/router'
 
@@ -39,6 +40,8 @@ function NotFound({ path }: { path: string }) {
 export default function App() {
   const { segments, path } = useRoute()
   const root = segments[0]
+  // the demo server keeps reporting on every page, so Settings shows it too
+  useDemoServer()
 
   const surface = root === 'editor' ? 'paper' : 'dark'
   // The home page, sign-in and the server picker come before the Studio and have their own headers.

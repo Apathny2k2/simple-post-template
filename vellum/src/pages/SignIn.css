@@ -22,7 +22,6 @@
   background: var(--glass-thick);
   backdrop-filter: blur(var(--glass-blur-lg)) saturate(var(--glass-sat));
   box-shadow: var(--shadow-pop);
-  animation: studio-rise 700ms var(--ease-out) backwards;
 }
 
 /* a soft light behind the card, in the accent */

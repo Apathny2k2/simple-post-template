@@ -213,15 +213,12 @@
   background-color: var(--glass-thick);
   backdrop-filter: blur(var(--glass-blur-lg)) saturate(var(--glass-sat));
   box-shadow: var(--inner-highlight), var(--shadow-lg);
-  animation: fade-in var(--dur-slow) var(--ease) backwards;
 }
 
 .editor-column--left {
-  animation-delay: 30ms;
   align-self: start;
   max-height: 100%;
 }
-.editor-column--right { animation-delay: 70ms; }
 
 .editor-split {
   pointer-events: auto;
@@ -281,7 +278,7 @@
 
 .panel__title { flex: 1; text-align: left; }
 .panel__count { font-family: var(--font-mono); text-transform: none; letter-spacing: 0; opacity: 0.72; }
-.panel__body { padding: 11px; animation: fade-in var(--dur) var(--ease); }
+.panel__body { padding: 11px; }
 .panel--grow .panel__body { flex: 1; min-height: 0; overflow: auto; padding: 7px; }
 
 /* ---------------- numeric fields ---------------- */
@@ -711,7 +708,6 @@
   backdrop-filter: blur(var(--glass-blur-lg)) saturate(var(--glass-sat));
   box-shadow: var(--inner-highlight), var(--shadow-lg);
   overflow: hidden;
-  animation: fade-in var(--dur-slow) var(--ease);
 }
 
 .timeline-bar {
@@ -1564,7 +1560,6 @@
   display: grid;
   gap: 11px;
   padding: 2px 0 12px;
-  animation: fade-in var(--dur) var(--ease);
 }
 
 .config-section__blurb { font-size: var(--fs-2xs); color: var(--ink-faint); line-height: 1.55; }
@@ -1647,7 +1642,6 @@
   /* solid so the model doesn't show through the text */
   background-color: var(--code-bg);
   box-shadow: var(--inner-highlight), var(--shadow-lg);
-  animation: fade-in var(--dur-slow) var(--ease) backwards;
   overflow: hidden;
 }
 

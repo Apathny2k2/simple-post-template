@@ -60,15 +60,20 @@ export function Hero({
           <span className="hero__dot" data-up={server.online || undefined} aria-hidden="true" />
           <span className="hero__state">{server.status}</span>
           <span className="hero__host mono">{server.host}</span>
-          <span className="hero__feed" data-health={live ? health : 'sample'}>
+          <a
+            className="hero__feed"
+            href="#/settings/plugin"
+            data-health={live ? health : 'sample'}
+            title="What the plugin has sent: Settings, Plugin"
+          >
             {feed}
-          </span>
+          </a>
           {live ? badge : null}
           {menu}
         </div>
 
         <h2 className="hero__title" id="dash-server-name" style={{ '--len': server.name.length } as CSSProperties}>
-          <Kinetic key={server.name} text={server.name} />
+          <Kinetic text={server.name} />
         </h2>
 
         <dl className="hero__stats">

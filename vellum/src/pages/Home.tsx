@@ -1,5 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
-import type { CSSProperties, ReactNode } from 'react'
+import type { CSSProperties } from 'react'
 import { AccountChip } from '../components/AccountChip'
 import { Kinetic } from '../components/Kinetic'
 import { Icon, VellumMark } from '../lib/icons'
@@ -75,38 +74,6 @@ const plans: Plan[] = [
   },
 ]
 
-/** Shows its children once they first scroll into view, and leaves them there. */
-function Reveal({ children, delay = 0, className = '' }: { children: ReactNode; delay?: number; className?: string }) {
-  const box = useRef<HTMLDivElement>(null)
-  const [shown, setShown] = useState(() => typeof IntersectionObserver !== 'function')
-
-  useEffect(() => {
-    const el = box.current
-    if (!el || shown) return
-    const io = new IntersectionObserver(
-      ([entry]) => {
-        if (!entry.isIntersecting) return
-        setShown(true)
-        io.disconnect()
-      },
-      { rootMargin: '0px 0px -8% 0px' },
-    )
-    io.observe(el)
-    return () => io.disconnect()
-  }, [shown])
-
-  return (
-    <div
-      ref={box}
-      className={`reveal ${className}`}
-      data-shown={shown || undefined}
-      style={{ '--delay': `${delay}ms` } as CSSProperties}
-    >
-      {children}
-    </div>
-  )
-}
-
 export function Home() {
   useTitle(null)
   const reduced = useReducedMotion()
@@ -178,104 +145,99 @@ export function Home() {
         </section>
 
         <section className="home-section" id="features" aria-labelledby="features-title">
-          <Reveal>
+          <div>
             <p className="eyebrow">What it does</p>
             <h2 className="home-h2" id="features-title">
               From the first cube to the live server
             </h2>
-          </Reveal>
+          </div>
           <div className="home-features">
-            {features.map((f, i) => (
-              <Reveal key={f.title} delay={i * 90}>
-                <article
-                  className="home-feature pointer-glow"
-                  style={{ '--c': f.colour } as CSSProperties}
-                  onPointerMove={trackPointer}
-                >
-                  <span className="home-feature__icon" aria-hidden="true">
-                    <Icon name={f.icon} size={18} />
-                  </span>
-                  <h3>{f.title}</h3>
-                  <p>{f.body}</p>
-                </article>
-              </Reveal>
+            {features.map((f) => (
+              <article
+                key={f.title}
+                className="home-feature pointer-glow"
+                style={{ '--c': f.colour } as CSSProperties}
+                onPointerMove={trackPointer}
+              >
+                <span className="home-feature__icon" aria-hidden="true">
+                  <Icon name={f.icon} size={18} />
+                </span>
+                <h3>{f.title}</h3>
+                <p>{f.body}</p>
+              </article>
             ))}
           </div>
         </section>
 
         <section className="home-section" id="how" aria-labelledby="how-title">
-          <Reveal>
+          <div>
             <p className="eyebrow">How it works</p>
             <h2 className="home-h2" id="how-title">
               Three steps to your first model in game
             </h2>
-          </Reveal>
+          </div>
           <ol className="home-steps">
             {steps.map((s, i) => (
               <li key={s.title}>
-                <Reveal delay={i * 110}>
-                  <div className="home-step">
-                    <span className="home-step__number" aria-hidden="true">
-                      {i + 1}
-                    </span>
-                    <h3>{s.title}</h3>
-                    <p>{s.body}</p>
-                  </div>
-                </Reveal>
+                <div className="home-step">
+                  <span className="home-step__number" aria-hidden="true">
+                    {i + 1}
+                  </span>
+                  <h3>{s.title}</h3>
+                  <p>{s.body}</p>
+                </div>
               </li>
             ))}
           </ol>
         </section>
 
         <section className="home-section" id="plans" aria-labelledby="plans-title">
-          <Reveal>
+          <div>
             <p className="eyebrow">Plans</p>
             <h2 className="home-h2" id="plans-title">
               Start free, and bring your team when you need to
             </h2>
-          </Reveal>
+          </div>
           <div className="home-plans">
-            {plans.map((p, i) => (
-              <Reveal key={p.id} delay={i * 90}>
-                <article className="home-plan" data-plan={p.id} data-featured={p.id === 'pro' || undefined}>
-                  <header>
-                    <h3 className="home-plan__name">{p.name}</h3>
-                    <p className="home-plan__blurb">{p.blurb}</p>
-                  </header>
-                  <p className="home-plan__price">{p.open ? 'No card needed' : 'Price at launch'}</p>
-                  <p className="home-plan__seats">
-                    <Icon name="users" size={14} /> {p.seats}
-                  </p>
-                  <ul>
-                    {p.points.map((point) => (
-                      <li key={point}>
-                        <Icon name="check" size={13} />
-                        {point}
-                      </li>
-                    ))}
-                  </ul>
-                  {p.open ? (
-                    <button className="btn btn--primary home-plan__go" onClick={studio}>
-                      Start free
-                    </button>
-                  ) : (
-                    <button className="btn home-plan__go" disabled>
-                      Opens soon
-                    </button>
-                  )}
-                </article>
-              </Reveal>
+            {plans.map((p) => (
+              <article key={p.id} className="home-plan" data-plan={p.id} data-featured={p.id === 'pro' || undefined}>
+                <header>
+                  <h3 className="home-plan__name">{p.name}</h3>
+                  <p className="home-plan__blurb">{p.blurb}</p>
+                </header>
+                <p className="home-plan__price">{p.open ? 'No card needed' : 'Price at launch'}</p>
+                <p className="home-plan__seats">
+                  <Icon name="users" size={14} /> {p.seats}
+                </p>
+                <ul>
+                  {p.points.map((point) => (
+                    <li key={point}>
+                      <Icon name="check" size={13} />
+                      {point}
+                    </li>
+                  ))}
+                </ul>
+                {p.open ? (
+                  <button className="btn btn--primary home-plan__go" onClick={studio}>
+                    Start free
+                  </button>
+                ) : (
+                  <button className="btn home-plan__go" disabled>
+                    Opens soon
+                  </button>
+                )}
+              </article>
             ))}
           </div>
           <p className="home-plans__note">Paid plans open soon. Their prices will be listed here at launch.</p>
         </section>
 
-        <Reveal className="home-cta">
+        <div className="home-cta">
           <h2 className="home-h2">Pick a server and start building</h2>
           <button className="btn btn--primary home-btn" onClick={studio}>
             Open the Studio <Icon name="arrowRight" size={14} />
           </button>
-        </Reveal>
+        </div>
       </main>
 
       <footer className="site-foot">

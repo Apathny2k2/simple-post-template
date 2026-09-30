@@ -8,8 +8,9 @@ import { dashStore, formatWhen, healthOf } from '../lib/dash'
 import type { Section } from '../lib/dash'
 import { connect, dash, disconnect, loadLink } from '../lib/dash-api'
 import { saveBlob } from '../lib/download'
+import { useNow } from '../lib/motion'
 import { useCurrentServer } from '../lib/servers'
-import { isLive, setLive } from '../lib/arrival'
+import { setLive, useLive } from '../lib/arrival'
 import { Hero } from './dash/hero'
 import {
   AdoptionRing,
@@ -22,8 +23,8 @@ import {
   Tile,
   Toasts,
 } from './dash/cards'
-import { Timeline } from './dash/timeline'
-import { demoReload, startDemo } from './dash/demo'
+import { PackBuilds } from './dash/builds'
+import { demoReload } from './dash/demo'
 import { useDashToasts, useToasts } from './dash/toasts'
 import './Dashboard.css'
 
@@ -39,13 +40,7 @@ const getVersion = () => dashStore.version
 /** Re-renders on every store change, and once a second so ages and health stay current. */
 function useDash() {
   useSyncExternalStore(subscribe, getVersion)
-  const [now, setNow] = useState(() => Date.now())
-
-  useEffect(() => {
-    const id = window.setInterval(() => setNow(Date.now()), 1000)
-    return () => window.clearInterval(id)
-  }, [])
-
+  const now = useNow()
   const { snapshot, meta, log } = dashStore
   return { snapshot, meta, log, now, health: healthOf(meta, now) }
 }
@@ -74,19 +69,10 @@ export function Dashboard() {
   }, [])
 
   const [linked, setLinked] = useState(() => !!loadLink()?.baseUrl)
-  // a server entered through the portal is live: the demo feed runs until it's stopped here
-  const [demo, setDemo] = useState(() => isLive() && !loadLink()?.baseUrl)
-  const onDemo = useCallback((on: boolean) => {
-    setDemo(on)
-    setLive(on)
-  }, [])
+  // the demo server itself runs app-wide (useDemoServer); stopping it puts the sample back
+  const demo = useLive() && !linked
+  const onDemo = setLive
   const entered = useCurrentServer()
-
-  // Stopping the demo, or leaving the page, puts the sample back.
-  useEffect(
-    () => (demo ? startDemo({ name: entered.name, host: entered.host }) : undefined),
-    [demo, entered.name, entered.host],
-  )
 
   const onUnlink = useCallback(() => {
     disconnect()
@@ -154,7 +140,6 @@ export function Dashboard() {
       <div className="dash-grid">
         <Tile
           className="dash-players"
-          n={1}
           label="Players"
           badge={<SampleBadge fed={meta.fed} section="players" />}
           title="On the current pack"
@@ -170,7 +155,6 @@ export function Dashboard() {
 
         <Tile
           className="dash-files"
-          n={2}
           label="Server files"
           badge={<SampleBadge fed={meta.fed} section="server" />}
           title={
@@ -182,20 +166,24 @@ export function Dashboard() {
           <CubeStacks rows={server.breakdown} />
         </Tile>
 
-        <Tile className="dash-pack" n={3} label="Resource pack" badge={<SampleBadge fed={meta.fed} section="pack" />}>
+        <Tile className="dash-pack" label="Resource pack" badge={<SampleBadge fed={meta.fed} section="pack" />}>
           <PackBox pack={pack} now={now} />
         </Tile>
 
-        <Tile className="dash-feed" n={4} label="Plugin activity" title="The last 90 seconds">
-          <Timeline now={now} />
+        <Tile
+          className="dash-builds"
+          label="Pack builds"
+          badge={<SampleBadge fed={meta.fed} section="pack" />}
+          title={dashStore.builds.length > 1 ? `The last ${Math.min(5, dashStore.builds.length)} builds` : 'The current build'}
+        >
+          <PackBuilds builds={dashStore.builds} now={now} />
         </Tile>
-        <Tile className="dash-plan" n={5} label="Plan" badge={<SampleBadge fed={meta.fed} section="subscription" />}>
+        <Tile className="dash-plan" label="Plan" badge={<SampleBadge fed={meta.fed} section="subscription" />}>
           <Plan plan={subscription} />
         </Tile>
 
         <Tile
           className="dash-recent"
-          n={6}
           label="Recent files"
           badge={<SampleBadge fed={meta.fed} section="files" />}
           title="Last touched"

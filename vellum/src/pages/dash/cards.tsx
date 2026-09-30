@@ -10,14 +10,13 @@ import type { Toast } from './toasts'
 
 const vars = (v: Record<string, string | number>) => v as CSSProperties
 
-/** A dark panel with a light that follows the pointer. `n` staggers its entrance. */
+/** A dark panel with a light that follows the pointer. */
 export function Tile({
   label,
   title,
   badge,
   actions,
   className = '',
-  n,
   children,
 }: {
   label: ReactNode
@@ -25,11 +24,10 @@ export function Tile({
   badge?: ReactNode
   actions?: ReactNode
   className?: string
-  n: number
   children: ReactNode
 }) {
   return (
-    <section className={`tile ${className}`} style={vars({ '--n': n })} onPointerMove={trackPointer}>
+    <section className={`tile ${className}`} onPointerMove={trackPointer}>
       <header className="tile__head">
         <div className="tile__heading">
           <p className="tile__label">

@@ -29,6 +29,10 @@ export type PackState = {
   version: string | null
 }
 
+/** A pack the server has sent. `players` counts who had it: live while it is
+    the current build, and as it last stood once a newer build went out. */
+export type PackBuild = PackState & { players: { on: number; of: number } | null }
+
 export type PlayerCensus = {
   correct: number
   wrong: number
@@ -303,6 +307,20 @@ const SEED: DashSnapshot = {
   },
 }
 
+/** The sample's builds, newest first: the seed's pack and three before it. */
+const SEED_BUILDS: PackBuild[] = [
+  { ...SEED.pack, players: { on: 13, of: 20 } },
+  ['sha1:4b7d0a93', 42_991_104, '2026-09-10T09:40:00.000Z', 18, 21],
+  ['sha1:c01e55f2', 41_205_760, '2026-09-06T17:15:00.000Z', 16, 16],
+  ['sha1:77a1e2b0', 39_845_888, '2026-09-02T12:03:00.000Z', 12, 14],
+].map((b) =>
+  Array.isArray(b)
+    ? { archive: 'current.zip', hash: b[0] as string, bytes: b[1] as number, pushedAt: b[2] as string, version: null, players: { on: b[3] as number, of: b[4] as number } }
+    : b,
+)
+/** How many builds the store keeps. */
+const MAX_BUILDS = 8
+
 const clone = (s: DashSnapshot): DashSnapshot => ({
   server: { ...s.server, breakdown: s.server.breakdown.map((r) => ({ ...r })) },
   pack: { ...s.pack },
@@ -336,6 +354,10 @@ class DashStore {
   /** Release notes pushed from the Master Console. While empty, About shows the built-in ones. */
   releases: Release[] = []
 
+  /** The packs the server has sent, newest first; the sample's until a plugin sends one. */
+  builds: PackBuild[] = SEED_BUILDS.map((b) => ({ ...b }))
+  private ownBuilds = false
+
   /** Bumped on every change. The snapshot is mutated in place, so `useSyncExternalStore` watches this. */
   version = 0
 
@@ -356,6 +378,7 @@ class DashStore {
   /** Re-render the given cards without adding a line to the feed log. */
   notify(sections: Section[]) {
     for (const section of sections) {
+      this.track(section)
       if (!this.meta.fed.includes(section)) this.meta = { ...this.meta, fed: [...this.meta.fed, section] }
       this.emit({ type: 'section', section })
     }
@@ -373,6 +396,7 @@ class DashStore {
     this.log = [record, ...this.log].slice(0, 40)
 
     if (ok) {
+      if (section) this.track(section)
       this.meta = {
         ...this.meta,
         lastSeen: record.at,
@@ -383,6 +407,27 @@ class DashStore {
     }
     this.emit({ type: 'ingest', record })
     return record
+  }
+
+  /* A pack with a new hash starts a build, which has no count until the next
+     census; the newest build then carries the live count until another goes out. */
+  private track(section: Section) {
+    const { pack, players } = this.snapshot
+    if (section === 'pack') {
+      // a plugin's first pack replaces the sample's history
+      if (!this.ownBuilds) {
+        this.ownBuilds = true
+        this.builds = []
+      }
+      const head = this.builds[0]
+      this.builds =
+        head?.hash === pack.hash
+          ? [{ ...head, ...pack }, ...this.builds.slice(1)]
+          : [{ ...pack, players: null }, ...this.builds].slice(0, MAX_BUILDS)
+    } else if (section === 'players' && this.ownBuilds && this.builds.length) {
+      const counted = { on: players.correct, of: players.correct + players.wrong }
+      this.builds = [{ ...this.builds[0], players: counted }, ...this.builds.slice(1)]
+    }
   }
 
   setReleases(releases: Release[]) {
@@ -402,6 +447,8 @@ class DashStore {
     this.log = []
     this.roster.clear()
     this.releases = []
+    this.builds = SEED_BUILDS.map((b) => ({ ...b }))
+    this.ownBuilds = false
     this.emit({ type: 'releases' })
     this.emit({ type: 'meta' })
     for (const s of ['server', 'pack', 'players', 'subscription', 'files', 'cloud'] as Section[]) {

@@ -422,14 +422,12 @@ html[data-surface='dark'] .shelf-tile {
   backdrop-filter: none;
   box-shadow: var(--panel-shadow);
   transition: transform 520ms var(--ease-spring), border-color 300ms var(--ease-out);
-  animation: studio-rise 800ms var(--ease-out) backwards 160ms;
 }
 
 html[data-surface='dark'] .shelf-tile:nth-child(2) {
   background:
     radial-gradient(55% 60% at 50% 42%, rgba(155, 107, 255, 0.16), transparent 70%),
     var(--panel);
-  animation-delay: 250ms;
 }
 
 html[data-surface='dark'] .shelf-tile:hover {
@@ -464,7 +462,6 @@ html[data-surface='dark'] .library {
   background: var(--panel);
   backdrop-filter: none;
   box-shadow: var(--panel-shadow);
-  animation: studio-rise 760ms var(--ease-out) backwards 120ms;
 }
 
 html[data-surface='dark'] .library__bar { padding: 14px 18px; border-bottom-color: var(--border); }
@@ -490,8 +487,6 @@ html[data-surface='dark'] .asset {
   box-shadow: none;
   transition: transform 520ms var(--ease-spring), border-color 300ms var(--ease-out), box-shadow 300ms var(--ease-out),
     background 300ms var(--ease-out);
-  animation: studio-rise 700ms var(--ease-out) backwards;
-  animation-delay: calc(220ms + min(var(--k, 0), 12) * 45ms);
 }
 
 html[data-surface='dark'] .asset:hover,

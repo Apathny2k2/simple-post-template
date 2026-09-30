@@ -23,11 +23,13 @@ import {
 import type { VersionReport } from '../lib/version'
 import type { TicketDraft } from '../lib/support'
 import { useSession } from '../lib/session'
+import { useNow } from '../lib/motion'
 import { Support } from './Support'
+import { Timeline } from './dash/timeline'
 import './Settings.css'
 
 type SectionId =
-  | 'account' | 'profile' | 'directory' | 'report-a-bug' | 'about'
+  | 'account' | 'profile' | 'directory' | 'plugin' | 'report-a-bug' | 'about'
   | 'cloud' | 'billing' | 'teams' | 'support'
 
 type Section = { id: SectionId; label: string; icon: IconName; paid?: boolean; blurb: string }
@@ -36,6 +38,7 @@ const freeSections: Section[] = [
   { id: 'account', label: 'Account', icon: 'user', blurb: 'Sign-in and sessions.' },
   { id: 'profile', label: 'Profile', icon: 'book', blurb: 'What collaborators see next to your uploads.' },
   { id: 'directory', label: 'Directory', icon: 'directory', blurb: 'Where Vellum reads and writes on disk.' },
+  { id: 'plugin', label: 'Plugin', icon: 'server', blurb: 'Whether the plugin on your server is reporting, and what it sent lately.' },
   { id: 'report-a-bug', label: 'Report a bug', icon: 'bug', blurb: 'Send a report with the current session log attached.' },
   { id: 'about', label: 'About', icon: 'info', blurb: 'Build, versions and what changed recently.' },
 ]
@@ -501,6 +504,61 @@ function Cloud() {
   )
 }
 
+const subscribeDash = (fn: () => void) => dashStore.subscribe(fn)
+const dashVersion = () => dashStore.version
+
+function ago(ms: number): string {
+  const s = Math.max(0, Math.round(ms / 1000))
+  return s < 60 ? `${s}s` : s < 3600 ? `${Math.round(s / 60)}m` : `${Math.round(s / 3600)}h`
+}
+
+/** Whether the plugin is reporting, and every write it made in the last 90 seconds. */
+function Plugin() {
+  useSyncExternalStore(subscribeDash, dashVersion)
+  const now = useNow()
+  const { meta, snapshot } = dashStore
+  const health = healthOf(meta, now)
+  const quiet = meta.lastSeen === null ? '' : ago(now - meta.lastSeen)
+  const status =
+    meta.lastSeen === null
+      ? { tone: 'idle', icon: 'info' as const, label: 'No reports yet', detail: 'The Dash shows sample data until the plugin sends something.' }
+      : health === 'live'
+        ? { tone: 'ok', icon: 'check' as const, label: 'Live', detail: 'Reports are coming in on time.' }
+        : health === 'stale'
+          ? { tone: 'warn', icon: 'warning' as const, label: `Quiet for ${quiet}`, detail: 'It has missed a check-in or two.' }
+          : { tone: 'warn', icon: 'warning' as const, label: `No reports for ${quiet}`, detail: 'The server may be down, or the plugin stopped.' }
+
+  return (
+    <>
+      <Card title="Connection" note="What the plugin on your server last told the Studio." dividedHead>
+        <p className="verify" data-tone={status.tone}>
+          <Icon name={status.icon} size={13} />
+          <span>
+            <strong>{status.label}.</strong> {status.detail}
+          </span>
+        </p>
+        <div className="pairs" style={{ marginTop: 'var(--sp-3)' }}>
+          <div className="pairs__row"><span className="pairs__key">Reporting</span><span className="pairs__value">{meta.agent ?? 'Nothing yet'}</span></div>
+          <div className="pairs__row"><span className="pairs__key">Server</span><span className="pairs__value">{snapshot.server.host}</span></div>
+          <div className="pairs__row"><span className="pairs__key">Checks in every</span><span className="pairs__value">{meta.heartbeatSeconds} seconds</span></div>
+          <div className="pairs__row">
+            <span className="pairs__key">Last report</span>
+            <span className="pairs__value">{meta.lastSeen === null ? 'Never' : formatWhen(new Date(meta.lastSeen).toISOString(), now)}</span>
+          </div>
+        </div>
+      </Card>
+
+      <Card
+        title="Plugin activity"
+        note="Every write the plugin made in the last 90 seconds, one lane for each kind. A red key was refused."
+        dividedHead
+      >
+        <Timeline now={now} />
+      </Card>
+    </>
+  )
+}
+
 function Body({ section }: { section: Section }) {
   const session = useSession()
   switch (section.id) {
@@ -580,6 +638,9 @@ function Body({ section }: { section: Section }) {
         </>
       )
 
+    case 'plugin':
+      return <Plugin />
+
     case 'report-a-bug':
       return <ReportABug />
 
@@ -634,12 +695,6 @@ export function Settings({ segments }: { segments: string[] }) {
   const section = allSections.find((s) => s.id === active)!
   useTitle(section.label)
 
-  /* The entrance plays on arrival only. Moving between sections swaps the
-     title and cards in place. */
-  const [arrivedOn] = useState(active)
-  const [moved, setMoved] = useState(false)
-  if (!moved && active !== arrivedOn) setMoved(true)
-
   const q = query.trim().toLowerCase()
   const match = (list: Section[]) =>
     q ? list.filter((s) => s.label.toLowerCase().includes(q) || s.blurb.toLowerCase().includes(q)) : list
@@ -666,7 +721,7 @@ export function Settings({ segments }: { segments: string[] }) {
         <div>
           <div className="eyebrow">Settings</div>
           <h1 className="page-title">
-            <Kinetic key={section.id} text={section.label} still={moved} />
+            <Kinetic text={section.label} />
           </h1>
           <p className="page-sub">{section.blurb}</p>
         </div>
@@ -700,7 +755,7 @@ export function Settings({ segments }: { segments: string[] }) {
           ) : null}
         </nav>
 
-        <div className="settings__panel" data-still={moved || undefined}>
+        <div className="settings__panel">
           <Body section={section} />
         </div>
       </div>

@@ -4,7 +4,7 @@ The state of the project for whoever picks it up next. Rewritten on
 2026-09-29, at the end of the wording audit, and updated on 2026-09-30.
 
 **Branch** `claude/blockbench-react-editor-lk38qe` · **PR** #3 (draft) ·
-**Artifact** v46, `https://claude.ai/artifact/BZpDzWLJ4z6soEAmVMcVwN`
+**Artifact** v47, `https://claude.ai/artifact/BZpDzWLJ4z6soEAmVMcVwN`
 
 Read `CLAUDE.md` first. It has the working rules: typecheck with `tsc -b`,
 republish the artifact after every push, how the sample models are made,
@@ -26,8 +26,14 @@ The app is a model studio for Minecraft servers, in `vellum/`:
   middle, Pip in the server's colour walking along it into a round purple
   swirl, and the Dash opening out of the swirl in a growing circle. Then
   the server's name shows in the middle in blocky letters with a stepped
-  edge, coloured from the server's id (`src/lib/title.ts`). The Dash runs
-  the demo feed under that server's name until someone presses Stop demo.
+  edge, coloured from the server's id (`src/lib/title.ts`). The demo
+  server then reports under that server's name on every page, until
+  someone presses Stop demo or signs out.
+- The Dash's Pack builds card lists the newest packs, their sizes and how
+  many players had each (`src/pages/dash/builds.tsx`). The plugin's
+  write-by-write activity is in Settings › Plugin.
+- Nothing fades or slides into view: page text is there as a page opens,
+  and pages swap without a fade.
 - `#/dash`, `#/projects` and `#/settings/*` are dark, in the style of
   Blockbench (`src/styles/studio.css`).
 - `#/editor/*` uses Minecraft's inventory greys (`src/styles/tokens.css`).

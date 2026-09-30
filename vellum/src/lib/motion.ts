@@ -27,6 +27,16 @@ export function useInView(ref: RefObject<Element | null>): boolean {
   return seen
 }
 
+/** The time, kept current every `ms`, for ages and staleness that change as it passes. */
+export function useNow(ms = 1000): number {
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(Date.now()), ms)
+    return () => window.clearInterval(id)
+  }, [ms])
+  return now
+}
+
 /** A number that glides to each new value. It starts from 0, so the first render counts up. */
 export function useTween(target: number, ms = 900): number {
   const [value, setValue] = useState(0)

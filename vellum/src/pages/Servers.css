@@ -50,10 +50,6 @@
 
 .servers__list { display: grid; gap: 10px; }
 
-.servers__list > li { animation: studio-rise 700ms var(--ease-out) backwards; }
-.servers__list > li:nth-child(2) { animation-delay: 80ms; }
-.servers__list > li:nth-child(n + 3) { animation-delay: 160ms; }
-
 /* ---------------- a server ---------------- */
 
 .server {

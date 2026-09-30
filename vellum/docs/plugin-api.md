@@ -145,7 +145,9 @@ a timer.
 
 Player reports are compared against `hash`. **A new hash re-counts the
 players straight away**, so the card doesn't show everyone as up to date the
-moment you publish a build nobody has downloaded yet.
+moment you publish a build nobody has downloaded yet. Each new hash is also a
+new row on the Dash's Pack builds card, which keeps how many players each build
+reached.
 
 ### Players
 
@@ -344,10 +346,11 @@ what it already knows, and the Dash does the rest.
 **Run a demo server** on the Dash starts a pretend server that feeds the page
 through these endpoints, the same validator and the same log. Players join,
 someone saves a file, a new pack goes out and players pick it up one by one,
-then the server restarts. While it runs, **Apply on the server** in the Players
-card answers as well, so the three reload outcomes can be seen: the first press
-swaps, the second is refused with a validation report, the third fails.
-**Stop demo** puts the sample back. You can also push your own payloads from the
+then the server restarts. It keeps reporting while you move around the Studio,
+so Settings › Plugin shows its writes as they arrive. While it runs, **Apply on
+the server** in the Players card answers as well, so the three reload outcomes
+can be seen: the first press swaps, the second is refused with a validation
+report, the third fails. **Stop demo** puts the sample back. You can also push your own payloads from the
 console through `window.Vellum.dash` before writing any Java.
 
 Until a card is fed, it shows the built-in sample and says **sample** in its
