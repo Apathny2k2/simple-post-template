@@ -1,0 +1,118 @@
+/* The Display tab for mobs, labelled Scene. Mobs have no display slots, so
+   it shows the mob's size beside a player and how far a walk travels. */
+
+import { BLOCK, travelOf } from '../../lib/world'
+import { Icon } from '../../lib/icons'
+import type { Clip, Model } from '../../lib/model'
+
+/** The size reference: a player fits in a space two blocks tall (the hitbox is 1.8). */
+const PLAYER_BLOCKS = 2
+
+function boundsOf(model: Model) {
+  const lo = [Infinity, Infinity, Infinity]
+  const hi = [-Infinity, -Infinity, -Infinity]
+  for (const c of model.cubes) {
+    for (let i = 0; i < 3; i++) {
+      lo[i] = Math.min(lo[i], c.from[i])
+      hi[i] = Math.max(hi[i], c.to[i])
+    }
+  }
+  return model.cubes.length ? ([0, 1, 2].map((i) => hi[i] - lo[i]) as [number, number, number]) : ([0, 0, 0] as [number, number, number])
+}
+
+/** Describes a height relative to a player, in plain words. */
+function against(blocks: number): string {
+  if (blocks <= 0) return 'nothing to measure yet'
+  const ratio = blocks / PLAYER_BLOCKS
+  if (ratio < 0.35) return 'knee-high to a player'
+  if (ratio < 0.7) return 'waist-high to a player'
+  if (ratio < 0.95) return 'shorter than a player'
+  if (ratio <= 1.08) return 'about player height'
+  if (ratio < 1.8) return 'taller than a player'
+  return `${ratio.toFixed(1)}x a player, too tall to fit through a door`
+}
+
+export function ScenePanel({
+  model,
+  clip,
+  clips,
+  onClip,
+  onWorld,
+}: {
+  model: Model
+  clip: Clip | null
+  clips: Clip[]
+  onClip: (id: string) => void
+  onWorld: () => void
+}) {
+  const [w, h, d] = boundsOf(model)
+  const blocks = h / BLOCK
+  const travel = travelOf(model, clip)
+
+  return (
+    <>
+      <div className="pairs scene-pairs">
+        <div className="pairs__row">
+          <span className="pairs__key">Height</span>
+          <span className="pairs__value">
+            {h.toFixed(1)} units &middot; {blocks.toFixed(2)} blocks
+          </span>
+        </div>
+        <div className="pairs__row">
+          <span className="pairs__key">Footprint</span>
+          <span className="pairs__value">
+            {w.toFixed(1)} x {d.toFixed(1)} units
+          </span>
+        </div>
+        <div className="pairs__row">
+          <span className="pairs__key">Beside a player</span>
+          <span className="pairs__value">{against(blocks)}</span>
+        </div>
+      </div>
+
+      {/* no "none" option, because the editor falls back to the first clip */}
+      {clips.length ? (
+        <label className="field" style={{ marginTop: 12 }}>
+          <span className="field__label">Clip the scene loops</span>
+          <select
+            className="editor-select"
+            style={{ width: '100%', height: 'auto', padding: '6px 10px' }}
+            value={clip?.id ?? ''}
+            onChange={(e) => onClip(e.target.value)}
+          >
+            {clips.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+        </label>
+      ) : null}
+
+      {/* how far a walk carries the mob; clips play in place on the timeline */}
+      <p className="editor-hint scene-travel" data-moving={travel.blocks > 0 || undefined}>
+        <Icon name={travel.blocks > 0 ? 'move' : 'info'} size={11} />
+        {!clip ? (
+          'No clips yet, so it will stand in the world. Key one in Animate.'
+        ) : travel.blocks > 0 ? (
+          <>
+            Its legs cover <strong>{travel.blocks}</strong> block{travel.blocks === 1 ? '' : 's'} a
+            stride, so the ground moves under it at {(travel.speed / BLOCK).toFixed(2)} blocks per second.
+          </>
+        ) : (
+          `"${clip.name}" plays in place. That’s right for an idle or an attack, but a walk will look like a moonwalk.`
+        )}
+      </p>
+
+      <button className="btn btn--primary" style={{ width: '100%', marginTop: 12 }} onClick={onWorld}>
+        <Icon name="scene" size={14} /> View in the real world
+      </button>
+
+      <p className="editor-hint" style={{ marginTop: 10 }}>
+        <Icon name="info" size={11} />
+        Mobs don&rsquo;t use display slots. Those pose items in a hand, the inventory or an item
+        frame. A mob stands in the world at the size above.
+      </p>
+    </>
+  )
+}

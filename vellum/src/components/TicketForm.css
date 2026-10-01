@@ -1,0 +1,61 @@
+.ticket-form { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+
+.ticket-form__text {
+  min-height: 150px;
+  padding: 14px 16px;
+  border: 1px solid var(--border-strong);
+  border-radius: 14px;
+  background: var(--sunken);
+  resize: vertical;
+  outline: none;
+  font: inherit;
+  font-size: var(--fs-sm);
+  line-height: 1.6;
+  color: var(--ink);
+  transition: border-color 200ms var(--ease-out), box-shadow 200ms var(--ease-out);
+}
+
+.ticket-form__text::placeholder { color: var(--ink-faint); }
+.ticket-form__text:focus { border-color: var(--accent-mark); box-shadow: var(--focus-ring); }
+.ticket-form__text:focus-visible { outline: none; border-radius: 14px; }
+
+.ticket-form__chips { display: flex; flex-wrap: wrap; gap: 6px; }
+
+.ticket-form__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: 15px;
+  font-size: var(--fs-xs);
+  color: var(--ink-muted);
+  transition: background-color 180ms var(--ease-out), border-color 180ms var(--ease-out), color 180ms var(--ease-out),
+    transform 360ms var(--ease-spring);
+}
+
+.ticket-form__chip:hover { color: var(--ink); border-color: rgba(255, 255, 255, 0.28); }
+.ticket-form__chip:active { transform: scale(0.96); }
+.ticket-form__chip:focus-visible { border-radius: 15px; }
+.ticket-form__chip svg { color: var(--ink-faint); }
+
+.ticket-form__chip[aria-pressed='true'] {
+  border-color: rgba(90, 162, 255, 0.7);
+  background: var(--accent-soft);
+  color: var(--ink);
+}
+
+.ticket-form__chip[aria-pressed='true'] svg { color: var(--blue-bright); }
+
+.ticket-form__chip[data-tone='warn'][aria-pressed='true'] {
+  border-color: rgba(255, 181, 71, 0.6);
+  background: rgba(255, 181, 71, 0.1);
+}
+
+.ticket-form__chip[data-tone='warn'][aria-pressed='true'] svg { color: var(--warn); }
+
+.ticket-form__error { font-size: var(--fs-xs); color: var(--danger); }
+
+.ticket-form__foot { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.ticket-form__send { margin-left: auto; }

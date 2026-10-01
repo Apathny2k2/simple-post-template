@@ -1,0 +1,741 @@
+/* The Dash ingest API, the contract a server plugin implements (docs/plugin-api.md
+   has the prose). `GET /dash/schema` returns `dashEndpoints`, so a plugin can
+   check the version at startup. A static page cannot listen on a port, so data
+   arrives through `window.Vellum.dash`, `postMessage`, or `connect()`, which a
+   Paper plugin uses: Vellum polls or streams from a URL the plugin serves. All
+   three go through the same validators and the same log. */
+
+import {
+  LIMITS,
+  dashStore,
+  readFile,
+  readPack,
+  readCloud,
+  readMember,
+  readPlayers,
+  readReleases,
+  readServer,
+  readSubscription,
+} from './dash'
+import type { DashSnapshot, FileTouch, IngestRecord, Member, Section } from './dash'
+import type { EndpointSpec as Spec } from './endpoint'
+
+export const DASH_BASE = '/api/v1'
+
+/** Bump when a field changes meaning. `GET /dash/schema` returns it. */
+export const DASH_API_VERSION = 1
+
+export type DashGroup = 'Realm' | 'Pack' | 'Players' | 'Files' | 'Feed' | 'Console' | 'Cloud'
+export type DashEndpoint = Spec<DashGroup>
+
+export const dashEndpoints: DashEndpoint[] = [
+  /* ---- Feed ---- */
+  {
+    method: 'POST',
+    path: '/dash/snapshot',
+    group: 'Feed',
+    summary:
+      'Update every card in one call. Send what you know and leave out the rest. This is the cheapest way to report on a timer.',
+    body: [
+      { name: 'server', type: 'Server', note: 'Same body as PATCH /dash/server.' },
+      { name: 'pack', type: 'Pack', note: 'Same body as PATCH /dash/pack.' },
+      { name: 'players', type: 'Census', note: 'Same body as PUT /dash/players.' },
+      { name: 'subscription', type: 'Subscription', note: 'Same body as PATCH /dash/subscription.' },
+      { name: 'cloud', type: 'Workspace', note: 'Same body as PATCH /cloud/workspace.' },
+      { name: 'files', type: 'FileTouch[]', note: 'REPLACES the list. Use POST /dash/files to append.' },
+    ],
+    returns: '{ ok: true, applied: string[], problems: string[] }',
+    usedBy: 'Every card',
+  },
+  {
+    method: 'GET',
+    path: '/dash/snapshot',
+    group: 'Feed',
+    summary:
+      'Read the current state back. Implement this in your plugin. After you link it, Vellum polls this endpoint to fill the Dash.',
+    returns: '{ server, pack, players, subscription, files, meta }',
+  },
+  {
+    method: 'POST',
+    path: '/dash/heartbeat',
+    group: 'Feed',
+    summary:
+      'Say the plugin is alive and give its name. If Vellum stops hearing from you, the Dash shows your data as stale, then offline.',
+    body: [
+      { name: 'agent', type: 'string', note: 'Plugin name and version, e.g. "VellumBridge 1.4.0".' },
+      { name: 'everySeconds', type: 'integer', note: 'How often you will call, in seconds. 5 to 3600, default 30.' },
+    ],
+    returns: '{ ok: true, health: "live" }',
+    usedBy: 'Plugin activity',
+  },
+  {
+    method: 'GET',
+    path: '/dash/events',
+    group: 'Feed',
+    summary:
+      'Server-sent events, so the Dash updates as soon as something changes. Each event carries one section.',
+    params: [{ name: 'token', type: 'string', note: 'SSE cannot set headers, so pass the bearer token here.' }],
+    returns: 'text/event-stream of { section, body }',
+  },
+  {
+    method: 'GET',
+    path: '/dash/schema',
+    group: 'Feed',
+    summary: 'This contract, as JSON. Check it at startup to see which API version and limits this Vellum uses.',
+    returns: '{ version: integer, base: string, endpoints: EndpointSpec[], limits: object }',
+  },
+
+  /* ---- Realm ---- */
+  {
+    method: 'PATCH',
+    path: '/dash/server',
+    group: 'Realm',
+    summary: 'The realm card: name, address, status and synced files. Every field is optional. Fields you leave out keep their value.',
+    body: [
+      { name: 'name', type: 'string', note: 'Display name. Up to 64 characters.' },
+      { name: 'host', type: 'string', note: 'Hostname players connect to.' },
+      { name: 'ip', type: 'string', note: 'Resolved address. IPv4 or IPv6.' },
+      { name: 'status', type: 'string', note: 'Free text: Connected, Restarting, Degraded...' },
+      { name: 'online', type: 'boolean', note: 'Drives the status dot.' },
+      { name: 'breakdown', type: '{ label, count }[]', note: 'Up to 12 rows, e.g. Assets / Rigs / Mobs.' },
+      { name: 'total', type: 'integer', note: 'Total files synced. Omit and Vellum sums the breakdown.' },
+    ],
+    returns: '{ ok: true, problems: string[] }',
+    usedBy: 'Server',
+  },
+  {
+    method: 'PATCH',
+    path: '/dash/subscription',
+    group: 'Realm',
+    summary: 'The plan card: plan name, cloud region and seat usage.',
+    body: [
+      { name: 'type', type: 'string', note: 'Plan name.' },
+      { name: 'cloud', type: 'string', note: 'Region, or N/A.' },
+      { name: 'seats', type: 'string', note: 'Free text, e.g. "3 of 5".' },
+    ],
+    returns: '{ ok: true, problems: string[] }',
+    usedBy: 'Plan',
+  },
+
+  /* ---- Pack ---- */
+  {
+    method: 'PATCH',
+    path: '/dash/pack',
+    group: 'Pack',
+    summary: "The resource pack card. Send this when you finish building a pack. Don't send it on a timer.",
+    body: [
+      { name: 'archive', type: 'string', required: true, note: 'File name as served.' },
+      { name: 'bytes', type: 'integer', required: true, note: 'Size in bytes. Vellum formats it for display.' },
+      { name: 'hash', type: 'string', required: true, note: 'The SHA-1 you send to clients. Player reports are compared against it.' },
+      { name: 'pushedAt', type: 'string | integer', note: 'ISO 8601, epoch milliseconds or epoch seconds. Defaults to now when the hash changes.' },
+      { name: 'version', type: 'string | null', note: 'Your own build label, if you have one.' },
+    ],
+    returns: '{ ok: true, problems: string[] }',
+    usedBy: 'Resource pack',
+  },
+
+  /* ---- Players ---- */
+  {
+    method: 'PUT',
+    path: '/dash/players',
+    group: 'Players',
+    summary: 'The adoption card, counted by you. Use this if the plugin already knows both numbers.',
+    body: [
+      { name: 'correct', type: 'integer', required: true, note: 'Clients on the current pack.' },
+      { name: 'wrong', type: 'integer', required: true, note: 'Clients on an old pack or no pack.' },
+      { name: 'sampledAt', type: 'string | integer', note: 'When you counted. Defaults to now.' },
+    ],
+    returns: '{ ok: true, correct, wrong }',
+    usedBy: 'Players',
+  },
+  {
+    method: 'POST',
+    path: '/dash/players/report',
+    group: 'Players',
+    summary:
+      'Report one client and its pack hash. Vellum keeps the roster and does the counting. You can call this straight from PlayerResourcePackStatusEvent.',
+    body: [
+      { name: 'player', type: 'string', required: true, note: 'Name or UUID. The roster key.' },
+      { name: 'packHash', type: 'string', note: 'What that client acknowledged. Compared against the current pack hash.' },
+      { name: 'left', type: 'boolean', note: 'Send true when the player quits. It removes them from the roster.' },
+    ],
+    returns: '{ ok: true, correct, wrong, online }',
+    usedBy: 'Players',
+  },
+
+  /* ---- Files ---- */
+  {
+    method: 'POST',
+    path: '/dash/files',
+    group: 'Files',
+    summary: 'Add rows to the recent files table. It shows the newest first and keeps 50. Older rows are dropped.',
+    body: [
+      { name: 'name', type: 'string', required: true, note: 'File name. A row without one is dropped.' },
+      { name: 'where', type: 'string', note: 'Directory, as you want it displayed.' },
+      { name: 'touchedAt', type: 'string | integer', note: 'Defaults to now.' },
+      { name: 'by', type: 'string', note: 'Who touched it.' },
+      { name: 'sync', type: 'in-sync | outdated | unknown', note: 'Defaults to unknown.' },
+      { name: 'staleClients', type: 'integer', note: 'How many connected clients hold an old copy.' },
+    ],
+    returns: '{ ok: true, added: integer, problems: string[] }',
+    usedBy: 'Recent files',
+  },
+  {
+    method: 'DELETE',
+    path: '/dash/files',
+    group: 'Files',
+    summary: 'Clear the table. For a plugin that rebuilds the list from scratch each cycle.',
+    returns: '204',
+  },
+
+  /* ---- Cloud ---- */
+  {
+    method: 'PATCH',
+    path: '/cloud/workspace',
+    group: 'Cloud',
+    summary:
+      "The database a paid account gets. Send only what changed. Settings \u25b8 Cloud shows exactly what you send.",
+    body: [
+      { name: 'id', type: 'string', note: 'Workspace id, as you name it.' },
+      { name: 'region', type: 'string', note: 'Where the database lives.' },
+      { name: 'status', type: 'synced | syncing | paused | error', note: 'What the sync is doing right now.' },
+      { name: 'usedBytes', type: 'integer', note: 'Storage in use.' },
+      { name: 'quotaBytes', type: 'integer', note: 'What the plan allows.' },
+      { name: 'syncedAt', type: 'string | integer', note: 'When the last sync completed.' },
+      { name: 'members', type: 'Member[]', note: 'REPLACES the roster. Up to 40.' },
+    ],
+    returns: '{ ok: true, problems: string[] }',
+    usedBy: 'Settings \u25b8 Cloud',
+  },
+  {
+    method: 'PUT',
+    path: '/cloud/members',
+    group: 'Cloud',
+    summary:
+      'Just the roster, for a plugin that tracks who is connected without touching the rest of the workspace.',
+    body: [
+      { name: 'members', type: 'Member[]', required: true, note: 'REPLACES the list. Up to 40.' },
+      { name: 'members[].name', type: 'string', required: true, note: 'A member without a name is dropped.' },
+      { name: 'members[].id', type: 'string', note: 'Your own id for them. Generated if absent.' },
+      { name: 'members[].role', type: 'owner | editor | viewer', note: 'Defaults to viewer.' },
+      { name: 'members[].seenAt', type: 'string | integer', note: 'Last seen. Defaults to now.' },
+      { name: 'members[].holding', type: 'integer', note: 'Files they currently have open.' },
+    ],
+    returns: '{ ok: true, kept: integer, problems: string[] }',
+    usedBy: 'Settings \u25b8 Cloud',
+  },
+
+  /* ---- Console ---- */
+  {
+    method: 'PUT',
+    path: '/console/changelog',
+    group: 'Console',
+    summary:
+      'Replace the release notes shown in About. The Master Console sends them through the plugin, so users see what changed without visiting a website.',
+    body: [
+      { name: 'releases', type: 'Release[]', required: true, note: 'REPLACES the list. Newest 30 kept, sorted by date.' },
+      { name: 'releases[].version', type: 'string', required: true, note: 'An entry without one is dropped.' },
+      { name: 'releases[].channel', type: 'studio | plugin', note: 'Whether the note is about the studio or the plugin. Defaults to studio.' },
+      { name: 'releases[].at', type: 'string | integer', note: 'Release date. Defaults to now.' },
+      { name: 'releases[].title', type: 'string', note: 'One line, up to 96 characters. Defaults to the version.' },
+      { name: 'releases[].notes', type: 'string[]', note: 'Up to 12 lines, 200 characters each.' },
+    ],
+    returns: '{ ok: true, kept: integer, problems: string[] }',
+    usedBy: 'About \u25b8 Changelog',
+  },
+  {
+    method: 'GET',
+    path: '/plugin/version',
+    group: 'Console',
+    summary:
+      'Your plugin serves this and the studio calls it. About uses it to check that the plugin and studio versions are compatible.',
+    returns: '{ plugin: string, studioMin?: string, api?: integer }',
+    usedBy: 'About \u25b8 Versions',
+  },
+]
+
+/* ---------------- the client ---------------- */
+
+export type Via = IngestRecord['via']
+export type Ack = { ok: boolean; problems: string[] }
+
+type Body = Record<string, unknown>
+
+const asBody = (v: unknown): Body | null =>
+  v && typeof v === 'object' && !Array.isArray(v) ? (v as Body) : null
+
+function reject(op: string, why: string, via: Via): Ack {
+  dashStore.accept(null, op, [why], via, false)
+  return { ok: false, problems: [why] }
+}
+
+/** Recount adoption from the roster against the pack hash currently served. */
+function recountRoster(): { correct: number; wrong: number } {
+  const current = dashStore.snapshot.pack.hash.trim().toLowerCase()
+  let correct = 0
+  let wrong = 0
+  for (const hash of dashStore.roster.values()) {
+    if (current && hash && hash.trim().toLowerCase() === current) correct += 1
+    else wrong += 1
+  }
+  return { correct, wrong }
+}
+
+export const dash = {
+  /** POST /dash/snapshot */
+  snapshot(input: unknown, via: Via = 'bridge'): Ack & { applied: Section[] } {
+    const body = asBody(input)
+    if (!body) return { ...reject('POST /dash/snapshot', 'body must be a JSON object', via), applied: [] }
+
+    const problems: string[] = []
+    const applied: Section[] = []
+    const s = dashStore.snapshot
+
+    /* A section counts as applied, and loses its `sample` badge, only when
+       its reader found a known field in it. */
+    const section = (
+      key: Section,
+      read: (b: Body) => { value: unknown; problems: string[]; touched: string[]; known: readonly string[] },
+      assign: (v: never) => void,
+    ) => {
+      const raw = body[key]
+      if (raw === undefined) return
+      const sub = asBody(raw)
+      if (!sub) {
+        problems.push(
+          `${key}: expected an object, got ${Array.isArray(raw) ? 'array' : raw === null ? 'null' : typeof raw}. The section was skipped.`,
+        )
+        return
+      }
+      const r = read(sub)
+      if (!r.touched.length) {
+        problems.push(`${key}: has none of ${r.known.join(', ')}. The section was skipped.`)
+        return
+      }
+      problems.push(...r.problems)
+      assign(r.value as never)
+      applied.push(key)
+    }
+
+    section('server', (b) => readServer(b, s.server), (v) => (s.server = v))
+    section('pack', (b) => readPack(b, s.pack), (v) => (s.pack = v))
+    section('players', (b) => readPlayers(b, s.players), (v) => (s.players = v))
+    section('subscription', (b) => readSubscription(b, s.subscription), (v) => (s.subscription = v))
+    section('cloud', (b) => readCloud(b, s.cloud), (v) => (s.cloud = v))
+
+    if (body.files !== undefined) {
+      if (!Array.isArray(body.files)) {
+        problems.push('files: expected an array. The table was left alone.')
+      } else {
+        const rows = (body.files as unknown[])
+          .map((row, i) => readFile(asBody(row) ?? {}, i, problems))
+          .filter((f): f is FileTouch => f !== null)
+        s.files = rows.slice(0, LIMITS.files)
+        applied.push('files')
+      }
+    }
+
+    if (!applied.length) {
+      problems.push(
+        'nothing was applied: send at least one of server, pack, players, subscription, files, cloud',
+      )
+    }
+    dashStore.accept(null, 'POST /dash/snapshot', problems, via, applied.length > 0)
+    // one log line for the whole call; `notify` re-renders the cards without adding more
+    dashStore.notify(applied)
+    return { ok: applied.length > 0, applied, problems }
+  },
+
+  /** GET /dash/snapshot */
+  read(): DashSnapshot & { meta: { version: number; agent: string | null; lastSeen: number | null } } {
+    return {
+      ...dashStore.snapshot,
+      meta: {
+        version: DASH_API_VERSION,
+        agent: dashStore.meta.agent,
+        lastSeen: dashStore.meta.lastSeen,
+      },
+    }
+  },
+
+  /** PATCH /dash/server */
+  server(input: unknown, via: Via = 'bridge'): Ack {
+    const body = asBody(input)
+    if (!body) return reject('PATCH /dash/server', 'body must be a JSON object', via)
+    const r = readServer(body, dashStore.snapshot.server)
+    if (!r.touched.length) {
+      return reject('PATCH /dash/server', `nothing to apply: send one of ${r.known.join(', ')}`, via)
+    }
+    dashStore.snapshot.server = r.value
+    dashStore.accept('server', 'PATCH /dash/server', r.problems, via)
+    return { ok: true, problems: r.problems }
+  },
+
+  /** PATCH /dash/subscription */
+  subscription(input: unknown, via: Via = 'bridge'): Ack {
+    const body = asBody(input)
+    if (!body) return reject('PATCH /dash/subscription', 'body must be a JSON object', via)
+    const r = readSubscription(body, dashStore.snapshot.subscription)
+    if (!r.touched.length) {
+      return reject('PATCH /dash/subscription', `nothing to apply: send one of ${r.known.join(', ')}`, via)
+    }
+    dashStore.snapshot.subscription = r.value
+    dashStore.accept('subscription', 'PATCH /dash/subscription', r.problems, via)
+    return { ok: true, problems: r.problems }
+  },
+
+  /** PATCH /dash/pack */
+  pack(input: unknown, via: Via = 'bridge'): Ack {
+    const body = asBody(input)
+    if (!body) return reject('PATCH /dash/pack', 'body must be a JSON object', via)
+    /* The first pack report must carry archive, bytes and hash, so player
+       reports are never compared against the sample's hash. */
+    const firstPack = !dashStore.meta.fed.includes('pack')
+    const missing = firstPack ? ['archive', 'bytes', 'hash'].filter((k) => body[k] === undefined) : []
+    if (missing.length) {
+      return reject('PATCH /dash/pack', `the first pack report must include ${missing.join(', ')}`, via)
+    }
+    const r = readPack(body, dashStore.snapshot.pack)
+    if (!r.touched.length) {
+      return reject('PATCH /dash/pack', `nothing to apply: send one of ${r.known.join(', ')}`, via)
+    }
+    const { value, problems } = r
+    dashStore.snapshot.pack = value
+    dashStore.accept('pack', 'PATCH /dash/pack', problems, via)
+
+    // a new hash can make reported clients stale, so recount against it now
+    if (dashStore.roster.size) {
+      const counted = recountRoster()
+      dashStore.snapshot.players = { ...counted, sampledAt: new Date().toISOString() }
+      dashStore.notify(['players'])
+    }
+    return { ok: true, problems }
+  },
+
+  /** PUT /dash/players */
+  players(input: unknown, via: Via = 'bridge'): Ack & { correct: number; wrong: number } {
+    const body = asBody(input)
+    if (!body) {
+      return { ...reject('PUT /dash/players', 'body must be a JSON object', via), correct: 0, wrong: 0 }
+    }
+    const r = readPlayers(body, dashStore.snapshot.players)
+    if (!r.touched.length) {
+      return {
+        ...reject('PUT /dash/players', `nothing to apply: send one of ${r.known.join(', ')}`, via),
+        correct: dashStore.snapshot.players.correct,
+        wrong: dashStore.snapshot.players.wrong,
+      }
+    }
+    const { value, problems } = r
+    dashStore.snapshot.players = value
+    dashStore.accept('players', 'PUT /dash/players', problems, via)
+    return { ok: true, problems, correct: value.correct, wrong: value.wrong }
+  },
+
+  /** POST /dash/players/report */
+  report(input: unknown, via: Via = 'bridge'): Ack & { correct: number; wrong: number; online: number } {
+    const body = asBody(input)
+    const player = typeof body?.player === 'string' ? body.player.trim().slice(0, 48) : ''
+    if (!player) {
+      return {
+        ...reject('POST /dash/players/report', 'player is required', via),
+        correct: 0,
+        wrong: 0,
+        online: dashStore.roster.size,
+      }
+    }
+
+    if (body?.left === true) dashStore.roster.delete(player)
+    else dashStore.roster.set(player, typeof body?.packHash === 'string' ? body.packHash : '')
+
+    const counted = recountRoster()
+    dashStore.snapshot.players = { ...counted, sampledAt: new Date().toISOString() }
+    dashStore.accept('players', 'POST /dash/players/report', [], via)
+    return { ok: true, problems: [], ...counted, online: dashStore.roster.size }
+  },
+
+  /** POST /dash/files */
+  files(input: unknown, via: Via = 'bridge'): Ack & { added: number } {
+    const rows = Array.isArray(input) ? (input as unknown[]) : [input]
+    const problems: string[] = []
+    const parsed = rows
+      .map((row, i) => readFile(asBody(row) ?? {}, i, problems))
+      .filter((f): f is FileTouch => f !== null)
+
+    if (!parsed.length) {
+      dashStore.accept(null, 'POST /dash/files', problems.length ? problems : ['no usable rows'], via, false)
+      return { ok: false, problems, added: 0 }
+    }
+
+    // newest first; the last row of a batch counts as the newest
+    dashStore.snapshot.files = [...parsed.reverse(), ...dashStore.snapshot.files].slice(0, 50)
+    dashStore.accept('files', 'POST /dash/files', problems, via)
+    return { ok: true, problems, added: parsed.length }
+  },
+
+  /** DELETE /dash/files */
+  clearFiles(via: Via = 'bridge'): Ack {
+    dashStore.snapshot.files = []
+    dashStore.accept('files', 'DELETE /dash/files', [], via)
+    return { ok: true, problems: [] }
+  },
+
+  /** PATCH /cloud/workspace */
+  cloud(input: unknown, via: Via = 'bridge'): Ack {
+    const body = asBody(input)
+    if (!body) return reject('PATCH /cloud/workspace', 'body must be a JSON object', via)
+    const r = readCloud(body, dashStore.snapshot.cloud)
+    if (!r.touched.length)
+      return reject('PATCH /cloud/workspace', `nothing to apply: send one of ${r.known.join(', ')}`, via)
+    dashStore.snapshot.cloud = r.value
+    dashStore.accept('cloud', 'PATCH /cloud/workspace', r.problems, via)
+    return { ok: true, problems: r.problems }
+  },
+
+  /** PUT /cloud/members */
+  members(input: unknown, via: Via = 'bridge'): Ack & { kept: number } {
+    const body = asBody(input)
+    const raw = Array.isArray(input) ? input : body?.members
+    if (!Array.isArray(raw))
+      return { ...reject('PUT /cloud/members', 'send { members: [...] }', via), kept: 0 }
+
+    const problems: string[] = []
+    const members = raw
+      .slice(0, LIMITS.members)
+      .map((m, i) => readMember(asBody(m) ?? {}, i, problems))
+      .filter((m): m is Member => m !== null)
+    if (raw.length > LIMITS.members)
+      problems.push(`members: ${raw.length} listed, kept the first ${LIMITS.members}`)
+
+    dashStore.snapshot.cloud = { ...dashStore.snapshot.cloud, members }
+    dashStore.accept('cloud', 'PUT /cloud/members', problems, via)
+    return { ok: true, problems, kept: members.length }
+  },
+
+  /** PUT /console/changelog */
+  changelog(input: unknown, via: Via = 'bridge'): Ack & { kept: number } {
+    const body = asBody(input)
+    const raw = Array.isArray(input) ? input : body?.releases
+    if (raw === undefined)
+      return { ...reject('PUT /console/changelog', 'send { releases: [...] }', via), kept: 0 }
+
+    const problems: string[] = []
+    const releases = readReleases(raw, problems)
+    dashStore.setReleases(releases)
+    dashStore.accept(null, 'PUT /console/changelog', problems, via)
+    return { ok: true, problems, kept: releases.length }
+  },
+
+  /** POST /dash/heartbeat */
+  heartbeat(input: unknown, via: Via = 'bridge'): Ack {
+    const body = asBody(input) ?? {}
+    const problems: string[] = []
+    const agent = typeof body.agent === 'string' ? body.agent.trim().slice(0, 64) : dashStore.meta.agent
+    if (body.agent != null && typeof body.agent !== 'string') {
+      problems.push(`agent: expected a string, got ${typeof body.agent}. Kept the previous value.`)
+    }
+    let every = Number(body.everySeconds ?? dashStore.meta.heartbeatSeconds)
+    if (!Number.isFinite(every)) {
+      problems.push(`everySeconds: ${JSON.stringify(body.everySeconds)} is not a number. Used 30.`)
+      every = 30
+    }
+    if (every < 5 || every > 3600) {
+      problems.push(`everySeconds: ${every} is outside 5..3600. Clamped to the nearest limit.`)
+      every = Math.max(5, Math.min(3600, every))
+    }
+    dashStore.setAgent(agent || null, Math.round(every))
+    dashStore.accept(null, 'POST /dash/heartbeat', problems, via)
+    return { ok: true, problems }
+  },
+
+  /** GET /dash/schema */
+  schema() {
+    return { version: DASH_API_VERSION, base: DASH_BASE, endpoints: dashEndpoints, limits: LIMITS }
+  },
+
+  /** Not an endpoint: drop back to the frozen sample. */
+  reset() {
+    dashStore.reset()
+  },
+}
+
+/* ---------------- transport 1: the in-page bridge ---------------- */
+
+declare global {
+  interface Window {
+    Vellum?: {
+      version: number
+      dash: typeof dash
+    }
+  }
+}
+
+/** Exposes `dash` as `window.Vellum.dash`, for scripts in the page and for trying payloads in devtools. */
+export function installBridge() {
+  if (typeof window === 'undefined') return
+  window.Vellum = { version: DASH_API_VERSION, dash }
+}
+
+/* ---------------- transport 2: postMessage ---------------- */
+
+type Envelope = { vellum: number; id?: string; op: string; body?: unknown }
+
+const OPS: Record<string, (body: unknown, via: Via) => unknown> = {
+  'dash.snapshot': (b, v) => dash.snapshot(b, v),
+  'dash.server': (b, v) => dash.server(b, v),
+  'dash.subscription': (b, v) => dash.subscription(b, v),
+  'dash.pack': (b, v) => dash.pack(b, v),
+  'dash.players': (b, v) => dash.players(b, v),
+  'dash.report': (b, v) => dash.report(b, v),
+  'dash.files': (b, v) => dash.files(b, v),
+  'dash.clearFiles': (_b, v) => dash.clearFiles(v),
+  'dash.heartbeat': (b, v) => dash.heartbeat(b, v),
+  'dash.schema': () => dash.schema(),
+  'dash.read': () => dash.read(),
+}
+
+/** Takes writes from an embedding page whose origin is in `allowedOrigins`. There is no wildcard. */
+export function listenPostMessage(allowedOrigins: string[]): () => void {
+  const allowed = new Set(allowedOrigins.filter(Boolean))
+  const onMessage = (e: MessageEvent) => {
+    if (!allowed.has(e.origin)) return
+    const msg = e.data as Envelope | null
+    if (!msg || typeof msg !== 'object' || msg.vellum !== DASH_API_VERSION) return
+    const handler = OPS[msg.op]
+    const result = handler
+      ? handler(msg.body, 'postMessage')
+      : { ok: false, problems: [`unknown op ${msg.op}`] }
+    e.source?.postMessage({ vellum: DASH_API_VERSION, id: msg.id, result }, { targetOrigin: e.origin })
+  }
+  window.addEventListener('message', onMessage)
+  return () => window.removeEventListener('message', onMessage)
+}
+
+/* ---------------- transport 3: the plugin's own endpoint ---------------- */
+
+export type Link = {
+  baseUrl: string
+  token: string
+  intervalMs: number
+  /** try Server-Sent Events before falling back to polling */
+  stream: boolean
+}
+
+export type LinkState = {
+  link: Link | null
+  status: 'idle' | 'connecting' | 'streaming' | 'polling' | 'error'
+  detail: string | null
+}
+
+const STORAGE_KEY = 'vellum.dash.link'
+
+export function loadLink(): Link | null {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY)
+    return raw ? (JSON.parse(raw) as Link) : null
+  } catch {
+    // storage blocked: there is no saved link
+    return null
+  }
+}
+
+function saveLink(link: Link | null) {
+  try {
+    if (link) localStorage.setItem(STORAGE_KEY, JSON.stringify(link))
+    else localStorage.removeItem(STORAGE_KEY)
+  } catch {
+    /* storage blocked: the link lasts for this session only */
+  }
+}
+
+let active: { stop: () => void } | null = null
+
+/**
+ * Feeds the Dash from a URL the plugin serves, over SSE when `link.stream` is set and by
+ * polling otherwise or once the stream fails. The plugin must allow this origin with CORS.
+ * EventSource cannot set headers, so the SSE token goes in the query string, where access logs keep it.
+ */
+export function connect(link: Link, onState: (s: LinkState) => void): () => void {
+  disconnect()
+  saveLink(link)
+
+  const base = link.baseUrl.replace(/\/+$/, '')
+  let stopped = false
+  let timer = 0
+  let source: EventSource | null = null
+
+  const apply = (payload: unknown, why: string) => {
+    const result = dash.snapshot(payload, 'http')
+    if (!result.ok) onState({ link, status: 'error', detail: `${why}: ${result.problems[0] ?? 'nothing applied'}` })
+  }
+
+  const poll = async () => {
+    if (stopped) return
+    try {
+      const res = await fetch(`${base}/dash/snapshot`, {
+        headers: link.token ? { Authorization: `Bearer ${link.token}` } : {},
+      })
+      if (!res.ok) throw new Error(`${res.status} ${res.statusText}`)
+      apply(await res.json(), 'poll')
+      dash.heartbeat({ everySeconds: Math.round(link.intervalMs / 1000) }, 'http')
+      onState({ link, status: 'polling', detail: null })
+    } catch (e) {
+      onState({ link, status: 'error', detail: (e as Error).message })
+    }
+    if (!stopped) timer = window.setTimeout(poll, link.intervalMs)
+  }
+
+  const startStream = () => {
+    const url = `${base}/dash/events${link.token ? `?token=${encodeURIComponent(link.token)}` : ''}`
+    try {
+      source = new EventSource(url)
+    } catch {
+      void poll()
+      return
+    }
+    let everArrived = false
+    source.onopen = () => onState({ link, status: 'streaming', detail: null })
+    source.onmessage = (e) => {
+      everArrived = true
+      try {
+        // an event is one section, { section, body }; a whole snapshot is taken too
+        const data = JSON.parse(e.data)
+        const one = data && typeof data === 'object' && typeof data.section === 'string' && 'body' in data
+        apply(one ? { [data.section]: data.body } : data, 'stream')
+      } catch {
+        onState({ link, status: 'error', detail: 'an event was not valid JSON' })
+      }
+    }
+    source.onerror = () => {
+      source?.close()
+      source = null
+      if (stopped) return
+      // a stream that never opened means the plugin does not serve one
+      onState({
+        link,
+        status: 'connecting',
+        detail: everArrived ? 'stream dropped, polling instead' : 'no event stream, polling instead',
+      })
+      void poll()
+    }
+  }
+
+  onState({ link, status: 'connecting', detail: null })
+  if (link.stream) startStream()
+  else void poll()
+
+  const stop = () => {
+    stopped = true
+    if (timer) window.clearTimeout(timer)
+    source?.close()
+    source = null
+  }
+  active = { stop }
+  return stop
+}
+
+export function disconnect() {
+  active?.stop()
+  active = null
+  saveLink(null)
+}

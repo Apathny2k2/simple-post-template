@@ -1,0 +1,97 @@
+/* Bones are nested divs, so a child inherits its parent's transform. */
+
+.model-root,
+.model-group,
+.model-pivot,
+.model-cube {
+  position: absolute;
+  transform-style: preserve-3d;
+  top: 0;
+  left: 0;
+}
+
+.model-cube {
+  cursor: pointer;
+}
+
+/* the stage opts its whole subtree out of hit-testing; the model opts back in */
+.model-cube,
+.model-face {
+  pointer-events: auto;
+}
+
+.model-face {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  outline: 1px solid rgba(0, 0, 0, 0.22);
+  outline-offset: -1px;
+  backface-visibility: hidden;
+  overflow: hidden;
+}
+
+/* The texture is its own layer so a face's UV rotation turns the image without turning the face. */
+.model-face__skin {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  background-repeat: no-repeat;
+  pointer-events: none;
+}
+
+/* fixed per-face shading: top brightest, bottom darkest */
+.model-face[data-face='up'] { filter: brightness(1.14); }
+.model-face[data-face='down'] { filter: brightness(0.62); }
+.model-face[data-face='north'] { filter: brightness(0.78); }
+.model-face[data-face='south'] { filter: brightness(1); }
+.model-face[data-face='east'] { filter: brightness(0.9); }
+.model-face[data-face='west'] { filter: brightness(0.84); }
+/* the stage's sheet has Minecraft's face shading painted in */
+.model-face[data-shaded] { filter: none; }
+
+.model-cube--selected .model-face {
+  outline: 1px solid var(--accent-mark);
+  outline-offset: -1px;
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+/* ---- on-canvas zoom cluster ---- */
+.scene3d__zoom {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  border-radius: 9px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  background: var(--glass-thick);
+  backdrop-filter: blur(9px) saturate(1.2);
+}
+
+.scene3d__zoom button {
+  width: 27px;
+  height: 24px;
+  border: 0;
+  background: transparent;
+  color: var(--ink-muted);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background var(--ease), color var(--ease);
+}
+
+.scene3d__zoom button:hover {
+  background: var(--sunken-strong);
+  color: var(--ink);
+}
+
+.scene3d__zoom-level {
+  font-family: var(--font-mono);
+  font-size: 9px !important;
+  letter-spacing: 0.02em;
+  border-top: 1px solid var(--border) !important;
+  border-bottom: 1px solid var(--border) !important;
+}

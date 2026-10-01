@@ -1,0 +1,103 @@
+/* A CSS 3D-transform scene, six divs per box. Shared with ModelView. */
+
+.scene3d {
+  /* inset: 0 because height: 100% collapses to zero when the parent's height
+     comes from min-height or flex sizing. */
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  perspective: 900px;
+  perspective-origin: 50% 46%;
+  touch-action: none;
+}
+
+.scene3d__stage {
+  position: absolute;
+  inset: 0;
+  transform-style: preserve-3d;
+  /* If hit-testable, the stage sits at z=0 and takes clicks meant for faces
+     pushed behind that plane. Events fall through to .scene3d, which orbits. */
+  pointer-events: none;
+  /* base pose, also used by a spinning scene under reduced motion */
+  transform: translate(var(--pan-x, 0px), var(--pan-y, 0px)) translateZ(var(--zoom, 0px))
+    rotateX(var(--pitch, -22deg)) rotateY(var(--yaw, -34deg))
+    scale3d(var(--zoom-scale, 1), var(--zoom-scale, 1), var(--zoom-scale, 1));
+}
+
+.scene3d--spin .scene3d__stage {
+  animation: scene-spin 9s linear infinite;
+}
+
+@keyframes scene-spin {
+  from { transform: translateZ(var(--zoom, 0px)) rotateX(var(--pitch, -22deg)) rotateY(0deg) scale3d(var(--zoom-scale, 1), var(--zoom-scale, 1), var(--zoom-scale, 1)); }
+  to { transform: translateZ(var(--zoom, 0px)) rotateX(var(--pitch, -22deg)) rotateY(360deg) scale3d(var(--zoom-scale, 1), var(--zoom-scale, 1), var(--zoom-scale, 1)); }
+}
+
+.scene3d__origin {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 0;
+  height: 0;
+  transform-style: preserve-3d;
+}
+
+.scene3d__probe {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100px;
+  height: 100px;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.scene3d__grid {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform-style: preserve-3d;
+  pointer-events: none;
+}
+
+.scene3d__grid-plane {
+  position: absolute;
+  transform: translate(-50%, -50%) rotateX(90deg);
+  background-image:
+    linear-gradient(to right, var(--grid-line) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--grid-line) 1px, transparent 1px);
+  background-size: var(--cell, 24px) var(--cell, 24px);
+  border: 1px solid color-mix(in srgb, var(--ink-faint) 40%, transparent);
+}
+
+.box3d {
+  position: absolute;
+  transform-style: preserve-3d;
+}
+
+.box3d__face {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  outline: 1px solid rgba(0, 0, 0, 0.16);
+  outline-offset: -1px;
+  background-repeat: no-repeat;
+}
+
+.box3d--selected .box3d__face {
+  outline: 1px solid var(--accent-hover);
+  outline-offset: -1px;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent-hover) 45%, transparent);
+}
+
+/* faint pixel grid on placeholder faces */
+.box3d__face::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.055) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 0, 0, 0.055) 1px, transparent 1px);
+  background-size: 8px 8px;
+  opacity: 0.9;
+}

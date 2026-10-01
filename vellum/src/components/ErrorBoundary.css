@@ -1,0 +1,45 @@
+.crash {
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: var(--sp-5);
+  background: var(--bg-deep);
+  color: var(--ink);
+}
+
+.crash__card {
+  max-width: 62ch;
+  padding: clamp(24px, 4vw, 40px);
+  border-radius: var(--r-xl);
+  border: 1px solid var(--accent);
+  background-color: var(--glass);
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat));
+  box-shadow: var(--inner-highlight), var(--shadow-lg);
+}
+
+.crash__title {
+  margin: 0 0 10px;
+  font-size: clamp(1.3rem, 3vw, 1.75rem);
+  font-weight: 300;
+  letter-spacing: -0.02em;
+}
+
+.crash__lead { margin: 0 0 16px; color: var(--ink-muted); line-height: 1.6; }
+
+.crash__msg {
+  margin: 0 0 18px;
+  padding: 12px 14px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--border);
+  background: var(--sunken);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--danger);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 30vh;
+  overflow: auto;
+}
+
+.crash__actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.crash__note { margin: 16px 0 0; font-size: 12px; color: var(--ink-faint); line-height: 1.55; }

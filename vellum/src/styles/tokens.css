@@ -1,0 +1,137 @@
+/* Design tokens for the editor: Minecraft's inventory greys, with a blue for
+   selection. studio.css re-points them for the dark pages. Named by role. */
+
+:root {
+  color-scheme: light;
+
+  /* ---------- ground and panels ---------- */
+
+  --bg: #b9b9b9;
+  --bg-deep: #adadad;
+  /* search fields, log strips, tree gutters */
+  --sunken: rgba(55, 55, 55, 0.12);
+  --sunken-strong: rgba(55, 55, 55, 0.2);
+
+  /* Glass: translucent panels over a backdrop blur. At 14px the shape
+     behind a panel stays readable. */
+  --glass-blur: 14px;
+  --glass-blur-sm: 9px;
+  --glass-blur-lg: 20px;
+  --glass-sat: 1.05;
+  --glass-thin: rgba(198, 198, 198, 0.72);
+  --glass: rgba(198, 198, 198, 0.86);
+  --glass-thick: rgba(198, 198, 198, 0.94);
+  --glass-solid: rgba(203, 203, 203, 0.98);
+
+  /* the top bar, and the editor's menu bar, toolbar and status bar */
+  --bar-bg: #c6c6c6;
+  --bar-bg-strong: #c6c6c6;
+  --bar-bg-soft: rgba(198, 198, 198, 0.92);
+
+  /* behind the model in the viewport: the inventory's slot grey */
+  --viewport-bg: #8b8b8b;
+  /* behind the UV sheet; dark, because pale texels vanish on grey */
+  --uv-bg: #262626;
+  /* the YAML listing, solid */
+  --code-bg: #d6d6d6;
+  --grid-line: rgba(0, 0, 0, 0.1);
+
+  /* ---------- lines ---------- */
+
+  --border: rgba(55, 55, 55, 0.4);
+  --border-strong: rgba(55, 55, 55, 0.6);
+  --border-dashed: rgba(55, 55, 55, 0.55);
+  --border-accent: rgba(38, 70, 144, 0.6);
+  --focus-ring: 0 0 0 1px rgba(38, 70, 144, 0.6);
+
+  /* ---------- text ---------- */
+
+  --ink: #1f1f1f;
+  --ink-muted: #373737;
+  --ink-faint: #404040;
+
+  /* ---------- the accent ---------- */
+
+  --accent: #264690;
+  --accent-hover: #1e3a78;
+  --accent-ink: #ffffff;
+  /* borders, focus, dots and icons */
+  --accent-mark: #264690;
+  /* accent-coloured text */
+  --accent-text: #1e3a78;
+  --accent-soft: rgba(38, 70, 144, 0.16);
+  --accent-softer: rgba(38, 70, 144, 0.08);
+
+  /* ---------- state ---------- */
+
+  --ok: #17572f;
+  --warn: #6b4a12;
+  --danger: #8a1c14;
+
+  /* axis colours, dark enough to read as text on the panels */
+  --axis-x: #8f2a20;
+  --axis-y: #245a33;
+  --axis-z: #223f86;
+
+  /* ---------- depth ---------- */
+
+  /* Next to nothing, so borders separate panels. Menus use --shadow-lg
+     and dialogs --shadow-pop. */
+  --shadow: 0 1px 0 rgba(0, 0, 0, 0.12);
+  --shadow-lg: 0 10px 24px -14px rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(55, 55, 55, 0.35);
+  --shadow-pop: 0 18px 40px -20px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(55, 55, 55, 0.4);
+  /* a lit line along a panel's top edge, as the inventory draws it */
+  --inner-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.45);
+  --inner-highlight-soft: inset 0 1px 0 rgba(255, 255, 255, 0.3);
+
+  /* ---------- type ---------- */
+
+  --font-sans: 'Vellum Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'Vellum Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+
+  --fs-2xs: 0.6875rem;
+  --fs-xs: 0.75rem;
+  --fs-sm: 0.8125rem;
+  --fs-base: 0.875rem;
+  --fs-md: 1rem;
+  --fs-lg: 1.0625rem;
+  --fs-xl: 1.25rem;
+  --fs-2xl: 1.5rem;
+  --fs-3xl: 1.875rem;
+
+  --tracking-wide: 0.06em;
+  --tracking-caps: 0.11em;
+
+  /* ---------- shape and space ---------- */
+
+  --r-xs: 2px;
+  --r-sm: 3px;
+  --r-md: 4px;
+  --r-lg: 6px;
+  --r-xl: 8px;
+  /* buttons, chips and tab groups */
+  --r-control: 4px;
+
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+  --sp-6: 24px;
+  --sp-8: 32px;
+  --sp-10: 40px;
+  --sp-12: 48px;
+
+  --gutter: clamp(16px, 2.6vw, 36px);
+  --shell-max: 1680px;
+  --topbar-h: 52px;
+
+  /* ---------- motion ---------- */
+
+  /* One short curve with no overshoot. The dark surface adds springs in
+     studio.css. */
+  --dur-fast: 90ms;
+  --dur: 140ms;
+  --dur-slow: 220ms;
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+}

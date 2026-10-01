@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Vellum</title>
+    <meta name="description" content="Vellum is a model studio in your browser and a plugin on your Minecraft server. Shape, paint and animate mobs, items and blocks, then push them to your players." />
+    <meta name="theme-color" content="#f4f4f3" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="preload" href="/fonts/inter-latin.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/jetbrains-mono-latin.woff2" as="font" type="font/woff2" crossorigin />
+    <script>
+      // Every page but the editor is dark. Set before the first paint, so a
+      // dark page doesn't flash light while the app loads.
+      if (!/^#\/editor/.test(location.hash)) document.documentElement.dataset.surface = 'dark'
+    </script>
+  </head>
+  <body>
+    <div id="root">
+      <!-- boot:start (written by scripts/make-boot.mjs) -->
+      <style>
+        .boot {
+          position: fixed;
+          inset: 0;
+          display: grid;
+          place-content: center;
+          justify-items: center;
+          gap: 12px;
+          color: var(--ink-muted, #8a8f99);
+          font: 13px/1.4 system-ui, -apple-system, 'Segoe UI', sans-serif;
+          opacity: 0;
+          animation: boot-in 240ms ease-out 150ms forwards;
+        }
+        .boot__pip {
+          --sprite: url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAABpwAAABjCAYAAACGyaPCAAALFElEQVR42u3dQW5bvQ6A0ew52+ye0qknaS1TvCLFcwBNiiD1//xBVzIf6q8vAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAavh5WaAZAAAAAABgmeEBmgEAAAAAAEIMD9AMAAAAAAzlwz5WO3lnoQ3NoBkAAAAAGMSHd6x24oNgIm1oBs0AAAAAwIV8eMdqJz4IJtKGZtAMAADAhxck0AyaoVozPuxDJ2gGzeAMjGbQjGbQDJpBNGgGzWiGUDM+4EMnaAbN4AyMZtCMZtAMmkE0aAbNaIZQMz7gQydoBs3gDIxm0Ixm0AyaofFlCc1ohgrNaEwzvzVgj9LMrgZ0oplIM/rRjGY040yCZtAMmkEziEY0aIYGzWhMMwZOmjFwonIz+tGMZjTjTIJm0AyaQTOIRjRohgbNaEwzBk6aMXCicjP60YxmNONMgmbQDJpBM4hDTJrRDEWb0ZhmsodSaEYnmjGw1Ixm6H4G1pJm0IxmNKMZNINo0Aya0ZhmDBIo9GzSiWYMDzSjGTqegbWkGTSjGc1oBs0gGjSDZjSmGYMECj2bdKIZwwPNaIaOZ2AtaQbNaEYzmkEzpAdU+XeiGTSz6/ucPNjsM5HvzNCMZ5NnmWZ2PZvQjGY0s+t3+j4wzTifaEYzaAbNIBo0oxnNfPh7DJw0k92PZjRj4KSZ7GcTmtGMZnb9TgMnzTifaEYzaAbNIBo0oxnNfPh7DJw0k92PZjRj4KSZ7GcTmtGMZnb9TgMnzTifaEYzaAbNUC4a//YimuGmZly8NbNrz9GGZtCMZtAMNzWjQ82gGc1oRjNoBtGgGTRj4KQZAyc8m9AMmkEzKa8NzaAZzWhGM2gG0aAZNPOfv9dlWzMGTprxbEIzaAbNOANrBs1oRjOaQTMUjcaBVTPZzdikNBPZZ3b9DPc1433XjPMMmkEzTGvG3UozaEYzaAbNIBpGN+NSpJnIPmPgpBn7hmacZ9AMmkEz7laa8Z5qRjNoBs0gGjTjUqSZ0D5j4KQZ+4ZmnGfQDJpBM+5WmvGeakYzaAbN0CAah1TNVPg+Hu1p5p1OVl8nnk1oRjOa0QyaoXszvtNUM95TzWgGzaAZRINmFi5L2tPM6qU6ciHHswnNoBnNaEYzdGnGwEkz3lPNaAbNoBlEg2YWLkva08zqpTpyIcezCc2gGc1oRjN0acbASTPeU81oBs2gGUSDZja/HuY0433XjD1BM5pBM2iGyWfgyFBKk/YZNKMZzWgGzSAaRjejQ8389nehGXuCZjSDZtAM087ABk6a8Z5qRjNoBs0gGjRj4KQZAyc8m9AMmkEzaMbASTP2GTSDZtAMohGNZk78W+S+20kz3l/NaAadoBk0w+TzTMb/gQ/7DJpBM5pBM4iGEc0YOGnG+6sZzeA8g2bQDM4zBk6asc9oRjNoBs0gGjRj4KQZew6awXkGzaAZzWjGwAn7DJpBM2gG0YhJM8+2sWtAxd37DJrRiWY0g2bQDM7An71O7DNoRjOa0Qyaoc0hWEyaMXDSjL0FBxo0g2bQjGY0Y+CEfQbNoBk0g2jEhIET1162sc+gGc1oRjNohmlnYB3aZ9CMZjSjGTRD6YB2/V1oJvt7nnDxxj6DZjSDZtAMPqzBPuMzHM14HzWjGeo0ozfRGDhpxsCJEpdt77Vm9IBm0AyaYdoZGM0YOGE/QTPc1IzeRGPgpBkDJ0pctr3XmtEDmkEzaIZpZ2A0Y+CE/QTNcFMzehNN6I0XkGayu8I+g2bQjGbQDJpBM7hr7/3cRtv2Gc1oJuM1oBmdiEY0mjFwwmUbzaAZNINmNINmaHDX7v56qL/PaEYzkdeAZnQiGtFoxsAJl200g2bQDJrRDJqhwV27++uh/j6jGc1EXgOa0cmFvl/Wqc3Fw6lvM6v9OARr5rc17SKHZtCMZjSjGc1oRjOaofJdO/Lnqz/DM5/pZQ+cdv28ZuY049l0XzNdOtHMJdEYODkEGzhpxmUbzWhGM5rRjGY0oxnNaIb6d+3In6/+DM98pmfghIET2c106UQzl0Rj4OQQbOCkGZdtNKMZzWhGM5rRjGY0oxnq37Ujf776MzzzmZ6BEwZOZDfTpRPNFD10rv7+1Z/xcLqvmVPf26SZ+/YZzWhGM2gGzWhGM5rRjGY0s7e31c9wNHNHM6dej2Y049nkPBN5DZoZFI2Bk2YMnHDZRjOa0YxmNKMZzWhGM5rh7F3bwEkzBk4YONHxPGPgJJq3fv/qz4hmziHYw0kzLttoBs1oRjOa0YxmNKMZzRg48Xwzp16PZjTj2eQ8E3kNmhl0oIm8BgcaG03kYaMZzWhGM5rRjGbQjGY0oxnNaEYzz7yG1d644zO9yOvRjGYMKTVT4fuZNHPhRmPg5BDs4qQZzaAZNKMZzWhGM5rRjGY0Y+BEr8/0Iq9HM5oxPNCMgZNoDJxwcUIzmtGMZjSjGc1oRjOaQTOaubAZAyef6Rk4acbAiSebMXASzaMHmsjPiMbFSTOa0YxmNKMZzaAZzWhGM5rRjGbyXk+kN+o3k/3zmpnTzKnvmWPms0kzojFw0oyLk2Y0g2bQjGY0oxnNaEYzmtGMgROFmjFw0oyBEwZOtIzGwEkzLk6a0QyaQTOa0YxmNKMZzWhGMwZO1GnGwEkzBk4YOBHy/bIqhJJxgOaOZna9v5rRjGY0oxnNaAbNoBnNaEYzmnn/s5qMlujVzKnv+GHOPuPZpBnNiOZYKKKx0WhGM5rRjGbQDJrRjGY0oxnNaCavGcMDzay2oRnNRFrybNKMZkRzLBTR2Gg0oxnNaEYzaAbNaEYzmtGMZjST14zhgWZW29CMZiIteTZpRjOiST+wejhp5snNQjOa0YxmNKMZzWhGM2gGzWhmWjOGB5rJ6Cdj7+LuZuwzmlndWzQjGgMnzbg4aUYzaEYzmtGMZjSjGc1oRjMUasbASTMZ/WTsXdzdjH1GM6t7i2ZEY+CkGRcnzWgGzWhGM5rRjGY0oxnNaIZCzRg4aSajn4y9i7ubsc9oZnVv0YxoHn2DRaMZzWhGM5rRjGY0g2bQjGY0oxnN/Pt9fHJxxz6jGc1kNOPZpJlTTeIQLBrNaEYzmtGMZtAMmtGMZjSjGc1oZsP7aHigmcr9MKcZzybNGDiJxiFYM5pBM5rRjGY0oxnNaEYzmkEzNGvGwEkzXfphTjOeTZoxcLok6NVoOh50NKMZzWhGM5rRjGY0oxnNaEYzmtGMZjSDZj5rRnuaeee/ffV7dzybNOM8IxrRaEYzmtGMZjSjGc1oRjOa0YxmNKMZzVzYzDSaMXDSjIGTZpxnRCMaG41mNKMZzWhGM5rRjGY0oxnNaEYzmtGMgZNmDJw0U6gZAyfNjD7P/FiWZVmWZVmWZVmWZVmWZVmWZVlWZHDlfwTLsizLsizLsizLsizLsizLsizLwMmyLMuyLMuyLMuyLMuyLMuyLMs6N3ACAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABS/XlZoBk0g2bQDJoBzaAZNINm0AxoBtGgGTSDZtAMaAbNoBk0g2ZAM2gG0aAZNINmNINm0AyaQTNoBjSDZtAMAAAAAAAAAAAAAAAAAAAAAAAAAEAX/j1HNINm0AyaQTOgGTSDZtAMmgHNIBo0g2bQDJrRDJpBM2gGzaAZ0AyaQTRoBs2AZtAMmkEzaAbNgGbQDIWb+QuiPkcKIG1c8wAAAABJRU5ErkJggg==);
+          width: 141px;
+          height: 99px;
+          background: currentColor;
+          -webkit-mask: var(--sprite) 0 0 / 1692px 99px no-repeat;
+          mask: var(--sprite) 0 0 / 1692px 99px no-repeat;
+          animation: boot-swing 460ms steps(12) infinite;
+        }
+        .boot__quip { margin: 0; color: var(--ink-faint, #8a8f99); font-size: 12px; }
+        .boot__label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+        @keyframes boot-in { to { opacity: 1; } }
+        @keyframes boot-swing {
+          to { -webkit-mask-position: -1692px 0; mask-position: -1692px 0; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .boot__pip { animation: none; }
+        }
+      </style>
+      <div class="boot" role="status">
+        <div class="boot__pip" aria-hidden="true"></div>
+        <p class="boot__quip" aria-hidden="true">Mining the loading block.</p>
+        <span class="boot__label">Loading Vellum</span>
+      </div>
+      <!-- boot:end -->
+    </div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
