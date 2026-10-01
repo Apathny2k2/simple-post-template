@@ -1,15 +1,20 @@
 # Continue here
 
 The state of the project for whoever picks it up next. Rewritten on
-2026-09-29, at the end of the wording audit, and updated on 2026-09-30.
+2026-09-29, at the end of the wording audit, and updated on 2026-10-01.
 
 **Branch** `claude/blockbench-react-editor-lk38qe` · **PR** #3 (draft) ·
-**Artifact** v47, `https://claude.ai/artifact/BZpDzWLJ4z6soEAmVMcVwN`
+**Artifact** v48, `https://claude.ai/artifact/BZpDzWLJ4z6soEAmVMcVwN`
 
 Read `CLAUDE.md` first. It has the working rules: typecheck with `tsc -b`,
 republish the artifact after every push, how the sample models are made,
 and how to test in a browser. `vellum/README.md` is the design record, and
-`AUDIT.md` records the audit.
+`AUDIT.md` records the wording audit.
+
+`PREMIUM-AUDIT.md` is the premium audit of 2026-10-01: does Vellum feel
+premium, is it usable, does it justify its price. It lists 73 findings by
+theme and a fix order. Nothing in it had been fixed when it was written;
+start with its "What to do, in order".
 
 ## 1. Where things stand
 

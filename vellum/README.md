@@ -44,9 +44,8 @@ un-inlined fails the build, so a page that 404s its own assets never ships.
 Studio's top bar starts at the Dash. It shows what Vellum does, the three steps
 to a first model in game, and the plans. The plans list seats, one for Free,
 three for Pro and five for Studio Engineer, and leave paid prices off: those are
-not settled, so the paid plans say they open soon. Its sections rise in as they
-scroll into view, once, and under reduced motion they are there from the start.
-The footer carries the notice Mojang asks of anything built for Minecraft.
+not settled, so the paid plans say they open soon. The footer carries the notice
+Mojang asks of anything built for Minecraft.
 
 **Sign in**, and **Open the Studio** for a visitor, lead to `#/login`
 (`src/pages/SignIn.tsx`). It is a sample: the demo account is filled in, any
