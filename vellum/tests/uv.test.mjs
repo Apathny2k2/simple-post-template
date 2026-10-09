@@ -126,7 +126,7 @@ test('textures: new, import, per face, paint at 2x, delete', async () => {
 
   // a click at UV texel (10.5, 40.5) lands on pixel (21, 81) of the 128px image
   await mode(page, 'Paint')
-  const sheet = await page.locator('.uv').first().boundingBox()
+  const sheet = await page.locator('.psheet__sheet').boundingBox()
   const k = sheet.width / 64
   await page.mouse.click(sheet.x + 10.5 * k, sheet.y + 40.5 * k)
   const px = await page.waitForFunction(async () => {

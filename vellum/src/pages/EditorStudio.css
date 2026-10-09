@@ -386,8 +386,10 @@
   letter-spacing: 0.14em;
   text-transform: uppercase;
 }
-.ptools + .studio-label + .studio-seg { display: flex; }
-.ptools + .studio-label + .studio-seg button { flex: 1; padding: 0 2px; white-space: nowrap; }
+.editor-root--studio .studio-seg[aria-label='Brush size'],
+.editor-root--studio .ptools__view { display: flex; }
+.editor-root--studio .studio-seg[aria-label='Brush size'] button,
+.editor-root--studio .ptools__view button { flex: 1; padding: 0 2px; white-space: nowrap; }
 
 /* ---------------- timeline ---------------- */
 
@@ -439,11 +441,11 @@
 
 /* ---------------- config ---------------- */
 
-/* the generated YAML sits over the viewport, so the viewport's own controls hide */
-.editor-root--studio[data-config] .editor-view__corner,
-.editor-root--studio[data-config] .editor-view__dock,
-.editor-root--studio[data-config] .scene3d__nav,
-.editor-root--studio[data-config] .scene3d__zoom { display: none; }
+/* the generated YAML or the paint sheet sits over the viewport, so the viewport's own controls hide */
+.editor-root--studio[data-cover] .editor-view__corner,
+.editor-root--studio[data-cover] .editor-view__dock,
+.editor-root--studio[data-cover] .scene3d__nav,
+.editor-root--studio[data-cover] .scene3d__zoom { display: none; }
 
 .editor-root--studio .yaml {
   margin: 14px;
@@ -462,3 +464,128 @@
 .editor-root--studio .yaml__value { color: #9fb8cf; }
 .editor-root--studio .yaml__punctuation { color: var(--s-ink-3); }
 .editor-root--studio .yaml__comment { color: var(--s-ink-3); }
+
+/* ---------------- paint: the sheet in the middle ---------------- */
+
+.psheet {
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  background: var(--s-deep);
+  font-family: var(--font-sans);
+}
+.psheet__bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: none;
+  height: 50px;
+  padding: 0 14px;
+  border-bottom: 1px solid var(--s-line);
+  color: var(--s-ink-2);
+  font-size: 13.5px;
+}
+.psheet__title { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.psheet__title b { color: var(--s-ink); font-weight: 600; }
+.psheet__select {
+  max-width: 220px;
+  padding: 3px 6px;
+  border: 1px solid var(--s-line-2);
+  border-radius: 6px;
+  background: var(--s-sunk);
+  color: var(--s-ink);
+  font: 600 13px var(--font-sans);
+}
+.psheet__zoom { display: inline-flex; align-items: center; gap: 4px; color: var(--s-ink); font-variant-numeric: tabular-nums; }
+.psheet__zoom span { min-width: 54px; text-align: center; font-size: 13.5px; }
+.psheet__zoom button { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 7px; color: var(--s-ink-2); }
+.psheet__zoom button:hover:not(:disabled) { background: var(--s-hover); color: var(--s-ink); }
+.psheet__zoom button:disabled { opacity: 0.35; }
+
+.psheet__frame {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  overscroll-behavior: contain;
+}
+.psheet__sheet {
+  position: relative;
+  flex: none;
+  cursor: crosshair;
+  touch-action: none;
+  outline: 1px solid var(--s-line-2);
+  background-color: #0b0e10;
+  background-size: 100% 100%;
+  image-rendering: pixelated;
+}
+/* a texel grid once texels are big enough to tell apart */
+.psheet__sheet--grid::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(to right, rgb(255 255 255 / 0.05) 1px, transparent 1px),
+    linear-gradient(to bottom, rgb(255 255 255 / 0.05) 1px, transparent 1px);
+  background-size: var(--texel) var(--texel);
+}
+.psheet__other {
+  position: absolute;
+  border: 1px dashed rgb(255 255 255 / 0.1);
+  pointer-events: none;
+}
+.psheet__face {
+  position: absolute;
+  z-index: 1;
+  border: 1px dashed rgb(238 233 223 / 0.45);
+  pointer-events: none;
+}
+.psheet__face--active { border: 1.5px solid var(--s-sage); box-shadow: 0 0 0 1px rgb(0 0 0 / 0.35); }
+.psheet__tag {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  max-width: calc(100% - 6px);
+  overflow: hidden;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: rgb(16 19 22 / 0.88);
+  color: var(--s-ink-2);
+  font: 600 11px/1.4 var(--font-sans);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.psheet__face--active .psheet__tag { color: var(--s-ink); }
+.psheet__foot {
+  flex: none;
+  padding: 12px 14px;
+  border-top: 1px solid var(--s-line);
+  color: var(--s-ink-2);
+  font-size: 13.5px;
+}
+.psheet__foot b { color: var(--s-ink); font-weight: 600; }
+
+/* ---------------- paint: the side panels ---------------- */
+
+.paint-on__name { margin: 0 0 10px; color: var(--s-ink); font: 700 16px var(--font-sans); }
+.paint-on__faces { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.paint-on__faces .chip { justify-content: center; text-transform: capitalize; border-radius: 9px; }
+.paint-on__faces .chip[aria-pressed='true'] { border-color: var(--s-sage); color: var(--s-ink); background: var(--s-active); }
+.paint-preview {
+  position: relative;
+  height: 170px;
+  overflow: hidden;
+  border: 1px solid var(--s-line-2);
+  border-radius: 10px;
+  background: var(--s-sunk);
+}
+.ptools__keep { display: flex; width: 100%; justify-content: space-between; gap: 10px; margin-top: 14px; color: var(--s-ink); font-size: 13.5px; text-align: left; white-space: normal; }
+.palette__label { margin-top: 14px; }
+/* the model's own colours, as the design's large swatches */
+.editor-root--studio .palette__label + .palette { display: grid; grid-template-columns: repeat(6, 1fr); gap: 7px; }
+.editor-root--studio .palette__label + .palette .palette__dot { width: 100%; height: auto; aspect-ratio: 1; border-radius: 7px; border: 1px solid var(--s-line-2); }

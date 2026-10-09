@@ -102,6 +102,7 @@ import { useHistory } from '../lib/history'
 import {
   bucket,
   faceBounds,
+  topColours,
   hexToRgba,
   loadSurface,
   paint as paintTexels,
@@ -132,6 +133,7 @@ import { ScenePanel } from './editor/ScenePanel'
 import { BehaviourPanel } from './editor/BehaviourPanel'
 import { ConfigPanel } from './editor/ConfigPanel'
 import { ConfigOutput } from './editor/ConfigOutput'
+import { PaintSheet } from './editor/PaintSheet'
 import { hasConfig, setFields, withDefaults } from '../lib/config'
 import { checkTranslation } from '../lib/mcmodel'
 import type { Config } from '../lib/config'
@@ -489,7 +491,15 @@ function PaintTools({
   onShape,
   shapeFilled,
   onShapeFilled,
+  view,
+  onView,
+  keepInside,
+  onKeepInside,
 }: {
+  view: 'sheet' | 'model'
+  onView: (v: 'sheet' | 'model') => void
+  keepInside: boolean
+  onKeepInside: (v: boolean) => void
   tool: string
   onTool: (id: string) => void
   brush: number
@@ -509,6 +519,15 @@ function PaintTools({
             {t.key ? <kbd>{t.key}</kbd> : null}
           </button>
         ))}
+      </div>
+      <div className="studio-label">Paint on</div>
+      <div className="studio-seg ptools__view" role="group" aria-label="Paint on">
+        <button aria-pressed={view === 'sheet'} onClick={() => onView('sheet')} title="The flat texture sheet, large in the middle">
+          Sheet
+        </button>
+        <button aria-pressed={view === 'model'} onClick={() => onView('model')} title="Straight onto the model in 3D">
+          Model
+        </button>
       </div>
       <div className="studio-label">Brush</div>
       <div className="studio-seg" role="group" aria-label="Brush size">
@@ -531,8 +550,29 @@ function PaintTools({
           </button>
         </div>
       ) : null}
+      <button
+        className="uv-switch ptools__keep"
+        role="switch"
+        aria-checked={keepInside}
+        title="A stroke that starts on a face stays inside that face"
+        onClick={() => onKeepInside(!keepInside)}
+      >
+        <span>Keep strokes inside the face</span> <span className="uv-switch__track" />
+      </button>
     </>
   )
+}
+
+/** The status bar's texel readout in Paint, updated straight from pointer moves. */
+function StatusTexel({ sink, fallback }: { sink: React.MutableRefObject<((text: string | null) => void) | null>; fallback: string }) {
+  const [text, setText] = useState<string | null>(null)
+  useEffect(() => {
+    sink.current = setText
+    return () => {
+      sink.current = null
+    }
+  }, [sink])
+  return <>{text ?? fallback}</>
 }
 
 /* ================= panel shell ================= */
@@ -1202,7 +1242,7 @@ function hexToHsv(hex: string): [number, number, number] {
 
 const HEX = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i
 
-function ColorPanel({ colour, onColour }: { colour: string; onColour: (hex: string) => void }) {
+function ColorPanel({ colour, onColour, palette }: { colour: string; onColour: (hex: string) => void; palette?: string[] }) {
   const [draft, setDraft] = useState<string | null>(null)
   const [hue, setHue] = useState(() => hexToHsv(colour)[0])
   const [sat, setSat] = useState(() => hexToHsv(colour)[1])
@@ -1293,8 +1333,9 @@ function ColorPanel({ colour, onColour }: { colour: string; onColour: (hex: stri
         />
       </div>
 
+      {palette?.length ? <div className="studio-label palette__label">On this model</div> : null}
       <div className="palette">
-        {PAINTS.map(([name, c]) => (
+        {(palette?.length ? palette.map((c) => [c, c] as const) : PAINTS).map(([name, c]) => (
           <button
             key={c}
             className="palette__dot"
@@ -3270,6 +3311,15 @@ export function Editor({ segments }: { segments: string[] }) {
   // paint
   const [colour, setColour] = useState(PAINTS[1][1])
   const [brush, setBrush] = useState(1)
+  // Paint mode paints on the large sheet by default, as the design has it, or on the model
+  const [paintView, setPaintView] = useState<'sheet' | 'model'>('sheet')
+  const [keepInside, setKeepInside] = useState(true)
+  /** the texture picked on the sheet's bar; null follows the selected face */
+  const [paintPick, setPaintPick] = useState<string | null>(null)
+  /** where a sheet stroke may write, in pixels: the face it started on */
+  const strokeClip = useRef<UVRect | null>(null)
+  /** the status bar's texel readout, set without re-rendering the editor */
+  const hoverSink = useRef<((text: string | null) => void) | null>(null)
   const [shape, setShape] = useState<ShapeKind>('rect')
   const [shapeFilled, setShapeFilled] = useState(false)
   const [textureIndex, setTextureIndex] = useState(0)
@@ -4027,31 +4077,78 @@ export function Editor({ segments }: { segments: string[] }) {
     return textureById(model, c?.faces[face].texture ?? null) ?? model.textures[textureIndex] ?? model.textures[0] ?? null
   }, [model, selected, face, textureIndex])
 
-  /* On the sheet, a fill stays inside the UV island under the click, which
-     may not be the selected face. On bare sheet only colour bounds it.
+  /** The texture the large sheet shows: one picked on its bar, or the selected face's. */
+  const paintTexture = useMemo(() => textureById(model, paintPick) ?? sheetTexture, [model, paintPick, sheetTexture])
+  // picking another cube or face follows that face's texture again
+  useEffect(() => setPaintPick(null), [selected, face])
+
+  /* On the sheet a press picks the face under it (and its cube), so the
+     panels follow what is being painted. With "keep strokes inside" on, the
+     stroke stays in that face. A fill stays inside the island it starts in.
      `u`,`v` are in UV units and become the texture's pixels here. */
   const paintOnSheet = useCallback(
     (u: number, v: number, phase: 'down' | 'move') => {
-      const texture = sheetTexture
+      const texture = paintTexture
       if (!texture) return
-      if (phase === 'down' && tool !== 'pipette') history.begin('paint')
       const [sx, sy] = pixelScale(model, texture)
-      let bounds: UVRect | null = null
-      for (const c of model.cubes) {
+      let hit: { cube: Cube; key: FaceKey; box: UVRect } | null = null
+      // the selected cube's faces win where islands overlap
+      const order = [...model.cubes].sort((a, b) => Number(b.id === selected) - Number(a.id === selected))
+      for (const c of order) {
         for (const key of FACES) {
           if (c.faces[key].texture !== texture.id) continue
           const [bx1, by1, bx2, by2] = faceBounds(c.faces[key].uv)
           if (u >= bx1 && u < bx2 && v >= by1 && v < by2) {
-            bounds = [Math.round(bx1 * sx), Math.round(by1 * sy), Math.round(bx2 * sx), Math.round(by2 * sy)]
+            hit = { cube: c, key, box: [Math.round(bx1 * sx), Math.round(by1 * sy), Math.round(bx2 * sx), Math.round(by2 * sy)] }
             break
           }
         }
-        if (bounds) break
+        if (hit) break
       }
-      applyTool(texture.id, Math.floor(u * sx), Math.floor(v * sy), bounds, phase)
+      if (phase === 'down') {
+        if (hit?.cube.locked) {
+          refuseLocked(`"${hit.cube.name}"`)
+          strokeClip.current = null
+          return
+        }
+        if (tool !== 'pipette') history.begin('paint')
+        if (hit) {
+          if (hit.cube.id !== selected) setSelected(hit.cube.id)
+          setFace(hit.key)
+        }
+        strokeClip.current = keepInside && hit ? hit.box : null
+      }
+      applyTool(texture.id, Math.floor(u * sx), Math.floor(v * sy), hit?.box ?? null, phase, strokeClip.current)
     },
-    [applyTool, model, sheetTexture, history, tool],
+    [applyTool, model, paintTexture, history, tool, selected, setSelected, keepInside, refuseLocked],
   )
+
+  /** Shows the texel under the pointer and its colour in the status bar. */
+  const hoverSheet = useCallback(
+    (at: [number, number] | null) => {
+      const texture = paintTexture
+      if (!at || !texture) {
+        hoverSink.current?.(null)
+        return
+      }
+      const [sx, sy] = pixelScale(model, texture)
+      const x = Math.floor(at[0] * sx)
+      const y = Math.floor(at[1] * sy)
+      const surface = surfaces.current.get(texture.id)
+      const rgba = surface ? pick(surface, x, y) : null
+      hoverSink.current?.(`Texel ${x}, ${y}${rgba && rgba[3] ? ` \u00b7 ${rgbaToHex(rgba).toUpperCase()}` : ' \u00b7 clear'}`)
+    },
+    [paintTexture, model],
+  )
+
+  /** The colours the painted texture uses most, for the Colour panel. */
+  const palette = useMemo(() => {
+    if (mode !== 'paint' || !paintTexture) return undefined
+    const surface = surfaces.current.get(paintTexture.id)
+    return surface ? topColours(surface) : undefined
+    // the source changes with every stroke, which is when the palette should
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, paintTexture?.id, paintTexture?.source])
 
   /** A UV drag on the sheet is one undo step; each move replaces the cube. */
   const uvDrag = useMemo(
@@ -4802,7 +4899,7 @@ export function Editor({ segments }: { segments: string[] }) {
       className="editor-root editor-root--studio"
       data-swap={mode === 'edit' || mode === 'paint' || mode === 'animate' || undefined}
       // the generated config covers the viewport, so its controls step aside
-      data-config={(mode === 'config' && hasConfig(kind)) || undefined}
+      data-cover={(mode === 'config' && hasConfig(kind)) || (mode === 'paint' && paintView === 'sheet') || undefined}
       style={{ ['--left-w' as string]: `${leftW}px`, ['--right-w' as string]: `${rightW}px` }}
     >
       <input ref={fileInput} type="file" accept=".vellum,application/json" hidden onChange={onFile} />
@@ -4973,6 +5070,32 @@ export function Editor({ segments }: { segments: string[] }) {
                   }
                 </DisplayPanel>
               </Panel>
+            ) : mode === 'paint' ? (
+              <>
+                <Panel title="Painting on" count={cube ? undefined : 'nothing'}>
+                  {cube ? (
+                    <>
+                      <p className="paint-on__name">{cube.name}</p>
+                      <div className="paint-on__faces" role="group" aria-label="Face to paint">
+                        {FACES.map((k) => (
+                          <button key={k} className="chip" aria-pressed={k === face} onClick={() => setFace(k)}>
+                            {k}
+                          </button>
+                        ))}
+                      </div>
+                      <p className="editor-hint">Click a face on the sheet, or pick a cube in the outliner, to paint it.</p>
+                    </>
+                  ) : (
+                    <p className="editor-hint">Pick a cube in the viewport or the outliner to paint its faces.</p>
+                  )}
+                </Panel>
+                <Panel title="On the model">
+                  <div className="paint-preview">
+                    <ModelView model={model} scale={Math.max(1, Math.min(10, 120 / extent))} grid={false} orbit zoomable={false} initialYaw={-32} initialPitch={-18} anchorAt="centre" selected={selected} />
+                  </div>
+                  <p className="editor-hint">Updates as you paint. Drag it to turn it.</p>
+                </Panel>
+              </>
             ) : mode === 'animate' ? (
               <>
                 {selectedEvent ? (
@@ -5011,7 +5134,7 @@ export function Editor({ segments }: { segments: string[] }) {
             {/* A separate panel because Validation stays collapsed on a clean
                 model, and a mob that just became unhittable passes every other
                 check. The count shows the mode so it reads with the panel shut. */}
-            {hit ? (
+            {hit && mode !== 'paint' ? (
               <Panel
                 title="Where it can be hit"
                 count={
@@ -5057,6 +5180,7 @@ export function Editor({ segments }: { segments: string[] }) {
               </Panel>
             ) : null}
 
+            {mode === 'paint' ? null : (
             <Panel title="UV" count={`${model.resolution.width} × ${model.resolution.height}`}>
               <UVPanel
                 model={model}
@@ -5064,12 +5188,12 @@ export function Editor({ segments }: { segments: string[] }) {
                 face={face}
                 onFace={setFace}
                 onChange={editCube}
-                onPaint={mode === 'paint' ? paintOnSheet : undefined}
                 onDrag={uvDrag}
                 fallbackTexture={sheetTexture}
                 onReunwrap={onReunwrap}
               />
             </Panel>
+            )}
 
             <div id="validation" />
             <Panel
@@ -5137,6 +5261,16 @@ export function Editor({ segments }: { segments: string[] }) {
           <div className="editor-rails__gap">
             {mode === 'config' && hasConfig(kind) ? (
               <ConfigOutput id={model.name} kind={kind} config={config} />
+            ) : mode === 'paint' && paintView === 'sheet' ? (
+              <PaintSheet
+                model={model}
+                texture={paintTexture}
+                onTexture={setPaintPick}
+                cube={cube}
+                face={face}
+                onPaint={paintOnSheet}
+                onHover={hoverSheet}
+              />
             ) : null}
           </div>
           <Splitter onDrag={onRight} />
@@ -5154,10 +5288,14 @@ export function Editor({ segments }: { segments: string[] }) {
                     onShape={setShape}
                     shapeFilled={shapeFilled}
                     onShapeFilled={setShapeFilled}
+                    view={paintView}
+                    onView={setPaintView}
+                    keepInside={keepInside}
+                    onKeepInside={setKeepInside}
                   />
                 </Panel>
                 <Panel title="Colour">
-                  <ColorPanel colour={colour} onColour={setColour} />
+                  <ColorPanel colour={colour} onColour={setColour} palette={palette} />
                 </Panel>
               </>
             ) : null}
@@ -5342,7 +5480,8 @@ export function Editor({ segments }: { segments: string[] }) {
           {model.cubes.length} cubes {'\u00b7'} {bones.length} bones {'\u00b7'} texture {model.resolution.width} {'\u00d7'} {model.resolution.height}
         </span>
         <span className="editor-status__selection">
-          {saveNote ??
+          {mode === 'paint' && !saveNote && !openError ? <StatusTexel sink={hoverSink} fallback={cube ? `Painting on ${cube.name} \u00b7 ${face}` : 'Pick a cube to paint'} /> : null}
+          {mode === 'paint' && !saveNote && !openError ? null : saveNote ??
             openError ??
             (cube && selection.length === 1
               ? `${cube.name} \u00b7 position ${cube.from.join(', ')} \u00b7 size ${cubeSize(cube).join(' \u00d7 ')}`

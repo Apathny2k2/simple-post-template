@@ -258,3 +258,19 @@ export function strokeBetween(
     }
   }
 }
+
+/** The colours a texture uses most, as hex, most used first. Large sheets are sampled. */
+export function topColours(s: PixelSurface, limit = 12): string[] {
+  const data = s.ctx.getImageData(0, 0, s.width, s.height).data
+  const stride = Math.max(1, Math.floor((s.width * s.height) / 65536))
+  const counts = new Map<number, number>()
+  for (let i = 0; i < data.length; i += 4 * stride) {
+    if (data[i + 3] < 128) continue
+    const key = (data[i] << 16) | (data[i + 1] << 8) | data[i + 2]
+    counts.set(key, (counts.get(key) ?? 0) + 1)
+  }
+  return [...counts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, limit)
+    .map(([k]) => `#${k.toString(16).padStart(6, '0')}`)
+}
