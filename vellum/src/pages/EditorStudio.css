@@ -442,7 +442,7 @@
 .editor-status__dot { width: 6px; height: 6px; border-radius: 50%; background: var(--s-amber); }
 
 /* the selected cube in the model takes the sage outline */
-.editor-root--studio .model-cube--selected .model-face { outline-color: var(--s-sage); }
+.editor-root--studio .scene3d { --model-select: var(--s-sage); }
 
 /* ---------------- config ---------------- */
 

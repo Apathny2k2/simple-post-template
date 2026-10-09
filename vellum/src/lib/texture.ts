@@ -62,9 +62,9 @@ export function rgbaToHex([r, g, b]: RGBA) {
 export function texelOfFace(uv: UVRect, u: number, v: number): [number, number] | null {
   const [x1, y1, x2, y2] = uv
   if (x1 === x2 || y1 === y2) return null
-  /* Normalised although a reversed rect mirrors the face: the renderer
-     applies the flip as a CSS scale(), and `offsetX` is already in the
-     flipped space. Following the signed width too would flip it twice. */
+  /* Normalised although a reversed rect mirrors the face: the viewport
+     reports a hit from the rect's low corner, with any mirror already in
+     the UV it read. Following the signed width too would flip it twice. */
   const [ax, ay, bx, by] = faceBounds(uv)
   return [Math.floor(ax + u * (bx - ax)), Math.floor(ay + v * (by - ay))]
 }

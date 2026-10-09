@@ -1137,13 +1137,6 @@
 .timeline-key[data-interp='step'] { border-radius: 0; }
 .timeline-key[data-interp='catmullrom'] { border-radius: 50%; }
 
-/* wireframe view */
-.editor-view[data-shading='wire'] .model-face {
-  background-image: none !important;
-  background-color: transparent !important;
-  outline-color: var(--accent-mark);
-}
-
 /* ---------------- paint ---------------- */
 
 .editor-brush {

@@ -1,11 +1,11 @@
-/* World transforms of bones and cubes, built the way ModelView renders them,
-   so gizmos and snapping agree with what is on screen.
+/* World transforms of bones and cubes. The renderer draws from these, so
+   gizmos and snapping agree with what is on screen.
 
    Everything here is in model space: Y up, one unit per texel, the same
-   space as `.vellum` coordinates. ModelView works in CSS space (Y down)
-   and turns a rotation into `rotateX(-rx) rotateY(ry) rotateZ(-rz)`; the
-   same string is parsed here and conjugated by the Y flip, so the two can't
-   drift apart. Needs DOMMatrix, which every browser has. */
+   space as `.vellum` coordinates. A rotation is Rx·Ry·Rz in degrees; it
+   equals CSS `rotateX(-rx) rotateY(ry) rotateZ(-rz)` conjugated by the Y
+   flip, and `rotationMatrixFromCss` checks that.
+   Needs DOMMatrix, which every browser has. */
 
 import { samplePose } from './model'
 import type { Bone, Clip, Cube, Mesh, Model, NullObject, Pose, Vec3 } from './model'

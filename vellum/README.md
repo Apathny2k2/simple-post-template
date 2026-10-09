@@ -540,13 +540,34 @@ editor stacks.
 `src/components/Card.tsx`. Its dashed, flush and muted variants are not used
 by any page yet.
 
-**The renderer is CSS 3D.** `src/components/ModelView.tsx` draws a `.vellum` in
-the editor, on the stage, on the Dash and on the library cards. Each cube is six
-transformed `div`s inside a `preserve-3d` scene, textured from the model's
-sheets and posed by its clips. `src/components/Model3D.tsx` is a simpler version
-for plain coloured boxes (the Projects tiles, and cards with no model behind
-them): flat three-tone shading, a CSS grid floor, drag-to-orbit, and a
-keyframed spin. There is no mesh, no camera and no raster pipeline.
+**The renderer is WebGL 2.** `src/components/ModelView.tsx` draws a `.vellum`
+in the editor, on the stage, on the Dash and on the library cards, through
+`src/lib/gl/`:
+
+- `camera.ts` is one matrix for the view. It is the projection the viewport
+  had when it was CSS 3D (a stage turned by pitch and yaw, scaled by the
+  zoom, seen through a 900px perspective from 46% down the box), so saved
+  views, zoom-at-cursor and every overlay land where they did.
+- `scene.ts` turns the posed model into triangles grouped by texture, edge
+  lines and a record per triangle. Cubes take their faces from the
+  exporters' `quads`, so UVs, face turns and inflate are glTF's. Shading is
+  fixed by face direction in the element's own frame.
+- `renderer.ts` draws. All views share one context on a hidden canvas and
+  copy their picture onto their own canvas, since browsers allow about
+  sixteen live contexts and the shelf holds more previews than that. Opaque
+  texels draw first and write depth, partly clear ones after without it,
+  fully clear ones not at all. Edges draw over faces pushed back a little.
+  A texture being repainted shows its last image until the new one decodes.
+- `pick.ts` says what is under a point: each triangle projected by the same
+  camera, the nearest one holding the point, with perspective-correct UV
+  and position. Painting, face picking, the knife and selection all ask it.
+
+The gizmo, vertex dots, edges, knife marks and null markers stay DOM, placed
+by the camera's `project`. A hook layer holds an empty box per face at its
+place on screen (`.model-cube`, `.model-face`, `.model-mface`), drawing
+nothing and taking no clicks, so box select and the tests find faces by
+where they are. `src/components/Model3D.tsx` is still CSS 3D, for plain
+coloured boxes (the Projects tiles, and cards with no model behind them).
 
 **Every other page is a dark room.** The Dash, Projects and Settings take after
 Blockbench: grey-blue panels, one bright blue, the axis colours, and the
@@ -1082,12 +1103,10 @@ same edits as buttons, the middle of the pick as fields, and the texture for
 the picked faces (or all of them). Extruding keeps the picked faces picked,
 so a drag on the gizmo pulls them straight out.
 
-**Drawing them.** The viewport is CSS 3D, so each face is a div laid on the
-face's plane by `matrix3d` and cut to its outline with `clip-path`. Its
-texture is mapped by the affine map from the face's UVs to its flat outline
-(`uvToFlat` in `lib/mesh.ts`), so a quad shows exactly when its UVs are a
-parallelogram, which primitives' and most Blockbench faces' are. Shading
-blends the per-direction brightness cubes get, by the face's normal.
+**Drawing them.** Each face is cut into the pieces `facePieces` gives (the
+whole face when one affine map from its UVs fits it, triangles otherwise)
+and drawn as triangles with its UVs at the corners. Shading blends the
+per-direction brightness cubes get, by the face's normal.
 
 **Order of a face's corners.** A quad's vertices can be stored in any order.
 An order whose edges cross encloses less area, so `faceOrder` takes the
@@ -1190,16 +1209,14 @@ spot whatever the image's size.
 
 ### How the gizmo finds the screen
 
-The viewport is CSS 3D (see The material), so there is no camera matrix to
-project with. `ModelView` places four invisible probes in the scene, at the
-gizmo and one unit along each world axis, and reads where the browser drew
-them. That gives a 2×3 matrix from world units to screen pixels near the
-gizmo, and every drag is solved back through it. The probes go through the
-same transforms as the model, so the gizmo stays on the model under any
-camera, zoom, pose or orthographic view.
+`ModelView` projects the gizmo's anchor and one unit along each world axis
+with the camera (see The material). That gives a 2×3 matrix from world units
+to screen pixels near the gizmo, and every drag is solved back through it.
+The camera is the one the model is drawn with, so the gizmo stays on the
+model under any zoom, pose or orthographic view.
 
-`lib/kinematics.ts` builds each bone's and cube's world matrix from the same
-transform strings `ModelView` renders, so the two cannot drift apart. A drag
+`lib/kinematics.ts` builds each bone's and cube's world matrix, and the
+renderer draws from those same matrices, so the two cannot drift apart. A drag
 gives a world-space amount; kinematics turns it into the parent frame the
 `.vellum` coordinates are stored in. The file format does not change: a moved
 cube is still absolute `from`, `to` and `origin`, and a moved bone carries

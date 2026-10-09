@@ -1,10 +1,16 @@
 import { useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { Ref } from 'react'
-import { FACES, samplePose, textureById } from '../lib/model'
-import { applyDir, buildRig, nullWorld, rotationMatrix, solveIK } from '../lib/kinematics'
-import type { Bone, Clip, Cube, Face as ModelFace, FaceKey, Mesh, Model, Pose, Vec3 } from '../lib/model'
-import { faceBasis, facePieces, uvToFlat } from '../lib/mesh'
-import { partlyClear, useAlphaAnswers } from '../lib/alpha'
+import { samplePose } from '../lib/model'
+import { buildRig, nullWorld, solveIK } from '../lib/kinematics'
+import type { Bone, Clip, FaceKey, Model, Vec3 } from '../lib/model'
+import { makeCamera, stagePoint } from '../lib/gl/camera'
+import type { CameraState } from '../lib/gl/camera'
+import { buildScene } from '../lib/gl/scene'
+import type { BuiltScene } from '../lib/gl/scene'
+import { drawView, glAvailable, onTextureReady } from '../lib/gl/renderer'
+import type { Rgba } from '../lib/gl/renderer'
+import { pickAt } from '../lib/gl/pick'
+import type { Hit } from '../lib/gl/pick'
 import { Gizmo } from './Gizmo'
 import type { Basis, GizmoEvent, GizmoSpec } from './Gizmo'
 import './Model3D.css'
@@ -45,6 +51,7 @@ export type VertexLayer = {
   hideDots?: boolean
 }
 
+
 const EMPTY: ReadonlySet<string> = new Set()
 
 /** Probe length in model units: long enough to measure, short enough to stay near the anchor. */
@@ -61,215 +68,12 @@ const NAV_ENDS: Array<{ axis: 0 | 1 | 2; sign: 1 | -1; label: string; yaw: numbe
 ]
 const NAV_COLOURS = ['#ff3b4e', '#7ad21c', '#2f8dff']
 
-/* Each face's plane size and the transform that places it on the box. South is +z. */
-const FACE_PLACEMENT: Record<
-  FaceKey,
-  (w: number, h: number, d: number) => { w: number; h: number; transform: string }
-> = {
-  south: (w, h, d) => ({ w, h, transform: `translateZ(${d / 2}px)` }),
-  north: (w, h, d) => ({ w, h, transform: `rotateY(180deg) translateZ(${d / 2}px)` }),
-  east: (w, h, d) => ({ w: d, h, transform: `rotateY(90deg) translateZ(${w / 2}px)` }),
-  west: (w, h, d) => ({ w: d, h, transform: `rotateY(-90deg) translateZ(${w / 2}px)` }),
-  up: (w, h, d) => ({ w, h: d, transform: `rotateX(90deg) translateZ(${h / 2}px)` }),
-  down: (w, h, d) => ({ w, h: d, transform: `rotateX(-90deg) translateZ(${h / 2}px)` }),
-}
 
 const ZOOM_MIN = 0.3
 const ZOOM_MAX = 7
 /** Far enough to put any corner of a model under the cursor, near enough to find it again. */
 const PAN_LIMIT = 3000
 
-/* Model space is Y-up, CSS is Y-down. Mapping (x,y,z) to (x,-y,z) reverses
-   rotation about X and Z but not Y, so rx and rz are negated. */
-function transformOf(translate: Vec3, rotation: Vec3, scale: number, scl: Vec3 = [1, 1, 1]) {
-  const [x, y, z] = translate
-  const [rx, ry, rz] = rotation
-  const t = `translate3d(${x * scale}px, ${-y * scale}px, ${z * scale}px)`
-  const r = `rotateX(${-rx}deg) rotateY(${ry}deg) rotateZ(${-rz}deg)`
-  const s = scl[0] === 1 && scl[1] === 1 && scl[2] === 1 ? '' : ` scale3d(${scl[0]}, ${scl[1]}, ${scl[2]})`
-  return `${t} ${r}${s}`
-}
-
-function Face({
-  face,
-  name,
-  w,
-  h,
-  transform,
-  model,
-  scale,
-  onPaint,
-}: {
-  face: ModelFace
-  name: FaceKey
-  w: number
-  h: number
-  transform: string
-  model: Model
-  scale: number
-  /** u,v are 0..1 from the face's top-left; the caller back-projects to a texel */
-  onPaint?: (face: FaceKey, u: number, v: number, phase: 'down' | 'move') => void
-}) {
-  const px = { w: w * scale, h: h * scale }
-  const texture = textureById(model, face.texture)
-  const spin = face.rotation ?? 0
-  // a quarter turn swaps which side of the face the UV rectangle spans
-  const turned = spin === 90 || spin === 270
-  const inner = { w: turned ? px.h : px.w, h: turned ? px.w : px.h }
-
-  const style: React.CSSProperties = {
-    width: px.w,
-    height: px.h,
-    marginLeft: -px.w / 2,
-    marginTop: -px.h / 2,
-    transform,
-  }
-
-  const skin: React.CSSProperties = {
-    width: inner.w,
-    height: inner.h,
-    marginLeft: -inner.w / 2,
-    marginTop: -inner.h / 2,
-    transform: spin ? `rotate(${spin}deg)` : undefined,
-  }
-
-  if (texture && texture.source) {
-    const [x1, y1, x2, y2] = face.uv
-    const uw = Math.abs(x2 - x1) || 1
-    const uh = Math.abs(y2 - y1) || 1
-    // Scale the sheet so the UV rectangle covers the face, then offset it to the
-    // rectangle's corner. Sizes are in UV units, which can differ from the PNG's pixels.
-    const sx = inner.w / uw
-    const sy = inner.h / uh
-    skin.backgroundImage = `url(${texture.source})`
-    skin.backgroundSize = `${texture.uvWidth * sx}px ${texture.uvHeight * sy}px`
-    skin.backgroundPosition = `${-Math.min(x1, x2) * sx}px ${-Math.min(y1, y2) * sy}px`
-    skin.imageRendering = 'pixelated'
-    // A reversed UV coordinate mirrors the face. The rectangle above is
-    // normalised to min/max, so the flip is applied to the plane here.
-    const flipX = x2 < x1
-    const flipY = y2 < y1
-    if (flipX || flipY) {
-      style.transform = `${transform} scale(${flipX ? -1 : 1}, ${flipY ? -1 : 1})`
-    }
-  } else {
-    skin.background = 'rgba(146, 165, 202, 0.25)'
-  }
-
-  /* The browser inverse-transforms offsetX/offsetY into the element's own
-     space, so a hit on a rotated face gives face-local pixels. */
-  const report = (e: React.PointerEvent<HTMLDivElement>, phase: 'down' | 'move') => {
-    if (!onPaint) return
-    const u = e.nativeEvent.offsetX / px.w
-    const v = e.nativeEvent.offsetY / px.h
-    if (u < 0 || v < 0 || u > 1 || v > 1) return
-    // un-turn the hit so it lands on the texel that is actually drawn there
-    const [tu, tv] =
-      spin === 90 ? [v, 1 - u] : spin === 180 ? [1 - u, 1 - v] : spin === 270 ? [1 - v, u] : [u, v]
-    onPaint(name, tu, tv, phase)
-  }
-
-  return (
-    <div
-      className="model-face"
-      data-face={name}
-      data-spin={spin || undefined}
-      data-shaded={texture?.shaded || undefined}
-      style={style}
-      onPointerDown={
-        onPaint
-          ? (e) => {
-              /* Left button paints and stops the event. Other buttons bubble
-                 up so the scene can orbit or pan. */
-              if (e.button !== 0) return
-              e.stopPropagation()
-              ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
-              report(e, 'down')
-            }
-          : undefined
-      }
-      onPointerMove={onPaint ? (e) => e.buttons === 1 && report(e, 'move') : undefined}
-    >
-      <div className="model-face__skin" style={skin} />
-    </div>
-  )
-}
-
-function CubeBox({
-  cube,
-  parentOrigin,
-  model,
-  scale,
-  selected,
-  onSelect,
-  onPaint,
-}: {
-  cube: Cube
-  parentOrigin: Vec3
-  model: Model
-  scale: number
-  selected: boolean
-  onSelect?: (id: string, mods: PickMods) => void
-  onPaint?: (cubeId: string, face: FaceKey, u: number, v: number, phase: 'down' | 'move') => void
-}) {
-  if (!cube.visible) return null
-
-  // the format allows to < from, which would render inside-out. The size is
-  // clamped here and validateModel reports it.
-  const inf = cube.inflate || 0
-  const w = Math.max(cube.to[0] - cube.from[0], 0) + inf * 2
-  const h = Math.max(cube.to[1] - cube.from[1], 0) + inf * 2
-  const d = Math.max(cube.to[2] - cube.from[2], 0) + inf * 2
-  const centre: Vec3 = [
-    (cube.from[0] + cube.to[0]) / 2,
-    (cube.from[1] + cube.to[1]) / 2,
-    (cube.from[2] + cube.to[2]) / 2,
-  ]
-
-  // the pivot sits at the cube's origin; the box hangs off it
-  const pivotAt: Vec3 = [
-    cube.origin[0] - parentOrigin[0],
-    cube.origin[1] - parentOrigin[1],
-    cube.origin[2] - parentOrigin[2],
-  ]
-  const boxAt: Vec3 = [
-    centre[0] - cube.origin[0],
-    centre[1] - cube.origin[1],
-    centre[2] - cube.origin[2],
-  ]
-
-  return (
-    <div className="model-pivot" style={{ transform: transformOf(pivotAt, cube.rotation, scale) }}>
-      <div
-        className={`model-cube${selected ? ' model-cube--selected' : ''}`}
-        data-cube={cube.id}
-        style={{ transform: transformOf(boxAt, [0, 0, 0], scale) }}
-        onPointerDown={
-          onSelect
-            ? (e) => e.button === 0 && !e.altKey && onSelect(cube.id, { shift: e.shiftKey, ctrl: e.ctrlKey || e.metaKey })
-            : undefined
-        }
-      >
-        {FACES.map((name) => {
-          const place = FACE_PLACEMENT[name](w * scale, h * scale, d * scale)
-          return (
-            <Face
-              key={name}
-              name={name}
-              face={cube.faces[name]}
-              w={place.w / scale}
-              h={place.h / scale}
-              transform={place.transform}
-              model={model}
-              scale={scale}
-              onPaint={onPaint ? (face, u, v, phase) => onPaint(cube.id, face, u, v, phase) : undefined}
-            />
-          )
-        })}
-      </div>
-    </div>
-  )
-}
 
 /** Mesh editing state the viewport draws: which faces are picked, and where a face click goes. */
 export type MeshPick = {
@@ -281,248 +85,6 @@ export type MeshPick = {
   onFacePoint?: (face: string, at: Vec3) => void
 }
 
-/* The brightness a cube's face gets in each direction, blended by a mesh
-   face's normal, so meshes and cubes are shaded alike. */
-function meshShade(n: Vec3): number {
-  const [x, y, z] = n
-  return x * x * (x > 0 ? 0.9 : 0.84) + y * y * (y > 0 ? 1.14 : 0.62) + z * z * (z > 0 ? 1 : 0.78)
-}
-
-/**
- * A mesh: each face a div laid on the face's plane with matrix3d, cut to
- * its outline with clip-path, its texture mapped by the affine map from
- * its UVs. Model space is Y-up and CSS Y-down, so every point goes through
- * (x, -y, z).
- */
-function MeshBody({
-  mesh,
-  parentOrigin,
-  model,
-  scale,
-  selected,
-  pick,
-  onSelect,
-  onPaint,
-}: {
-  mesh: Mesh
-  parentOrigin: Vec3
-  model: Model
-  scale: number
-  selected: boolean
-  pick?: MeshPick | null
-  onSelect?: (id: string, mods: PickMods) => void
-  onPaint?: (meshId: string, face: string, u: number, v: number, phase: 'down' | 'move') => void
-}) {
-  // re-drawn once a texture has been checked for partly clear pixels
-  useAlphaAnswers()
-  if (!mesh.visible) return null
-  const at: Vec3 = [mesh.origin[0] - parentOrigin[0], mesh.origin[1] - parentOrigin[1], mesh.origin[2] - parentOrigin[2]]
-  const picking = pick && pick.mesh === mesh.id ? pick : null
-  const turn = rotationMatrix(mesh.rotation)
-  return (
-    <div className="model-pivot" style={{ transform: transformOf(at, mesh.rotation, scale) }}>
-      <div className={`model-mesh${selected ? ' model-mesh--selected' : ''}`} data-mesh={mesh.id}>
-        {Object.entries(mesh.faces).flatMap(([key, face]) => {
-          if (face.vertices.length < 3) return []
-          const tex = model.textures.find((t) => t.id === face.texture)
-          const isPicked = picking?.faces.has(key)
-          const pieces = facePieces(mesh, face)
-          const split = pieces.length > 1
-          return pieces.map((piece, pi) => {
-            const { keys, origin, e1, e2, n, flat } = faceBasis(mesh, { ...face, vertices: piece.keys })
-            const xs = flat.map((p) => p[0])
-            const ys = flat.map((p) => p[1])
-            const minx = Math.min(...xs)
-            const maxy = Math.max(...ys)
-            const w = (Math.max(...xs) - minx) * scale
-            const h = (maxy - Math.min(...ys)) * scale
-            if (w < 0.01 || h < 0.01) return null
-            const css = (v: Vec3): Vec3 => [v[0], -v[1], v[2]]
-            const ca = css(e1)
-            const cb = css(e2).map((v) => -v) as Vec3
-            const cn = css(n)
-            const o = css([origin[0] + e1[0] * minx + e2[0] * maxy, origin[1] + e1[1] * minx + e2[1] * maxy, origin[2] + e1[2] * minx + e2[2] * maxy])
-            const m3 = [ca[0], ca[1], ca[2], 0, cb[0], cb[1], cb[2], 0, cn[0], cn[1], cn[2], 0, o[0] * scale, o[1] * scale, o[2] * scale, 1]
-            const px = flat.map(([x, y]) => [(x - minx) * scale, (maxy - y) * scale] as [number, number])
-            /* the triangles of a split face overlap by half a pixel, so no hairline
-               shows between them; not on a texture with partly clear pixels, where
-               the overlap would show as a darker line */
-            const cx = px.reduce((a, p) => a + p[0], 0) / px.length
-            const cy = px.reduce((a, p) => a + p[1], 0) / px.length
-            const grown = split && partlyClear(tex?.source) === false
-              ? px.map(([x, y]) => {
-                  const d = Math.hypot(x - cx, y - cy) || 1
-                  return [x + ((x - cx) / d) * 0.6, y + ((y - cy) / d) * 0.6] as [number, number]
-                })
-              : px
-            const pts = grown.map(([x, y]) => `${x.toFixed(2)}px ${y.toFixed(2)}px`).join(', ')
-            const map = tex?.source ? uvToFlat(keys.map((k) => face.uv[k] ?? [0, 0]), flat) : null
-            const worldN = applyDir(turn, n)
-            return (
-              <div
-                key={`${key}:${pi}`}
-                className={`model-mface${split ? ' model-mface--tri' : ''}${isPicked ? ' model-mface--picked' : ''}`}
-                data-mface={key}
-                style={{
-                  width: w,
-                  height: h,
-                  transform: `matrix3d(${m3.map((v) => +v.toFixed(5)).join(',')})`,
-                  clipPath: `polygon(${pts})`,
-                  filter: tex?.shaded ? undefined : `brightness(${meshShade(worldN).toFixed(3)})`,
-                }}
-                onPointerDown={(e) => {
-                  if (e.button !== 0 || e.altKey) return
-                  if (onPaint) {
-                    e.stopPropagation()
-                    ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
-                    paintAt(e, 'down')
-                    return
-                  }
-                  if (picking?.onFacePoint) {
-                    // where on the face the click is, back through the piece's own basis
-                    e.stopPropagation()
-                    const x = minx + e.nativeEvent.offsetX / scale
-                    const y = maxy - e.nativeEvent.offsetY / scale
-                    picking.onFacePoint(key, [0, 1, 2].map((i) => origin[i] + e1[i] * x + e2[i] * y) as Vec3)
-                    return
-                  }
-                  if (picking?.onFace) {
-                    e.stopPropagation()
-                    picking.onFace(key, { shift: e.shiftKey, ctrl: e.ctrlKey || e.metaKey })
-                    return
-                  }
-                  onSelect?.(mesh.id, { shift: e.shiftKey, ctrl: e.ctrlKey || e.metaKey })
-                }}
-                onPointerMove={onPaint ? (e) => e.buttons === 1 && paintAt(e, 'move') : undefined}
-              >
-                {map ? (
-                  <div
-                    className="model-mface__skin"
-                    style={{
-                      width: tex!.uvWidth,
-                      height: tex!.uvHeight,
-                      backgroundImage: `url(${tex!.source})`,
-                      transform: `matrix(${[map.a * scale, -map.b * scale, map.c * scale, -map.d * scale, (map.tx - minx) * scale, (maxy - map.ty) * scale].map((v) => +v.toFixed(5)).join(',')})`,
-                    }}
-                  />
-                ) : null}
-                {selected ? (
-                  <svg className="model-mface__edges" width={w} height={h} aria-hidden="true">
-                    {split ? (
-                      piece.outer.map((outer, i) =>
-                        outer ? <line key={i} x1={px[i][0]} y1={px[i][1]} x2={px[(i + 1) % px.length][0]} y2={px[(i + 1) % px.length][1]} /> : null,
-                      )
-                    ) : (
-                      <polygon points={px.map(([x, y]) => `${x},${y}`).join(' ')} />
-                    )}
-                  </svg>
-                ) : null}
-              </div>
-            )
-
-            /* A hit's face pixels back to UV units, through the inverse of the piece's UV map. */
-            function paintAt(e: React.PointerEvent<HTMLDivElement>, phase: 'down' | 'move') {
-              if (!onPaint || !map) return
-              const x = minx + e.nativeEvent.offsetX / scale
-              const y = maxy - e.nativeEvent.offsetY / scale
-              const det = map.a * map.d - map.c * map.b
-              if (Math.abs(det) < 1e-9) return
-              const dx = x - map.tx
-              const dy = y - map.ty
-              onPaint(mesh.id, key, (map.d * dx - map.c * dy) / det, (map.a * dy - map.b * dx) / det, phase)
-            }
-          })
-        })}
-      </div>
-    </div>
-  )
-}
-
-function BoneNode({
-  bone,
-  parentOrigin,
-  model,
-  scale,
-  pose,
-  selected,
-  onSelect,
-  onPaint,
-  pick,
-  onPaintMesh,
-}: {
-  bone: Bone
-  parentOrigin: Vec3
-  model: Model
-  scale: number
-  pose: Pose
-  selected: ReadonlySet<string>
-  onSelect?: (id: string, mods: PickMods) => void
-  onPaint?: (cubeId: string, face: FaceKey, u: number, v: number, phase: 'down' | 'move') => void
-  pick?: MeshPick | null
-  onPaintMesh?: (meshId: string, face: string, u: number, v: number, phase: 'down' | 'move') => void
-}) {
-  if (!bone.visible) return null
-
-  const animated = pose[bone.id]
-  const at: Vec3 = [
-    bone.origin[0] - parentOrigin[0] + (animated?.position[0] ?? 0),
-    bone.origin[1] - parentOrigin[1] + (animated?.position[1] ?? 0),
-    bone.origin[2] - parentOrigin[2] + (animated?.position[2] ?? 0),
-  ]
-  const rot: Vec3 = [
-    bone.rotation[0] + (animated?.rotation[0] ?? 0),
-    bone.rotation[1] + (animated?.rotation[1] ?? 0),
-    bone.rotation[2] + (animated?.rotation[2] ?? 0),
-  ]
-
-  return (
-    <div
-      className="model-group"
-      data-bone={bone.name}
-      style={{ transform: transformOf(at, rot, scale, animated?.scale ?? [1, 1, 1]) }}
-    >
-      {bone.children.map((child, i) =>
-        child.kind === 'bone' ? (
-          <BoneNode
-            key={child.bone.id}
-            bone={child.bone}
-            parentOrigin={bone.origin}
-            model={model}
-            scale={scale}
-            pose={pose}
-            selected={selected}
-            onSelect={onSelect}
-            onPaint={onPaint}
-            pick={pick}
-            onPaintMesh={onPaintMesh}
-          />
-        ) : (
-          (() => {
-            const cube = model.cubes.find((c) => c.id === child.id)
-            if (!cube) return null
-            return (
-              <CubeBox
-                key={`${child.id}-${i}`}
-                cube={cube}
-                parentOrigin={bone.origin}
-                model={model}
-                scale={scale}
-                selected={selected.has(cube.id)}
-                onSelect={onSelect}
-                onPaint={onPaint}
-              />
-            )
-          })()
-        ),
-      )}
-      {(model.meshes ?? [])
-        .filter((m) => m.parent === bone.id)
-        .map((m) => (
-          <MeshBody key={m.id} mesh={m} parentOrigin={bone.origin} model={model} scale={scale} selected={selected.has(m.id)} pick={pick} onSelect={onSelect} onPaint={onPaintMesh} />
-        ))}
-    </div>
-  )
-}
 
 type Props = {
   model: Model
@@ -581,10 +143,52 @@ type Props = {
   anchorAt?: 'floor' | 'centre'
   /** an explicit stage origin, in model units, overriding `anchorAt` */
   anchorOn?: Vec3 | null
+  /** 'wire' draws every edge and no faces */
+  shading?: 'solid' | 'wire'
   className?: string
 }
 
-/** Renders a model with CSS 3D transforms. Bones are nested divs; each face shows its UV rectangle. */
+
+/** A CSS colour as 0..1 RGBA, read through a canvas so any form the stylesheet uses works. */
+function rgbaOf(css: string, fallback: Rgba): Rgba {
+  const c = document.createElement('canvas').getContext('2d')
+  if (!c || !css.trim()) return fallback
+  c.fillStyle = '#000'
+  c.fillStyle = css.trim()
+  c.fillRect(0, 0, 1, 1)
+  const d = c.getImageData(0, 0, 1, 1).data
+  return d[3] ? [d[0] / 255, d[1] / 255, d[2] / 255, d[3] / 255] : fallback
+}
+
+/** The theme's colours the renderer needs, read again when the theme changes. */
+function useThemeColours(root: React.RefObject<HTMLDivElement | null>) {
+  const [tick, setTick] = useState(0)
+  useEffect(() => {
+    const bump = () => setTick((t) => t + 1)
+    const watch = new MutationObserver(bump)
+    watch.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme', 'class', 'style'] })
+    const dark = window.matchMedia?.('(prefers-color-scheme: dark)')
+    dark?.addEventListener?.('change', bump)
+    bump()
+    return () => {
+      watch.disconnect()
+      dark?.removeEventListener?.('change', bump)
+    }
+  }, [])
+  return useMemo(() => {
+    const el = root.current
+    const css = el ? getComputedStyle(el) : null
+    const v = (name: string) => css?.getPropertyValue(name) ?? ''
+    return {
+      accent: rgbaOf(v('--model-select') || v('--accent-mark'), [0.35, 0.64, 1, 1]),
+      grid: rgbaOf(v('--grid-line'), [1, 1, 1, 0.08]),
+      border: rgbaOf(v('--ink-faint'), [1, 1, 1, 0.2]).map((x, i) => (i === 3 ? x * 0.4 : x)) as Rgba,
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tick])
+}
+
+/** Renders a model with WebGL. Overlays (gizmo, dots, edges, nulls) are DOM, placed by the same camera. */
 export function ModelView({
   model,
   scale = 6,
@@ -621,10 +225,12 @@ export function ModelView({
   display = null,
   anchorAt = 'floor',
   anchorOn = null,
+  shading = 'solid',
   className = '',
 }: Props) {
   const [ownYaw, setYaw] = useState(initialYaw)
-  const yaw = heldYaw ?? ownYaw
+  const [spinYaw, setSpinYaw] = useState(0)
+  const yaw = spin ? spinYaw : (heldYaw ?? ownYaw)
   const [pitch, setPitch] = useState(initialPitch)
   const [factor, setFactor] = useState(1)
   // screen-space offset of the stage; without it every zoom is about the stage's centre
@@ -632,10 +238,40 @@ export function ModelView({
   const drag = useRef<{ x: number; y: number; yaw: number; pitch: number } | null>(null)
   const panning = useRef<{ x: number; y: number; pan: { x: number; y: number } } | null>(null)
   const root = useRef<HTMLDivElement>(null)
+  const canvas = useRef<HTMLCanvasElement>(null)
   // where the last press began, and whether that was on empty space
   const press = useRef<{ x: number; y: number; empty: boolean } | null>(null)
   const pinch = useRef(new Map<number, { x: number; y: number }>())
   const pinchStart = useRef<{ span: number; factor: number } | null>(null)
+  // a paint stroke in progress: the element and face it started on
+  const stroke = useRef<{ kind: 'cube' | 'mesh'; id: string; face: string } | null>(null)
+  const [size, setSize] = useState({ w: 0, h: 0, dpr: 1 })
+  const [noGl] = useState(() => !glAvailable())
+  const colours = useThemeColours(root)
+
+  useLayoutEffect(() => {
+    const el = root.current
+    if (!el) return
+    const measure = () => setSize({ w: el.clientWidth, h: el.clientHeight, dpr: Math.min(3, window.devicePixelRatio || 1) })
+    measure()
+    const ro = new ResizeObserver(measure)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+
+  // a spinning preview turns once every nine seconds, and holds still for reduced motion
+  useEffect(() => {
+    if (!spin) return
+    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return
+    let raf = 0
+    const start = performance.now()
+    const tick = (now: number) => {
+      setSpinYaw((((now - start) / 9000) * 360) % 360)
+      raf = requestAnimationFrame(tick)
+    }
+    raf = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(raf)
+  }, [spin])
 
   // the clip's pose with any IK chains bent toward their null objects
   const pose = useMemo(() => solveIK(model, samplePose(clip, time)), [model, clip, time])
@@ -648,12 +284,6 @@ export function ModelView({
     const rig = buildRig(model, pose)
     return model.nulls.filter((n) => n.visible).map((n) => ({ n, at: nullWorld(rig, n, pose) }))
   }, [showNulls, model, pose])
-  const boneIds = useMemo(() => {
-    const ids = new Set<string>()
-    const walk = (bs: Bone[]) => bs.forEach((b) => (ids.add(b.id), walk(b.children.filter((c) => c.kind === 'bone').map((c) => (c as { bone: Bone }).bone))))
-    walk(model.bones)
-    return ids
-  }, [model.bones])
   const picked = useMemo(
     () => new Set<string>(selection ?? (selected ? [selected] : [])),
     [selection, selected],
@@ -671,51 +301,185 @@ export function ModelView({
   const clampZoom = (f: number) => Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, f))
   const clampPan = (v: number) => Math.max(-PAN_LIMIT, Math.min(PAN_LIMIT, v))
 
-  /* The stage scales in 3D under perspective, so a zoom's on-screen ratio and
-     fixed point can't be derived from the scale factor. A hidden probe inside
-     the stage is measured before and after: its width gives the ratio and its
-     centre gives the fixed point. The pan then holds the cursor still. */
-  const probe = useRef<HTMLDivElement>(null)
-  const zoomAnchor = useRef<{ at: { x: number; y: number }; before: DOMRect } | null>(null)
+  const anchor = useMemo(() => {
+    if (!model.cubes.length) return anchorOn ?? ([0, 0, 0] as Vec3)
+    const lo: Vec3 = [Infinity, Infinity, Infinity]
+    const hi: Vec3 = [-Infinity, -Infinity, -Infinity]
+    for (const c of model.cubes) {
+      for (let i = 0; i < 3; i++) {
+        lo[i] = Math.min(lo[i], c.from[i])
+        hi[i] = Math.max(hi[i], c.to[i])
+      }
+    }
+    if (focusAt) return focusAt
+    if (anchorOn) return anchorOn
+    return [
+      (lo[0] + hi[0]) / 2,
+      anchorAt === 'centre' ? (lo[1] + hi[1]) / 2 : lo[1],
+      (lo[2] + hi[2]) / 2,
+    ] as Vec3
+  }, [model, anchorAt, anchorOn, focusAt])
+
+  const camState: CameraState = useMemo(
+    () => ({ width: size.w || 1, height: size.h || 1, scale, yaw, pitch, factor, pan, zoom, anchor, display, ortho }),
+    [size.w, size.h, scale, yaw, pitch, factor, pan, zoom, anchor, display, ortho],
+  )
+  const camera = useMemo(() => makeCamera(camState), [camState])
+  const cameraRef = useRef(camera)
+  cameraRef.current = camera
+
+  const scene = useMemo<BuiltScene>(
+    () =>
+      buildScene(model, {
+        pose,
+        selected: picked,
+        pickedFaces: meshPick ? { mesh: meshPick.mesh, faces: meshPick.faces } : null,
+        wire: shading === 'wire',
+        accent: colours.accent,
+      }),
+    [model, pose, picked, meshPick, shading, colours],
+  )
+  const ghostScenes = useMemo(
+    () =>
+      ghostPoses.map((g) =>
+        buildScene(model, {
+          pose: g.pose,
+          selected: EMPTY,
+          accent: colours.accent,
+          ghost: g.side === 'before' ? [80 / 255, 150 / 255, 1, 0.16] : [1, 150 / 255, 60 / 255, 0.16],
+        }),
+      ),
+    [ghostPoses, model, colours],
+  )
+  const sceneRef = useRef(scene)
+  sceneRef.current = scene
+
+  /* Zooming keeps the point under the cursor still. A square on the stage
+     is projected before and after: its width gives the ratio and its middle
+     the fixed point, and the pan makes up the difference. */
+  const zoomAnchor = useRef<{ at: { x: number; y: number }; before: { x: number; y: number; w: number }; rect: DOMRect } | null>(null)
+  const probeOf = (s: CameraState) => {
+    const a = stagePoint(s, [0, 0, 0])
+    const b = stagePoint(s, [100, 0, 0])
+    return { x: a.x, y: a.y, w: Math.hypot(b.x - a.x, b.y - a.y) }
+  }
+  const camStateRef = useRef(camState)
+  camStateRef.current = camState
 
   const zoomAt = useCallback((mul: number, at?: { x: number; y: number }) => {
-    const before = probe.current?.getBoundingClientRect()
-    if (at && before && before.width > 0) zoomAnchor.current = { at, before }
+    const rect = root.current?.getBoundingClientRect()
+    if (at && rect) zoomAnchor.current = { at, before: probeOf(camStateRef.current), rect }
     setFactor((f) => clampZoom(f * mul))
   }, [])
 
   useLayoutEffect(() => {
     const pending = zoomAnchor.current
     zoomAnchor.current = null
-    if (!pending || !probe.current) return
-
-    const after = probe.current.getBoundingClientRect()
-    const k = after.width / pending.before.width
-    // no magnification means nothing to correct, and 1 - k would divide by zero
+    if (!pending) return
+    const after = probeOf(camState)
+    const k = after.w / pending.before.w
     if (!Number.isFinite(k) || Math.abs(k - 1) < 1e-4) return
-
-    const o0 = { x: pending.before.x + pending.before.width / 2, y: pending.before.y + pending.before.height / 2 }
-    const o1 = { x: after.x + after.width / 2, y: after.y + after.height / 2 }
-    // o1 = C + k(o0 - C)  solved for the fixed point C
-    const cx = (o1.x - k * o0.x) / (1 - k)
-    const cy = (o1.y - k * o0.y) / (1 - k)
+    // o1 = C + k(o0 - C) solved for the fixed point C
+    const cx = (after.x - k * pending.before.x) / (1 - k)
+    const cy = (after.y - k * pending.before.y) / (1 - k)
     if (!Number.isFinite(cx) || !Number.isFinite(cy)) return
-
+    const ax = pending.at.x - pending.rect.left
+    const ay = pending.at.y - pending.rect.top
     setPan((prev) => ({
-      x: clampPan(prev.x + (pending.at.x - cx) * (1 - k)),
-      y: clampPan(prev.y + (pending.at.y - cy) * (1 - k)),
+      x: clampPan(prev.x + (ax - cx) * (1 - k)),
+      y: clampPan(prev.y + (ay - cy) * (1 - k)),
     }))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [factor])
 
   const nudge = useCallback((mul: number) => zoomAt(mul), [zoomAt])
 
+  /* ---------------- drawing ---------------- */
+
+  const draw = useCallback(() => {
+    const c = canvas.current
+    if (!c || !size.w || !size.h) return
+    const w = Math.round(size.w * size.dpr)
+    const h = Math.round(size.h * size.dpr)
+    if (c.width !== w || c.height !== h) {
+      c.width = w
+      c.height = h
+    }
+    drawView(c, {
+      camera,
+      scene,
+      ghosts: ghostScenes,
+      grid: grid ? { size: 16 * 2.6, cell: 4, at: anchor, line: colours.grid, border: colours.border } : null,
+    })
+  }, [camera, scene, ghostScenes, grid, anchor, colours, size])
+  const drawRef = useRef(draw)
+  drawRef.current = draw
+  useLayoutEffect(() => draw(), [draw])
+  useEffect(() => onTextureReady(() => drawRef.current()), [])
+
+  /* ---------------- picking ---------------- */
+
+  const hitAt = useCallback((clientX: number, clientY: number): Hit | null => {
+    const r = root.current?.getBoundingClientRect()
+    if (!r) return null
+    return pickAt(cameraRef.current, sceneRef.current.picks, clientX - r.left, clientY - r.top)
+  }, [])
+
+  /** A cube hit as the face's own 0..1, from its UV rectangle's top left, as painting takes it. */
+  const cubeFaceUv = (hit: Hit): [number, number] | null => {
+    const cube = model.cubes.find((c) => c.id === hit.tri.id)
+    if (!cube) return null
+    const [x1, y1, x2, y2] = cube.faces[hit.tri.face as FaceKey].uv
+    const [ax, bx] = [Math.min(x1, x2), Math.max(x1, x2)]
+    const [ay, by] = [Math.min(y1, y2), Math.max(y1, y2)]
+    if (bx === ax || by === ay) return null
+    const u = (hit.uv[0] - ax) / (bx - ax)
+    const v = (hit.uv[1] - ay) / (by - ay)
+    return [Math.min(0.9999, Math.max(0, u)), Math.min(0.9999, Math.max(0, v))]
+  }
+
+  const paintHit = (hit: Hit, phase: 'down' | 'move'): boolean => {
+    if (hit.tri.kind === 'cube' && onPaint) {
+      const uv = cubeFaceUv(hit)
+      if (uv) onPaint(hit.tri.id, hit.tri.face as FaceKey, uv[0], uv[1], phase)
+      return true
+    }
+    if (hit.tri.kind === 'mesh' && onPaintMesh) {
+      onPaintMesh(hit.tri.id, hit.tri.face, hit.uv[0], hit.uv[1], phase)
+      return true
+    }
+    return false
+  }
+
   const onPointerDown = useCallback(
     (e: React.PointerEvent) => {
+      const mods = { shift: e.shiftKey, ctrl: e.ctrlKey || e.metaKey }
+      const hit = e.button === 0 && !e.altKey ? hitAt(e.clientX, e.clientY) : null
+      press.current = { x: e.clientX, y: e.clientY, empty: !hit }
+      if (hit) {
+        // painting, and a mesh's face picking, take the press for themselves
+        if (paintHit(hit, 'down')) {
+          stroke.current = { kind: hit.tri.kind, id: hit.tri.id, face: hit.tri.face }
+          ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
+          return
+        }
+        if (hit.tri.kind === 'mesh' && meshPick && meshPick.mesh === hit.tri.id) {
+          if (meshPick.onFacePoint) {
+            meshPick.onFacePoint(hit.tri.face, hit.local)
+            return
+          }
+          if (meshPick.onFace) {
+            meshPick.onFace(hit.tri.face, mods)
+            return
+          }
+        }
+        onSelect?.(hit.tri.id, mods)
+      }
       if (!orbit) return
 
       /* Ctrl+drag on empty space, or a drag after B, draws a selection box.
          Shift adds to the selection. */
-      if (onBoxSelect && e.button === 0 && (boxArmed.current || ((e.ctrlKey || e.metaKey) && e.target === e.currentTarget))) {
+      if (onBoxSelect && e.button === 0 && (boxArmed.current || ((e.ctrlKey || e.metaKey) && !hit))) {
         boxArmed.current = false
         const r = (e.currentTarget as HTMLElement).getBoundingClientRect()
         marquee.current = { x: e.clientX - r.left, y: e.clientY - r.top, add: e.shiftKey }
@@ -743,7 +507,8 @@ export function ModelView({
       drag.current = { x: e.clientX, y: e.clientY, yaw, pitch }
       ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
     },
-    [orbit, yaw, pitch, factor, pan, onBoxSelect],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [orbit, yaw, pitch, factor, pan, onBoxSelect, onSelect, onPaint, onPaintMesh, meshPick, hitAt, model],
   )
 
   /* the pinch handler needs the live factor without re-subscribing on every step */
@@ -751,6 +516,14 @@ export function ModelView({
   factorRef.current = factor
 
   const onPointerMove = useCallback((e: React.PointerEvent) => {
+    const s = stroke.current
+    if (s) {
+      if (e.buttons !== 1) return
+      // a stroke stays on the face it started on, as it did when each face was its own element
+      const hit = hitAt(e.clientX, e.clientY)
+      if (hit && hit.tri.kind === s.kind && hit.tri.id === s.id && hit.tri.face === s.face) paintHit(hit, 'move')
+      return
+    }
     if (marquee.current) {
       const r = (e.currentTarget as HTMLElement).getBoundingClientRect()
       const m = marquee.current
@@ -785,9 +558,27 @@ export function ModelView({
     if (!from) return
     setYaw(from.yaw + (e.clientX - from.x) * 0.45)
     setPitch(Math.max(-88, Math.min(88, from.pitch - (e.clientY - from.y) * 0.35)))
-  }, [zoomAt])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [zoomAt, hitAt, onPaint, onPaintMesh, model])
+
+  /* ---------------- what is on screen where ---------------- */
+
+  /** Each face's box on screen, for the hook layer tests and tools find faces by, and for box select. */
+  const hooks = useMemo(() => {
+    const rect = (pts: Vec3[]) => {
+      const s = pts.map((p) => camera.project(p))
+      if (s.some((q) => q.w <= 0)) return null
+      const xs = s.map((q) => q.x)
+      const ys = s.map((q) => q.y)
+      const left = Math.min(...xs)
+      const top = Math.min(...ys)
+      return { left, top, width: Math.max(...xs) - left, height: Math.max(...ys) - top }
+    }
+    return scene.outlines.map((o) => ({ ...o, rect: rect(o.points) }))
+  }, [scene, camera])
 
   const endDrag = useCallback((e: React.PointerEvent) => {
+    stroke.current = null
     const m = marquee.current
     if (m && onBoxSelect && root.current) {
       marquee.current = null
@@ -804,14 +595,18 @@ export function ModelView({
         layer.onBox(inside, m.add)
         return
       }
-      const ids: string[] = []
       // a cube is in when the middle of its drawn box is inside the marquee
-      root.current.querySelectorAll<HTMLElement>('.model-cube[data-cube]').forEach((el) => {
-        const b = el.getBoundingClientRect()
-        const cx = b.left + b.width / 2 - r.left
-        const cy = b.top + b.height / 2 - r.top
-        if (cx >= lx && cx <= hx && cy >= ly && cy <= hy) ids.push(el.dataset.cube!)
-      })
+      const boxes = new Map<string, { l: number; t: number; r: number; b: number }>()
+      for (const h of hooksRef.current) {
+        if (h.kind !== 'cube' || !h.rect) continue
+        const b = boxes.get(h.id) ?? { l: Infinity, t: Infinity, r: -Infinity, b: -Infinity }
+        boxes.set(h.id, { l: Math.min(b.l, h.rect.left), t: Math.min(b.t, h.rect.top), r: Math.max(b.r, h.rect.left + h.rect.width), b: Math.max(b.b, h.rect.top + h.rect.height) })
+      }
+      const ids = [...boxes.entries()].filter(([, b]) => {
+        const cx = (b.l + b.r) / 2
+        const cy = (b.t + b.b) / 2
+        return cx >= lx && cx <= hx && cy >= ly && cy <= hy
+      }).map(([id]) => id)
       setBox(null)
       onBoxSelect(ids, m.add)
       return
@@ -842,24 +637,25 @@ export function ModelView({
     return () => node.removeEventListener('wheel', onWheel)
   }, [orbit, zoomAt])
 
-  const anchor = useMemo(() => {
-    if (!model.cubes.length) return anchorOn ?? ([0, 0, 0] as Vec3)
-    const lo: Vec3 = [Infinity, Infinity, Infinity]
-    const hi: Vec3 = [-Infinity, -Infinity, -Infinity]
-    for (const c of model.cubes) {
-      for (let i = 0; i < 3; i++) {
-        lo[i] = Math.min(lo[i], c.from[i])
-        hi[i] = Math.max(hi[i], c.to[i])
-      }
+  /* The gizmo's anchor on screen and one unit along each world axis, from the camera. */
+  const measure = useCallback((): Basis | null => {
+    if (!gizmoRef.current) return null
+    const cam = cameraRef.current
+    const a = gizmoRef.current.anchor
+    const c = cam.project(a)
+    const per = (i: 0 | 1 | 2): [number, number] => {
+      const p: Vec3 = [...a]
+      p[i] += PROBE
+      const q = cam.project(p)
+      return [(q.x - c.x) / PROBE, (q.y - c.y) / PROBE]
     }
-    if (focusAt) return focusAt
-    if (anchorOn) return anchorOn
-    return [
-      (lo[0] + hi[0]) / 2,
-      anchorAt === 'centre' ? (lo[1] + hi[1]) / 2 : lo[1],
-      (lo[2] + hi[2]) / 2,
-    ] as Vec3
-  }, [model, anchorAt, anchorOn, focusAt])
+    return { c: [c.x, c.y], s: [per(0), per(1), per(2)] }
+  }, [])
+  const gizmoRef = useRef(gizmo)
+  gizmoRef.current = gizmo
+  // the view handle below is made before `measure` changes, so it reaches it through this
+  const measureRef = useRef(measure)
+  measureRef.current = measure
 
   useImperativeHandle(
     viewRef,
@@ -884,81 +680,34 @@ export function ModelView({
     [scale, yaw, pitch],
   )
 
-  /* Gizmo probes: the anchor and one unit along each world axis, placed in
-     the model root so the browser projects them exactly as it draws the
-     model. `measure` turns them into screen vectors. */
-  const probes = useRef<Array<HTMLDivElement | null>>([])
-  const measure = useCallback((): Basis | null => {
-    const el = root.current
-    const ps = probes.current
-    if (!el || ps.length < 4 || ps.some((p) => !p)) return null
-    const r = el.getBoundingClientRect()
-    const at = ps.map((p) => {
-      const b = p!.getBoundingClientRect()
-      return [b.left - r.left, b.top - r.top] as [number, number]
-    })
-    const [c, x, y, z] = at
-    const per = (p: [number, number]): [number, number] => [(p[0] - c[0]) / PROBE, (p[1] - c[1]) / PROBE]
-    return { c, s: [per(x), per(y), per(z)] }
-  }, [])
-  // the view handle above is made before `measure`, so it reaches it through this
-  const measureRef = useRef(measure)
-  measureRef.current = measure
+  /* A grab held to an axis draws that axis through the anchor, across the view, as Blender does. */
+  const guideLine = useMemo(() => {
+    if (guide === null || !gizmo) return null
+    const b = measure()
+    if (!b) return null
+    const [dx, dy] = b.s[guide]
+    const len = Math.hypot(dx, dy) || 1
+    const far = 4000 / len
+    return [b.c[0] - dx * far, b.c[1] - dy * far, b.c[0] + dx * far, b.c[1] + dy * far] as [number, number, number, number]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [guide, gizmo, camera, measure])
 
-  /* A grab held to an axis draws that axis through the anchor, across the
-     view, as Blender does. It is measured each frame, since the anchor moves. */
-  const [guideLine, setGuideLine] = useState<[number, number, number, number] | null>(null)
-  useEffect(() => {
-    if (guide === null) {
-      setGuideLine(null)
-      return
-    }
-    let raf = 0
-    const tick = () => {
-      const b = measure()
-      if (b) {
-        const [dx, dy] = b.s[guide]
-        const len = Math.hypot(dx, dy) || 1
-        const far = 4000 / len
-        setGuideLine([b.c[0] - dx * far, b.c[1] - dy * far, b.c[0] + dx * far, b.c[1] + dy * far])
-      }
-      raf = requestAnimationFrame(tick)
-    }
-    raf = requestAnimationFrame(tick)
-    return () => cancelAnimationFrame(raf)
-  }, [guide, measure])
-
-  /* the corners for vertex snap, measured the same way */
-  const vertexEls = useRef<Array<HTMLDivElement | null>>([])
-  const [vertexAt, setVertexAt] = useState<Array<[number, number]>>([])
+  /* the corners for vertex snap, projected by the same camera */
+  const vertexAt = useMemo<Array<[number, number]>>(
+    () =>
+      (vertices?.points ?? []).map((p) => {
+        const q = camera.project(p)
+        return q.w > 0 ? [q.x, q.y] : [-99, -99]
+      }),
+    [vertices, camera],
+  )
   // the box select reads these when it ends, without re-making its handler
   const vertexAtRef = useRef(vertexAt)
   vertexAtRef.current = vertexAt
   const vertexLayer = useRef(vertices)
   vertexLayer.current = vertices
-  useEffect(() => {
-    if (!vertices) return
-    let raf = 0
-    let last = ''
-    const tick = () => {
-      const el = root.current
-      if (el) {
-        const r = el.getBoundingClientRect()
-        const pts = vertexEls.current.slice(0, vertices.points.length).map((p) => {
-          const b = p?.getBoundingClientRect()
-          return (b ? [b.left - r.left, b.top - r.top] : [-99, -99]) as [number, number]
-        })
-        const key = pts.map((p) => p.map((n) => n.toFixed(0)).join(',')).join(';')
-        if (key !== last) {
-          last = key
-          setVertexAt(pts)
-        }
-      }
-      raf = requestAnimationFrame(tick)
-    }
-    raf = requestAnimationFrame(tick)
-    return () => cancelAnimationFrame(raf)
-  }, [vertices])
+  const hooksRef = useRef(hooks)
+  hooksRef.current = hooks
 
   const navEnds = useMemo(() => {
     const m = new DOMMatrix(`rotateX(${pitch}deg) rotateY(${yaw}deg)`)
@@ -969,33 +718,36 @@ export function ModelView({
       return { ...end, x: p.x, y: p.y, z: p.z }
     }).sort((a, b) => a.z - b.z)
   }, [yaw, pitch])
-  const worldPos = (p: Vec3) => `translate3d(${p[0] * scale}px, ${-p[1] * scale}px, ${p[2] * scale}px)`
 
-  /* The zoom factor scales the stage. Zooming with translateZ distorts, and
-     past the perspective distance it turns the model inside out. */
-  const stage = spin
-    ? undefined
-    : `translate(${pan.x}px, ${pan.y}px) translateZ(${zoom}px) rotateX(${pitch}deg) ` +
-      `rotateY(${yaw}deg) scale3d(${factor}, ${factor}, ${factor})`
+  const at2 = (p: Vec3) => {
+    const q = camera.project(p)
+    return { left: q.x, top: q.y }
+  }
+
+  // the hook layer, grouped as the bone tree was, so a bone's cubes can be found under it
+  const cubeHooks = new Map<string, typeof hooks>()
+  for (const h of hooks) if (h.kind === 'cube') cubeHooks.set(h.id, [...(cubeHooks.get(h.id) ?? []), h])
+  const boneName = new Map<string, string>()
+  const nameWalk = (bs: Bone[]) => bs.forEach((b) => (boneName.set(b.id, b.name), nameWalk(b.children.flatMap((c) => (c.kind === 'bone' ? [c.bone] : [])))))
+  nameWalk(model.bones)
+  const byBone = new Map<string, string[]>()
+  for (const [id, hs] of cubeHooks) {
+    const bone = hs[0].bone ?? ''
+    byBone.set(bone, [...(byBone.get(bone) ?? []), id])
+  }
+  const union = (hs: typeof hooks) => {
+    const rs = hs.flatMap((h) => (h.rect ? [h.rect] : []))
+    if (!rs.length) return undefined
+    const l = Math.min(...rs.map((r) => r.left))
+    const t = Math.min(...rs.map((r) => r.top))
+    return { left: l, top: t, width: Math.max(...rs.map((r) => r.left + r.width)) - l, height: Math.max(...rs.map((r) => r.top + r.height)) - t }
+  }
 
   return (
     <div
       ref={root}
       className={`scene3d${spin ? ' scene3d--spin' : ''}${ortho ? ' scene3d--ortho' : ''} ${className}`}
-      style={
-        {
-          '--pitch': `${pitch}deg`,
-          '--yaw': `${yaw}deg`,
-          '--zoom': `${zoom}px`,
-          '--zoom-scale': factor,
-          '--pan-x': `${pan.x}px`,
-          '--pan-y': `${pan.y}px`,
-          cursor: onPaint ? 'crosshair' : orbit ? 'grab' : undefined,
-        } as React.CSSProperties
-      }
-      onPointerDownCapture={(e) => {
-        press.current = { x: e.clientX, y: e.clientY, empty: e.target === e.currentTarget }
-      }}
+      style={{ cursor: onPaint ? 'crosshair' : orbit ? 'grab' : undefined }}
       onPointerDown={onPointerDown}
       onClick={(e) => {
         /* The orbit drag captures the pointer, so the click lands on the scene
@@ -1013,113 +765,69 @@ export function ModelView({
       // right-drag orbits, so the browser menu would fight it
       onContextMenu={orbit ? (e) => e.preventDefault() : undefined}
     >
-      <div className="scene3d__stage" style={{ transform: stage }}>
-        {grid ? (
-          <div className="scene3d__grid">
+      <canvas ref={canvas} className="scene3d__canvas" aria-hidden="true" />
+      {noGl ? <p className="scene3d__nogl">This browser can't draw the model: it has no WebGL 2.</p> : null}
+
+      {/* where each face is on screen: no pointer events, nothing drawn; tools and tests find faces by it */}
+      <div className="scene3d__hooks" aria-hidden="true">
+        {[...byBone.entries()].map(([bone, ids]) => (
+          <div key={bone || 'root'} className="model-group" data-bone={boneName.get(bone)}>
+            {ids.map((id) => {
+              const hs = cubeHooks.get(id)!
+              const u = union(hs)
+              return (
+                <div key={id} className={`model-cube${picked.has(id) ? ' model-cube--selected' : ''}`} data-cube={id} style={u}>
+                  {hs.map((h) =>
+                    h.rect && u ? (
+                      <div
+                        key={h.face}
+                        className="model-face"
+                        data-face={h.face}
+                        style={{ left: h.rect.left - u.left, top: h.rect.top - u.top, width: h.rect.width, height: h.rect.height }}
+                      />
+                    ) : null,
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        ))}
+        {hooks
+          .filter((h) => h.kind === 'mesh' && h.rect)
+          .map((h, i) => (
             <div
-              className="scene3d__grid-plane"
-              style={{
-                width: Math.round(16 * scale * 2.6),
-                height: Math.round(16 * scale * 2.6),
-                ['--cell' as string]: `${scale * 4}px`,
-              }}
+              key={`${h.id}:${h.face}:${i}`}
+              className={`model-mface${h.tri ? ' model-mface--tri' : ''}${h.picked ? ' model-mface--picked' : ''}`}
+              data-mesh={h.id}
+              data-mface={h.face}
+              style={h.rect!}
             />
-          </div>
-        ) : null}
-        <div className="scene3d__origin">
-          {/* invisible; measured before and after each zoom */}
-          <div className="scene3d__probe" ref={probe} aria-hidden="true" />
-          <div
-            className="model-root"
-            style={{
-              transform:
-                `translate3d(${-anchor[0] * scale}px, ${anchor[1] * scale}px, ${-anchor[2] * scale}px)` +
-                (display
-                  ? ` translate3d(${display.translation[0] * scale}px, ${-display.translation[1] * scale}px, ${display.translation[2] * scale}px)` +
-                    ` rotateX(${-display.rotation[0]}deg) rotateY(${display.rotation[1]}deg) rotateZ(${-display.rotation[2]}deg)` +
-                    ` scale3d(${display.scale[0]}, ${display.scale[1]}, ${display.scale[2]})`
-                  : ''),
-            }}
-          >
-            {model.bones.map((b) => (
-              <BoneNode
-                key={b.id}
-                bone={b}
-                parentOrigin={[0, 0, 0]}
-                model={model}
-                scale={scale}
-                pose={pose}
-                selected={picked}
-                onSelect={onSelect}
-                onPaint={onPaint}
-                pick={meshPick}
-                onPaintMesh={onPaintMesh}
-              />
-            ))}
-            {/* meshes at the root, or naming a bone the model doesn't have */}
-            {(model.meshes ?? [])
-              .filter((m) => !m.parent || !boneIds.has(m.parent))
-              .map((m) => (
-                <MeshBody key={m.id} mesh={m} parentOrigin={[0, 0, 0]} model={model} scale={scale} selected={picked.has(m.id)} pick={meshPick} onSelect={onSelect} onPaint={onPaintMesh} />
-              ))}
-            {ghostPoses.map((g) => (
-              <div key={`ghost${g.time}`} className={`model-ghost model-ghost--${g.side}`} aria-hidden="true">
-                {model.bones.map((b) => (
-                  <BoneNode key={b.id} bone={b} parentOrigin={[0, 0, 0]} model={model} scale={scale} pose={g.pose} selected={EMPTY} />
-                ))}
-              </div>
-            ))}
-            {nullMarks.map(({ n, at }) => (
-              <div
-                key={n.id}
-                className={`model-null${picked.has(n.id) ? ' model-null--selected' : ''}${n.ikTarget ? ' model-null--ik' : ''}`}
-                data-null={n.id}
-                style={{ transform: worldPos(at) }}
-                title={n.ikTarget ? `${n.name} (IK target)` : n.name}
-                onPointerDown={
-                  onSelect
-                    ? (e) => {
-                        if (e.button !== 0) return
-                        e.stopPropagation()
-                        onSelect(n.id, { shift: e.shiftKey, ctrl: e.ctrlKey || e.metaKey })
-                      }
-                    : undefined
-                }
-              >
-                <span />
-              </div>
-            ))}
-            {gizmo
-              ? [gizmo.anchor, ...([0, 1, 2] as const).map((i) => {
-                  const p: Vec3 = [...gizmo.anchor]
-                  p[i] += PROBE
-                  return p
-                })].map((p, i) => (
-                  <div
-                    key={`probe${i}`}
-                    className="scene3d__gizmo-probe"
-                    ref={(el) => {
-                      probes.current[i] = el
-                    }}
-                    style={{ transform: worldPos(p) }}
-                  />
-                ))
-              : null}
-            {vertices
-              ? vertices.points.map((p, i) => (
-                  <div
-                    key={`v${i}`}
-                    className="scene3d__gizmo-probe"
-                    ref={(el) => {
-                      vertexEls.current[i] = el
-                    }}
-                    style={{ transform: worldPos(p) }}
-                  />
-                ))
-              : null}
-          </div>
-        </div>
+          ))}
+        {ghostPoses.map((g) => (
+          <div key={`ghost${g.time}`} className={`model-ghost model-ghost--${g.side}`} />
+        ))}
       </div>
+
+      {nullMarks.map(({ n, at }) => (
+        <div
+          key={n.id}
+          className={`model-null${picked.has(n.id) ? ' model-null--selected' : ''}${n.ikTarget ? ' model-null--ik' : ''}`}
+          data-null={n.id}
+          style={at2(at)}
+          title={n.ikTarget ? `${n.name} (IK target)` : n.name}
+          onPointerDown={
+            onSelect
+              ? (e) => {
+                  if (e.button !== 0) return
+                  e.stopPropagation()
+                  onSelect(n.id, { shift: e.shiftKey, ctrl: e.ctrlKey || e.metaKey })
+                }
+              : undefined
+          }
+        >
+          <span />
+        </div>
+      ))}
 
       {gizmo && onGizmo ? <Gizmo spec={gizmo} measure={measure} step={snapStep} onGizmo={onGizmo} /> : null}
       {guideLine && guide !== null ? (

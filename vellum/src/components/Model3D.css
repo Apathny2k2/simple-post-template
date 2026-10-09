@@ -1,4 +1,4 @@
-/* A CSS 3D-transform scene, six divs per box. Shared with ModelView. */
+/* A CSS 3D-transform scene for Model3D's boxes. ModelView shares the .scene3d box and draws with WebGL instead. */
 
 .scene3d {
   /* inset: 0 because height: 100% collapses to zero when the parent's height

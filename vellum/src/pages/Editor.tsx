@@ -2566,6 +2566,7 @@ function Viewport({
                   onPaint={onPaint}
                   meshPick={meshPick}
                   onPaintMesh={onPaintMesh}
+                  shading={shading}
                   display={display}
                   gizmo={gizmo}
                   onGizmo={onGizmo}
@@ -2589,6 +2590,7 @@ function Viewport({
             onPaint={onPaint}
                   meshPick={meshPick}
                   onPaintMesh={onPaintMesh}
+            shading={shading}
             display={display}
             gizmo={gizmo}
             onGizmo={onGizmo}

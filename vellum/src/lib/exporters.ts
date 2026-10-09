@@ -16,7 +16,7 @@ const UNIT = 1 / 16
 const NORMALS: Record<FaceKey, Vec3> = { north: [0, 0, -1], south: [0, 0, 1], east: [1, 0, 0], west: [-1, 0, 0], up: [0, 1, 0], down: [0, -1, 0] }
 
 /** A face to write: its corners clockwise as seen from outside, with their UVs (0..1) and the face's normal. */
-type Quad = { face: FaceKey | string; texture: string | null; points: Vec3[]; normal: Vec3; uv: Array<[number, number]> }
+export type Quad = { face: FaceKey | string; texture: string | null; points: Vec3[]; normal: Vec3; uv: Array<[number, number]> }
 
 /** A mesh's faces as polygons, clockwise from outside like a cube's quads, each point through `place`. */
 function meshQuads(model: Model, mesh: Mesh, place: (p: Vec3) => Vec3, placeDir: (v: Vec3) => Vec3): Quad[] {
@@ -43,7 +43,7 @@ function meshQuads(model: Model, mesh: Mesh, place: (p: Vec3) => Vec3, placeDir:
  * A cube's faces as quads, each point passed through `place`. UVs are 0..1
  * across the face's texture, top left at 0,0, with the face's turn applied.
  */
-function quads(model: Model, cube: Cube, place: (p: Vec3) => Vec3, placeDir: (v: Vec3) => Vec3): Quad[] {
+export function quads(model: Model, cube: Cube, place: (p: Vec3) => Vec3, placeDir: (v: Vec3) => Vec3): Quad[] {
   const inf = cube.inflate || 0
   const lo: Vec3 = [cube.from[0] - inf, cube.from[1] - inf, cube.from[2] - inf]
   const hi: Vec3 = [cube.to[0] + inf, cube.to[1] + inf, cube.to[2] + inf]
