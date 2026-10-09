@@ -163,3 +163,6 @@
 .scene3d__edge-hit { stroke: transparent; stroke-width: 10; stroke-linecap: round; pointer-events: stroke; cursor: crosshair; }
 .scene3d__edge:hover .scene3d__edge-line { stroke: #ffe28a; stroke-width: 2.5; }
 .scene3d__edge--own .scene3d__edge-line { stroke: #ffd36b; stroke-width: 3; }
+/* the knife's cut so far: its points on edges, joined in order */
+.scene3d__knife polyline { fill: none; stroke: #ff7a59; stroke-width: 2; stroke-dasharray: 5 3; }
+.scene3d__knife circle { fill: #ff7a59; stroke: #fff; stroke-width: 1.5; }

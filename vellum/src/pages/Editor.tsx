@@ -131,7 +131,8 @@ import {
   unwrapOrigin,
 } from '../lib/uv-edit'
 import type { UvHandle } from '../lib/uv-edit'
-import { PRIMITIVES, centreOf, faceOrder, deleteEdges, deleteFaces, deleteVertices, edgeEnds, edgeVerticesOf, edgesOf, extrudeFaces, flipFaces, loopCut, makeMesh, mergeVertices, moveVertices, subdivide, verticesOf, mirrorFacesUv, projectUv, turnFacesUv } from '../lib/mesh'
+import { PRIMITIVES, centreOf, faceOrder, deleteEdges, deleteFaces, deleteVertices, edgeEnds, edgeVerticesOf, edgesOf, extrudeFaces, flipFaces, loopCut, makeMesh, mergeVertices, moveVertices, subdivide, verticesOf, mirrorFacesUv, projectUv, turnFacesUv, bevelEdges, dissolveEdges, edgeLoop, fillFace, insetFaces, knifeCut, rotateVertices, scaleVertices, slideEdges } from '../lib/mesh'
+import type { KnifePoint } from '../lib/mesh'
 import type { Primitive } from '../lib/mesh'
 import { boxSize, findSpot } from '../lib/uv-pack'
 import { DEFAULT_DISPLAY, DisplayPanel } from './editor/DisplayPanel'
@@ -1915,9 +1916,41 @@ type MeshOps = {
   selectAll: () => void
   loopCut: () => void
   subdivide: () => void
+  bevel: () => void
+  inset: () => void
+  fill: () => void
+  dissolve: () => void
+  knife: () => void
+  /** an edge slide is a drag: begin, set the amount (-1 to 1) as it goes, end */
+  slide: { begin: () => void; set: (amount: number) => void; end: () => void }
+}
+
+/**
+ * Lays some faces of a mesh out flat at one texel per unit, each packed into
+ * room the rest of the sheet leaves free. The faces' old UVs don't count as
+ * taken. `crowded` says some found no room and sit at the corner.
+ */
+function packMeshFaces(model: Model, mesh: Mesh, faces: readonly string[]): { mesh: Mesh; crowded: boolean } {
+  const cleared = { ...mesh, faces: Object.fromEntries(Object.entries(mesh.faces).map(([k, f]) => [k, faces.includes(k) ? { ...f, uv: {} } : f])) }
+  const others = (model.meshes ?? []).filter((x) => x.id !== mesh.id)
+  const room = { ...model, meshes: [...others, cleared] }
+  const placed: UVRect[] = []
+  let crowded = false
+  const next = projectUv(mesh, [...faces], (w, h) => {
+    const spot = findSpot(room, [w, h], placed)
+    if (!spot) crowded = true
+    const [x, y] = spot ?? [0, 0]
+    placed.push([x, y, x + w, y + h])
+    return [x, y]
+  })
+  return { mesh: next, crowded }
 }
 
 function MeshPanel({
+  amount,
+  onAmount,
+  knife,
+  onKnifeCancel,
   mesh,
   model,
   bones,
@@ -1947,8 +1980,15 @@ function MeshPanel({
   onMove: (bone: string | null) => void
   onDelete: () => void
   pickedFaces: string[]
+  /** how far bevel and inset go */
+  amount: number
+  onAmount: (v: number) => void
+  /** the knife's points, while it cuts */
+  knife: number | null
+  onKnifeCancel: () => void
 }) {
   const locked = mesh.locked
+  const [slide, setSlide] = useState(0)
   const centre = centreOf(mesh, keys)
   const faceKeys = pickedFaces.length ? pickedFaces : Object.keys(mesh.faces)
   const textures = new Set(faceKeys.map((k) => mesh.faces[k]?.texture ?? ''))
@@ -2012,6 +2052,9 @@ function MeshPanel({
               <button className="chip" disabled={locked} onClick={ops.subdivide} title="Split every face into four">
                 Subdivide
               </button>
+              <button className="chip" disabled={locked} onClick={ops.knife} title="Cut across faces: click points on edges, then Enter (K)">
+                Knife
+              </button>
             </div>
           </>
         ) : (
@@ -2032,11 +2075,37 @@ function MeshPanel({
                 />
               </div>
             ) : null}
+            {knife !== null ? (
+              <div className="mesh-knife" role="status">
+                <span>
+                  Knife: {knife ? `${knife} ${knife === 1 ? 'point' : 'points'}` : 'click points on edges'}. Enter cuts, Esc stops.
+                </span>
+                <button className="chip" disabled={knife < 2} onClick={ops.knife}>
+                  Cut
+                </button>
+                <button className="chip" onClick={onKnifeCancel}>
+                  Cancel
+                </button>
+              </div>
+            ) : null}
+            {mode === 'face' || mode === 'edge' ? (
+              <div className="num-field-grid">
+                <div className="num-field-row">
+                  <span className="num-field-row__label">{mode === 'face' ? 'Inset' : 'Width'}</span>
+                  <NumField axis="n" tag="W" name={mode === 'face' ? 'Inset by' : 'Bevel width'} value={amount} step={0.5} onChange={(v) => onAmount(Math.max(0.05, Math.round(v * 100) / 100))} />
+                  <span className="num-field-row__label" />
+                  <span className="num-field-row__label" />
+                </div>
+              </div>
+            ) : null}
             <div className="chip-row" style={{ marginTop: 10 }}>
               {mode === 'face' ? (
                 <>
                   <button className="chip" disabled={!picked || locked} onClick={ops.extrude} title="Pull the picked faces out by 1, joined by new sides (E)">
                     Extrude
+                  </button>
+                  <button className="chip" disabled={!picked || locked} onClick={ops.inset} title="Shrink the picked faces inward, joined by a ring of new faces (I)">
+                    Inset
                   </button>
                   <button className="chip" disabled={!picked || locked} onClick={ops.flip} title="Turn the picked faces to face the other way (Shift+F)">
                     Flip
@@ -2046,18 +2115,71 @@ function MeshPanel({
                   </button>
                 </>
               ) : mode === 'edge' ? (
-                <button className="chip" disabled={picked !== 1 || locked} onClick={ops.loopCut} title="Cut a ring of new edges across the quads this edge runs through (Ctrl+R)">
-                  Loop cut
-                </button>
+                <>
+                  <button className="chip" disabled={picked !== 1 || locked} onClick={ops.loopCut} title="Cut a ring of new edges across the quads this edge runs through (Ctrl+R)">
+                    Loop cut
+                  </button>
+                  <button className="chip" disabled={!picked || locked} onClick={ops.bevel} title="Turn the picked edges into strips, as wide as the width (Ctrl+B)">
+                    Bevel
+                  </button>
+                  <button className="chip" disabled={!picked || locked} onClick={ops.dissolve} title="Join the two faces on each picked edge into one">
+                    Dissolve
+                  </button>
+                  <button className="chip" disabled={picked < 2 || locked} onClick={ops.fill} title="Make a face between the picked edges (F)">
+                    Fill
+                  </button>
+                </>
               ) : (
-                <button className="chip" disabled={picked < 2 || locked} onClick={ops.merge} title="Merge the picked vertices into one at their middle (M)">
-                  Merge
-                </button>
+                <>
+                  <button className="chip" disabled={picked < 2 || locked} onClick={ops.merge} title="Merge the picked vertices into one at their middle (M)">
+                    Merge
+                  </button>
+                  <button className="chip" disabled={picked < 3 || locked} onClick={ops.fill} title="Make a face through the picked vertices (F)">
+                    Fill
+                  </button>
+                </>
               )}
+              <button className="chip" disabled={locked} aria-pressed={knife !== null} onClick={knife !== null ? onKnifeCancel : ops.knife} title="Cut across faces: click points on edges, then Enter (K)">
+                Knife
+              </button>
               <button className="chip chip--danger" disabled={!picked || locked} onClick={ops.remove} title="Delete the pick (Del)">
                 Delete
               </button>
             </div>
+            {mode === 'edge' ? (
+              <label className="mesh-slide">
+                <span>Slide</span>
+                <input
+                  type="range"
+                  min={-1}
+                  max={1}
+                  step={0.02}
+                  value={slide}
+                  disabled={!picked || locked}
+                  aria-label="Edge slide"
+                  title="Slide the picked edges along the faces beside them. Alt+click an edge picks its whole loop."
+                  onPointerDown={ops.slide.begin}
+                  onKeyDown={ops.slide.begin}
+                  onChange={(e) => {
+                    const v = Number(e.target.value)
+                    setSlide(v)
+                    ops.slide.set(v)
+                  }}
+                  onPointerUp={() => {
+                    ops.slide.end()
+                    setSlide(0)
+                  }}
+                  onKeyUp={() => {
+                    ops.slide.end()
+                    setSlide(0)
+                  }}
+                  onBlur={() => {
+                    ops.slide.end()
+                    setSlide(0)
+                  }}
+                />
+              </label>
+            ) : null}
           </>
         )}
       </div>
@@ -4130,12 +4252,21 @@ export function Editor({ segments }: { segments: string[] }) {
   const [meshFaces, setMeshFaces] = useState<string[]>([])
   const [meshVerts, setMeshVerts] = useState<string[]>([])
   const [meshEdges, setMeshEdges] = useState<string[]>([])
+  /** the knife's points so far, while it is cutting; null when it isn't */
+  const [knife, setKnife] = useState<KnifePoint[] | null>(null)
+  /** how far bevel and inset go, in units */
+  const [meshAmount, setMeshAmount] = useState(1)
   const meshId = selectedMesh?.id
   useEffect(() => {
     setMeshFaces([])
     setMeshVerts([])
     setMeshEdges([])
+    setKnife(null)
   }, [meshId])
+  // the knife ends with its mode
+  useEffect(() => {
+    if (meshMode === 'object' || mode !== 'edit') setKnife(null)
+  }, [meshMode, mode])
   /** the edges of the selected mesh that still exist */
   const meshEdgeList = useMemo(() => (selectedMesh ? edgesOf(selectedMesh) : []), [selectedMesh])
   const meshPicked = meshMode === 'face' ? meshFaces.length : meshMode === 'vertex' ? meshVerts.length : meshMode === 'edge' ? meshEdges.length : 0
@@ -4151,6 +4282,9 @@ export function Editor({ segments }: { segments: string[] }) {
   const pickFace = useCallback((key: string, mods: { shift: boolean; ctrl: boolean }) => {
     setMeshFaces((cur) => (mods.shift || mods.ctrl ? (cur.includes(key) ? cur.filter((k) => k !== key) : [...cur, key]) : [key]))
   }, [])
+
+  /** The mesh as an edge slide began; every step of the slide starts from it. */
+  const slideFrom = useRef<Mesh | null>(null)
 
   /** Mesh edits on the current pick, as the panel's buttons and the keys run them. */
   const meshOps = useMemo(
@@ -4210,8 +4344,72 @@ export function Editor({ segments }: { segments: string[] }) {
         // the corner quads that keep the old keys stay picked; the new ones join them
         if (faces.length) setMeshFaces(Object.keys(next.faces).filter((k) => faces.includes(k) || !selectedMesh.faces[k]))
       },
+      bevel: () => {
+        if (!selectedMesh || selectedMesh.locked || meshMode !== 'edge' || !meshEdges.length) return
+        const r = bevelEdges(selectedMesh, meshEdges, meshAmount)
+        if (r.mesh === selectedMesh) return
+        history.commit('bevel', (m) => ({ ...m, meshes: (m.meshes ?? []).map((x) => (x.id === selectedMesh.id ? r.mesh : x)) }))
+        setMeshEdges(r.edges)
+      },
+      inset: () => {
+        if (!selectedMesh || selectedMesh.locked || meshMode !== 'face' || !meshFaces.length) return
+        const r = insetFaces(selectedMesh, meshFaces, meshAmount)
+        history.commit('inset', (m) => ({ ...m, meshes: (m.meshes ?? []).map((x) => (x.id === selectedMesh.id ? r.mesh : x)) }))
+        setMeshFaces(r.faces)
+      },
+      fill: () => {
+        if (!selectedMesh || selectedMesh.locked) return
+        const keys = meshMode === 'vertex' ? meshVerts : meshMode === 'edge' ? edgeVerticesOf(meshEdges) : []
+        const texture = Object.values(selectedMesh.faces)[0]?.texture ?? model.textures[0]?.id ?? null
+        const r = fillFace(selectedMesh, keys, texture)
+        if (!r.face) return
+        const packed = packMeshFaces(model, r.mesh, [r.face])
+        history.commit('fill', (m) => ({ ...m, meshes: (m.meshes ?? []).map((x) => (x.id === selectedMesh.id ? packed.mesh : x)) }))
+        setMeshMode('face')
+        setMeshFaces([r.face])
+      },
+      dissolve: () => {
+        if (!selectedMesh || selectedMesh.locked || meshMode !== 'edge' || !meshEdges.length) return
+        const r = dissolveEdges(selectedMesh, meshEdges)
+        if (!r.faces.length) return
+        history.commit('dissolve edges', (m) => ({ ...m, meshes: (m.meshes ?? []).map((x) => (x.id === selectedMesh.id ? r.mesh : x)) }))
+        setMeshEdges([])
+      },
+      knife: () => {
+        if (!selectedMesh || selectedMesh.locked) return
+        if (knife === null) {
+          // the knife cuts through edges, so it shows them
+          setMeshMode('edge')
+          setKnife([])
+          return
+        }
+        const r = knifeCut(selectedMesh, knife)
+        setKnife(null)
+        if (!r.edges.length) return
+        history.commit('knife', (m) => ({ ...m, meshes: (m.meshes ?? []).map((x) => (x.id === selectedMesh.id ? r.mesh : x)) }))
+        setMeshEdges(r.edges)
+      },
+      slide: {
+        begin: () => {
+          // a held arrow key repeats keydown; the slide already under way goes on
+          if (slideFrom.current || !selectedMesh || selectedMesh.locked || !meshEdges.length) return
+          slideFrom.current = selectedMesh
+          history.begin('edge slide')
+        },
+        set: (amount: number) => {
+          const base = slideFrom.current
+          if (!base) return
+          const next = slideEdges(base, meshEdges, amount)
+          history.amend((m) => ({ ...m, meshes: (m.meshes ?? []).map((x) => (x.id === base.id ? next : x)) }))
+        },
+        end: () => {
+          if (!slideFrom.current) return
+          slideFrom.current = null
+          history.end()
+        },
+      },
     }),
-    [selectedMesh, meshMode, meshFaces, meshVerts, meshEdges, history],
+    [selectedMesh, meshMode, meshFaces, meshVerts, meshEdges, history, meshAmount, model, knife],
   )
 
   /* Dragging on the mesh UV sheet: one undo step per drag. */
@@ -4228,21 +4426,9 @@ export function Editor({ segments }: { segments: string[] }) {
   const onUnwrapMesh = useCallback(() => {
     if (!selectedMesh || selectedMesh.locked) return
     const keys = meshFaces.filter((k) => selectedMesh.faces[k])
-    const faces = keys.length ? keys : Object.keys(selectedMesh.faces)
-    // the faces being laid out don't count as taken
-    const cleared = { ...selectedMesh, faces: Object.fromEntries(Object.entries(selectedMesh.faces).map(([k, f]) => [k, faces.includes(k) ? { ...f, uv: {} } : f])) }
-    const room = { ...model, meshes: (model.meshes ?? []).map((x) => (x.id === cleared.id ? cleared : x)) }
-    const placed: UVRect[] = []
-    let crowded = false
-    const next = projectUv(selectedMesh, faces, (w, h) => {
-      const spot = findSpot(room, [w, h], placed)
-      if (!spot) crowded = true
-      const [x, y] = spot ?? [0, 0]
-      placed.push([x, y, x + w, y + h])
-      return [x, y]
-    })
-    history.commit('unwrap mesh', (m) => ({ ...m, meshes: (m.meshes ?? []).map((x) => (x.id === next.id ? next : x)) }))
-    if (crowded) notify('The sheet had no room for some faces, so they share texels at the corner. Grow the sheet or move them.', 7000)
+    const r = packMeshFaces(model, selectedMesh, keys.length ? keys : Object.keys(selectedMesh.faces))
+    history.commit('unwrap mesh', (m) => ({ ...m, meshes: (m.meshes ?? []).map((x) => (x.id === r.mesh.id ? r.mesh : x)) }))
+    if (r.crowded) notify('The sheet had no room for some faces, so they share texels at the corner. Grow the sheet or move them.', 7000)
   }, [selectedMesh, meshFaces, model, history, notify])
 
   /** Applies a mesh edit to the selected mesh as one undo step. */
@@ -4285,11 +4471,16 @@ export function Editor({ segments }: { segments: string[] }) {
 
     if (mode !== 'edit' || !selected) return null
     if (selectedNull) return asNull(selectedNull)
-    // picked faces or vertices only move, whatever the tool
+    // a pick of faces, vertices or edges moves, turns or scales about its middle
     if (selectedMesh && meshMode !== 'object') {
-      if (!selectedMesh.visible || selectedMesh.locked || !meshKeys.length) return null
+      if (!selectedMesh.visible || selectedMesh.locked || !meshKeys.length || knife !== null) return null
       const f = meshFrame(rig, selectedMesh)
-      return { tool: 'move', anchor: apply(f, centreOf(selectedMesh, meshKeys)), axes: space === 'local' ? frameAxes(f) : world }
+      const anchor = apply(f, centreOf(selectedMesh, meshKeys))
+      const axes = space === 'local' ? frameAxes(f) : world
+      if (tool === 'rotate') return { tool: 'rotate', anchor, axes, rings: axes }
+      // scaling runs along the mesh's own axes
+      if (tool === 'resize') return { tool: 'scale', anchor, axes: frameAxes(f) }
+      return { tool: 'move', anchor, axes }
     }
     if (!['move', 'resize', 'rotate', 'pivot'].includes(tool)) return null
     const t = tool as GizmoSpec['tool']
@@ -4314,7 +4505,7 @@ export function Editor({ segments }: { segments: string[] }) {
     if (!f) return null
     const rings = eulerAxes(parentFrame(rig, b.id).matrix, b.rotation).map((r) => r.axis) as [Vec3, Vec3, Vec3]
     return { tool: t, anchor: apply(f, [0, 0, 0]), axes: space === 'local' ? frameAxes(f) : world, rings }
-  }, [mode, tool, selected, selectedNull, model, rig, pose, space, clip, poseTarget, selectedMesh, meshMode, meshKeys])
+  }, [mode, tool, selected, selectedNull, model, rig, pose, space, clip, poseTarget, selectedMesh, meshMode, meshKeys, knife])
 
   /** The model and rig when a drag began; every move is applied to these, never on top of the last move. */
   const dragFrom = useRef<{ model: Model; rig: ReturnType<typeof buildRig>; pose: Pose; ids: string[] } | null>(null)
@@ -4323,7 +4514,7 @@ export function Editor({ segments }: { segments: string[] }) {
     (e: GizmoEvent) => {
       if (e.phase === 'start') {
         const label =
-          mode === 'animate' ? 'pose' : meshEditing ? `move ${MESH_NOUN[meshMode][1]}` : { move: 'move', resize: 'resize', rotate: 'rotate', pivot: 'move pivot', scale: 'scale' }[e.tool]
+          mode === 'animate' ? 'pose' : meshEditing ? `${e.tool === 'rotate' ? 'turn' : e.tool === 'scale' ? 'scale' : 'move'} ${MESH_NOUN[meshMode][1]}` : { move: 'move', resize: 'resize', rotate: 'rotate', pivot: 'move pivot', scale: 'scale' }[e.tool]
         history.begin(label)
         dragFrom.current = { model, rig, pose, ids: topLevel(model, selection) }
       }
@@ -4368,12 +4559,25 @@ export function Editor({ segments }: { segments: string[] }) {
         const c0 = m0.clips.find((c) => c.id === clip.id)
         const existing = c0?.tracks.find((t) => t.bone === poseTarget && t.channel === channel)?.keys.find((k) => Math.abs(k.time - time) < 1e-4)
         next = setKey(m0, clip.id, poseTarget, channel, time, value, existing?.interp ?? 'linear')
-      } else if (meshEditing && selectedMesh && e.delta) {
+      } else if (meshEditing && selectedMesh) {
         // the drag in world space, taken into the mesh's own frame
         const mesh0 = m0.meshes?.find((x) => x.id === selectedMesh.id)
         if (mesh0) {
-          const local = applyDir(meshFrame(r0, mesh0).inverse(), e.delta)
-          next = { ...m0, meshes: (m0.meshes ?? []).map((x) => (x.id === mesh0.id ? moveVertices(x, meshKeys, local) : x)) }
+          const f0 = meshFrame(r0, mesh0)
+          const about = centreOf(mesh0, meshKeys)
+          let edited = mesh0
+          if (e.delta) edited = moveVertices(mesh0, meshKeys, applyDir(f0.inverse(), e.delta))
+          else if (e.tool === 'rotate' && e.angle !== undefined && gizmo?.rings) {
+            const step = e.ctrl ? 0 : e.shift ? 1 : 15
+            const angle = step ? Math.round(e.angle / step) * step : e.angle
+            const axis = norm(applyDir(f0.inverse(), gizmo.rings['xyz'.indexOf(e.handle)]))
+            edited = rotateVertices(mesh0, meshKeys, axis, angle, about)
+          } else if (e.tool === 'scale' && e.amount !== undefined) {
+            const k = Math.max(0.01, 1 + (e.handle === 'uniform' ? e.amount : e.amount / 8))
+            const factors: Vec3 = e.handle === 'uniform' ? [k, k, k] : ([0, 1, 2].map((i) => (i === 'xyz'.indexOf(e.handle) ? k : 1)) as Vec3)
+            edited = scaleVertices(mesh0, meshKeys, factors, about)
+          }
+          next = { ...m0, meshes: (m0.meshes ?? []).map((x) => (x.id === mesh0.id ? edited : x)) }
         }
       } else if ((e.tool === 'move' || e.tool === 'pivot') && e.delta) {
         const deltas = new Map(ids.filter((id) => !nulls.some((n) => n.id === id)).map((id) => [id, toParentDir(r0, id, e.delta!)] as const))
@@ -4425,7 +4629,7 @@ export function Editor({ segments }: { segments: string[] }) {
         }
       }
     },
-    [history, model, rig, pose, selection, kind, mode, clip, poseTarget, time, meshEditing, meshMode, selectedMesh, meshKeys],
+    [history, model, rig, pose, selection, kind, mode, clip, poseTarget, time, meshEditing, meshMode, selectedMesh, meshKeys, gizmo],
   )
 
   /* ---------------- vertex snap ---------------- */
@@ -4473,12 +4677,28 @@ export function Editor({ segments }: { segments: string[] }) {
   /* In Vertex mode every vertex of the selected mesh is a dot; a click
      picks it, Shift or Ctrl adds or drops it. */
   const meshVertexLayer = useMemo<VertexLayer | null>(() => {
-    if (!meshEditing || (meshMode !== 'vertex' && meshMode !== 'edge') || !selectedMesh) return null
+    if (!meshEditing || (meshMode !== 'vertex' && meshMode !== 'edge' && knife === null) || !selectedMesh) return null
     const f = meshFrame(rig, selectedMesh)
     const keys = Object.keys(selectedMesh.vertices)
     const points = keys.map((k) => apply(f, selectedMesh.vertices[k]))
     const toggle = (cur: string[], k: string, add: boolean | undefined) => (add ? (cur.includes(k) ? cur.filter((x) => x !== k) : [...cur, k]) : [k])
     const boxed = (cur: string[], inside: string[], add: boolean) => (add ? [...cur.filter((x) => !inside.includes(x)), ...inside] : inside)
+    const index = new Map(keys.map((k, i) => [k, i]))
+    const edges = meshEdgeList.map((e) => edgeEnds(e).map((v) => index.get(v) ?? 0) as [number, number])
+    if (knife !== null) {
+      // the knife: each click on an edge adds a point there; Enter cuts
+      const at = new Map(meshEdgeList.map((e, i) => [e, i]))
+      return {
+        points,
+        own: keys.map(() => false),
+        onPick: () => {},
+        hideDots: true,
+        edges,
+        edgeOwn: meshEdgeList.map(() => false),
+        onPickEdge: (i, _mods, t) => setKnife((cur) => [...(cur ?? []), { edge: meshEdgeList[i], t }]),
+        marks: knife.flatMap((p) => (at.has(p.edge) ? [{ edge: at.get(p.edge)!, t: p.t }] : [])),
+      }
+    }
     if (meshMode === 'vertex') {
       const picked = new Set(meshVerts)
       return {
@@ -4490,9 +4710,7 @@ export function Editor({ segments }: { segments: string[] }) {
     }
     /* Edge mode draws the edges as lines over the mesh; a box picks the edges
        with both ends inside it. */
-    const index = new Map(keys.map((k, i) => [k, i]))
     const picked = new Set(meshEdges)
-    const edges = meshEdgeList.map((e) => edgeEnds(e).map((v) => index.get(v) ?? 0) as [number, number])
     return {
       points,
       own: keys.map(() => false),
@@ -4500,14 +4718,22 @@ export function Editor({ segments }: { segments: string[] }) {
       hideDots: true,
       edges,
       edgeOwn: meshEdgeList.map((e) => picked.has(e)),
-      onPickEdge: (i, mods) => setMeshEdges((cur) => toggle(cur, meshEdgeList[i], mods?.shift || mods?.ctrl)),
+      onPickEdge: (i, mods) => {
+        // Alt picks the whole loop through the edge
+        if (mods.alt) {
+          const loop = edgeLoop(selectedMesh, meshEdgeList[i])
+          setMeshEdges((cur) => (mods.shift || mods.ctrl ? [...cur.filter((e) => !loop.includes(e)), ...loop] : loop))
+          return
+        }
+        setMeshEdges((cur) => toggle(cur, meshEdgeList[i], mods.shift || mods.ctrl))
+      },
       onBox: (inside, add) => {
         const set = new Set(inside.map((i) => keys[i]))
         const hit = meshEdgeList.filter((e) => edgeEnds(e).every((v) => set.has(v)))
         setMeshEdges((cur) => boxed(cur, hit, add))
       },
     }
-  }, [meshEditing, meshMode, selectedMesh, rig, meshVerts, meshEdges, meshEdgeList])
+  }, [meshEditing, meshMode, selectedMesh, rig, meshVerts, meshEdges, meshEdgeList, knife])
 
   const vertices = useMemo<VertexLayer | null>(
     () =>
@@ -5730,9 +5956,16 @@ export function Editor({ segments }: { segments: string[] }) {
           e.preventDefault()
           fn()
         }
+        // while the knife cuts, Enter makes the cut and Esc drops it
+        if (knife !== null && (e.key === 'Enter' || e.key === 'Escape')) return run(e.key === 'Enter' ? meshOps.knife : () => setKnife(null))
         if (!mod && ['1', '2', '3', '4'].includes(k)) return run(() => setMeshMode(MESH_MODES[Number(k) - 1]))
+        if (!mod && k === 'k' && knife === null) return run(meshOps.knife)
         if (meshMode !== 'object') {
           if (mod && k === 'r' && meshMode === 'edge') return run(meshOps.loopCut)
+          if (mod && k === 'b' && meshMode === 'edge') return run(meshOps.bevel)
+          if (!mod && k === 'i' && meshMode === 'face') return run(meshOps.inset)
+          // F fills between the picked vertices or edges; with too few picked it still frames the view
+          if (!mod && k === 'f' && ((meshMode === 'vertex' && meshVerts.length >= 3) || (meshMode === 'edge' && meshEdges.length >= 2))) return run(meshOps.fill)
           if (mod && k === 'a') return run(meshOps.selectAll)
           if (!mod && k === 'e' && meshMode === 'face') return run(meshOps.extrude)
           if (!mod && k === 'm' && meshMode === 'vertex') return run(meshOps.merge)
@@ -5877,7 +6110,7 @@ export function Editor({ segments }: { segments: string[] }) {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [history, actions, anim, mode, selectedKey, selectedKeys, selectedEvent, selectedNull, animBone, selected, vertexFrom, clip, notify, keymap, selectedMesh, meshMode, meshOps])
+  }, [history, actions, anim, mode, selectedKey, selectedKeys, selectedEvent, selectedNull, animBone, selected, vertexFrom, clip, notify, keymap, selectedMesh, meshMode, meshOps, knife, meshVerts, meshEdges])
 
   /* .vellum opens as it is. A Blockbench project or a Java model is
      converted on the way in and saves as a .vellum; what did not carry
@@ -6003,7 +6236,10 @@ export function Editor({ segments }: { segments: string[] }) {
             mode === 'edit' || mode === 'animate' ? (
               <ToolDock
                 // resize and vertex snap are for cubes, so a selected mesh's dock leaves them out for its modes
-                tools={toolsets[mode].filter((t) => !(mode === 'edit' && selectedMesh && (t.id === 'resize' || t.id === 'vertex'))).map((t) => ({ ...t, key: keyFor(keymap, t.id, t.key) }))}
+                tools={toolsets[mode]
+                  .filter((t) => !(mode === 'edit' && selectedMesh && (t.id === 'vertex' || t.id === (meshMode === 'object' ? 'resize' : 'pivot'))))
+                  // on a mesh's pick, resize scales it
+                  .map((t) => ({ ...t, key: keyFor(keymap, t.id, t.key), ...(mode === 'edit' && selectedMesh && t.id === 'resize' ? { label: 'Scale tool' } : {}) }))}
                 tool={tool}
                 onTool={(id) => {
                   setTool(id)
@@ -6188,6 +6424,10 @@ export function Editor({ segments }: { segments: string[] }) {
                   onMove={(bone) => move(selectedMesh.id, bone)}
                   onDelete={actions.onDelete}
                   pickedFaces={meshMode === 'face' ? meshFaces : []}
+                  amount={meshAmount}
+                  onAmount={setMeshAmount}
+                  knife={knife === null ? null : knife.length}
+                  onKnifeCancel={() => setKnife(null)}
                 />
               </Panel>
             ) : selectedBone ? (

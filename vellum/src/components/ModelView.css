@@ -161,7 +161,7 @@
   pointer-events: none;
 }
 .model-mface__edges { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none; }
-.model-mface__edges polygon { fill: none; stroke: var(--accent-mark, #a7c4a0); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+.model-mface__edges polygon, .model-mface__edges line { fill: none; stroke: var(--accent-mark, #a7c4a0); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
 .model-mface--picked::after {
   content: '';
   position: absolute;

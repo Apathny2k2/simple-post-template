@@ -600,3 +600,499 @@ export function mirrorFacesUv(mesh: Mesh, faceKeys: readonly string[], axis: 'u'
   const [u0, v0, u1, v1] = uvBoundsOf(mesh, faceKeys)
   return mapUv(mesh, faceKeys, ([u, v]) => (axis === 'u' ? [u0 + u1 - u, v] : [u, v0 + v1 - v]))
 }
+
+/* ---------------- drawing a face exactly ---------------- */
+
+/**
+ * How to draw a face. One flat piece maps a texture by a single affine map,
+ * which is exact for a triangle, and for a flat polygon only when its UVs
+ * are the same shape as its outline (a parallelogram on a parallelogram).
+ * Any other face (a quad bent out of its plane, or one whose UVs are a
+ * trapezoid while its outline is a square) is drawn as triangles, each
+ * with its own map, as a GPU would. `outer` marks which of a piece's edges
+ * are the face's own, so the outline skips the diagonals.
+ */
+export function facePieces(mesh: Mesh, face: MeshFace): Array<{ keys: string[]; outer: boolean[] }> {
+  const o = faceOrder(mesh, face)
+  const whole = [{ keys: o, outer: o.map(() => true) }]
+  if (o.length <= 3) return whole
+  const { origin, n, flat } = faceBasis(mesh, face)
+  const planar = o.every((k) => Math.abs(dot(sub(mesh.vertices[k], origin), n)) < 0.01)
+  if (planar) {
+    const map = uvToFlat(o.map((k) => face.uv[k] ?? [0, 0]), flat)
+    const fits =
+      !map ||
+      o.every((k, i) => {
+        const [u, v] = face.uv[k] ?? [0, 0]
+        return Math.hypot(map.a * u + map.c * v + map.tx - flat[i][0], map.b * u + map.d * v + map.ty - flat[i][1]) < 0.02
+      })
+    if (fits) return whole
+  }
+  const count = o.length
+  const tri = (i: number, j: number, k: number) => ({
+    keys: [o[i], o[j], o[k]],
+    outer: [(j - i + count) % count === 1, (k - j + count) % count === 1, (i - k + count) % count === 1],
+  })
+  if (count === 4) {
+    // split along the shorter diagonal, as modelling tools do
+    const p = o.map((k) => mesh.vertices[k])
+    return length(sub(p[2], p[0])) <= length(sub(p[3], p[1])) ? [tri(0, 1, 2), tri(0, 2, 3)] : [tri(1, 2, 3), tri(1, 3, 0)]
+  }
+  return Array.from({ length: count - 2 }, (_, i) => tri(0, i + 1, i + 2))
+}
+
+/* ---------------- knife, bevel, slide, loops, fill, dissolve, inset ---------------- */
+
+type UV = [number, number]
+const key8 = () => newId().slice(0, 8)
+const lerp3 = (a: Vec3, b: Vec3, t: number): Vec3 => [round(a[0] + (b[0] - a[0]) * t), round(a[1] + (b[1] - a[1]) * t), round(a[2] + (b[2] - a[2]) * t)]
+const lerpUv = (a: UV | undefined, b: UV | undefined, t: number): UV => {
+  const p = a ?? [0, 0]
+  const q = b ?? p
+  return [round(p[0] + (q[0] - p[0]) * t), round(p[1] + (q[1] - p[1]) * t)]
+}
+const pickUv = (f: MeshFace, keys: readonly string[]) => Object.fromEntries(keys.map((k) => [k, f.uv[k] ?? [0, 0]])) as Record<string, UV>
+
+/** Each edge's faces, by the faces' drawing order. */
+function facesByEdge(mesh: Mesh, faces: Record<string, MeshFace> = mesh.faces) {
+  const out = new Map<string, string[]>()
+  for (const [k, f] of Object.entries(faces)) {
+    const o = faceOrder(mesh, f)
+    o.forEach((a, i) => {
+      const e = edgeKey(a, o[(i + 1) % o.length])
+      out.set(e, [...(out.get(e) ?? []), k])
+    })
+  }
+  return out
+}
+
+/** True when a face's outline runs a → b. */
+function runs(o: readonly string[], a: string, b: string) {
+  const i = o.indexOf(a)
+  return i >= 0 && o[(i + 1) % o.length] === b
+}
+
+/**
+ * Puts new vertices on edges of the faces outside `skip`, between the
+ * edge's ends, so no face keeps a gap where a neighbour was cut. `t` is
+ * measured from `from`, and each new corner's UV is that far along the
+ * face's own UVs.
+ */
+function insertOnEdges(mesh: Mesh, faces: Record<string, MeshFace>, inserts: ReadonlyMap<string, Array<{ v: string; from: string; t: number }>>, skip: ReadonlySet<string>) {
+  if (!inserts.size) return
+  for (const [k, f] of Object.entries(faces)) {
+    if (skip.has(k)) continue
+    const o = faceOrder(mesh, f)
+    const next: string[] = []
+    const uv = { ...f.uv }
+    let changed = false
+    o.forEach((a, i) => {
+      const b = o[(i + 1) % o.length]
+      next.push(a)
+      const list = inserts.get(edgeKey(a, b))
+      if (!list) return
+      const along = list.map((x) => ({ v: x.v, s: x.from === a ? x.t : 1 - x.t })).sort((x, y) => x.s - y.s)
+      for (const x of along) {
+        if (next.includes(x.v)) continue
+        next.push(x.v)
+        uv[x.v] = lerpUv(f.uv[a], f.uv[b], x.s)
+        changed = true
+      }
+    })
+    if (changed) faces[k] = { ...f, vertices: next, uv }
+  }
+}
+
+/** A point on an edge for the knife: `t` runs from the edge's first end (`edgeEnds(edge)[0]`) to its second. */
+export type KnifePoint = { edge: string; t: number }
+
+/**
+ * Blender's knife, through edges: each point becomes a vertex on its edge
+ * (or the corner it sits on), and each pair of points in a row that share
+ * a face splits that face between them. Faces next to a cut edge take the
+ * new vertex too. Returns the new edges.
+ */
+export function knifeCut(mesh: Mesh, points: readonly KnifePoint[]): { mesh: Mesh; edges: string[] } {
+  const vertices = { ...mesh.vertices }
+  const inserts = new Map<string, Array<{ v: string; from: string; t: number }>>()
+  const at: string[] = []
+  for (const p of points) {
+    const [a, b] = edgeEnds(p.edge)
+    if (!mesh.vertices[a] || !mesh.vertices[b]) continue
+    let v: string
+    if (p.t <= 0.02) v = a
+    else if (p.t >= 0.98) v = b
+    else {
+      const list = inserts.get(p.edge) ?? []
+      // the same spot on one edge twice is one vertex
+      const same = list.find((x) => Math.abs(x.t - p.t) < 0.02)
+      if (same) v = same.v
+      else {
+        v = key8()
+        vertices[v] = lerp3(mesh.vertices[a], mesh.vertices[b], p.t)
+        list.push({ v, from: a, t: p.t })
+        inserts.set(p.edge, list)
+      }
+    }
+    if (at[at.length - 1] !== v) at.push(v)
+  }
+  const cut: Mesh = { ...mesh, vertices }
+  const faces = { ...mesh.faces }
+  insertOnEdges(cut, faces, inserts, new Set())
+  const made: string[] = []
+  for (let i = 0; i + 1 < at.length; i++) {
+    const p = at[i]
+    const q = at[i + 1]
+    for (const [fk, f] of Object.entries(faces)) {
+      const o = faceOrder(cut, f)
+      const ip = o.indexOf(p)
+      const iq = o.indexOf(q)
+      if (ip < 0 || iq < 0) continue
+      const gap = (iq - ip + o.length) % o.length
+      if (gap === 1 || gap === o.length - 1) continue
+      const one = Array.from({ length: gap + 1 }, (_, j) => o[(ip + j) % o.length])
+      const two = Array.from({ length: o.length - gap + 1 }, (_, j) => o[(iq + j) % o.length])
+      faces[fk] = { ...f, vertices: one, uv: pickUv(f, one) }
+      faces[key8()] = { ...f, vertices: two, uv: pickUv(f, two) }
+      made.push(edgeKey(p, q))
+      break
+    }
+  }
+  return { mesh: { ...cut, faces }, edges: made }
+}
+
+/**
+ * Bevels edges: each edge becomes a strip `width` wide, its two faces
+ * pulled back from it along their other edges. At an end where three
+ * faces meet, the third face loses its corner to a cut; where more meet,
+ * a triangle fills the gap. Edges are bevelled one after another, and an
+ * edge whose end an earlier bevel moved follows that end. The strip takes
+ * its texture from the edge's first face, along the edge. Returns the
+ * strip's long edges.
+ */
+export function bevelEdges(mesh: Mesh, edges: readonly string[], width: number): { mesh: Mesh; edges: string[] } {
+  let m = mesh
+  const made: string[] = []
+  // the vertex an earlier bevel put on the edge from → to, near `from`
+  const moved = new Map<string, string>()
+  const follow = (v: string, other: string) => (m.vertices[v] ? v : moved.get(`${v}>${other}`) ?? v)
+  for (const e0 of edges) {
+    const [a0, b0] = edgeEnds(e0)
+    const a = follow(a0, b0)
+    const b = follow(b0, a0)
+    if (!m.vertices[a] || !m.vertices[b]) continue
+    const around = facesByEdge(m).get(edgeKey(a, b)) ?? []
+    if (around.length !== 2) continue
+    let [k1, k2] = around
+    if (!runs(faceOrder(m, m.faces[k1]), a, b)) [k1, k2] = [k2, k1]
+    const f1 = m.faces[k1]
+    const f2 = m.faces[k2]
+    const o1 = faceOrder(m, f1)
+    const o2 = faceOrder(m, f2)
+    const p1 = o1[(o1.indexOf(a) - 1 + o1.length) % o1.length]
+    const q1 = o1[(o1.indexOf(b) + 1) % o1.length]
+    const p2 = o2[(o2.indexOf(a) + 1) % o2.length]
+    const q2 = o2[(o2.indexOf(b) - 1 + o2.length) % o2.length]
+    const vertices = { ...m.vertices }
+    const inserts = new Map<string, Array<{ v: string; from: string; t: number }>>()
+    const share = new Map<string, string>()
+    const place = (from: string, to: string) => {
+      const e = edgeKey(from, to)
+      const have = share.get(`${from}>${to}`)
+      if (have) return { v: have, t: inserts.get(e)![0].t }
+      const t = Math.min(width / Math.max(1e-6, length(sub(m.vertices[to], m.vertices[from]))), 0.45)
+      const v = key8()
+      vertices[v] = lerp3(m.vertices[from], m.vertices[to], t)
+      inserts.set(e, [...(inserts.get(e) ?? []), { v, from, t }])
+      share.set(`${from}>${to}`, v)
+      moved.set(`${from}>${to}`, v)
+      return { v, t }
+    }
+    const A1 = place(a, p1)
+    const B1 = place(b, q1)
+    const A2 = place(a, p2)
+    const B2 = place(b, q2)
+    const faces = { ...m.faces }
+    const swap = (f: MeshFace, o: string[], at: Record<string, { v: string; t: number; to: string }>) => {
+      const vs = o.map((v) => at[v]?.v ?? v)
+      const uv: Record<string, UV> = {}
+      o.forEach((v) => {
+        const r = at[v]
+        if (r) uv[r.v] = lerpUv(f.uv[v], f.uv[r.to], r.t)
+        else uv[v] = f.uv[v] ?? [0, 0]
+      })
+      return { ...f, vertices: vs, uv }
+    }
+    faces[k1] = swap(f1, o1, { [a]: { ...A1, to: p1 }, [b]: { ...B1, to: q1 } })
+    faces[k2] = swap(f2, o2, { [a]: { ...A2, to: p2 }, [b]: { ...B2, to: q2 } })
+    const strip = [B1.v, A1.v, A2.v, B2.v].filter((v, i, all) => all.indexOf(v) === i)
+    const stripKey = key8()
+    faces[stripKey] = {
+      vertices: strip,
+      uv: { [B1.v]: faces[k1].uv[B1.v], [A1.v]: faces[k1].uv[A1.v], [A2.v]: f1.uv[a] ?? [0, 0], [B2.v]: f1.uv[b] ?? [0, 0] },
+      texture: f1.texture,
+    }
+    const cut: Mesh = { ...m, vertices }
+    insertOnEdges(cut, faces, inserts, new Set([k1, k2, stripKey]))
+    // close the gap left at each end
+    const closeAt = (corner: string, first: string, second: string, tri: string[]) => {
+      if (first === second) return
+      const holder = (v: string) => Object.keys(faces).find((k) => k !== stripKey && faces[k].vertices.includes(corner) && faces[k].vertices.includes(v))
+      const g = holder(first)
+      const h = holder(second)
+      if (g && g === h) {
+        const f = faces[g]
+        const uv = { ...f.uv }
+        delete uv[corner]
+        faces[g] = { ...f, vertices: f.vertices.filter((v) => v !== corner), uv }
+      } else if (g && h) {
+        faces[key8()] = { vertices: tri, uv: { [first]: faces[g].uv[first], [corner]: faces[g].uv[corner], [second]: faces[h].uv[second] }, texture: faces[g].texture }
+      }
+    }
+    closeAt(a, A1.v, A2.v, [A2.v, A1.v, a])
+    closeAt(b, B1.v, B2.v, [B1.v, B2.v, b])
+    m = dropLoose({ ...cut, faces })
+    made.push(edgeKey(A1.v, B1.v), edgeKey(A2.v, B2.v))
+  }
+  return { mesh: m, edges: [...new Set(made)].filter((e) => edgeEnds(e).every((v) => m.vertices[v])) }
+}
+
+/** Drops vertices no face uses. */
+function dropLoose(mesh: Mesh): Mesh {
+  const used = new Set(Object.values(mesh.faces).flatMap((f) => f.vertices))
+  if (Object.keys(mesh.vertices).every((k) => used.has(k))) return mesh
+  return { ...mesh, vertices: Object.fromEntries(Object.entries(mesh.vertices).filter(([k]) => used.has(k))) }
+}
+
+/**
+ * Where each end of some edges slides to: along the edge of the face beside
+ * it that isn't one of the picked edges. Side `a` and side `b` are the two
+ * faces along the picked edges, kept on one side as the pick runs on.
+ */
+export function slideRails(mesh: Mesh, edges: readonly string[]): { a: Map<string, string>; b: Map<string, string> } {
+  const byEdge = facesByEdge(mesh)
+  const picked = edges.filter((e) => byEdge.has(e))
+  const rails = { a: new Map<string, string>(), b: new Map<string, string>() }
+  const sideOf = new Map<string, string>()
+  const neighbour = (face: string, v: string, not: string) => {
+    const o = faceOrder(mesh, mesh.faces[face])
+    const i = o.indexOf(v)
+    const prev = o[(i - 1 + o.length) % o.length]
+    const next = o[(i + 1) % o.length]
+    return prev === not ? next : prev
+  }
+  for (const seed of picked) {
+    if (sideOf.has(seed)) continue
+    sideOf.set(seed, byEdge.get(seed)![0])
+    const queue = [seed]
+    while (queue.length) {
+      const e = queue.shift()!
+      const face = sideOf.get(e)!
+      const other = byEdge.get(e)!.find((f) => f !== face)
+      for (const [v, w] of [edgeEnds(e), edgeEnds(e).reverse()]) {
+        const n = neighbour(face, v, w)
+        if (!rails.a.has(v)) rails.a.set(v, n)
+        if (other && !rails.b.has(v)) rails.b.set(v, neighbour(other, v, w))
+        for (const e2 of picked) {
+          if (sideOf.has(e2) || !edgeEnds(e2).includes(v)) continue
+          const faces2 = byEdge.get(e2)!
+          // the same side is the face that shares the rail
+          sideOf.set(e2, faces2.find((f) => faceOrder(mesh, mesh.faces[f]).includes(n) && runsEither(faceOrder(mesh, mesh.faces[f]), v, n)) ?? faces2[0])
+          queue.push(e2)
+        }
+      }
+    }
+  }
+  return rails
+}
+
+const runsEither = (o: readonly string[], a: string, b: string) => runs(o, a, b) || runs(o, b, a)
+
+/**
+ * Blender's edge slide: the picked edges' vertices move along their rails,
+ * `amount` of the way (positive toward side a, negative toward side b), and
+ * the faces' UVs follow, so the texture stays put on the surface.
+ */
+export function slideEdges(mesh: Mesh, edges: readonly string[], amount: number): Mesh {
+  if (!amount) return mesh
+  const rails = slideRails(mesh, edges)
+  const toward = amount > 0 ? rails.a : rails.b
+  const away = amount > 0 ? rails.b : rails.a
+  const t = Math.min(Math.abs(amount), 1)
+  const vertices = { ...mesh.vertices }
+  for (const [v, n] of toward) vertices[v] = lerp3(mesh.vertices[v], mesh.vertices[n], t)
+  const faces = { ...mesh.faces }
+  for (const [k, f] of Object.entries(mesh.faces)) {
+    const o = faceOrder(mesh, f)
+    let uv: Record<string, UV> | null = null
+    for (const v of o) {
+      const n = toward.get(v)
+      if (!n) continue
+      uv ??= { ...f.uv }
+      if (runsEither(o, v, n)) {
+        uv[v] = lerpUv(f.uv[v], f.uv[n], t)
+        continue
+      }
+      // on the far side the corner moves away from that side's rail, by as much in space
+      const m2 = away.get(v)
+      if (m2 && runsEither(o, v, m2)) {
+        const k2 = (t * length(sub(mesh.vertices[n], mesh.vertices[v]))) / Math.max(1e-6, length(sub(mesh.vertices[m2], mesh.vertices[v])))
+        uv[v] = lerpUv(f.uv[v], f.uv[m2], -k2)
+      }
+    }
+    if (uv) faces[k] = { ...f, uv }
+  }
+  return { ...mesh, vertices, faces }
+}
+
+/**
+ * The edge loop through an edge, as Alt+click picks it in Blender: at each
+ * vertex where four edges meet, it carries on along the edge that shares no
+ * face with the one it came in on. It stops anywhere else, or when it comes
+ * back round.
+ */
+export function edgeLoop(mesh: Mesh, start: string): string[] {
+  const byEdge = facesByEdge(mesh)
+  if (!byEdge.has(start)) return []
+  const at = new Map<string, string[]>()
+  for (const e of byEdge.keys()) for (const v of edgeEnds(e)) at.set(v, [...(at.get(v) ?? []), e])
+  const loop = [start]
+  const seen = new Set(loop)
+  for (const end of edgeEnds(start)) {
+    let edge = start
+    let v = end
+    for (;;) {
+      const here = at.get(v) ?? []
+      if (here.length !== 4) break
+      const faces = new Set(byEdge.get(edge))
+      const next = here.find((e) => e !== edge && !(byEdge.get(e) ?? []).some((f) => faces.has(f)))
+      if (!next || seen.has(next)) break
+      seen.add(next)
+      loop.push(next)
+      edge = next
+      v = edgeEnds(next).find((x) => x !== v)!
+    }
+  }
+  return loop
+}
+
+/**
+ * Blender's F: a new face through some vertices, ordered round their middle
+ * and turned to face out (against a face it shares an edge with, or away
+ * from the mesh's middle). Its UVs are left empty for the caller to lay out.
+ */
+export function fillFace(mesh: Mesh, keys: readonly string[], texture: string | null): { mesh: Mesh; face: string | null } {
+  const vs = [...new Set(keys)].filter((k) => mesh.vertices[k])
+  if (vs.length < 3) return { mesh, face: null }
+  const ps = vs.map((k) => mesh.vertices[k])
+  const c = scale(ps.reduce(addV, [0, 0, 0] as Vec3), 1 / ps.length)
+  // the plane's normal: the largest cross product of two spokes
+  let n: Vec3 = [0, 0, 0]
+  for (let i = 0; i < ps.length; i++)
+    for (let j = i + 1; j < ps.length; j++) {
+      const x = cross(sub(ps[i], c), sub(ps[j], c))
+      if (length(x) > length(n)) n = x
+    }
+  n = unit(n)
+  const e1 = unit(sub(ps[0], c))
+  const e2 = cross(n, e1)
+  const order = vs
+    .map((k, i) => ({ k, a: Math.atan2(dot(sub(ps[i], c), e2), dot(sub(ps[i], c), e1)) }))
+    .sort((x, y) => x.a - y.a)
+    .map((x) => x.k)
+  const outlines = Object.values(mesh.faces).map((f) => faceOrder(mesh, f))
+  const sharesForward = order.some((a, i) => outlines.some((o) => runs(o, a, order[(i + 1) % order.length])))
+  const sharesBackward = order.some((a, i) => outlines.some((o) => runs(o, order[(i + 1) % order.length], a)))
+  const middle = centreOf(mesh, Object.keys(mesh.vertices))
+  const outward = sharesForward ? false : sharesBackward ? true : dot(newell(order.map((k) => mesh.vertices[k])), sub(c, middle)) >= 0
+  const vertices = outward ? order : [order[0], ...order.slice(1).reverse()]
+  const face = key8()
+  return { mesh: { ...mesh, faces: { ...mesh.faces, [face]: { vertices, uv: {}, texture } } }, face }
+}
+
+/** Dissolves edges: the two faces on each become one, with the edge gone. */
+export function dissolveEdges(mesh: Mesh, edges: readonly string[]): { mesh: Mesh; faces: string[] } {
+  let m = mesh
+  const kept: string[] = []
+  for (const e of edges) {
+    const [a, b] = edgeEnds(e)
+    const around = facesByEdge(m).get(edgeKey(a, b)) ?? []
+    if (around.length !== 2) continue
+    let [k1, k2] = around
+    if (!runs(faceOrder(m, m.faces[k1]), a, b)) [k1, k2] = [k2, k1]
+    const f1 = m.faces[k1]
+    const o1 = faceOrder(m, f1)
+    const o2 = faceOrder(m, m.faces[k2])
+    const from1 = Array.from({ length: o1.length }, (_, j) => o1[(o1.indexOf(b) + j) % o1.length])
+    const from2 = Array.from({ length: o2.length }, (_, j) => o2[(o2.indexOf(a) + j) % o2.length])
+    const merged = [...from1, ...from2.slice(1, -1)]
+    // faces that touch along more than one edge would fold over themselves
+    if (new Set(merged).size !== merged.length) continue
+    const faces = { ...m.faces }
+    delete faces[k2]
+    faces[k1] = { ...f1, vertices: merged, uv: { ...m.faces[k2].uv, ...f1.uv } }
+    m = dropLoose({ ...m, faces })
+    kept.push(k1)
+  }
+  return { mesh: m, faces: [...new Set(kept)].filter((k) => m.faces[k]) }
+}
+
+/**
+ * Blender's inset: each face shrinks toward its middle by `amount` units,
+ * and a ring of quads joins it to where its edges were. The ring keeps the
+ * face's texture, running from its old UVs to the inner ones. Returns the
+ * inner faces, which keep the old keys.
+ */
+export function insetFaces(mesh: Mesh, faceKeys: readonly string[], amount: number): { mesh: Mesh; faces: string[] } {
+  const vertices = { ...mesh.vertices }
+  const faces = { ...mesh.faces }
+  const keys = faceKeys.filter((k) => mesh.faces[k])
+  for (const k of keys) {
+    const f = mesh.faces[k]
+    const o = faceOrder(mesh, f)
+    const c = centreOf(mesh, o)
+    const uvc: UV = [o.reduce((s, v) => s + (f.uv[v]?.[0] ?? 0), 0) / o.length, o.reduce((s, v) => s + (f.uv[v]?.[1] ?? 0), 0) / o.length]
+    const inner = o.map((v) => {
+      const t = Math.min(amount / Math.max(1e-6, length(sub(c, mesh.vertices[v]))), 0.9)
+      const nk = key8()
+      vertices[nk] = lerp3(mesh.vertices[v], c, t)
+      return { k: nk, uv: lerpUv(f.uv[v], uvc, t) }
+    })
+    o.forEach((v, i) => {
+      const j = (i + 1) % o.length
+      const ring = [v, o[j], inner[j].k, inner[i].k]
+      faces[key8()] = { ...f, vertices: ring, uv: { [v]: f.uv[v] ?? [0, 0], [o[j]]: f.uv[o[j]] ?? [0, 0], [inner[j].k]: inner[j].uv, [inner[i].k]: inner[i].uv } }
+    })
+    faces[k] = { ...f, vertices: inner.map((x) => x.k), uv: Object.fromEntries(inner.map((x) => [x.k, x.uv])) }
+  }
+  return { mesh: { ...mesh, vertices, faces }, faces: keys }
+}
+
+/** Turns vertices `degrees` about `axis` (unit length, the mesh's own frame) through `about`. */
+export function rotateVertices(mesh: Mesh, keys: readonly string[], axis: Vec3, degrees: number, about: Vec3): Mesh {
+  const r = (degrees * Math.PI) / 180
+  const cos = Math.cos(r)
+  const sin = Math.sin(r)
+  const k = unit(axis)
+  const vertices = { ...mesh.vertices }
+  for (const key of new Set(keys)) {
+    const p = mesh.vertices[key]
+    if (!p) continue
+    const v = sub(p, about)
+    // Rodrigues' rotation
+    const turned = addV(addV(scale(v, cos), scale(cross(k, v), sin)), scale(k, dot(k, v) * (1 - cos)))
+    vertices[key] = addV(turned, about).map(round) as Vec3
+  }
+  return { ...mesh, vertices }
+}
+
+/** Scales vertices by `factors` along the mesh's own axes, about `about`. */
+export function scaleVertices(mesh: Mesh, keys: readonly string[], factors: Vec3, about: Vec3): Mesh {
+  const vertices = { ...mesh.vertices }
+  for (const key of new Set(keys)) {
+    const p = mesh.vertices[key]
+    if (!p) continue
+    vertices[key] = [0, 1, 2].map((i) => round(about[i] + (p[i] - about[i]) * factors[i])) as Vec3
+  }
+  return { ...mesh, vertices }
+}

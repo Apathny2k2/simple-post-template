@@ -3,14 +3,14 @@ import type { Ref } from 'react'
 import { FACES, samplePose, textureById } from '../lib/model'
 import { applyDir, buildRig, nullWorld, rotationMatrix, solveIK } from '../lib/kinematics'
 import type { Bone, Clip, Cube, Face as ModelFace, FaceKey, Mesh, Model, Pose, Vec3 } from '../lib/model'
-import { faceBasis, uvToFlat } from '../lib/mesh'
+import { faceBasis, facePieces, uvToFlat } from '../lib/mesh'
 import { Gizmo } from './Gizmo'
 import type { Basis, GizmoEvent, GizmoSpec } from './Gizmo'
 import './Model3D.css'
 import './ModelView.css'
 
 /** Modifier keys held on a click, for adding to or toggling a selection. */
-export type PickMods = { shift: boolean; ctrl: boolean }
+export type PickMods = { shift: boolean; ctrl: boolean; alt?: boolean }
 
 /** Camera control from outside: view presets, focus, box select. */
 export type ViewApi = {
@@ -34,7 +34,10 @@ export type VertexLayer = {
   edges?: Array<[number, number]>
   /** marks the picked edges */
   edgeOwn?: boolean[]
-  onPickEdge?: (index: number, mods?: PickMods) => void
+  /** a click on an edge: `t` is how far along it, from its first point to its second */
+  onPickEdge?: (index: number, mods: PickMods, t: number) => void
+  /** points on edges, by edge index and how far along, joined in order (the knife's cut) */
+  marks?: Array<{ edge: number; t: number }>
   /** draws no dots, only the edges */
   hideDots?: boolean
 }
@@ -312,86 +315,106 @@ function MeshBody({
   return (
     <div className="model-pivot" style={{ transform: transformOf(at, mesh.rotation, scale) }}>
       <div className={`model-mesh${selected ? ' model-mesh--selected' : ''}`} data-mesh={mesh.id}>
-        {Object.entries(mesh.faces).map(([key, face]) => {
-          if (face.vertices.length < 3) return null
-          const { keys, origin, e1, e2, n, flat } = faceBasis(mesh, face)
-          const xs = flat.map((p) => p[0])
-          const ys = flat.map((p) => p[1])
-          const minx = Math.min(...xs)
-          const maxy = Math.max(...ys)
-          const w = (Math.max(...xs) - minx) * scale
-          const h = (maxy - Math.min(...ys)) * scale
-          if (w < 0.01 || h < 0.01) return null
-          const css = (v: Vec3): Vec3 => [v[0], -v[1], v[2]]
-          const ca = css(e1)
-          const cb = css(e2).map((v) => -v) as Vec3
-          const cn = css(n)
-          const o = css([origin[0] + e1[0] * minx + e2[0] * maxy, origin[1] + e1[1] * minx + e2[1] * maxy, origin[2] + e1[2] * minx + e2[2] * maxy])
-          const m3 = [ca[0], ca[1], ca[2], 0, cb[0], cb[1], cb[2], 0, cn[0], cn[1], cn[2], 0, o[0] * scale, o[1] * scale, o[2] * scale, 1]
-          const pts = flat.map(([x, y]) => `${((x - minx) * scale).toFixed(2)}px ${((maxy - y) * scale).toFixed(2)}px`).join(', ')
+        {Object.entries(mesh.faces).flatMap(([key, face]) => {
+          if (face.vertices.length < 3) return []
           const tex = model.textures.find((t) => t.id === face.texture)
-          const map = tex?.source ? uvToFlat(keys.map((k) => face.uv[k] ?? [0, 0]), flat) : null
-          const worldN = applyDir(turn, n)
           const isPicked = picking?.faces.has(key)
-          return (
-            <div
-              key={key}
-              className={`model-mface${isPicked ? ' model-mface--picked' : ''}`}
-              data-mface={key}
-              style={{
-                width: w,
-                height: h,
-                transform: `matrix3d(${m3.map((v) => +v.toFixed(5)).join(',')})`,
-                clipPath: `polygon(${pts})`,
-                filter: tex?.shaded ? undefined : `brightness(${meshShade(worldN).toFixed(3)})`,
-              }}
-              onPointerDown={(e) => {
-                if (e.button !== 0 || e.altKey) return
-                if (onPaint) {
-                  e.stopPropagation()
-                  ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
-                  paintAt(e, 'down')
-                  return
-                }
-                if (picking?.onFace) {
-                  e.stopPropagation()
-                  picking.onFace(key, { shift: e.shiftKey, ctrl: e.ctrlKey || e.metaKey })
-                  return
-                }
-                onSelect?.(mesh.id, { shift: e.shiftKey, ctrl: e.ctrlKey || e.metaKey })
-              }}
-              onPointerMove={onPaint ? (e) => e.buttons === 1 && paintAt(e, 'move') : undefined}
-            >
-              {map ? (
-                <div
-                  className="model-mface__skin"
-                  style={{
-                    width: tex!.uvWidth,
-                    height: tex!.uvHeight,
-                    backgroundImage: `url(${tex!.source})`,
-                    transform: `matrix(${[map.a * scale, -map.b * scale, map.c * scale, -map.d * scale, (map.tx - minx) * scale, (maxy - map.ty) * scale].map((v) => +v.toFixed(5)).join(',')})`,
-                  }}
-                />
-              ) : null}
-              {selected ? (
-                <svg className="model-mface__edges" width={w} height={h} aria-hidden="true">
-                  <polygon points={flat.map(([x, y]) => `${(x - minx) * scale},${(maxy - y) * scale}`).join(' ')} />
-                </svg>
-              ) : null}
-            </div>
-          )
+          const pieces = facePieces(mesh, face)
+          const split = pieces.length > 1
+          return pieces.map((piece, pi) => {
+            const { keys, origin, e1, e2, n, flat } = faceBasis(mesh, { ...face, vertices: piece.keys })
+            const xs = flat.map((p) => p[0])
+            const ys = flat.map((p) => p[1])
+            const minx = Math.min(...xs)
+            const maxy = Math.max(...ys)
+            const w = (Math.max(...xs) - minx) * scale
+            const h = (maxy - Math.min(...ys)) * scale
+            if (w < 0.01 || h < 0.01) return null
+            const css = (v: Vec3): Vec3 => [v[0], -v[1], v[2]]
+            const ca = css(e1)
+            const cb = css(e2).map((v) => -v) as Vec3
+            const cn = css(n)
+            const o = css([origin[0] + e1[0] * minx + e2[0] * maxy, origin[1] + e1[1] * minx + e2[1] * maxy, origin[2] + e1[2] * minx + e2[2] * maxy])
+            const m3 = [ca[0], ca[1], ca[2], 0, cb[0], cb[1], cb[2], 0, cn[0], cn[1], cn[2], 0, o[0] * scale, o[1] * scale, o[2] * scale, 1]
+            const px = flat.map(([x, y]) => [(x - minx) * scale, (maxy - y) * scale] as [number, number])
+            // the triangles of a split face overlap by half a pixel, so no hairline shows between them
+            const cx = px.reduce((a, p) => a + p[0], 0) / px.length
+            const cy = px.reduce((a, p) => a + p[1], 0) / px.length
+            const grown = split
+              ? px.map(([x, y]) => {
+                  const d = Math.hypot(x - cx, y - cy) || 1
+                  return [x + ((x - cx) / d) * 0.6, y + ((y - cy) / d) * 0.6] as [number, number]
+                })
+              : px
+            const pts = grown.map(([x, y]) => `${x.toFixed(2)}px ${y.toFixed(2)}px`).join(', ')
+            const map = tex?.source ? uvToFlat(keys.map((k) => face.uv[k] ?? [0, 0]), flat) : null
+            const worldN = applyDir(turn, n)
+            return (
+              <div
+                key={`${key}:${pi}`}
+                className={`model-mface${split ? ' model-mface--tri' : ''}${isPicked ? ' model-mface--picked' : ''}`}
+                data-mface={key}
+                style={{
+                  width: w,
+                  height: h,
+                  transform: `matrix3d(${m3.map((v) => +v.toFixed(5)).join(',')})`,
+                  clipPath: `polygon(${pts})`,
+                  filter: tex?.shaded ? undefined : `brightness(${meshShade(worldN).toFixed(3)})`,
+                }}
+                onPointerDown={(e) => {
+                  if (e.button !== 0 || e.altKey) return
+                  if (onPaint) {
+                    e.stopPropagation()
+                    ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
+                    paintAt(e, 'down')
+                    return
+                  }
+                  if (picking?.onFace) {
+                    e.stopPropagation()
+                    picking.onFace(key, { shift: e.shiftKey, ctrl: e.ctrlKey || e.metaKey })
+                    return
+                  }
+                  onSelect?.(mesh.id, { shift: e.shiftKey, ctrl: e.ctrlKey || e.metaKey })
+                }}
+                onPointerMove={onPaint ? (e) => e.buttons === 1 && paintAt(e, 'move') : undefined}
+              >
+                {map ? (
+                  <div
+                    className="model-mface__skin"
+                    style={{
+                      width: tex!.uvWidth,
+                      height: tex!.uvHeight,
+                      backgroundImage: `url(${tex!.source})`,
+                      transform: `matrix(${[map.a * scale, -map.b * scale, map.c * scale, -map.d * scale, (map.tx - minx) * scale, (maxy - map.ty) * scale].map((v) => +v.toFixed(5)).join(',')})`,
+                    }}
+                  />
+                ) : null}
+                {selected ? (
+                  <svg className="model-mface__edges" width={w} height={h} aria-hidden="true">
+                    {split ? (
+                      piece.outer.map((outer, i) =>
+                        outer ? <line key={i} x1={px[i][0]} y1={px[i][1]} x2={px[(i + 1) % px.length][0]} y2={px[(i + 1) % px.length][1]} /> : null,
+                      )
+                    ) : (
+                      <polygon points={px.map(([x, y]) => `${x},${y}`).join(' ')} />
+                    )}
+                  </svg>
+                ) : null}
+              </div>
+            )
 
-          /* A hit's face pixels back to UV units, through the inverse of the face's UV map. */
-          function paintAt(e: React.PointerEvent<HTMLDivElement>, phase: 'down' | 'move') {
-            if (!onPaint || !map) return
-            const x = minx + e.nativeEvent.offsetX / scale
-            const y = maxy - e.nativeEvent.offsetY / scale
-            const det = map.a * map.d - map.c * map.b
-            if (Math.abs(det) < 1e-9) return
-            const dx = x - map.tx
-            const dy = y - map.ty
-            onPaint(mesh.id, key, (map.d * dx - map.c * dy) / det, (map.a * dy - map.b * dx) / det, phase)
-          }
+            /* A hit's face pixels back to UV units, through the inverse of the piece's UV map. */
+            function paintAt(e: React.PointerEvent<HTMLDivElement>, phase: 'down' | 'move') {
+              if (!onPaint || !map) return
+              const x = minx + e.nativeEvent.offsetX / scale
+              const y = maxy - e.nativeEvent.offsetY / scale
+              const det = map.a * map.d - map.c * map.b
+              if (Math.abs(det) < 1e-9) return
+              const dx = x - map.tx
+              const dy = y - map.ty
+              onPaint(mesh.id, key, (map.d * dx - map.c * dy) / det, (map.a * dy - map.b * dx) / det, phase)
+            }
+          })
         })}
       </div>
     </div>
@@ -1071,12 +1094,37 @@ export function ModelView({
                   y2={q[1]}
                   onPointerDown={(e) => {
                     e.stopPropagation()
-                    vertices.onPickEdge?.(i, { shift: e.shiftKey, ctrl: e.ctrlKey || e.metaKey })
+                    e.preventDefault()
+                    // how far along the edge the click is, on screen
+                    const r = root.current!.getBoundingClientRect()
+                    const c = [e.clientX - r.left, e.clientY - r.top]
+                    const d = [q[0] - p[0], q[1] - p[1]]
+                    const len = d[0] * d[0] + d[1] * d[1] || 1
+                    const t = Math.max(0, Math.min(1, ((c[0] - p[0]) * d[0] + (c[1] - p[1]) * d[1]) / len))
+                    vertices.onPickEdge?.(i, { shift: e.shiftKey, ctrl: e.ctrlKey || e.metaKey, alt: e.altKey }, t)
                   }}
                 />
               </g>
             )
           })}
+          {vertices.marks?.length
+            ? (() => {
+                const at = vertices.marks.flatMap((m) => {
+                  const [a, b] = vertices.edges![m.edge] ?? []
+                  const p = vertexAt[a]
+                  const q = vertexAt[b]
+                  return p && q ? [[p[0] + (q[0] - p[0]) * m.t, p[1] + (q[1] - p[1]) * m.t] as [number, number]] : []
+                })
+                return (
+                  <g className="scene3d__knife">
+                    <polyline points={at.map((p) => p.join(',')).join(' ')} />
+                    {at.map((p, i) => (
+                      <circle key={i} cx={p[0]} cy={p[1]} r={4} />
+                    ))}
+                  </g>
+                )
+              })()
+            : null}
         </svg>
       ) : null}
 

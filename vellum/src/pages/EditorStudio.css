@@ -726,3 +726,9 @@
 .dock__modes { display: inline-flex; gap: 2px; margin-left: 6px; padding-left: 8px; border-left: 1px solid var(--s-line-2); }
 .psheet__mesh { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 1; }
 .psheet__mesh polygon { fill: rgb(167 196 160 / 0.08); stroke: var(--s-sage); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+
+/* the knife's state, and the edge slide, in the Mesh panel */
+.mesh-knife { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 10px; padding: 8px 10px; border-radius: 8px; background: rgb(255 122 89 / 0.12); color: var(--s-ink-2, inherit); font-size: 12.5px; }
+.mesh-knife span { flex: 1 1 100%; }
+.mesh-slide { display: flex; align-items: center; gap: 10px; margin-top: 10px; font-size: 12.5px; color: var(--s-ink-2, inherit); }
+.mesh-slide input { flex: 1; accent-color: var(--s-sage, #a7c4a0); }
