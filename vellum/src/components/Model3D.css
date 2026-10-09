@@ -1,0 +1,10 @@
+/* The viewport's box, shared by ModelView and the Model3D previews, which both draw with WebGL. */
+
+.scene3d {
+  /* inset: 0 because height: 100% collapses to zero when the parent's height
+     comes from min-height or flex sizing. */
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  touch-action: none;
+}

@@ -1,0 +1,148 @@
+/* Controls shared across pages: buttons, key/value rows and dialogs. */
+
+.btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 8px 16px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--border-strong);
+  background-color: var(--glass-thin);
+  backdrop-filter: blur(var(--glass-blur-sm)) saturate(var(--glass-sat));
+  color: var(--ink);
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  white-space: nowrap;
+  box-shadow: var(--inner-highlight-soft);
+  isolation: isolate;
+  transition: background var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease),
+    box-shadow var(--dur) var(--ease);
+}
+
+.btn:hover {
+  background-color: var(--sunken);
+  border-color: var(--border-strong);
+}
+
+.btn:active { background-color: var(--sunken-strong); }
+
+.btn--primary {
+  background-color: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+  box-shadow: none;
+}
+
+.btn--primary:hover {
+  background-color: var(--accent-hover);
+  border-color: var(--accent-hover);
+}
+
+.btn--ghost {
+  background-color: transparent;
+  border-color: var(--border);
+  color: var(--ink-muted);
+  box-shadow: none;
+}
+
+.btn--ghost:hover {
+  color: var(--ink);
+  background-color: var(--accent-soft);
+  border-color: var(--border-accent);
+  box-shadow: none;
+}
+
+.btn--block { width: 100%; }
+.btn--sm { padding: 5px 11px; font-size: var(--fs-xs); }
+
+/* Disabled buttons go grey. Fading a red one with opacity makes its label unreadable. */
+.btn:disabled,
+.btn[aria-disabled='true'] {
+  cursor: not-allowed;
+  background-color: var(--sunken);
+  border-color: var(--border);
+  color: var(--ink-faint);
+  box-shadow: none;
+}
+
+.pairs { display: grid; gap: 9px; }
+
+.pairs__row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  font-size: var(--fs-sm);
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.pairs__row:last-child { border-bottom: none; padding-bottom: 0; }
+.pairs__key { color: var(--ink-faint); }
+.pairs__value { font-family: var(--font-mono); color: var(--ink); }
+
+/* ---------------- dialogs ---------------- */
+
+.dialog {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: grid;
+  place-items: center;
+  padding: var(--sp-4);
+}
+
+.dialog__scrim {
+  position: absolute;
+  inset: 0;
+  background: var(--sunken-strong);
+  backdrop-filter: blur(6px);
+  animation: fade-in var(--dur) var(--ease);
+}
+
+.dialog__panel {
+  position: relative;
+  width: min(680px, 100%);
+  max-height: min(86vh, 760px);
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--r-xl);
+  border: 1px solid var(--border);
+  background-color: var(--glass-solid);
+  backdrop-filter: blur(var(--glass-blur-lg)) saturate(var(--glass-sat));
+  box-shadow: var(--inner-highlight), var(--shadow-pop);
+  overflow: hidden;
+  animation: dialog-in var(--dur-slow) var(--ease);
+}
+
+@keyframes dialog-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+
+.dialog__head {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-3);
+  padding: var(--sp-4) var(--sp-4) var(--sp-3);
+  border-bottom: 1px solid var(--border);
+}
+
+.dialog__head > div:first-child { flex: 1; min-width: 0; }
+.dialog__body { padding: var(--sp-4); overflow-y: auto; flex: 1; min-height: 0; }
+
+/* Pip, while the pack builds, between the scrolling body and the buttons */
+.export-run { padding: var(--sp-3) var(--sp-4) 0; border-top: 1px solid var(--border); }
+
+.dialog__foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+  border-top: 1px solid var(--border);
+  background: var(--sunken);
+}

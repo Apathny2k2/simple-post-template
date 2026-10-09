@@ -1,0 +1,139 @@
+/* Plugin activity: every write the plugin makes, as a keyframe on its channel's
+   lane, over the last 90 seconds. Shown in Settings > Plugin. */
+
+
+.feed {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  column-gap: 14px;
+}
+
+.feed [data-channel='players'] { --ch: var(--blue-bright); }
+.feed [data-channel='pack'] { --ch: var(--violet); }
+.feed [data-channel='files'] { --ch: var(--amber); }
+.feed [data-channel='server'] { --ch: var(--teal); }
+.feed [data-channel='beat'] { --ch: #9fb3d9; }
+
+.feed__names {
+  display: grid;
+  grid-auto-rows: 30px;
+  padding-top: 24px;
+}
+
+.feed__names li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--fs-xs);
+  color: var(--ink-muted);
+  white-space: nowrap;
+}
+
+.feed__names svg { color: var(--ch); }
+
+.feed__lanes { position: relative; min-width: 0; }
+
+.feed__ruler {
+  position: relative;
+  height: 24px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--ink-faint);
+}
+
+.feed__ruler span { position: absolute; top: 3px; transform: translateX(-50%); }
+.feed__ruler span:first-child { transform: none; }
+.feed__ruler span:last-child { transform: translateX(-100%); color: var(--blue-bright); }
+
+.feed__tracks {
+  display: grid;
+  grid-auto-rows: 30px;
+  border-radius: 10px;
+  background-color: rgba(0, 0, 0, 0.2);
+  background-image: repeating-linear-gradient(to right, rgba(255, 255, 255, 0.06) 0 1px, transparent 1px calc(100% / 6));
+  -webkit-mask: linear-gradient(to right, transparent, #000 10%);
+  mask: linear-gradient(to right, transparent, #000 10%);
+}
+
+.feed__track {
+  position: relative;
+  overflow: hidden;
+}
+
+.feed__track + .feed__track { border-top: 1px solid rgba(255, 255, 255, 0.04); }
+
+.feed__track::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+/* Full-width so translateX in % is a share of the lane; the diamond sits at its left edge. */
+.feed__key {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  transition: transform 1s linear;
+}
+
+.feed__key i {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 10px;
+  height: 10px;
+  margin: -5px 0 0 -5px;
+  border-radius: 2px;
+  background: var(--ch);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--ch) 70%, transparent);
+  transform: rotate(45deg);
+  pointer-events: auto;
+  animation: key-pop 600ms var(--ease-spring) backwards;
+}
+
+.feed__key i[data-bad] {
+  background: var(--red);
+  box-shadow: 0 0 0 3px rgba(255, 107, 107, 0.25), 0 0 12px rgba(255, 107, 107, 0.7);
+}
+
+@keyframes key-pop { from { transform: rotate(45deg) scale(0); } }
+
+.feed__playhead {
+  position: absolute;
+  top: 20px;
+  bottom: 0;
+  right: -1px;
+  width: 2px;
+  border-radius: 2px;
+  background: var(--blue-bright);
+  box-shadow: 0 0 12px var(--blue-bright);
+}
+
+.feed__playhead::before {
+  content: '';
+  position: absolute;
+  top: -5px;
+  left: 50%;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  background: var(--blue-bright);
+  transform: translateX(-50%) rotate(45deg);
+}
+
+.feed__empty {
+  grid-column: 1 / -1;
+  margin-top: 12px;
+  font-size: var(--fs-xs);
+  color: var(--ink-faint);
+  text-align: center;
+}
+
+@media (max-width: 560px) {
+  .feed__names li span { display: none; }
+}

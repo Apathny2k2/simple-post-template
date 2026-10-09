@@ -1,0 +1,81 @@
+.menu-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.menu-pop {
+  position: absolute;
+  z-index: 60;
+  min-width: 194px;
+  padding: 6px;
+  border-radius: var(--r-md);
+  /* Near-opaque: an ancestor with backdrop-filter becomes the backdrop root, so
+     inside one the blur here samples nothing and a thin tint would look see-through. */
+  background-color: var(--glass-solid);
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat));
+  border: 1px solid var(--border);
+  box-shadow: var(--inner-highlight), var(--shadow-lg);
+  isolation: isolate;
+  animation: menu-in var(--dur) var(--ease);
+  transform-origin: var(--origin-x, right) var(--origin-y, top);
+}
+
+.menu-pop--end { right: 0; --origin-x: right; }
+.menu-pop--start { left: 0; --origin-x: left; }
+.menu-pop--down { top: calc(100% + 8px); --origin-y: top; }
+.menu-pop--up { bottom: calc(100% + 8px); --origin-y: bottom; }
+
+@keyframes menu-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: none; }
+}
+
+.menu-item {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  width: 100%;
+  padding: 7px 10px;
+  border-radius: var(--r-sm);
+  border: 1px solid transparent;
+  font-size: var(--fs-sm);
+  color: var(--ink);
+  text-align: left;
+  transition: background var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
+}
+
+.menu-item:hover,
+.menu-item:focus-visible {
+  background: var(--accent-soft);
+  border-color: var(--border-accent);
+  outline: none;
+}
+
+.menu-item--danger { color: var(--danger); }
+
+.menu-item--danger:hover {
+  background: color-mix(in srgb, var(--accent) 20%, transparent);
+  border-color: var(--accent-mark);
+}
+
+.menu-item__key {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: var(--fs-2xs);
+  color: var(--ink-faint);
+}
+
+.menu-sep {
+  height: 1px;
+  margin: 6px 4px;
+  background: var(--border);
+}
+
+.menu-label {
+  padding: 6px 10px 3px;
+  font-size: var(--fs-2xs);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--accent-hover);
+  font-weight: 600;
+}

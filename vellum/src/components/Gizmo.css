@@ -1,0 +1,174 @@
+/* Gizmo colours follow Blockbench: X red, Y green, Z blue, a white centre. */
+
+.xform {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+  z-index: 3;
+}
+
+.xform__handle {
+  pointer-events: auto;
+  cursor: grab;
+  --c: #fff;
+}
+.xform__handle--x { --c: #ff3b4e; }
+.xform__handle--y { --c: #7ad21c; }
+.xform__handle--z { --c: #2f8dff; }
+.xform__handle--free { --c: #f4f4f4; }
+
+.xform__stem,
+.xform__ring {
+  fill: none;
+  stroke: var(--c);
+  stroke-width: 3;
+  stroke-linecap: round;
+  /* a dark edge keeps each handle readable over pale and dark textures alike */
+  filter: drop-shadow(0 0 1px rgb(0 0 0 / 0.75));
+}
+.xform__ring { stroke-width: 2.6; }
+.xform__head {
+  fill: var(--c);
+  stroke: rgb(0 0 0 / 0.45);
+  stroke-width: 0.8;
+}
+/* a wide invisible stroke makes thin handles easy to grab */
+.xform__hit {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 14;
+}
+.xform__plane {
+  fill: color-mix(in srgb, var(--c) 38%, transparent);
+  stroke: var(--c);
+  stroke-width: 1.2;
+}
+.xform__free {
+  fill: color-mix(in srgb, var(--c) 30%, transparent);
+  stroke: var(--c);
+  stroke-width: 2;
+}
+.xform__pivot circle:not(.xform__hit) {
+  fill: rgb(0 0 0 / 0.35);
+  stroke: #ffd36b;
+  stroke-width: 2;
+}
+.xform__pivot path {
+  stroke: #ffd36b;
+  stroke-width: 1.6;
+}
+.xform__dot {
+  fill: #f4f4f4;
+  pointer-events: none;
+}
+
+.xform__handle:hover .xform__stem,
+.xform__handle:hover .xform__ring,
+.xform__handle.is-active .xform__stem,
+.xform__handle.is-active .xform__ring {
+  stroke: #ffe28a;
+  stroke-width: 3.4;
+}
+.xform__handle:hover .xform__head,
+.xform__handle.is-active .xform__head,
+.xform__plane:hover,
+.xform__plane.is-active {
+  fill: #ffe28a;
+}
+.xform__handle.is-active { cursor: grabbing; }
+.xform__handle.is-idle { opacity: 0.18; }
+
+/* box select */
+.scene3d__marquee {
+  position: absolute;
+  z-index: 4;
+  border: 1px solid #ffe28a;
+  background: rgb(255 226 138 / 0.12);
+  pointer-events: none;
+}
+
+/* the navigation gizmo, top right of a viewport, as in Blender */
+.scene3d__nav {
+  position: absolute;
+  top: 34px;
+  right: 10px;
+  width: 84px;
+  height: 84px;
+  z-index: 3;
+  border-radius: 50%;
+  cursor: grab;
+  touch-action: none;
+}
+.scene3d__nav:hover { background: rgb(255 255 255 / 0.06); }
+.scene3d__nav svg { width: 100%; height: 100%; overflow: visible; }
+.scene3d__nav line { stroke-width: 2; }
+.scene3d__nav-ball { cursor: pointer; }
+.scene3d__nav-ball text {
+  font: 700 9px/1 var(--font-mono, ui-monospace, monospace);
+  fill: #111;
+  pointer-events: none;
+}
+.scene3d__nav-ball--neg circle { fill-opacity: 0.35; }
+.scene3d__nav-ball:hover circle { stroke: #fff; stroke-width: 1.5; }
+
+.scene3d__projection {
+  position: absolute;
+  top: 122px;
+  right: 10px;
+  z-index: 3;
+  width: 84px;
+  padding: 3px 0;
+  border: 1px solid rgb(255 255 255 / 0.14);
+  border-radius: 5px;
+  background: rgb(0 0 0 / 0.35);
+  color: #ddd;
+  font-size: 11px;
+  cursor: pointer;
+}
+.scene3d__projection:hover { background: rgb(255 255 255 / 0.1); }
+
+
+/* every corner of every cube, for the vertex snap tool */
+.scene3d__vertex {
+  position: absolute;
+  z-index: 3;
+  width: 9px;
+  height: 9px;
+  margin: -4.5px 0 0 -4.5px;
+  border-radius: 50%;
+  border: 1.5px solid #fff;
+  background: rgb(0 0 0 / 0.4);
+  pointer-events: auto;
+  cursor: crosshair;
+}
+.scene3d__vertex--own { border-color: #ffd36b; background: #ffd36b; }
+.scene3d__vertex:hover { transform: scale(1.5); background: #ffe28a; }
+
+/* a mesh's edges in Edge mode: thin lines, each with a wider invisible
+   stroke on top so it is easy to click */
+.scene3d__edges {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+.scene3d__edge-line { stroke: rgb(255 255 255 / 0.75); stroke-width: 1.5; }
+.scene3d__edge-hit { stroke: transparent; stroke-width: 10; stroke-linecap: round; pointer-events: stroke; cursor: crosshair; }
+.scene3d__edge:hover .scene3d__edge-line { stroke: #ffe28a; stroke-width: 2.5; }
+.scene3d__edge--own .scene3d__edge-line { stroke: #ffd36b; stroke-width: 3; }
+/* the knife's cut so far: its points on edges, joined in order */
+.scene3d__knife polyline { fill: none; stroke: #ff7a59; stroke-width: 2; stroke-dasharray: 5 3; }
+.scene3d__knife circle { fill: #ff7a59; stroke: #fff; stroke-width: 1.5; }
+
+/* the axis a grab is held to, through the anchor and across the view */
+.scene3d__guide { position: absolute; inset: 0; z-index: 2; width: 100%; height: 100%; overflow: hidden; pointer-events: none; }
+.scene3d__guide line { stroke-width: 1.5; }
+.scene3d__guide--x line { stroke: #ff5c6c; }
+.scene3d__guide--y line { stroke: #8be04e; }
+.scene3d__guide--z line { stroke: #4e9bff; }

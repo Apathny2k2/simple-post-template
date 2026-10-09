@@ -1,0 +1,164 @@
+/* The server picker. Rows follow the game's multiplayer list: icon, name, message of the day, players, signal. */
+
+.server-picker { min-height: 100vh; display: flex; flex-direction: column; }
+
+.server-picker-head {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-4);
+  height: 64px;
+  padding-inline: var(--gutter);
+  border-bottom: 1px solid var(--border);
+  background: rgba(14, 16, 20, 0.72);
+  backdrop-filter: blur(18px) saturate(1.4);
+}
+
+.server-picker-head__brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-size: var(--fs-md);
+  font-weight: 300;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ink);
+}
+
+.server-picker-head__brand svg { color: var(--accent-mark); }
+
+.servers { max-width: 980px; display: grid; gap: clamp(22px, 3vw, 32px); align-content: start; }
+.servers .page-head { margin-bottom: 0; }
+
+.servers__group { display: grid; gap: 12px; }
+
+.servers__label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--fs-2xs);
+  font-weight: 700;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.servers__label .mono { color: var(--ink-muted); letter-spacing: 0; }
+
+.servers__list { display: grid; gap: 10px; }
+
+/* ---------------- a server ---------------- */
+
+.server {
+  position: relative;
+  isolation: isolate;
+  width: 100%;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 18px;
+  padding: 14px 18px 14px 14px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--panel);
+  box-shadow: var(--panel-shadow);
+  text-align: left;
+  transition: transform 460ms var(--ease-spring), border-color 220ms var(--ease-out), background-color 220ms var(--ease-out);
+}
+
+.server:hover:not(:disabled) { transform: translateY(-2px); border-color: rgba(90, 162, 255, 0.55); }
+.server:focus-visible { border-radius: 16px; outline-offset: 2px; }
+.server:disabled { cursor: default; }
+
+.server-icon {
+  display: block;
+  border-radius: 8px;
+  image-rendering: pixelated;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08), 0 8px 18px -10px rgba(0, 0, 0, 0.8);
+}
+
+.server[data-offline] .server-icon { filter: grayscale(1) brightness(0.6); }
+
+.server__main { display: grid; gap: 4px; min-width: 0; }
+.server__top { display: flex; align-items: center; gap: 10px; min-width: 0; }
+
+.server__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-lg);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+
+.server__last {
+  flex: none;
+  padding: 2px 8px;
+  border: 1px solid rgba(90, 162, 255, 0.45);
+  border-radius: 999px;
+  background: var(--accent-soft);
+  font-size: var(--fs-2xs);
+  color: var(--ink);
+}
+
+.server__motd {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-sm);
+  color: var(--ink-muted);
+}
+
+.server__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 14px;
+  font-size: var(--fs-2xs);
+  color: var(--ink-faint);
+}
+
+.server__side { display: grid; justify-items: end; gap: 6px; text-align: right; }
+.server__players { font-size: var(--fs-xs); color: var(--ink-muted); white-space: nowrap; }
+.server__players strong { color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; }
+
+.server__go {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  color: var(--blue-bright);
+  white-space: nowrap;
+  transition: gap 360ms var(--ease-spring);
+}
+
+.server:hover:not(:disabled) .server__go { gap: 10px; }
+.server:disabled .server__go { font-weight: 400; color: var(--ink-faint); }
+
+/* four bars, lit from the left by how quickly the server answers */
+.signal-bars { display: inline-flex; align-items: flex-end; gap: 2px; height: 14px; }
+.signal-bars i { width: 3px; border-radius: 1px; background: rgba(255, 255, 255, 0.14); }
+.signal-bars i:nth-child(1) { height: 5px; }
+.signal-bars i:nth-child(2) { height: 8px; }
+.signal-bars i:nth-child(3) { height: 11px; }
+.signal-bars i:nth-child(4) { height: 14px; }
+.signal-bars i[data-on] { background: var(--green); }
+.signal-bars[data-lit='2'] i[data-on] { background: var(--amber); }
+.signal-bars[data-lit='1'] i[data-on] { background: var(--red); }
+
+.servers__note { font-size: var(--fs-xs); color: var(--ink-faint); }
+
+@media (max-width: 640px) {
+  .server { grid-template-columns: auto minmax(0, 1fr); gap: 12px 14px; }
+  .server__side { grid-column: 1 / -1; grid-template-columns: 1fr auto auto; align-items: center; justify-items: start; gap: 12px; }
+  .server__go { justify-self: end; }
+  .server .server-icon { width: 44px !important; height: 44px !important; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .servers__list > li { animation: none; }
+}
