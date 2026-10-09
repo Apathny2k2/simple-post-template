@@ -372,3 +372,231 @@ export function centreOf(mesh: Mesh, keys: readonly string[]): Vec3 {
   const ps = keys.map((k) => mesh.vertices[k]).filter(Boolean)
   return ps.length ? scale(ps.reduce(addV, [0, 0, 0] as Vec3), 1 / ps.length) : [0, 0, 0]
 }
+
+/* ---------------- edges ---------------- */
+
+/** An edge's key: its two vertex keys in sorted order, so either direction names it. */
+export const edgeKey = (a: string, b: string) => (a < b ? `${a}|${b}` : `${b}|${a}`)
+export const edgeEnds = (key: string) => key.split('|') as [string, string]
+
+/** Every edge of the mesh once, from its faces' outlines. */
+export function edgesOf(mesh: Mesh): string[] {
+  const out = new Set<string>()
+  for (const f of Object.values(mesh.faces)) {
+    const o = faceOrder(mesh, f)
+    o.forEach((a, i) => out.add(edgeKey(a, o[(i + 1) % o.length])))
+  }
+  return [...out]
+}
+
+/** The vertices of some edges, once each. */
+export function edgeVerticesOf(edges: readonly string[]): string[] {
+  return [...new Set(edges.flatMap(edgeEnds))]
+}
+
+/** Removes every face that uses one of the edges, then vertices left without a face. */
+export function deleteEdges(mesh: Mesh, edges: readonly string[]): Mesh {
+  const set = new Set(edges)
+  return deleteFaces(
+    mesh,
+    Object.entries(mesh.faces)
+      .filter(([, f]) => {
+        const o = faceOrder(mesh, f)
+        return o.some((a, i) => set.has(edgeKey(a, o[(i + 1) % o.length])))
+      })
+      .map(([k]) => k),
+  )
+}
+
+const mid = (a: Vec3, b: Vec3): Vec3 => [round((a[0] + b[0]) / 2), round((a[1] + b[1]) / 2), round((a[2] + b[2]) / 2)]
+const midUv = (a: [number, number] | undefined, b: [number, number] | undefined): [number, number] => {
+  const p = a ?? [0, 0]
+  const q = b ?? [0, 0]
+  return [round((p[0] + q[0]) / 2), round((p[1] + q[1]) / 2)]
+}
+
+/**
+ * Puts each new middle vertex into faces that weren't split but share the
+ * edge it sits on, so no face is left with a gap along that edge.
+ */
+function stitch(mesh: Mesh, faces: Record<string, MeshFace>, mids: ReadonlyMap<string, string>, skip: ReadonlySet<string>) {
+  for (const [k, f] of Object.entries(faces)) {
+    if (skip.has(k)) continue
+    const o = faceOrder(mesh, f)
+    const next: string[] = []
+    const uv = { ...f.uv }
+    let changed = false
+    o.forEach((a, i) => {
+      const b = o[(i + 1) % o.length]
+      next.push(a)
+      const m = mids.get(edgeKey(a, b))
+      if (m) {
+        next.push(m)
+        uv[m] = midUv(f.uv[a], f.uv[b])
+        changed = true
+      }
+    })
+    if (changed) faces[k] = { ...f, vertices: next, uv }
+  }
+}
+
+/**
+ * Blender's and Blockbench's loop cut: a new ring of edges across the quads
+ * that the picked edge's ring runs through. The ring goes from the edge to
+ * the opposite side of each quad, and on into the next quad, both ways,
+ * until it meets a face that isn't a quad or comes round to its start.
+ * Each quad on the ring splits in two through the middles of its two ring
+ * edges. Returns the new edges, so they can be picked.
+ */
+export function loopCut(mesh: Mesh, start: string): { mesh: Mesh; edges: string[] } {
+  const facesOn = new Map<string, string[]>()
+  const orders = new Map<string, string[]>()
+  for (const [k, f] of Object.entries(mesh.faces)) {
+    const o = faceOrder(mesh, f)
+    orders.set(k, o)
+    o.forEach((a, i) => {
+      const e = edgeKey(a, o[(i + 1) % o.length])
+      facesOn.set(e, [...(facesOn.get(e) ?? []), k])
+    })
+  }
+  if (!facesOn.has(start)) return { mesh, edges: [] }
+  // each ring quad, turned so its incoming ring edge is its first edge
+  const ring: Array<{ face: string; order: string[] }> = []
+  const seen = new Set<string>()
+  for (const first of facesOn.get(start) ?? []) {
+    let edge = start
+    let face: string | undefined = first
+    while (face && !seen.has(face)) {
+      const o = orders.get(face)!
+      if (o.length !== 4) break
+      const i = o.findIndex((a, j) => edgeKey(a, o[(j + 1) % 4]) === edge)
+      if (i < 0) break
+      const turned = [o[i], o[(i + 1) % 4], o[(i + 2) % 4], o[(i + 3) % 4]]
+      seen.add(face)
+      ring.push({ face, order: turned })
+      edge = edgeKey(turned[2], turned[3])
+      face = (facesOn.get(edge) ?? []).find((x) => x !== face)
+    }
+  }
+  if (!ring.length) return { mesh, edges: [] }
+  const vertices = { ...mesh.vertices }
+  const mids = new Map<string, string>()
+  const midOf = (a: string, b: string) => {
+    const e = edgeKey(a, b)
+    let m = mids.get(e)
+    if (!m) {
+      m = newId().slice(0, 8)
+      mids.set(e, m)
+      vertices[m] = mid(mesh.vertices[a], mesh.vertices[b])
+    }
+    return m
+  }
+  const faces = { ...mesh.faces }
+  const made: string[] = []
+  for (const { face, order: [p0, p1, p2, p3] } of ring) {
+    const f = mesh.faces[face]
+    const ma = midOf(p0, p1)
+    const mb = midOf(p2, p3)
+    const uvA = midUv(f.uv[p0], f.uv[p1])
+    const uvB = midUv(f.uv[p2], f.uv[p3])
+    faces[face] = { ...f, vertices: [p0, ma, mb, p3], uv: { [p0]: f.uv[p0] ?? [0, 0], [ma]: uvA, [mb]: uvB, [p3]: f.uv[p3] ?? [0, 0] } }
+    faces[newId().slice(0, 8)] = { ...f, vertices: [ma, p1, p2, mb], uv: { [ma]: uvA, [p1]: f.uv[p1] ?? [0, 0], [p2]: f.uv[p2] ?? [0, 0], [mb]: uvB } }
+    made.push(edgeKey(ma, mb))
+  }
+  stitch(mesh, faces, mids, new Set(ring.map((r) => r.face)))
+  return { mesh: { ...mesh, vertices, faces }, edges: [...new Set(made)] }
+}
+
+/**
+ * Splits faces (all of them when none are given) into quads: one per corner,
+ * through the middles of its edges and the face's middle. Middles are shared
+ * between faces, and faces next to the split ones take the new middles on
+ * their shared edges, so the surface stays closed.
+ */
+export function subdivide(mesh: Mesh, faceKeys?: readonly string[]): Mesh {
+  const keys = (faceKeys?.length ? faceKeys : Object.keys(mesh.faces)).filter((k) => mesh.faces[k])
+  const vertices = { ...mesh.vertices }
+  const mids = new Map<string, string>()
+  const midOf = (a: string, b: string) => {
+    const e = edgeKey(a, b)
+    let m = mids.get(e)
+    if (!m) {
+      m = newId().slice(0, 8)
+      mids.set(e, m)
+      vertices[m] = mid(mesh.vertices[a], mesh.vertices[b])
+    }
+    return m
+  }
+  const faces = { ...mesh.faces }
+  for (const k of keys) {
+    const f = mesh.faces[k]
+    const o = faceOrder(mesh, f)
+    const n = o.length
+    const c = newId().slice(0, 8)
+    vertices[c] = centreOf(mesh, o).map(round) as Vec3
+    const cuv: [number, number] = [round(o.reduce((s, v) => s + (f.uv[v]?.[0] ?? 0), 0) / n), round(o.reduce((s, v) => s + (f.uv[v]?.[1] ?? 0), 0) / n)]
+    delete faces[k]
+    o.forEach((v, i) => {
+      const next = o[(i + 1) % n]
+      const prev = o[(i - 1 + n) % n]
+      const mn = midOf(v, next)
+      const mp = midOf(prev, v)
+      faces[i === 0 ? k : newId().slice(0, 8)] = {
+        ...f,
+        vertices: [v, mn, c, mp],
+        uv: { [v]: f.uv[v] ?? [0, 0], [mn]: midUv(f.uv[v], f.uv[next]), [c]: cuv, [mp]: midUv(f.uv[prev], f.uv[v]) },
+      }
+    })
+  }
+  stitch(mesh, faces, mids, new Set(Object.keys(faces).filter((k) => !mesh.faces[k] || keys.includes(k))))
+  return { ...mesh, vertices, faces }
+}
+
+/* ---------------- UVs ---------------- */
+
+/** The UV bounds of some faces: [u0, v0, u1, v1]. */
+export function uvBoundsOf(mesh: Mesh, faceKeys: readonly string[]): [number, number, number, number] {
+  const pts = faceKeys.flatMap((k) => Object.values(mesh.faces[k]?.uv ?? {}))
+  if (!pts.length) return [0, 0, 0, 0]
+  const us = pts.map((p) => p[0])
+  const vs = pts.map((p) => p[1])
+  return [Math.min(...us), Math.min(...vs), Math.max(...us), Math.max(...vs)]
+}
+
+/** Runs `fn` over every UV corner of the given faces. */
+function mapUv(mesh: Mesh, faceKeys: readonly string[], fn: (p: [number, number]) => [number, number]): Mesh {
+  const faces = { ...mesh.faces }
+  for (const k of faceKeys) {
+    const f = faces[k]
+    if (!f) continue
+    faces[k] = { ...f, uv: Object.fromEntries(Object.entries(f.uv).map(([v, p]) => [v, fn(p).map(round) as [number, number]])) }
+  }
+  return { ...mesh, faces }
+}
+
+/** Moves the faces' UVs by (du, dv). */
+export function moveFacesUvBy(mesh: Mesh, faceKeys: readonly string[], du: number, dv: number): Mesh {
+  return mapUv(mesh, faceKeys, ([u, v]) => [u + du, v + dv])
+}
+
+/** Moves one corner of one face on the sheet; the vertex keeps its other faces' UVs. */
+export function moveUvCorner(mesh: Mesh, face: string, vertex: string, du: number, dv: number): Mesh {
+  const f = mesh.faces[face]
+  const p = f?.uv[vertex]
+  if (!p) return mesh
+  return { ...mesh, faces: { ...mesh.faces, [face]: { ...f, uv: { ...f.uv, [vertex]: [round(p[0] + du), round(p[1] + dv)] } } } }
+}
+
+/** Turns the faces' UVs a quarter clockwise on the sheet, about the middle of their bounds. */
+export function turnFacesUv(mesh: Mesh, faceKeys: readonly string[]): Mesh {
+  const [u0, v0, u1, v1] = uvBoundsOf(mesh, faceKeys)
+  const cu = (u0 + u1) / 2
+  const cv = (v0 + v1) / 2
+  return mapUv(mesh, faceKeys, ([u, v]) => [cu - (v - cv), cv + (u - cu)])
+}
+
+/** Mirrors the faces' UVs across the middle of their bounds, left to right ('u') or top to bottom ('v'). */
+export function mirrorFacesUv(mesh: Mesh, faceKeys: readonly string[], axis: 'u' | 'v'): Mesh {
+  const [u0, v0, u1, v1] = uvBoundsOf(mesh, faceKeys)
+  return mapUv(mesh, faceKeys, ([u, v]) => (axis === 'u' ? [u0 + u1 - u, v] : [u, v0 + v1 - v]))
+}

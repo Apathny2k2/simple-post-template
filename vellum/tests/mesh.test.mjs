@@ -216,3 +216,109 @@ test('painting on a mesh face in 3D changes its texture', async () => {
   assert.notEqual(await page.$eval('.texture-thumb', (e) => e.style.backgroundImage), before)
   await page.close()
 })
+
+test('loop cut and subdivide split faces and leave the surface closed', async () => {
+  const { page } = await open()
+  const r = await inApp(page, async () => {
+    const M = await import('/src/lib/mesh.ts')
+    const cube = M.makeMesh('cube', { parent: null, origin: [0, 0, 0], texture: null, place: () => [0, 0] })
+    // every edge of a closed surface is shared by exactly two faces
+    const open = (m) => {
+      const n = new Map()
+      for (const f of Object.values(m.faces)) {
+        const o = M.faceOrder(m, f)
+        o.forEach((a, i) => {
+          const e = M.edgeKey(a, o[(i + 1) % o.length])
+          n.set(e, (n.get(e) ?? 0) + 1)
+        })
+      }
+      return [...n.values()].filter((c) => c !== 2).length
+    }
+    const count = (m) => ({ faces: Object.keys(m.faces).length, vertices: Object.keys(m.vertices).length, open: open(m) })
+    const cut = M.loopCut(cube, M.edgesOf(cube)[0])
+    const all = M.subdivide(cube)
+    const top = Object.keys(cube.faces).find((k) => M.faceNormal(cube, cube.faces[k])[1] > 0.9)
+    const one = M.subdivide(cube, [top])
+    const turned = M.turnFacesUv(cube, [top])
+    const mirrored = M.mirrorFacesUv(cube, [top], 'u')
+    return {
+      edges: M.edgesOf(cube).length,
+      cut: { ...count(cut.mesh), ring: cut.edges.length },
+      all: count(all),
+      one: count(one),
+      bounds: [M.uvBoundsOf(cube, [top]), M.uvBoundsOf(mirrored, [top])],
+      turnedSize: (() => {
+        const [a, b, c, d] = M.uvBoundsOf(cube, [top])
+        const [e, f, g, h] = M.uvBoundsOf(turned, [top])
+        return [c - a, d - b, g - e, h - f]
+      })(),
+    }
+  })
+  assert.equal(r.edges, 12)
+  assert.deepEqual(r.cut, { faces: 10, vertices: 12, open: 0, ring: 4 }, 'a ring of four new edges round the cube')
+  assert.deepEqual(r.all, { faces: 24, vertices: 26, open: 0 }, 'four quads per face, middles shared')
+  assert.deepEqual(r.one, { faces: 9, vertices: 13, open: 0 }, 'the sides take the new middles on their top edges')
+  assert.deepEqual(r.bounds[0], r.bounds[1], 'mirroring keeps the bounds')
+  assert.deepEqual([r.turnedSize[0], r.turnedSize[1]], [r.turnedSize[3], r.turnedSize[2]], 'a quarter turn swaps width and height')
+  await page.close()
+})
+
+test('edge mode: pick an edge, loop cut, box-pick vertices, move UVs on the sheet', async () => {
+  const { page, errors } = await openEditor('runic_blade')
+  await page.click('.mesh-add > button')
+  await page.click('.mesh-add__menu button:has-text("Cube")')
+  await page.waitForSelector('.model-mface')
+
+  await page.keyboard.press('4')
+  await page.waitForSelector('.scene3d__edge-hit')
+  assert.equal(await page.locator('.scene3d__edge-hit').count(), 12)
+  assert.equal(await page.locator('.scene3d__vertex').count(), 0, 'edge mode draws no dots')
+  await page.locator('.scene3d__edge-hit').first().click()
+  assert.equal(await page.locator('.scene3d__edge--own').count(), 1)
+  await page.click('.chip:has-text("Loop cut")')
+  assert.equal(await page.locator('.model-mface').count(), 10)
+  assert.equal(await page.locator('.scene3d__edge--own').count(), 4, 'the new ring stays picked')
+  await page.keyboard.press('Control+z')
+  assert.equal(await page.locator('.model-mface').count(), 6, 'one undo for the cut')
+
+  // Vertex mode: B then a box over the whole view picks every vertex
+  await page.keyboard.press('3')
+  await page.keyboard.press('b')
+  // a box round the whole mesh, from its drawn faces
+  const boxes = await page.$$eval('.editor-view .model-mface', (els) => els.map((e) => e.getBoundingClientRect().toJSON()))
+  const lo = [Math.min(...boxes.map((q) => q.left)) - 30, Math.min(...boxes.map((q) => q.top)) - 30]
+  const hi = [Math.max(...boxes.map((q) => q.right)) + 30, Math.max(...boxes.map((q) => q.bottom)) + 30]
+  await drag(page, lo, hi, 6)
+  assert.equal(await page.locator('.scene3d__vertex--own').count(), 8)
+
+  // Face mode: the UV panel shows the mesh's faces; dragging a picked one moves its UVs, one undo
+  await page.keyboard.press('2')
+  const polys = page.locator('.uv-mesh__face')
+  assert.equal(await polys.count(), 6)
+  await polys.first().scrollIntoViewIfNeeded()
+  // a face whose middle isn't under the sheet's zoom buttons
+  const key = await page.$$eval('.uv-mesh__face', (els) =>
+    els
+      .find((e) => {
+        const r = e.getBoundingClientRect()
+        return document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2) === e
+      })
+      ?.getAttribute('data-mface'),
+  )
+  const poly = page.locator(`.uv-mesh__face[data-mface="${key}"]`)
+  const pts = () => page.getAttribute(`.uv-mesh__face[data-mface="${key}"]`, 'points')
+  const before = await pts()
+  const pb = await poly.boundingBox()
+  const sheet = await page.locator('.uv--mesh').boundingBox()
+  await drag(page, [pb.x + pb.width / 2, pb.y + pb.height / 2], [pb.x + pb.width / 2 + sheet.width / 8, pb.y + pb.height / 2], 5)
+  assert.equal(await page.locator('.uv-mesh__face--picked').count(), 1)
+  assert.equal(await page.locator('.model-mface--picked').count(), 1, 'the sheet and the viewport share the pick')
+  assert.notEqual(await pts(), before)
+  await page.keyboard.press('Control+z')
+  assert.equal(await pts(), before)
+
+  await page.click('.chip:has-text("Subdivide")')
+  assert.equal(await page.locator('.model-mface').count(), 9)
+  assert.deepEqual(errors, [])
+  await page.close()
+})

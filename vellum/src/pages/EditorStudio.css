@@ -719,8 +719,10 @@
 .mesh-add__menu button { padding: 7px 10px; border-radius: 7px; text-align: left; font-weight: 500 !important; color: var(--s-ink); }
 .mesh-add__menu button:hover { background: var(--s-hover); }
 .mesh-add__label { padding: 8px 10px 3px; border-top: 1px solid var(--s-line); margin-top: 4px; color: var(--s-ink-3); font-size: 11px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; }
-.editor-root--studio .mesh-modes { display: flex; }
-.editor-root--studio .mesh-modes button { padding: 0 9px; font-size: 12.5px; }
+.editor-root--studio .mesh-modes { display: flex; flex-basis: 100%; margin-top: 8px; }
+.editor-root--studio .mesh-modes button { flex: 1; padding: 0 6px; font-size: 12.5px; }
+/* four modes don't fit beside the label, so they take a row of their own */
+.insp-tex__head:has(.mesh-modes) { flex-wrap: wrap; }
 .dock__modes { display: inline-flex; gap: 2px; margin-left: 6px; padding-left: 8px; border-left: 1px solid var(--s-line-2); }
 .psheet__mesh { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 1; }
 .psheet__mesh polygon { fill: rgb(167 196 160 / 0.08); stroke: var(--s-sage); stroke-width: 1.5; vector-effect: non-scaling-stroke; }

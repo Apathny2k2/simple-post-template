@@ -28,6 +28,15 @@ export type VertexLayer = {
   /** marks the corners of the cube being moved */
   own: boolean[]
   onPick: (index: number, mods?: PickMods) => void
+  /** a finished box select over the dots: the indices inside, and whether to add */
+  onBox?: (indices: number[], add: boolean) => void
+  /** edges between points, by index, drawn as lines you can click (a mesh's Edge mode) */
+  edges?: Array<[number, number]>
+  /** marks the picked edges */
+  edgeOwn?: boolean[]
+  onPickEdge?: (index: number, mods?: PickMods) => void
+  /** draws no dots, only the edges */
+  hideDots?: boolean
 }
 
 const EMPTY: ReadonlySet<string> = new Set()
@@ -744,6 +753,14 @@ export function ModelView({
       const y1 = e.clientY - r.top
       const [lx, hx] = [Math.min(m.x, x1), Math.max(m.x, x1)]
       const [ly, hy] = [Math.min(m.y, y1), Math.max(m.y, y1)]
+      // with a vertex layer that takes boxes, the box picks its dots instead of cubes
+      const layer = vertexLayer.current
+      if (layer?.onBox) {
+        const inside = vertexAtRef.current.flatMap((p, i) => (p[0] >= lx && p[0] <= hx && p[1] >= ly && p[1] <= hy ? [i] : []))
+        setBox(null)
+        layer.onBox(inside, m.add)
+        return
+      }
       const ids: string[] = []
       // a cube is in when the middle of its drawn box is inside the marquee
       root.current.querySelectorAll<HTMLElement>('.model-cube[data-cube]').forEach((el) => {
@@ -844,6 +861,11 @@ export function ModelView({
   /* the corners for vertex snap, measured the same way */
   const vertexEls = useRef<Array<HTMLDivElement | null>>([])
   const [vertexAt, setVertexAt] = useState<Array<[number, number]>>([])
+  // the box select reads these when it ends, without re-making its handler
+  const vertexAtRef = useRef(vertexAt)
+  vertexAtRef.current = vertexAt
+  const vertexLayer = useRef(vertices)
+  vertexLayer.current = vertices
   useEffect(() => {
     if (!vertices) return
     let raf = 0
@@ -1031,7 +1053,34 @@ export function ModelView({
 
       {gizmo && onGizmo ? <Gizmo spec={gizmo} measure={measure} step={snapStep} onGizmo={onGizmo} /> : null}
 
-      {vertices
+      {vertices?.edges && vertexAt.length >= vertices.points.length ? (
+        <svg className="scene3d__edges" aria-label="Edges">
+          {vertices.edges.map(([a, b], i) => {
+            const p = vertexAt[a]
+            const q = vertexAt[b]
+            if (!p || !q) return null
+            return (
+              <g key={i} className={`scene3d__edge${vertices.edgeOwn?.[i] ? ' scene3d__edge--own' : ''}`}>
+                <line className="scene3d__edge-line" x1={p[0]} y1={p[1]} x2={q[0]} y2={q[1]} />
+                <line
+                  className="scene3d__edge-hit"
+                  data-edge={i}
+                  x1={p[0]}
+                  y1={p[1]}
+                  x2={q[0]}
+                  y2={q[1]}
+                  onPointerDown={(e) => {
+                    e.stopPropagation()
+                    vertices.onPickEdge?.(i, { shift: e.shiftKey, ctrl: e.ctrlKey || e.metaKey })
+                  }}
+                />
+              </g>
+            )
+          })}
+        </svg>
+      ) : null}
+
+      {vertices && !vertices.hideDots
         ? vertexAt.map((p, i) => (
             <button
               key={i}

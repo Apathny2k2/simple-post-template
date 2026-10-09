@@ -925,16 +925,27 @@ flat and packed into free room on the sheet. A mesh is listed under its bone
 in the outliner. It names that bone, as a null object does, so moving it to
 another bone only changes the name.
 
-With a mesh selected, the dock shows three selection modes, as Blockbench's
+With a mesh selected, the dock shows four selection modes, as Blockbench's
 toolbar does:
 
 | Mode | Key | The gizmo, and what else works |
 | --- | --- | --- |
-| Object | 1 | Moves, turns and re-pivots the whole mesh |
-| Face | 2 | Click faces to pick them (Shift adds). Moves their vertices. E extrudes by 1, Shift F flips, Del deletes |
-| Vertex | 3 | Click the dots (Shift adds). Moves them. M merges them at their middle, Del deletes |
+| Object | 1 | Moves, turns and re-pivots the whole mesh. **Subdivide** splits every face |
+| Face | 2 | Click faces to pick them (Shift adds). Moves their vertices. E extrudes by 1, Shift F flips, **Subdivide** splits the picked faces, Del deletes |
+| Vertex | 3 | Click the dots (Shift adds), or B and drag a box. Moves them. M merges them at their middle, Del deletes |
+| Edge | 4 | Click the lines (Shift adds), or B and drag a box round both ends. Moves their vertices. Ctrl R loop cuts the one picked edge, Del deletes the faces along the picked edges |
 
-Ctrl A picks every face or vertex, and Esc picks none. The Mesh panel has the
+Ctrl A picks every face, vertex or edge, and Esc picks none.
+
+**Loop cut** works as Blender's and Blockbench's: from the picked edge it walks
+across each quad to the opposite edge and on into the next quad, both ways,
+until it meets a face that isn't a quad or comes back round. Each quad on that
+ring splits in two through the middles of its two ring edges, and the new
+ring stays picked so the gizmo can slide it. **Subdivide** gives each face one
+quad per corner, through its edge middles and its own middle. Both keep the
+surface closed: a face next to a split one that wasn't split itself takes the
+new middle vertex on the edge they share (`stitch` in `lib/mesh.ts`). New
+UVs are the averages of the old ones, so the texture stays where it was. The Mesh panel has the
 same edits as buttons, the middle of the pick as fields, and the texture for
 the picked faces (or all of them). Extruding keeps the picked faces picked,
 so a drag on the gizmo pulls them straight out.
@@ -956,6 +967,16 @@ backwards, and on the sheet, where a selected mesh's faces are outlined and a
 press inside one picks it. glTF and OBJ export meshes with the cubes. Java
 block and item models are boxes only, so a pack leaves meshes out and the
 Validation panel says so.
+
+**Their UVs.** With a mesh selected the UV panel shows its faces as
+polygons on the sheet. The pick is Face mode's: a click on the sheet picks
+there and in the viewport. Dragging a face moves every picked face, and
+dragging one of the dots at a picked face's corners moves that corner of that
+face only, since each face keeps its own UVs. Whole texels by default, Shift
+for halves, Ctrl for free. **Unwrap** lays the picked faces (or all of them)
+flat again at one texel per unit, packed into room the rest of the sheet
+leaves free; **Turn** and **Mirror X / Y** work about the middle of the
+pick's UV bounds. Each drag or button is one undo step.
 
 ### Painting
 
@@ -1091,7 +1112,7 @@ code the editor runs.
 | `layout.test.mjs` | Every mode of a mob, an item and a block opens without errors and with no control covered; the Studio layout; the other pages load |
 | `interchange.test.mjs` | A Blockbench project with groups, loose cubes, a mesh, Molang, bezier keys, effects and an IK null comes in whole; Java JSON comes in and round-trips; glTF has a node per bone, an animation per clip and no inward triangles; the OBJ zip; opening both through the editor |
 | `paint.test.mjs` | The paint sheet, face picking, keeping strokes inside a face, painting on the model, the palette |
-| `mesh.test.mjs` | Every primitive faces outward; extrude, merge, flip and delete keep a mesh whole; the v9 round trip; adding, picking, extruding, moving and merging in the editor; a Blockbench mesh imported and exported to glTF facing outward; painting a mesh face |
+| `mesh.test.mjs` | Every primitive faces outward; extrude, merge, flip and delete keep a mesh whole; the v9 round trip; adding, picking, extruding, moving and merging in the editor; a Blockbench mesh imported and exported to glTF facing outward; painting a mesh face; loop cut and subdivide leave the surface closed; Edge mode, box-picking vertices and dragging mesh UVs on the sheet |
 | `modes.test.mjs` | A display slot takes and resets a transform; the real-world view opens and closes; a behaviour cycle runs and takes a stage |
 | `bundle.test.mjs` | `dist/vellum.html` opens and keeps its unprefixed `backdrop-filter`; skipped until `pnpm build:single` has run |
 

@@ -131,7 +131,7 @@ import {
   unwrapOrigin,
 } from '../lib/uv-edit'
 import type { UvHandle } from '../lib/uv-edit'
-import { PRIMITIVES, centreOf, faceOrder, deleteFaces, deleteVertices, extrudeFaces, flipFaces, makeMesh, mergeVertices, moveVertices, verticesOf } from '../lib/mesh'
+import { PRIMITIVES, centreOf, faceOrder, deleteEdges, deleteFaces, deleteVertices, edgeEnds, edgeVerticesOf, edgesOf, extrudeFaces, flipFaces, loopCut, makeMesh, mergeVertices, moveVertices, subdivide, verticesOf, mirrorFacesUv, projectUv, turnFacesUv } from '../lib/mesh'
 import type { Primitive } from '../lib/mesh'
 import { boxSize, findSpot } from '../lib/uv-pack'
 import { DEFAULT_DISPLAY, DisplayPanel } from './editor/DisplayPanel'
@@ -141,6 +141,7 @@ import { BehaviourPanel } from './editor/BehaviourPanel'
 import { ConfigPanel } from './editor/ConfigPanel'
 import { ConfigOutput } from './editor/ConfigOutput'
 import { PaintSheet } from './editor/PaintSheet'
+import { MeshUvPanel } from './editor/MeshUv'
 import { hasConfig, setFields, withDefaults } from '../lib/config'
 import { checkTranslation } from '../lib/mcmodel'
 import type { Config } from '../lib/config'
@@ -1903,6 +1904,19 @@ function BonePanel({
 
 /** A null object's settings: where it is, which bone it rides on, and the IK chain that reaches for it. */
 /** The inspector for a mesh: its place, how it is being picked, and the edits on the pick. */
+type MeshMode = 'object' | 'face' | 'vertex' | 'edge'
+const MESH_MODES: MeshMode[] = ['object', 'face', 'vertex', 'edge']
+const MESH_NOUN: Record<MeshMode, [string, string]> = { object: ['mesh', 'meshes'], face: ['face', 'faces'], vertex: ['vertex', 'vertices'], edge: ['edge', 'edges'] }
+type MeshOps = {
+  extrude: () => void
+  remove: () => void
+  merge: () => void
+  flip: () => void
+  selectAll: () => void
+  loopCut: () => void
+  subdivide: () => void
+}
+
 function MeshPanel({
   mesh,
   model,
@@ -1923,11 +1937,11 @@ function MeshPanel({
   model: Model
   bones: Array<{ id: string; name: string; depth: number }>
   snap: boolean
-  mode: 'object' | 'face' | 'vertex'
-  onMode: (m: 'object' | 'face' | 'vertex') => void
+  mode: MeshMode
+  onMode: (m: MeshMode) => void
   picked: number
   keys: string[]
-  ops: { extrude: () => void; remove: () => void; merge: () => void; flip: () => void; selectAll: () => void }
+  ops: MeshOps
   onEdit: (label: string, fn: (m: Mesh) => Mesh) => void
   onRename: (name: string) => void
   onMove: (bone: string | null) => void
@@ -1984,7 +1998,7 @@ function MeshPanel({
         <div className="insp-tex__head">
           <span className="studio-label">Edit</span>
           <span className="studio-seg mesh-modes" role="group" aria-label="Mesh selection">
-            {(['object', 'face', 'vertex'] as const).map((m, i) => (
+            {MESH_MODES.map((m, i) => (
               <button key={m} aria-pressed={mode === m} title={`${m[0].toUpperCase() + m.slice(1)} (${i + 1})`} onClick={() => onMode(m)}>
                 {m[0].toUpperCase() + m.slice(1)}
               </button>
@@ -1992,13 +2006,20 @@ function MeshPanel({
           </span>
         </div>
         {mode === 'object' ? (
-          <p className="editor-hint">The gizmo moves, turns and re-pivots the whole mesh. Pick Face or Vertex (2, 3) to shape it.</p>
+          <>
+            <p className="editor-hint">The gizmo moves, turns and re-pivots the whole mesh. Pick Face, Vertex or Edge (2, 3, 4) to shape it.</p>
+            <div className="chip-row" style={{ marginTop: 10 }}>
+              <button className="chip" disabled={locked} onClick={ops.subdivide} title="Split every face into four">
+                Subdivide
+              </button>
+            </div>
+          </>
         ) : (
           <>
             <p className="editor-hint">
               {picked
-                ? `${picked} ${mode === 'face' ? (picked === 1 ? 'face' : 'faces') : picked === 1 ? 'vertex' : 'vertices'} picked. Drag the gizmo to move ${picked === 1 ? 'it' : 'them'}.`
-                : `Click ${mode === 'face' ? 'a face' : 'a vertex'} in the viewport. Shift adds, Ctrl+A picks all.`}
+                ? `${picked} ${MESH_NOUN[mode][picked === 1 ? 0 : 1]} picked. Drag the gizmo to move ${picked === 1 ? 'it' : 'them'}.`
+                : `Click ${mode === 'face' ? 'a face' : mode === 'edge' ? 'an edge' : 'a vertex'} in the viewport. Shift adds, B draws a box, Ctrl+A picks all.`}
             </p>
             {keys.length ? (
               <div className="num-field-grid">
@@ -2007,7 +2028,7 @@ function MeshPanel({
                   value={centre.map((v) => Math.round(v * 1000) / 1000) as Vec3}
                   disabled={locked}
                   snap={snap}
-                  onChange={(to) => onEdit(`move ${mode === 'face' ? 'faces' : 'vertices'}`, (m) => moveVertices(m, keys, sub(to, centreOf(m, keys))))}
+                  onChange={(to) => onEdit(`move ${MESH_NOUN[mode][1]}`, (m) => moveVertices(m, keys, sub(to, centreOf(m, keys))))}
                 />
               </div>
             ) : null}
@@ -2020,7 +2041,14 @@ function MeshPanel({
                   <button className="chip" disabled={!picked || locked} onClick={ops.flip} title="Turn the picked faces to face the other way (Shift+F)">
                     Flip
                   </button>
+                  <button className="chip" disabled={!picked || locked} onClick={ops.subdivide} title="Split the picked faces into four each">
+                    Subdivide
+                  </button>
                 </>
+              ) : mode === 'edge' ? (
+                <button className="chip" disabled={picked !== 1 || locked} onClick={ops.loopCut} title="Cut a ring of new edges across the quads this edge runs through (Ctrl+R)">
+                  Loop cut
+                </button>
               ) : (
                 <button className="chip" disabled={picked < 2 || locked} onClick={ops.merge} title="Merge the picked vertices into one at their middle (M)">
                   Merge
@@ -4098,21 +4126,26 @@ export function Editor({ segments }: { segments: string[] }) {
   /* A selected mesh is edited as a whole (Object), or by its faces or its
      vertices, as Blockbench's selection modes do. 1, 2 and 3 switch. */
   const selectedMesh = useMemo(() => (model.meshes ?? []).find((m) => m.id === selected) ?? null, [model.meshes, selected])
-  const [meshMode, setMeshMode] = useState<'object' | 'face' | 'vertex'>('object')
+  const [meshMode, setMeshMode] = useState<MeshMode>('object')
   const [meshFaces, setMeshFaces] = useState<string[]>([])
   const [meshVerts, setMeshVerts] = useState<string[]>([])
+  const [meshEdges, setMeshEdges] = useState<string[]>([])
   const meshId = selectedMesh?.id
   useEffect(() => {
     setMeshFaces([])
     setMeshVerts([])
+    setMeshEdges([])
   }, [meshId])
+  /** the edges of the selected mesh that still exist */
+  const meshEdgeList = useMemo(() => (selectedMesh ? edgesOf(selectedMesh) : []), [selectedMesh])
+  const meshPicked = meshMode === 'face' ? meshFaces.length : meshMode === 'vertex' ? meshVerts.length : meshMode === 'edge' ? meshEdges.length : 0
   /** the vertices the gizmo moves: the picked faces' or the picked vertices */
   const meshKeys = useMemo(() => {
     if (!selectedMesh || meshMode === 'object') return []
-    return meshMode === 'face'
-      ? verticesOf(selectedMesh, meshFaces.filter((k) => selectedMesh.faces[k]))
-      : meshVerts.filter((k) => selectedMesh.vertices[k])
-  }, [selectedMesh, meshMode, meshFaces, meshVerts])
+    if (meshMode === 'face') return verticesOf(selectedMesh, meshFaces.filter((k) => selectedMesh.faces[k]))
+    if (meshMode === 'edge') return edgeVerticesOf(meshEdges).filter((k) => selectedMesh.vertices[k])
+    return meshVerts.filter((k) => selectedMesh.vertices[k])
+  }, [selectedMesh, meshMode, meshFaces, meshVerts, meshEdges])
   const meshEditing = mode === 'edit' && !!selectedMesh && meshMode !== 'object'
 
   const pickFace = useCallback((key: string, mods: { shift: boolean; ctrl: boolean }) => {
@@ -4138,6 +4171,10 @@ export function Editor({ segments }: { segments: string[] }) {
           const next = deleteVertices(selectedMesh, meshVerts)
           history.commit('delete vertices', (m) => ({ ...m, meshes: (m.meshes ?? []).map((x) => (x.id === selectedMesh.id ? next : x)) }))
           setMeshVerts([])
+        } else if (meshMode === 'edge' && meshEdges.length) {
+          const next = deleteEdges(selectedMesh, meshEdges)
+          history.commit('delete edges', (m) => ({ ...m, meshes: (m.meshes ?? []).map((x) => (x.id === selectedMesh.id ? next : x)) }))
+          setMeshEdges([])
         }
       },
       merge: () => {
@@ -4155,10 +4192,58 @@ export function Editor({ segments }: { segments: string[] }) {
         if (!selectedMesh) return
         if (meshMode === 'face') setMeshFaces(Object.keys(selectedMesh.faces))
         if (meshMode === 'vertex') setMeshVerts(Object.keys(selectedMesh.vertices))
+        if (meshMode === 'edge') setMeshEdges(edgesOf(selectedMesh))
+      },
+      loopCut: () => {
+        if (!selectedMesh || selectedMesh.locked || meshMode !== 'edge' || meshEdges.length !== 1) return
+        const r = loopCut(selectedMesh, meshEdges[0])
+        if (!r.edges.length) return
+        history.commit('loop cut', (m) => ({ ...m, meshes: (m.meshes ?? []).map((x) => (x.id === selectedMesh.id ? r.mesh : x)) }))
+        setMeshEdges(r.edges)
+      },
+      subdivide: () => {
+        if (!selectedMesh || selectedMesh.locked) return
+        const faces = meshMode === 'face' ? meshFaces.filter((k) => selectedMesh.faces[k]) : []
+        if (meshMode === 'face' && !faces.length) return
+        const next = subdivide(selectedMesh, faces)
+        history.commit('subdivide', (m) => ({ ...m, meshes: (m.meshes ?? []).map((x) => (x.id === selectedMesh.id ? next : x)) }))
+        // the corner quads that keep the old keys stay picked; the new ones join them
+        if (faces.length) setMeshFaces(Object.keys(next.faces).filter((k) => faces.includes(k) || !selectedMesh.faces[k]))
       },
     }),
-    [selectedMesh, meshMode, meshFaces, meshVerts, history],
+    [selectedMesh, meshMode, meshFaces, meshVerts, meshEdges, history],
   )
+
+  /* Dragging on the mesh UV sheet: one undo step per drag. */
+  const meshUvDrag = useMemo(
+    () => ({
+      begin: (label: string) => history.begin(label),
+      set: (next: Mesh) => history.amend((m) => ({ ...m, meshes: (m.meshes ?? []).map((x) => (x.id === next.id ? next : x)) })),
+      end: () => history.end(),
+    }),
+    [history],
+  )
+
+  /** Lays the picked faces (or all) out flat again, packed into room the rest of the sheet leaves free. */
+  const onUnwrapMesh = useCallback(() => {
+    if (!selectedMesh || selectedMesh.locked) return
+    const keys = meshFaces.filter((k) => selectedMesh.faces[k])
+    const faces = keys.length ? keys : Object.keys(selectedMesh.faces)
+    // the faces being laid out don't count as taken
+    const cleared = { ...selectedMesh, faces: Object.fromEntries(Object.entries(selectedMesh.faces).map(([k, f]) => [k, faces.includes(k) ? { ...f, uv: {} } : f])) }
+    const room = { ...model, meshes: (model.meshes ?? []).map((x) => (x.id === cleared.id ? cleared : x)) }
+    const placed: UVRect[] = []
+    let crowded = false
+    const next = projectUv(selectedMesh, faces, (w, h) => {
+      const spot = findSpot(room, [w, h], placed)
+      if (!spot) crowded = true
+      const [x, y] = spot ?? [0, 0]
+      placed.push([x, y, x + w, y + h])
+      return [x, y]
+    })
+    history.commit('unwrap mesh', (m) => ({ ...m, meshes: (m.meshes ?? []).map((x) => (x.id === next.id ? next : x)) }))
+    if (crowded) notify('The sheet had no room for some faces, so they share texels at the corner. Grow the sheet or move them.', 7000)
+  }, [selectedMesh, meshFaces, model, history, notify])
 
   /** Applies a mesh edit to the selected mesh as one undo step. */
   const editMesh = useCallback(
@@ -4238,7 +4323,7 @@ export function Editor({ segments }: { segments: string[] }) {
     (e: GizmoEvent) => {
       if (e.phase === 'start') {
         const label =
-          mode === 'animate' ? 'pose' : meshEditing ? `move ${meshMode === 'face' ? 'faces' : 'vertices'}` : { move: 'move', resize: 'resize', rotate: 'rotate', pivot: 'move pivot', scale: 'scale' }[e.tool]
+          mode === 'animate' ? 'pose' : meshEditing ? `move ${MESH_NOUN[meshMode][1]}` : { move: 'move', resize: 'resize', rotate: 'rotate', pivot: 'move pivot', scale: 'scale' }[e.tool]
         history.begin(label)
         dragFrom.current = { model, rig, pose, ids: topLevel(model, selection) }
       }
@@ -4388,19 +4473,41 @@ export function Editor({ segments }: { segments: string[] }) {
   /* In Vertex mode every vertex of the selected mesh is a dot; a click
      picks it, Shift or Ctrl adds or drops it. */
   const meshVertexLayer = useMemo<VertexLayer | null>(() => {
-    if (!meshEditing || meshMode !== 'vertex' || !selectedMesh) return null
+    if (!meshEditing || (meshMode !== 'vertex' && meshMode !== 'edge') || !selectedMesh) return null
     const f = meshFrame(rig, selectedMesh)
     const keys = Object.keys(selectedMesh.vertices)
-    const picked = new Set(meshVerts)
+    const points = keys.map((k) => apply(f, selectedMesh.vertices[k]))
+    const toggle = (cur: string[], k: string, add: boolean | undefined) => (add ? (cur.includes(k) ? cur.filter((x) => x !== k) : [...cur, k]) : [k])
+    const boxed = (cur: string[], inside: string[], add: boolean) => (add ? [...cur.filter((x) => !inside.includes(x)), ...inside] : inside)
+    if (meshMode === 'vertex') {
+      const picked = new Set(meshVerts)
+      return {
+        points,
+        own: keys.map((k) => picked.has(k)),
+        onPick: (i, mods) => setMeshVerts((cur) => toggle(cur, keys[i], mods?.shift || mods?.ctrl)),
+        onBox: (inside, add) => setMeshVerts((cur) => boxed(cur, inside.map((i) => keys[i]), add)),
+      }
+    }
+    /* Edge mode draws the edges as lines over the mesh; a box picks the edges
+       with both ends inside it. */
+    const index = new Map(keys.map((k, i) => [k, i]))
+    const picked = new Set(meshEdges)
+    const edges = meshEdgeList.map((e) => edgeEnds(e).map((v) => index.get(v) ?? 0) as [number, number])
     return {
-      points: keys.map((k) => apply(f, selectedMesh.vertices[k])),
-      own: keys.map((k) => picked.has(k)),
-      onPick: (i, mods) => {
-        const k = keys[i]
-        setMeshVerts((cur) => (mods?.shift || mods?.ctrl ? (cur.includes(k) ? cur.filter((x) => x !== k) : [...cur, k]) : [k]))
+      points,
+      own: keys.map(() => false),
+      onPick: () => {},
+      hideDots: true,
+      edges,
+      edgeOwn: meshEdgeList.map((e) => picked.has(e)),
+      onPickEdge: (i, mods) => setMeshEdges((cur) => toggle(cur, meshEdgeList[i], mods?.shift || mods?.ctrl)),
+      onBox: (inside, add) => {
+        const set = new Set(inside.map((i) => keys[i]))
+        const hit = meshEdgeList.filter((e) => edgeEnds(e).every((v) => set.has(v)))
+        setMeshEdges((cur) => boxed(cur, hit, add))
       },
     }
-  }, [meshEditing, meshMode, selectedMesh, rig, meshVerts])
+  }, [meshEditing, meshMode, selectedMesh, rig, meshVerts, meshEdges, meshEdgeList])
 
   const vertices = useMemo<VertexLayer | null>(
     () =>
@@ -5623,14 +5730,15 @@ export function Editor({ segments }: { segments: string[] }) {
           e.preventDefault()
           fn()
         }
-        if (!mod && (k === '1' || k === '2' || k === '3')) return run(() => setMeshMode(k === '1' ? 'object' : k === '2' ? 'face' : 'vertex'))
+        if (!mod && ['1', '2', '3', '4'].includes(k)) return run(() => setMeshMode(MESH_MODES[Number(k) - 1]))
         if (meshMode !== 'object') {
+          if (mod && k === 'r' && meshMode === 'edge') return run(meshOps.loopCut)
           if (mod && k === 'a') return run(meshOps.selectAll)
           if (!mod && k === 'e' && meshMode === 'face') return run(meshOps.extrude)
           if (!mod && k === 'm' && meshMode === 'vertex') return run(meshOps.merge)
           if (!mod && k === 'f' && e.shiftKey && meshMode === 'face') return run(meshOps.flip)
           if (e.key === 'Delete' || e.key === 'Backspace') return run(meshOps.remove)
-          if (e.key === 'Escape') return run(() => (meshMode === 'face' ? setMeshFaces([]) : setMeshVerts([])))
+          if (e.key === 'Escape') return run(() => (meshMode === 'face' ? setMeshFaces([]) : meshMode === 'edge' ? setMeshEdges([]) : setMeshVerts([])))
         }
       }
       // in Animate, Ctrl C and Ctrl V copy and paste keyframes
@@ -5904,7 +6012,7 @@ export function Editor({ segments }: { segments: string[] }) {
                 extra={
                   mode === 'edit' && selectedMesh ? (
                     <span className="dock__modes" role="group" aria-label="Mesh selection">
-                      {(['object', 'face', 'vertex'] as const).map((m, i) => (
+                      {MESH_MODES.map((m, i) => (
                         <button key={m} className="dock__tool" aria-pressed={meshMode === m} title={`${m[0].toUpperCase() + m.slice(1)} (${i + 1})`} onClick={() => setMeshMode(m)}>
                           <span>{m[0].toUpperCase() + m.slice(1)}</span>
                           <kbd>{i + 1}</kbd>
@@ -6072,7 +6180,7 @@ export function Editor({ segments }: { segments: string[] }) {
                   snap={snap}
                   mode={meshMode}
                   onMode={setMeshMode}
-                  picked={meshMode === 'face' ? meshFaces.length : meshVerts.length}
+                  picked={meshPicked}
                   keys={meshKeys}
                   ops={meshOps}
                   onEdit={editMesh}
@@ -6156,7 +6264,23 @@ export function Editor({ segments }: { segments: string[] }) {
               </Panel>
             ) : null}
 
-            {mode === 'paint' ? null : (
+            {mode === 'paint' ? null : selectedMesh ? (
+            <Panel title="UV" count={`${model.resolution.width} × ${model.resolution.height}`}>
+              <MeshUvPanel
+                model={model}
+                mesh={selectedMesh}
+                picked={meshFaces}
+                onPick={(k, mods) => {
+                  if (meshMode !== 'face') setMeshMode('face')
+                  pickFace(k, mods)
+                }}
+                onDrag={meshUvDrag}
+                onUnwrap={onUnwrapMesh}
+                onTurn={() => editMesh('turn UVs', (m) => turnFacesUv(m, meshFaces))}
+                onMirror={(axis) => editMesh('mirror UVs', (m) => mirrorFacesUv(m, meshFaces, axis))}
+              />
+            </Panel>
+            ) : (
             <Panel title="UV" count={`${model.resolution.width} × ${model.resolution.height}`}>
               <UVPanel
                 model={model}
@@ -6545,7 +6669,7 @@ export function Editor({ segments }: { segments: string[] }) {
               : selection.length > 1
                 ? `${selection.length} selected`
                 : selectedMesh
-                  ? `${selectedMesh.name} \u00b7 mesh, ${Object.keys(selectedMesh.vertices).length} vertices, ${Object.keys(selectedMesh.faces).length} faces${meshMode !== 'object' ? ` \u00b7 ${meshMode === 'face' ? meshFaces.length : meshVerts.length} picked` : ''}`
+                  ? `${selectedMesh.name} \u00b7 mesh, ${Object.keys(selectedMesh.vertices).length} vertices, ${Object.keys(selectedMesh.faces).length} faces${meshMode !== 'object' ? ` \u00b7 ${meshPicked} ${MESH_NOUN[meshMode][meshPicked === 1 ? 0 : 1]} picked` : ''}`
                   : selectedBone
                   ? `${selectedBone.name} \u00b7 pivot ${selectedBone.origin.join(', ')}`
                   : selectedNull
