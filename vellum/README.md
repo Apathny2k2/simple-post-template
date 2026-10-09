@@ -117,7 +117,7 @@ A `.vellum` is UTF-8 JSON on one line, with a Vellum-owned schema. The
 extension is ours.
 
 ```
-{"vellum":{"format":"model","version":7},"name":"voidling","kind":"mobs","subtype":"hostile","resolution":{…},"bones":[…],"cubes":[…],"textures":[…],"clips":[…],"behaviour":{…},"config":{…}}
+{"vellum":{"format":"model","version":8},"name":"voidling","kind":"mobs","subtype":"hostile","resolution":{…},"bones":[…],"cubes":[…],"textures":[…],"clips":[…],"nulls":[…],"behaviour":{…},"config":{…}}
 ```
 
 The format follows these rules:
@@ -137,6 +137,24 @@ The reader refuses these files up front, before it reads a cube, with a
 - a file from a **newer Vellum**, because this version cannot know what the
   newer one meant by it;
 - a **foreign file**: no `vellum` header, or a `format` that is not `model`.
+
+### Version 8: null objects, events and ping-pong
+
+v8 adds three things Blockbench animators expect. Each is optional, so a v7
+file reads as a v8 file with none of them, and the upgrade changes nothing.
+
+- **`nulls`**, after `clips`: Blockbench's null objects. Each has an `id`, a
+  `name`, the `parent` bone it moves with, and an absolute `position`, like a
+  pivot. A null with `ik_target` is the point an IK chain reaches for:
+  `ik_target` names the bone at the end of the chain and `ik_chain` how many
+  bones above it bend (2 when absent). A clip can key a null's position with a
+  `position` track whose `bone` is the null's id.
+- **`events`** on a clip, sorted by time: `{time, kind, effect, locator?}`, where
+  `kind` is `sound`, `particle` or `script`, `effect` is the sound or particle
+  id (or the script), and `locator` is the null it plays at. An event of a kind
+  this reader doesn't know is dropped.
+- **`pingpong`**, a fourth `loop` value: the clip plays to its end and back. A
+  reader that meets a loop value it doesn't know plays it as `loop`.
 
 ### Box UV
 

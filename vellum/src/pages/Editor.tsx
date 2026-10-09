@@ -1723,7 +1723,7 @@ export function clipLabel(name: string) {
   return m ? m[1] : name
 }
 
-const LOOPS: Array<Clip['loop']> = ['loop', 'once', 'hold']
+const LOOPS: Array<Clip['loop']> = ['loop', 'once', 'hold', 'pingpong']
 const SNAPS = [0, 12, 24, 30, 60]
 
 /**
@@ -1847,7 +1847,7 @@ function AnimationPanel({ anim }: { anim: AnimApi }) {
         >
           {LOOPS.map((l) => (
             <option key={l} value={l}>
-              {l}
+              {l === 'pingpong' ? 'ping-pong' : l}
             </option>
           ))}
         </select>
@@ -2095,6 +2095,9 @@ function Timeline({
     timeRef.current = time
   }, [time])
 
+  /** ping-pong plays forward, then back: -1 while it runs backwards */
+  const direction = useRef(1)
+
   useEffect(() => {
     if (!playing || !clip) return
     let raf = 0
@@ -2102,6 +2105,21 @@ function Timeline({
     const tick = (now: number) => {
       const dt = (now - last) / 1000
       last = now
+      if (clip.loop === 'pingpong' && clip.length > 0) {
+        let next = timeRef.current + dt * direction.current
+        if (next > clip.length) {
+          next = 2 * clip.length - next
+          direction.current = -1
+        } else if (next < 0) {
+          next = -next
+          direction.current = 1
+        }
+        next = Math.max(0, Math.min(clip.length, next))
+        timeRef.current = next
+        onTime(next)
+        raf = requestAnimationFrame(tick)
+        return
+      }
       const next = timeRef.current + dt
       timeRef.current = next
       if (next < clip.length) {
@@ -2178,7 +2196,7 @@ function Timeline({
             clip && anim.patchClip({ loop: LOOPS[(LOOPS.indexOf(clip.loop) + 1) % LOOPS.length] })
           }
         >
-          <Icon name="refresh" size={11} /> {clip?.loop ?? 'once'}
+          <Icon name="refresh" size={11} /> {clip?.loop === 'pingpong' ? 'ping-pong' : (clip?.loop ?? 'once')}
         </button>
 
         <div className="editor-toolbar__right">

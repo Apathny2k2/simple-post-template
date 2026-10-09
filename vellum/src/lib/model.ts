@@ -144,13 +144,50 @@ export type Track = {
   keys: Key[]
 }
 
+/** What a clip does at its end: start over, stop at 0, stop on the last frame, or play back and forth (v8). */
+export type LoopMode = 'loop' | 'once' | 'hold' | 'pingpong'
+
+/** A timed effect on a clip (v8): Blockbench's sound, particle and instruction keyframes. */
+export type EventKind = 'sound' | 'particle' | 'script'
+export type ClipEvent = {
+  id: string
+  time: number
+  kind: EventKind
+  /** a sound or particle id such as `minecraft:entity.zombie.ambient`, or the script itself */
+  effect: string
+  /** a null object id: where a particle starts or a sound plays from */
+  locator?: string
+}
+
 export type Clip = {
   id: string
   name: string
-  loop: 'loop' | 'once' | 'hold'
+  loop: LoopMode
   length: number
   snapping: number
   tracks: Track[]
+  /** absent when the clip has none */
+  events?: ClipEvent[]
+}
+
+/**
+ * A point that belongs to a bone (v8), Blockbench's null object. It marks
+ * where an effect plays, and with `ikTarget` it is the point an IK chain
+ * reaches for. `position` is an absolute model coordinate, like a pivot,
+ * and can be animated through a `position` track keyed by the null's id.
+ */
+export type NullObject = {
+  id: string
+  name: string
+  /** the bone it moves with; null at the model root */
+  parent: string | null
+  position: Vec3
+  /** the bone at the end of the chain that reaches for this point */
+  ikTarget?: string
+  /** how many bones above `ikTarget` bend to reach it; 2 when unset */
+  ikChain?: number
+  visible: boolean
+  locked: boolean
 }
 
 export type Model = {
@@ -168,6 +205,8 @@ export type Model = {
   cubes: Cube[]
   textures: Texture[]
   clips: Clip[]
+  /** absent when the model has none (v8) */
+  nulls?: NullObject[]
 }
 
 /* ---------------- lookups ---------------- */
@@ -400,12 +439,37 @@ export function validateModel(model: Model, kind?: ProjectKind, subtype?: Subtyp
     }
   }
 
+  const nullIds = new Set<string>()
+  for (const n of model.nulls ?? []) {
+    if (nullIds.has(n.id)) issues.push({ level: 'error', message: `Duplicate null object id on "${n.name}"` })
+    nullIds.add(n.id)
+    if (n.parent && !boneById(model, n.parent)) {
+      issues.push({ level: 'error', message: `"${n.name}" belongs to a bone that is not in the tree` })
+    }
+    if (n.ikTarget) {
+      const tip = boneById(model, n.ikTarget)
+      if (!tip) issues.push({ level: 'error', message: `"${n.name}" is the IK target of a bone that is not in the tree` })
+      if (n.ikChain !== undefined && (!Number.isInteger(n.ikChain) || n.ikChain < 1 || n.ikChain > 8)) {
+        issues.push({ level: 'warning', message: `"${n.name}" bends ${n.ikChain} bones; an IK chain takes 1 to 8` })
+      }
+    }
+  }
+
   for (const clip of model.clips) {
     if (/\s/.test(clip.name)) {
       issues.push({ level: 'warning', message: `"${clip.name}" has a space in its name, so a config can\u2019t name it. Use underscores` })
     }
+    for (const ev of clip.events ?? []) {
+      if (ev.time < 0 || ev.time > clip.length + 1e-9) {
+        issues.push({ level: 'warning', message: `"${clip.name}" has a ${ev.kind} event past its end, so it won't play` })
+      }
+      if (ev.locator && !(model.nulls ?? []).some((n) => n.id === ev.locator)) {
+        issues.push({ level: 'error', message: `"${clip.name}" plays an effect at a null object that is gone` })
+      }
+    }
     for (const track of clip.tracks) {
-      if (!boneById(model, track.bone)) {
+      // a null object's position can be keyed like a bone's
+      if (!boneById(model, track.bone) && !(track.channel === 'position' && (model.nulls ?? []).some((n) => n.id === track.bone))) {
         issues.push({ level: 'error', message: `"${clip.name}" drives a bone that is not in the tree` })
       }
       for (const key of track.keys) {

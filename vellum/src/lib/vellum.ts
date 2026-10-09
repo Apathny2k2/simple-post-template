@@ -11,7 +11,8 @@
      stamps CURRENT_VERSION.
 
    Not in the file: pack models and textures, display transforms and
-   editor state. */
+   editor state. v8 added null objects (`nulls`), clip `events` and the
+   `pingpong` loop. */
 
 import { FACES, subtypeFits } from './model'
 import type { Behaviour, BehaviourEffect, BehaviourRequirement, BehaviourStage, EffectKind } from './behaviour'
@@ -21,7 +22,10 @@ import type {
   Bone,
   Channel,
   Clip,
+  ClipEvent,
   Cube,
+  EventKind,
+  NullObject,
   Face,
   FaceKey,
   Handles,
@@ -35,7 +39,7 @@ import type {
 } from './model'
 
 export const FORMAT = 'model'
-export const CURRENT_VERSION = 7
+export const CURRENT_VERSION = 8
 
 /** A well-formed `.vellum` begins with exactly these bytes. */
 export const HEADER_PREFIX = `{"vellum":{"format":"${FORMAT}","version":${CURRENT_VERSION}},`
@@ -115,13 +119,40 @@ type VellumTrack = {
   keys: VellumKey[]
 }
 
+/** A timed effect (v8). */
+type VellumEvent = {
+  time: number
+  kind: EventKind
+  effect: string
+  /** a null object's `id` */
+  locator?: string
+}
+
 type VellumClip = {
   id: string
   name: string
+  /** `pingpong` is v8 */
   loop: Clip['loop']
   length: number
   snapping?: number
   tracks: VellumTrack[]
+  /** Added in v8, sorted by time. Absent when the clip has none. */
+  events?: VellumEvent[]
+}
+
+/** A null object (v8): a point on a bone, used for effects and as an IK target. */
+type VellumNull = {
+  id: string
+  name: string
+  /** a bone's `id`; absent at the model root */
+  parent?: string
+  position: Vec3
+  /** the bone at the end of the chain that reaches for this point */
+  ik_target?: string
+  /** bones above `ik_target` that bend; 2 when absent */
+  ik_chain?: number
+  hidden?: boolean
+  locked?: boolean
 }
 
 export type VellumBehaviour = {
@@ -147,6 +178,8 @@ export type VellumDocument = {
   cubes: VellumCube[]
   textures: VellumTexture[]
   clips: VellumClip[]
+  /** Added in v8. Absent when the model has none. */
+  nulls?: VellumNull[]
   /** Added in v4. Absent when the model has no requirements and no stages. */
   behaviour?: VellumBehaviour
   /** Added in v5. The body from `bodyOf`: nested by field path, set fields only. */
@@ -267,8 +300,28 @@ export function toVellumDocument(model: Model): VellumDocument {
               },
             })),
         })),
+      events: clip.events?.length
+        ? [...clip.events]
+            .sort((a, b) => a.time - b.time)
+            .map((e) => compact({ time: e.time, kind: e.kind, effect: e.effect, locator: e.locator }))
+        : undefined,
     }),
   )
+
+  const nulls: VellumNull[] | undefined = model.nulls?.length
+    ? model.nulls.map((n) =>
+        compact({
+          id: n.id,
+          name: n.name,
+          parent: n.parent ?? undefined,
+          position: n.position,
+          ik_target: n.ikTarget,
+          ik_chain: n.ikTarget ? n.ikChain : undefined,
+          hidden: n.visible ? undefined : true,
+          locked: n.locked || undefined,
+        }),
+      )
+    : undefined
 
   const b = model.behaviour
   const behaviour: VellumBehaviour | undefined =
@@ -313,6 +366,7 @@ export function toVellumDocument(model: Model): VellumDocument {
     cubes,
     textures,
     clips,
+    nulls,
     behaviour,
     config,
   })
@@ -459,6 +513,9 @@ function upgrade(doc: VellumDocument): VellumDocument {
         version = 7
         break
       }
+      case 7: // v8 added null objects, clip events and `pingpong`; absent is already correct
+        version = 8
+        break
       default:
         throw new VellumFormatError(`No upgrade path from .vellum version ${version}.`)
     }
@@ -563,10 +620,26 @@ export function fromVellumDocument(doc: VellumDocument): Model {
     else bones.push(self)
   }
 
+  const LOOPS = ['loop', 'once', 'hold', 'pingpong']
+  const KINDS: EventKind[] = ['sound', 'particle', 'script']
+  let eventCounter = 0
   const clips: Clip[] = (doc.clips ?? []).map((clip) => ({
     id: clip.id,
     name: clip.name,
-    loop: clip.loop ?? 'loop',
+    loop: LOOPS.includes(clip.loop) ? clip.loop : 'loop',
+    events: (() => {
+      // an event of a kind this reader doesn't know, or with no effect, is dropped
+      const list: ClipEvent[] = objects(clip.events)
+        .filter((e) => KINDS.includes(e.kind) && typeof e.effect === 'string')
+        .map((e) => ({
+          id: `e${(eventCounter += 1).toString(36)}`,
+          time: Number.isFinite(e.time) ? e.time : 0,
+          kind: e.kind,
+          effect: e.effect,
+          locator: typeof e.locator === 'string' ? e.locator : undefined,
+        }))
+      return list.length ? list : undefined
+    })(),
     length: clip.length,
     snapping: clip.snapping ?? 24,
     tracks: (clip.tracks ?? []).map((t) => ({
@@ -585,6 +658,20 @@ export function fromVellumDocument(doc: VellumDocument): Model {
   const kind: ProjectKind | undefined =
     doc.kind === 'items' || doc.kind === 'mobs' || doc.kind === 'blocks' ? doc.kind : undefined
 
+  const nulls: NullObject[] = objects(doc.nulls)
+    .filter((n) => typeof n.id === 'string')
+    .map((n) => ({
+      id: n.id,
+      name: typeof n.name === 'string' ? n.name : 'null',
+      // a parent this file doesn't carry is kept, so the validator can report it
+      parent: typeof n.parent === 'string' ? n.parent : null,
+      position: vec3(n.position, [0, 0, 0]),
+      ikTarget: typeof n.ik_target === 'string' ? n.ik_target : undefined,
+      ikChain: typeof n.ik_target === 'string' && Number.isFinite(n.ik_chain) ? n.ik_chain : undefined,
+      visible: !n.hidden,
+      locked: Boolean(n.locked),
+    }))
+
   const subtype: Subtype | undefined = subtypeFits(kind, doc.subtype) ? doc.subtype : undefined
 
   return {
@@ -598,6 +685,7 @@ export function fromVellumDocument(doc: VellumDocument): Model {
     cubes,
     textures,
     clips,
+    nulls: nulls.length ? nulls : undefined,
   }
 }
 
