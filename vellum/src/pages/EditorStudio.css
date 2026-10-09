@@ -436,3 +436,29 @@
 
 /* the selected cube in the model takes the sage outline */
 .editor-root--studio .model-cube--selected .model-face { outline-color: var(--s-sage); }
+
+/* ---------------- config ---------------- */
+
+/* the generated YAML sits over the viewport, so the viewport's own controls hide */
+.editor-root--studio[data-config] .editor-view__corner,
+.editor-root--studio[data-config] .editor-view__dock,
+.editor-root--studio[data-config] .scene3d__nav,
+.editor-root--studio[data-config] .scene3d__zoom { display: none; }
+
+.editor-root--studio .yaml {
+  margin: 14px;
+  border: 1px solid var(--s-line-2);
+  border-radius: 12px;
+  background: var(--s-sunk);
+  box-shadow: none;
+}
+.editor-root--studio .yaml__head { background: var(--s-deep); border-bottom-color: var(--s-line); }
+.editor-root--studio .yaml__file { color: var(--s-ink-2); }
+.editor-root--studio .yaml__count { color: var(--s-ink-3); }
+.editor-root--studio .yaml__body { color: var(--s-ink-2); }
+.editor-root--studio .yaml__line:hover { background: var(--s-hover); }
+.editor-root--studio .yaml__line-number { color: var(--s-ink-3); opacity: 0.7; }
+.editor-root--studio .yaml__key { color: var(--s-ink); }
+.editor-root--studio .yaml__value { color: #9fb8cf; }
+.editor-root--studio .yaml__punctuation { color: var(--s-ink-3); }
+.editor-root--studio .yaml__comment { color: var(--s-ink-3); }

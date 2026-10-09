@@ -4693,6 +4693,8 @@ export function Editor({ segments }: { segments: string[] }) {
       }
       if (e.key === 'Escape' && (mode === 'edit' || mode === 'animate')) {
         if (vertexFrom !== null) setVertexFrom(null)
+        // keys first, as in Blockbench; a second Esc clears the outliner
+        else if (mode === 'animate' && anim.selectedKeys.length) anim.selectKeys([], 'set')
         else setSelection([])
         return
       }
@@ -4799,6 +4801,8 @@ export function Editor({ segments }: { segments: string[] }) {
     <div
       className="editor-root editor-root--studio"
       data-swap={mode === 'edit' || mode === 'paint' || mode === 'animate' || undefined}
+      // the generated config covers the viewport, so its controls step aside
+      data-config={(mode === 'config' && hasConfig(kind)) || undefined}
       style={{ ['--left-w' as string]: `${leftW}px`, ['--right-w' as string]: `${rightW}px` }}
     >
       <input ref={fileInput} type="file" accept=".vellum,application/json" hidden onChange={onFile} />

@@ -947,6 +947,34 @@ everything under it. Each rotation ring is measured:
 it is the world axis that one Euler component turns the node about, found by a small
 step through the real transform.
 
+## Tests
+
+```
+pnpm test
+```
+
+The suite is in `tests/`. It runs on Node's built-in test runner, with the
+`playwright` library driving Chromium, so it needs no packages beyond the ones
+already installed. Each file starts its own Vite dev server on a free port, so
+nothing else has to be running. Tests that check the maths load the app's
+own modules in the page (`import('/src/lib/vellum.ts')`), so they exercise the
+code the editor runs.
+
+| File | What it holds to |
+| --- | --- |
+| `codec.test.mjs` | Every sample round-trips byte for byte; version 8's nulls, events and ping-pong survive; v7 opens, v9 is refused; box UV and per-face textures are kept |
+| `kinematics.test.mjs` | Rotation matrices match the browser's CSS transforms; IK brings a two-bone arm to its target |
+| `modeling.test.mjs` | The gizmo tools and their keys, resize, snapped rotation, outliner picking, copy/paste/group/delete with undo, box select, the view tabs |
+| `animator.test.mjs` | Posing keys at the playhead; key select, box select and drag; effects, onion skin, graph, playback, IK |
+| `uv.test.mjs` | `lib/uv-edit.ts`, then UV drags and handles, box UV, importing, per-face textures, painting a 2x texture, re-unwrap |
+| `layout.test.mjs` | Every mode of a mob, an item and a block opens without errors and with no control covered; the Studio layout; the other pages load |
+| `bundle.test.mjs` | `dist/vellum.html` opens and keeps its unprefixed `backdrop-filter`; skipped until `pnpm build:single` has run |
+
+Chromium is taken from `/opt/pw-browsers/chromium` when it is there,
+otherwise from Playwright's own install. Set `CHROMIUM` to use another. A test
+fails on any page error or console error, except failed requests to the
+outside (the Archivo font), which a sandbox without network cannot make.
+
 ## What works, and what does not
 
 In the editor, geometry, textures, rigs, clips, behaviours, configs and the
