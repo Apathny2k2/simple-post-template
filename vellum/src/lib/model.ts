@@ -116,6 +116,22 @@ export type Texture = {
   source: string
   /** the pixels already carry face shading, so the viewport adds none (the stage's sheet) */
   shaded?: boolean
+  /**
+   * Paint layers, bottom first (v13). When present, `source` is them
+   * flattened, so whatever reads `source` sees the finished image.
+   */
+  layers?: TextureLayer[]
+}
+
+/** One layer of a texture: its own pixels, whether it shows, and how strongly. */
+export type TextureLayer = {
+  id: string
+  name: string
+  /** data URI, the texture's size */
+  source: string
+  visible: boolean
+  /** 0 to 1 */
+  opacity: number
 }
 
 export type Channel = 'rotation' | 'position' | 'scale'

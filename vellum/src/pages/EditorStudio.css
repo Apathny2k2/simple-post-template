@@ -780,3 +780,15 @@
 .ctrl__what { font-size: 12px; color: var(--s-ink-2); }
 .ctrl__molang { display: inline-flex; flex-direction: column; flex: 1; min-width: 110px; }
 .ctrl__error { font-size: 11px; color: var(--s-danger); margin-top: 2px; }
+
+/* Paint's Layers panel: top layer first, with the layer being painted lit */
+.layers { display: flex; flex-direction: column; gap: 8px; }
+.layers__list { display: flex; flex-direction: column; gap: 4px; margin: 0; padding: 0; list-style: none; }
+.layers__row { display: flex; align-items: center; gap: 6px; padding: 4px 6px; border-radius: 8px; border: 1px solid transparent; }
+.layers__row--on { border-color: var(--s-sage); background: var(--s-hover); }
+.layers__eye { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 6px; color: var(--s-ink-2); }
+.layers__eye[aria-pressed='false'] { color: var(--s-ink-3); opacity: 0.6; }
+.layers__thumb { width: 24px; height: 24px; border-radius: 4px; border: 1px solid var(--s-line-2); background-color: var(--s-sunk); background-size: cover; image-rendering: pixelated; }
+.layers__name { flex: 1; min-width: 0; text-align: left; font-size: 13px; color: var(--s-ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.layers__opacity { width: 48px; height: 24px; padding: 0 4px; border-radius: 6px; border: 1px solid var(--s-line-3); background: var(--s-sunk); color: var(--s-ink); font-size: 12px; text-align: right; }
+.layers__pct { font-size: 11px; color: var(--s-ink-3); }

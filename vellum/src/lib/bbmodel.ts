@@ -498,6 +498,16 @@ export function fromBbmodel(text: string, fileName = 'model.bbmodel'): Imported 
     ...(bag.others.length ? { other_elements: bag.others } : {}),
   }
   if (Object.keys(kept).length) model.blockbench = kept
+  // layers a Vellum export carried, back onto their textures
+  const layers = obj(stash.layers)
+  if (Object.keys(layers).length) {
+    model.textures = model.textures.map((t) => {
+      const list = arr(layers[t.id]).map(obj).filter((l) => typeof l.id === 'string' && typeof l.source === 'string')
+      return list.length
+        ? { ...t, layers: list.map((l) => ({ id: str(l.id), name: str(l.name, 'Layer'), source: str(l.source), visible: l.visible !== false, opacity: num(l.opacity, 1) })) }
+        : t
+    })
+  }
   return { model, kind, notes }
 }
 
@@ -738,9 +748,12 @@ export function toBbmodel(model: Model): string {
   model.textures.forEach((t) => note(t.id))
   model.clips.forEach((c) => note(c.id))
   parentOf.forEach((_, id) => note(id))
+  // Blockbench gets each texture flattened; its layers ride along for the way back
+  const layered = model.textures.filter((t) => t.layers?.length)
   doc.vellum = {
     version: CURRENT_VERSION,
     ...vellumOnlyOf(model),
+    ...(layered.length ? { layers: Object.fromEntries(layered.map((t) => [uuidFor(t.id), t.layers])) } : {}),
     ...(pingpong.length ? { pingpong } : {}),
     ...(Object.keys(trackOrder).length ? { track_order: trackOrder } : {}),
     ...(derived.length ? { derived_offsets: derived.map(uuidFor) } : {}),

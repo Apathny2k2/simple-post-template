@@ -156,6 +156,8 @@ import { saveBlob, saveDataUrl, saveFile } from '../lib/download'
 import { toGltf, toJavaJson, toObjZip } from '../lib/exporters'
 import { fromBbmodel, fromJavaModel, isBbmodel, isJavaModel, toBbmodel } from '../lib/importers'
 import { molangError } from '../lib/molang'
+import { activeLayer, blankLayerSource, flatten, mergeDown, paintSource, readyLayers, startLayers } from '../lib/layers'
+import { LayersPanel } from './editor/Layers'
 import { applyBedrockAnimations, applyBedrockControllers, fromBedrockGeometry, isBedrockAnimation, isBedrockControllers, isBedrockGeometry, toBedrockZip, bedrockName } from '../lib/bedrock'
 import { controllerPose, poseAsClip, startController, stepController } from '../lib/controllers'
 import type { ControllerRun } from '../lib/controllers'
@@ -4205,6 +4207,8 @@ export function Editor({ segments }: { segments: string[] }) {
      is decoded again before the next stroke can write a stale canvas over it. */
   const encoded = useRef(new Map<string, string>())
   const decoding = useRef(new Set<string>())
+  /** the layer each layered texture paints on, by texture id; the top layer when unset */
+  const [layerOf, setLayerOf] = useState<Record<string, string>>({})
 
   useEffect(() => {
     let cancelled = false
@@ -4217,17 +4221,20 @@ export function Editor({ segments }: { segments: string[] }) {
       encoded.current.delete(id)
     }
 
-    const stale = model.textures.filter((t) => encoded.current.get(t.id) !== t.source)
+    // a layered texture paints on its active layer, so that is the canvas to decode
+    const stale = model.textures.filter((t) => encoded.current.get(t.id) !== paintSource(t, layerOf[t.id]))
     if (!stale.length) return
 
     for (const t of stale) decoding.current.add(t.id)
     void Promise.all(
       stale.map(async (t) => {
         try {
-          const surface = await loadSurface(t)
+          const source = paintSource(t, layerOf[t.id])
+          const surface = await loadSurface({ ...t, source })
+          if (t.layers?.length) await readyLayers(t)
           if (cancelled) return
           surfaces.current.set(t.id, surface)
-          encoded.current.set(t.id, t.source)
+          encoded.current.set(t.id, source)
         } catch {
           /* an undecodable texture gets no canvas and can't be painted */
         } finally {
@@ -4239,7 +4246,7 @@ export function Editor({ segments }: { segments: string[] }) {
     return () => {
       cancelled = true
     }
-  }, [model.textures])
+  }, [model.textures, layerOf])
 
   /** Re-encodes a painted canvas into the model. commitTexture batches calls to one per frame. */
   const writeTexture = useCallback(
@@ -4251,10 +4258,68 @@ export function Editor({ segments }: { segments: string[] }) {
       encoded.current.set(id, source)
       history.amend((m) => ({
         ...m,
-        textures: m.textures.map((t) => (t.id === id ? { ...t, source } : t)),
+        textures: m.textures.map((t) => {
+          if (t.id !== id) return t
+          if (!t.layers?.length) return { ...t, source }
+          // a layered texture: the stroke goes to its layer, and the texture shows them all flattened
+          const layer = activeLayer(t, layerOf[id])
+          if (!layer) return t
+          const flat = flatten(t, { layer: layer.id, canvas: surface.canvas })
+          return { ...t, layers: t.layers.map((l) => (l.id === layer.id ? { ...l, source } : l)), source: flat ?? t.source }
+        }),
       }))
     },
-    [history],
+    [history, layerOf],
+  )
+
+  /** Changes a texture's layers as one undo step, flattening them into its image. */
+  const editLayers = useCallback(
+    async (texId: string, label: string, next: (t: Texture) => Texture['layers'] | Promise<Texture['layers'] | null> | null, collapse = false) => {
+      const t = model.textures.find((x) => x.id === texId)
+      if (!t) return
+      const layers = await next(t)
+      if (!layers?.length) return
+      const shaped = { ...t, layers }
+      await readyLayers(shaped)
+      const source = flatten(shaped)
+      if (source === null) return
+      // flattened, or down to one layer, the texture is a single image again
+      const done = collapse || layers.length === 1 ? { ...t, layers: undefined, source } : { ...shaped, source }
+      history.commit(label, (m) => ({ ...m, textures: m.textures.map((x) => (x.id === texId ? done : x)) }))
+    },
+    [model.textures, history],
+  )
+  const layerOps = useMemo(
+    () => ({
+      add: (texId: string) =>
+        void editLayers(texId, 'add layer', (t) => {
+          if (!t.layers?.length) {
+            const r = startLayers(t)
+            setLayerOf((cur) => ({ ...cur, [texId]: r.added }))
+            return r.layers
+          }
+          const id = newId()
+          setLayerOf((cur) => ({ ...cur, [texId]: id }))
+          return [...t.layers, { id, name: `Layer ${t.layers.length + 1}`, source: blankLayerSource(t.width, t.height), visible: true, opacity: 1 }]
+        }),
+      remove: (texId: string, layer: string) => void editLayers(texId, 'delete layer', (t) => (t.layers ?? []).filter((l) => l.id !== layer)),
+      patch: (texId: string, layer: string, patch: Partial<{ name: string; visible: boolean; opacity: number }>, label: string) =>
+        void editLayers(texId, label, (t) => (t.layers ?? []).map((l) => (l.id === layer ? { ...l, ...patch } : l))),
+      move: (texId: string, layer: string, by: 1 | -1) =>
+        void editLayers(texId, by > 0 ? 'raise layer' : 'lower layer', (t) => {
+          const list = [...(t.layers ?? [])]
+          const i = list.findIndex((l) => l.id === layer)
+          const j = i + by
+          if (i < 0 || j < 0 || j >= list.length) return null
+          ;[list[i], list[j]] = [list[j], list[i]]
+          return list
+        }),
+      mergeDown: (texId: string, layer: string) =>
+        void editLayers(texId, 'merge layer down', (t) => mergeDown(t, layer)),
+      flatten: (texId: string) => void editLayers(texId, 'flatten layers', (t) => t.layers ?? null, true),
+      pick: (texId: string, layer: string) => setLayerOf((cur) => ({ ...cur, [texId]: layer })),
+    }),
+    [editLayers],
   )
 
   const pendingTexture = useRef<string | null>(null)
@@ -7172,6 +7237,11 @@ export function Editor({ segments }: { segments: string[] }) {
                 <Panel title="Colour">
                   <ColorPanel colour={colour} onColour={setColour} palette={palette} />
                 </Panel>
+                {paintTexture ? (
+                  <Panel title="Layers" count={paintTexture.layers?.length || undefined}>
+                    <LayersPanel texture={paintTexture} active={activeLayer(paintTexture, layerOf[paintTexture.id])?.id ?? null} ops={layerOps} />
+                  </Panel>
+                ) : null}
               </>
             ) : null}
             {mode === 'animate' ? (

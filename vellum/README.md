@@ -1127,6 +1127,21 @@ viewport back for painting straight onto the cubes.
 - **On this model** in the Colour panel offers the colours the texture uses
   most. The status bar reads out the texel under the pointer and its colour.
 
+**Layers.** The Layers panel in Paint splits a texture into layers, top
+first as paint programs list them (`lib/layers.ts`). **+ Layer** on a texture
+that has none makes its image the Base layer with a clear one on top. A
+click on a layer's name paints on it; the eye hides it; the number is how
+strongly it shows. Up, Down, Merge down (the upper painted onto the lower,
+each at its own strength, so it looks the same), Flatten and Delete are
+beside them, each one undo step. The texture's own image stays the layers
+flattened, bottom first, hidden ones left out, so the viewport, the UV
+sheet and every export see the finished picture and know nothing of
+layers; a stroke re-flattens on each frame from the other layers'
+already-decoded canvases. A texture down to one layer, or flattened, is a
+single image again. Layers are kept in the `.vellum` (v13) and, under its
+`vellum` key, in a `.bbmodel`, whose Blockbench texture is the flattened
+image.
+
 ### Editing UVs and textures
 
 The UV panel is Blockbench's UV editor. It shows the selected cube's six
@@ -1300,6 +1315,7 @@ code the editor runs.
 | `bedrock.test.mjs` | Every sample out to Bedrock geometry and animations and back keeps its bones, cubes, UVs and motion; a hand-written Bedrock file with `pre`/`post`, catmull-rom, Molang, single values, locators and effects; the export zip and adding animations from File ▸ Open |
 | `molang.test.mjs` | The evaluator's operators, math in degrees, queries, variables and statements; Molang keys playing, and kept through the `.vellum`, Blockbench and Bedrock; typing Molang on a key in Animate |
 | `controllers.test.mjs` | A controller moving between states, adding clips at weights, running entry scripts and cross-fading; controllers kept through the `.vellum`, the `.bbmodel` and Bedrock's files, with the entity file; making, playing and switching one in Animate |
+| `layers.test.mjs` | Layers flattened bottom first at their opacity, hidden ones left out, and merged down as they looked; kept through the `.vellum` and the `.bbmodel`; adding a layer, painting on it alone, hiding it and flattening in Paint |
 | `modes.test.mjs` | A display slot takes and resets a transform; the real-world view opens and closes; a behaviour cycle runs and takes a stage |
 | `bundle.test.mjs` | `dist/vellum.html` opens and keeps its unprefixed `backdrop-filter`; skipped until `pnpm build:single` has run |
 

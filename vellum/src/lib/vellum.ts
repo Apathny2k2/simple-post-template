@@ -42,7 +42,7 @@ import type {
 } from './model'
 
 export const FORMAT = 'model'
-export const CURRENT_VERSION = 12
+export const CURRENT_VERSION = 13
 
 /** A well-formed `.vellum` begins with exactly these bytes. */
 export const HEADER_PREFIX = `{"vellum":{"format":"${FORMAT}","version":${CURRENT_VERSION}},`
@@ -99,6 +99,8 @@ type VellumTexture = {
   uv_width: number
   uv_height: number
   source?: string
+  /** added in v13: paint layers, bottom first; `source` is them flattened */
+  layers?: Array<{ id: string; name: string; source: string; hidden?: boolean; opacity?: number }>
 }
 
 /** A bezier key's handles: all four arrays or none. A partial set is dropped on read. */
@@ -310,6 +312,9 @@ export function toVellumDocument(model: Model): VellumDocument {
       uv_width: t.uvWidth,
       uv_height: t.uvHeight,
       source: t.source || undefined,
+      layers: t.layers?.length
+        ? t.layers.map((l) => compact({ id: l.id, name: l.name, source: l.source, hidden: l.visible ? undefined : true, opacity: l.opacity === 1 ? undefined : l.opacity }))
+        : undefined,
     }),
   )
 
@@ -691,6 +696,9 @@ function upgrade(doc: VellumDocument): VellumDocument {
       case 11: // v12 added animation controllers; absent is already correct
         version = 12
         break
+      case 12: // v13 added texture layers; absent is already correct
+        version = 13
+        break
       default:
         throw new VellumFormatError(`No upgrade path from .vellum version ${version}.`)
     }
@@ -744,6 +752,18 @@ export function fromVellumDocument(doc: VellumDocument): Model {
     uvWidth: t.uv_width ?? resolution.width,
     uvHeight: t.uv_height ?? resolution.height,
     source: t.source ?? '',
+    ...(() => {
+      const layers = objects(t.layers as Array<Record<string, unknown>> | undefined)
+        .filter((l) => typeof l.id === 'string' && typeof l.source === 'string')
+        .map((l) => ({
+          id: l.id as string,
+          name: typeof l.name === 'string' ? l.name : 'Layer',
+          source: l.source as string,
+          visible: !l.hidden,
+          opacity: typeof l.opacity === 'number' && Number.isFinite(l.opacity) ? Math.max(0, Math.min(1, l.opacity)) : 1,
+        }))
+      return layers.length ? { layers } : {}
+    })(),
   }))
 
   const cubes: Cube[] = (doc.cubes ?? []).map((c) => {
