@@ -282,8 +282,29 @@ export function fromBbmodel(text: string, fileName = 'model.bbmodel'): Imported 
       if (extra) bag.elements[id] = extra
       continue
     }
+    if (type === 'texture_mesh') {
+      // built from its texture's pixels once the texture is decoded (rebuildTextureMeshes)
+      const texture = textureOf(e.texture)
+      if (texture) {
+        meshes.push({
+          id,
+          name: str(e.name, 'texture mesh'),
+          parent: null,
+          origin: vec(e.origin),
+          rotation: vec(e.rotation),
+          vertices: {},
+          faces: {},
+          visible: e.visibility !== false,
+          locked: e.locked === true,
+          fromTexture: { texture, scale: vec(e.scale, [1, 1, 1]), localPivot: vec(e.local_pivot) },
+        })
+        const extra = rest(e, ['uuid', 'type', 'name', 'origin', 'rotation', 'texture', 'scale', 'local_pivot', 'visibility', 'locked'], MESH_DEFAULTS)
+        if (extra) bag.elements[id] = extra
+        continue
+      }
+    }
     if (type !== 'cube') {
-      // texture meshes, armatures, splines: kept whole and written back as they came
+      // armatures, splines, and a texture mesh whose texture is missing: kept whole and written back as they came
       bag.others.push(raw)
       continue
     }
@@ -585,19 +606,40 @@ export function toBbmodel(model: Model): string {
     }
   })
 
-  const meshElements = (model.meshes ?? []).map((m) => ({
-    ...MESH_DEFAULTS,
-    ...extras('elements', m.id),
-    name: m.name,
-    origin: m.origin,
-    rotation: m.rotation,
-    visibility: m.visible,
-    locked: m.locked,
-    vertices: m.vertices,
-    faces: Object.fromEntries(Object.entries(m.faces).map(([k, f]) => [k, { uv: f.uv, vertices: f.vertices, texture: texRef(f.texture) }])),
-    type: 'mesh',
-    uuid: uuidFor(m.id),
-  }))
+  const meshElements = (model.meshes ?? []).map((m) =>
+    m.fromTexture
+      ? {
+          ...MESH_DEFAULTS,
+          ...extras('elements', m.id),
+          name: m.name,
+          origin: m.origin,
+          rotation: m.rotation,
+          local_pivot: m.fromTexture.localPivot,
+          scale: m.fromTexture.scale,
+          visibility: m.visible,
+          locked: m.locked,
+          texture: texUuid(m.fromTexture.texture),
+          type: 'texture_mesh',
+          uuid: uuidFor(m.id),
+        }
+      : {
+          ...MESH_DEFAULTS,
+          ...extras('elements', m.id),
+          name: m.name,
+          origin: m.origin,
+          rotation: m.rotation,
+          visibility: m.visible,
+          locked: m.locked,
+          vertices: m.vertices,
+          faces: Object.fromEntries(Object.entries(m.faces).map(([k, f]) => [k, { uv: f.uv, vertices: f.vertices, texture: texRef(f.texture) }])),
+          type: 'mesh',
+          uuid: uuidFor(m.id),
+        },
+  )
+  /** a texture mesh names its texture by uuid */
+  function texUuid(id: string) {
+    return model.textures.some((t) => t.id === id) ? uuidFor(id) : id
+  }
 
   // where each bone sits, for an IK chain's source
   const parentOf = new Map<string, string | null>()

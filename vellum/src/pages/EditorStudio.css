@@ -816,3 +816,17 @@
 .layers__name { flex: 1; min-width: 0; text-align: left; font-size: 13px; color: var(--s-ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .layers__opacity { width: 48px; height: 24px; padding: 0 4px; border-radius: 6px; border: 1px solid var(--s-line-3); background: var(--s-sunk); color: var(--s-ink); font-size: 12px; text-align: right; }
 .layers__pct { font-size: 11px; color: var(--s-ink-3); }
+
+/* a texture mesh's part of the inspector */
+.tmesh { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid var(--s-line); }
+.tmesh__row { display: flex; align-items: center; gap: 6px; }
+.tmesh__row > span { min-width: 56px; color: var(--s-ink-2); font-size: 13px; }
+.tmesh__num {
+  width: 56px;
+  padding: 3px 6px;
+  border: 1px solid var(--s-line-2);
+  border-radius: 6px;
+  background: var(--s-sunk);
+  color: var(--s-ink);
+  font: 13px var(--font-mono);
+}

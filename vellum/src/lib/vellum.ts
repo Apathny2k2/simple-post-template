@@ -43,7 +43,7 @@ import type {
 } from './model'
 
 export const FORMAT = 'model'
-export const CURRENT_VERSION = 14
+export const CURRENT_VERSION = 15
 
 /** A well-formed `.vellum` begins with exactly these bytes. */
 export const HEADER_PREFIX = `{"vellum":{"format":"${FORMAT}","version":${CURRENT_VERSION}},`
@@ -178,6 +178,8 @@ type VellumMesh = {
   faces: Record<string, { vertices: string[]; uv: Record<string, [number, number]>; texture?: string }>
   hidden?: boolean
   locked?: boolean
+  /** added in v15: a texture mesh, whose faces are built from this texture */
+  from_texture?: { texture: string; scale?: Vec3; local_pivot?: Vec3 }
 }
 
 export type VellumBehaviour = {
@@ -398,6 +400,13 @@ export function toVellumDocument(model: Model): VellumDocument {
           ) as VellumMesh['faces'],
           hidden: m.visible ? undefined : true,
           locked: m.locked || undefined,
+          from_texture: m.fromTexture
+            ? compact({
+                texture: m.fromTexture.texture,
+                scale: m.fromTexture.scale.every((v) => v === 1) ? undefined : m.fromTexture.scale,
+                local_pivot: m.fromTexture.localPivot.every((v) => v === 0) ? undefined : m.fromTexture.localPivot,
+              })
+            : undefined,
         }),
       )
     : undefined
@@ -724,6 +733,9 @@ function upgrade(doc: VellumDocument): VellumDocument {
       case 13: // v14 added texture animation; absent is already correct
         version = 14
         break
+      case 14: // v15 added texture meshes; absent is already correct
+        version = 15
+        break
       default:
         throw new VellumFormatError(`No upgrade path from .vellum version ${version}.`)
     }
@@ -931,6 +943,12 @@ export function fromVellumDocument(doc: VellumDocument): Model {
         faces,
         visible: !m.hidden,
         locked: Boolean(m.locked),
+        ...(() => {
+          const ft = m.from_texture as { texture?: unknown; scale?: unknown; local_pivot?: unknown } | undefined
+          return ft && typeof ft.texture === 'string'
+            ? { fromTexture: { texture: ft.texture, scale: vec3(ft.scale, [1, 1, 1]), localPivot: vec3(ft.local_pivot, [0, 0, 0]) } }
+            : {}
+        })(),
       }
     })
 

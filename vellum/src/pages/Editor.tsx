@@ -144,6 +144,8 @@ import { BehaviourPanel } from './editor/BehaviourPanel'
 import { ConfigPanel } from './editor/ConfigPanel'
 import { ConfigOutput } from './editor/ConfigOutput'
 import { PaintSheet } from './editor/PaintSheet'
+import { TextureMeshPanel } from './editor/TextureMesh'
+import { makeTextureMesh, rebuildTextureMesh, rebuildTextureMeshes } from '../lib/texture-mesh'
 import { MeshUvPanel } from './editor/MeshUv'
 import { hasConfig, setFields, withDefaults } from '../lib/config'
 import { checkTranslation } from '../lib/mcmodel'
@@ -180,6 +182,7 @@ type Actions = {
   onAddBone: () => void
   onAddNull: () => void
   onAddMesh: (kind: Primitive) => void
+  onAddTextureMesh: () => void
   onDuplicate: () => void
   onDelete: () => void
   onUndo: () => void
@@ -4727,10 +4730,50 @@ export function Editor({ segments }: { segments: string[] }) {
       // coalesced, so dragging a field is one undo step
       // with mirror editing, moving the pick's middle moves its mirror image too
       const follow = mirrorEdit && label.startsWith('move ') && meshKeys.length
-      history.commit(label, (m) => ({ ...m, meshes: (m.meshes ?? []).map((x) => (x.id === meshId && !x.locked ? (follow ? followMirrorVertices(x, fn(x), meshKeys) : fn(x)) : x)) }), true)
+      // editing a texture mesh's faces makes it an ordinary mesh, which no longer follows its texture
+      const edit = (x: Mesh) => {
+        const next = follow ? followMirrorVertices(x, fn(x), meshKeys) : fn(x)
+        if (!x.fromTexture || (next.vertices === x.vertices && next.faces === x.faces)) return next
+        const { fromTexture: _, ...plain } = next
+        return plain
+      }
+      history.commit(label, (m) => ({ ...m, meshes: (m.meshes ?? []).map((x) => (x.id === meshId && !x.locked ? edit(x) : x)) }), true)
     },
     [history, meshId, mirrorEdit, meshKeys],
   )
+
+  /** Changes what a texture mesh is built from, and builds it again. */
+  const retexture = useCallback(
+    async (mesh: Mesh, patch: Partial<NonNullable<Mesh['fromTexture']>>, label: string) => {
+      if (!mesh.fromTexture) return
+      const next = await rebuildTextureMesh({ ...mesh, fromTexture: { ...mesh.fromTexture, ...patch } }, model)
+      history.commit(label, (m) => ({ ...m, meshes: (m.meshes ?? []).map((x) => (x.id === mesh.id ? next : x)) }), true)
+    },
+    [model, history],
+  )
+  /* A texture mesh follows its texture: when the image changes (a stroke, an
+     import, an undo) its faces are built again, folded into that same step. */
+  const builtFrom = useRef(new Map<string, string>())
+  useEffect(() => {
+    const stale = (model.meshes ?? []).filter((m) => {
+      if (!m.fromTexture) return false
+      const src = model.textures.find((t) => t.id === m.fromTexture!.texture)?.source ?? ''
+      const was = builtFrom.current.get(m.id)
+      builtFrom.current.set(m.id, src)
+      // the first sight of a mesh records what it was built from; only a change rebuilds
+      return was !== undefined && was !== src
+    })
+    if (!stale.length) return
+    let live = true
+    void Promise.all(stale.map((m) => rebuildTextureMesh(m, model))).then((built) => {
+      if (!live) return
+      const byId = new Map(built.map((m) => [m.id, m]))
+      history.amend((cur) => ({ ...cur, meshes: (cur.meshes ?? []).map((x) => (byId.has(x.id) && x.fromTexture ? { ...x, vertices: byId.get(x.id)!.vertices, faces: byId.get(x.id)!.faces } : x)) }))
+    })
+    return () => {
+      live = false
+    }
+  }, [model.textures, model.meshes, history, model])
 
   /** What Animate mode poses: a selected null, else the selected bone, else the bone holding the selected cube. */
   const poseTarget = useMemo(() => selectedNull?.id ?? animBone, [selectedNull, animBone])
@@ -6216,6 +6259,24 @@ export function Editor({ segments }: { segments: string[] }) {
         setSelected(mesh.id)
         if (crowded) notify('The sheet had no room for some of its faces, so they share texels at the corner. Grow the sheet or move them in the UV panel.', 7000)
       },
+      onAddTextureMesh: () => {
+        const texture = paintTexture ?? model.textures[0]
+        if (!texture?.source) {
+          notify('A texture mesh is made from a texture, and this model has none with an image yet. Add or import one on the Textures panel.', 7000)
+          return
+        }
+        const selMesh = model.meshes?.find((m) => m.id === selected)
+        const parent = bones.some((b) => b.id === selected) ? selected : selMesh ? selMesh.parent : ownerBone(model.bones, selected)
+        const at = parent ? findBone(model.bones, parent)?.origin ?? [0, 0, 0] : ([0, 0, 0] as Vec3)
+        void makeTextureMesh(model, texture, parent, [...at] as Vec3, freeName(model, texture.name.replace(/\.png$/i, ''))).then((mesh) => {
+          if (!mesh) {
+            notify(`${texture.name} has no pixels that show, so there is nothing to build a mesh from.`, 6000)
+            return
+          }
+          history.commit('add texture mesh', (m) => ({ ...m, meshes: [...(m.meshes ?? []), mesh] }))
+          setSelected(mesh.id)
+        })
+      },
       onAddNull: () => {
         const parent = bones.some((b) => b.id === selected) ? selected : ownerBone(model.bones, selected)
         const at = parent ? findBone(model.bones, parent)?.origin ?? [0, 8, 0] : ([0, 8, 0] as Vec3)
@@ -6699,7 +6760,8 @@ export function Editor({ segments }: { segments: string[] }) {
         loadModel(readVellum(text), file.name, kind)
       } else if (isBbmodel(text) || /\.bbmodel$/i.test(file.name)) {
         const got = fromBbmodel(text, file.name)
-        loadModel(got.model, file.name, got.kind)
+        // texture meshes are built from their textures' pixels, which takes decoding them
+        loadModel(await rebuildTextureMeshes(got.model), file.name, got.kind)
         notify(`Opened ${file.name} from Blockbench. It saves as ${vellumFileName(file.name)}.${got.notes.length ? ' ' + got.notes.join(' ') : ''}`, 12000)
       } else if (isBedrockControllers(text)) {
         const got = applyBedrockControllers(model, text)
@@ -7021,6 +7083,24 @@ export function Editor({ segments }: { segments: string[] }) {
               </Panel>
             ) : selectedMesh ? (
               <Panel title="Mesh" count={`${Object.keys(selectedMesh.vertices).length} vertices \u00b7 ${Object.keys(selectedMesh.faces).length} faces`}>
+                {selectedMesh.fromTexture ? (
+                  <TextureMeshPanel
+                    mesh={selectedMesh}
+                    model={model}
+                    onTexture={(texture) => void retexture(selectedMesh, { texture }, 'texture mesh texture')}
+                    onScale={(scale) => void retexture(selectedMesh, { scale }, 'texture mesh scale')}
+                    onConvert={() =>
+                      history.commit('convert to mesh', (m) => ({
+                        ...m,
+                        meshes: (m.meshes ?? []).map((x) => {
+                          if (x.id !== selectedMesh.id) return x
+                          const { fromTexture: _, ...plain } = x
+                          return plain
+                        }),
+                      }))
+                    }
+                  />
+                ) : null}
                 <MeshPanel
                   mesh={selectedMesh}
                   model={model}
@@ -7362,6 +7442,16 @@ export function Editor({ segments }: { segments: string[] }) {
                             Null object
                           </button>
                           <span className="mesh-add__label">Mesh</span>
+                          <button
+                            role="menuitem"
+                            title="A sprite made solid from a texture's pixels, as Minecraft builds a held item"
+                            onClick={() => {
+                              setMeshMenu(false)
+                              actions.onAddTextureMesh()
+                            }}
+                          >
+                            Texture mesh
+                          </button>
                           {PRIMITIVES.map((p) => (
                             <button
                               key={p.id}

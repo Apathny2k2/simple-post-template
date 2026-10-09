@@ -57,7 +57,7 @@ export function hasAnimatedTextures(model: Model): boolean {
 /**
  * What the renderer needs per texture to show a frame: v scale, the first
  * frame's v offset, the second's, and the mix between them. Fixed frames
- * (Paint holds the one being painted) win over the clock.
+ * win over the clock: Paint holds the frame being painted.
  */
 export function textureFrames(model: Model, seconds: number, fixed?: ReadonlyMap<string, number> | null): Map<string, [number, number, number, number]> {
   const out = new Map<string, [number, number, number, number]>()

@@ -1108,6 +1108,21 @@ whole face when one affine map from its UVs fits it, triangles otherwise)
 and drawn as triangles with its UVs at the corners. Shading blends the
 per-direction brightness cubes get, by the face's normal.
 
+**Texture meshes.** + More ▸ Texture mesh makes Blockbench's texture mesh
+from the texture being painted (or the first): its first frame laid flat,
+centred across, standing on the origin, one pixel deep, the way Minecraft
+builds a held item from its icon (`lib/texture-mesh.ts`). A face in front
+and a mirrored one behind cover the whole picture, so clear pixels show
+nothing, and every edge of a shown pixel that borders a clear one gets a
+strip coloured by that pixel. It is a mesh that remembers its texture
+(`fromTexture`, saved in v15), so the outliner, the gizmo, hiding and the
+glTF and OBJ exports treat it as any mesh. When its texture changes (a
+stroke, an import, an undo) its faces are built again, in the same undo
+step. The inspector sets its texture and scale; editing its faces, or
+Convert to mesh, makes it an ordinary mesh that no longer follows the
+texture. A `.bbmodel`'s `texture_mesh` opens as one, built once its texture
+is decoded, and saves back as one with its scale and local pivot.
+
 **Order of a face's corners.** A quad's vertices can be stored in any order.
 An order whose edges cross encloses less area, so `faceOrder` takes the
 order with most area, turned to face the way the first three vertices do.
@@ -1266,7 +1281,7 @@ File ▸ Open takes a `.vellum`, a Blockbench project or a Java model.
   face's cullface and tint, element and group colours, a texture's render
   mode and id, an animation's blend weight, a key's `uniform` scale,
   linked handles and plugin fields such as `easing`, the project's other
-  keys, and whole elements Vellum can't show, such as texture meshes) is
+  keys, and whole elements Vellum can't show, such as armatures) is
   kept in `model.blockbench` by id (a key's by clip, bone, channel and
   time, since a `.vellum` gives keys new ids each time it is read), saved in the `.vellum` (v10), and written back
   into a `.bbmodel`. A key holding the value the exporter writes anyway is
@@ -1363,6 +1378,7 @@ code the editor runs.
 | `controllers.test.mjs` | A controller moving between states, adding clips at weights, running entry scripts and cross-fading; controllers kept through the `.vellum`, the `.bbmodel` and Bedrock's files, with the entity file; making, playing and switching one in Animate |
 | `layers.test.mjs` | Layers flattened bottom first at their opacity, hidden ones left out, and merged down as they looked; kept through the `.vellum` and the `.bbmodel`; adding a layer, painting on it alone, hiding it and flattening in Paint |
 | `texture-anim.test.mjs` | Frames counted from the image and played in the order and at the speed set; the `.mcmeta`; timing kept through the `.vellum` and the `.bbmodel`; glTF showing frame one; adding a frame in Paint, painting on it alone, and the viewport playing the frames |
+| `texture-mesh.test.mjs` | A texture mesh's faces from its pixels (front, back, a strip per bordering edge), scaled and moved by its pivot; a `.bbmodel` `texture_mesh` opening, built, and saving back as one through the `.vellum`; adding, scaling and converting one in the editor |
 | `modes.test.mjs` | A display slot takes and resets a transform; the real-world view opens and closes; a behaviour cycle runs and takes a stage |
 | `bundle.test.mjs` | `dist/vellum.html` opens and keeps its unprefixed `backdrop-filter`; skipped until `pnpm build:single` has run |
 

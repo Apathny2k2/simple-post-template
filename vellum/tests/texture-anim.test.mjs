@@ -98,7 +98,7 @@ test('a texture animation is kept in the .vellum and the .bbmodel, and glTF show
       gltf: [vs(gltf), vs(gltfBase)],
     }
   })
-  assert.equal(r.version, 14)
+  assert.ok(r.version >= 14, 'texture animation arrived in v14')
   assert.deepEqual(r.vellum, { frameTime: 4, mode: 'back_and_forth', interpolate: true })
   assert.deepEqual(r.bbFields, [4, 'back_and_forth', true])
   assert.deepEqual(r.bb, { frameTime: 4, mode: 'back_and_forth', interpolate: true })

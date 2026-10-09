@@ -254,6 +254,12 @@ export type Mesh = {
   faces: Record<string, MeshFace>
   visible: boolean
   locked: boolean
+  /**
+   * A texture mesh (v15), Blockbench's sprite made solid from a texture's
+   * pixels: its faces are built from the texture (`lib/texture-mesh.ts`),
+   * scaled, and moved by the local pivot.
+   */
+  fromTexture?: { texture: string; scale: Vec3; localPivot: Vec3 }
 }
 
 /** A state of an animation controller: the clips it plays, added together, and when it moves on. */
