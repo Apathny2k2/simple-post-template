@@ -2183,6 +2183,9 @@ type AnimApi = {
   burst: { begin: (label: string) => void; amend: (fn: (m: Model) => Model) => void; end: () => void }
   onion: boolean
   setOnion: (v: boolean) => void
+  /** a short tone at each sound key during playback */
+  cues: boolean
+  setCues: (v: boolean) => void
   nulls: NullObject[]
   events: ClipEvent[]
   selectedEvent: string | null
@@ -2978,6 +2981,14 @@ function Timeline({
         >
           Onion skin
         </button>
+        <button
+          className="chip"
+          aria-pressed={anim.cues}
+          onClick={() => anim.setCues(!anim.cues)}
+          title="Play a short tone at each sound key during playback. The sounds themselves play in the game, which Vellum has no files for."
+        >
+          Sound cues
+        </button>
 
         <div className="editor-toolbar__right">
           <div className="editor-tools" role="group" aria-label="Timeline zoom">
@@ -3507,6 +3518,8 @@ export function Editor({ segments }: { segments: string[] }) {
   const setSelectedKey = useCallback((id: string | null) => setSelectedKeys(id ? [id] : []), [])
   const [selectedEvent, setSelectedEvent] = useState<string | null>(null)
   const [onion, setOnion] = useState(false)
+  const [cues, setCues] = useState(true)
+  const audio = useRef<AudioContext | null>(null)
 
   // paint
   const [colour, setColour] = useState(PAINTS[1][1])
@@ -3950,6 +3963,18 @@ export function Editor({ segments }: { segments: string[] }) {
       if (e.phase === 'end') {
         history.end()
         dragFrom.current = null
+        // the key a pose wrote is selected, so the Keyframe panel shows it at once
+        if (mode === 'animate' && clip && poseTarget && next !== m0) {
+          const channel: Channel = e.tool === 'rotate' ? 'rotation' : e.tool === 'scale' ? 'scale' : 'position'
+          const c1 = next.clips.find((c) => c.id === clip.id)
+          const at = c1?.tracks.find((t) => t.bone === poseTarget && t.channel === channel)?.keys.reduce<Key | null>(
+            (best, k) => (!best || Math.abs(k.time - time) < Math.abs(best.time - time) ? k : best),
+            null,
+          )
+          if (at) {
+            setSelectedKey(at.id)
+          }
+        }
       }
     },
     [history, model, rig, pose, selection, kind, mode, clip, poseTarget, time],
@@ -4557,6 +4582,31 @@ export function Editor({ segments }: { segments: string[] }) {
     ]
   }, [mode, onion, clip, time])
 
+  /** A soft two-note tone, the cue for a sound key. Silent until the page has been interacted with. */
+  const beep = useCallback(() => {
+    try {
+      const ctx = (audio.current ??= new AudioContext())
+      const now = ctx.currentTime
+      const gain = ctx.createGain()
+      gain.gain.setValueAtTime(0.0001, now)
+      gain.gain.exponentialRampToValueAtTime(0.12, now + 0.01)
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.18)
+      gain.connect(ctx.destination)
+      for (const [f, at] of [[880, 0], [1320, 0.06]] as const) {
+        const osc = ctx.createOscillator()
+        osc.type = 'triangle'
+        osc.frequency.setValueAtTime(f, now + at)
+        osc.connect(gain)
+        osc.start(now + at)
+        osc.stop(now + 0.2)
+      }
+      // counted on the window so the tests can tell a cue played
+      ;(window as unknown as { __vellumCues?: number }).__vellumCues = ((window as unknown as { __vellumCues?: number }).__vellumCues ?? 0) + 1
+    } catch {
+      /* no audio in this browser; the flash still shows */
+    }
+  }, [])
+
   /* While a clip plays, an effect whose time the playhead just passed shows
      for a moment in the viewport, so its timing can be checked by eye. */
   const [flash, setFlash] = useState<string | null>(null)
@@ -4573,9 +4623,10 @@ export function Editor({ segments }: { segments: string[] }) {
     const glyph = e.kind === 'sound' ? '\u266a' : e.kind === 'particle' ? '\u2726' : '{}'
     const at = e.locator ? ` at ${(model.nulls ?? []).find((n) => n.id === e.locator)?.name ?? '?'}` : ''
     setFlash(`${glyph} ${e.effect || e.kind}${at}`)
+    if (cues && passed.some((x) => x.kind === 'sound')) beep()
     const id = window.setTimeout(() => setFlash(null), 900)
     return () => window.clearTimeout(id)
-  }, [time, playing, mode, clip, model.nulls])
+  }, [time, playing, mode, clip, model.nulls, cues, beep])
 
   /** the model when a key drag began; each step moves the keys from there */
   const keyDragFrom = useRef<Model | null>(null)
@@ -4700,6 +4751,8 @@ export function Editor({ segments }: { segments: string[] }) {
       },
       onion,
       setOnion,
+      cues,
+      setCues,
       nulls: model.nulls ?? [],
       events: clip?.events ?? [],
       selectedEvent,
@@ -4742,7 +4795,7 @@ export function Editor({ segments }: { segments: string[] }) {
         return named.name
       },
     }
-  }, [model, kind, clip, bones, animBone, poseTarget, selectedNull, selectedKey, selectedKeys, selectedEvent, onion, time, history, setSelectedKey])
+  }, [model, kind, clip, bones, animBone, poseTarget, selectedNull, selectedKey, selectedKeys, selectedEvent, onion, cues, time, history, setSelectedKey])
 
   /* ---------------- file + edit actions ---------------- */
 
