@@ -112,3 +112,23 @@ test('a null object as an IK target bends the arm towards it', async () => {
   assert.ok(Math.hypot(after[0] - before[0], after[1] - before[1]) > 20, 'the claw moved towards the null')
   await page.close()
 })
+
+test('the clip list switches and renames clips; the keyframe panel sets the easing', async () => {
+  const { page } = await openEditor()
+  await mode(page, 'Animate')
+  const names = await page.$$eval('.clip-list__name', (els) => els.map((e) => e.textContent))
+  assert.ok(names.length >= 2, `clips: ${names}`)
+  await page.click(`.clip-list__row:has-text("${names[1]}")`)
+  assert.match(await page.$eval('.timeline-bar select', (s) => s.selectedOptions[0].textContent), new RegExp(names[1]))
+
+  await page.dblclick(`.clip-list__row:has-text("${names[1]}")`)
+  await page.fill('.clip-list__rename', 'animation.voidling.prowl')
+  await page.keyboard.press('Enter')
+  assert.ok((await page.$$eval('.clip-list__name', (els) => els.map((e) => e.textContent))).includes('prowl'))
+
+  await page.locator('.timeline-key').first().click()
+  await page.click('.kf__ease button:has-text("Step")')
+  assert.equal(await page.getAttribute('.kf__ease button:has-text("Step")', 'aria-pressed'), 'true')
+  assert.match(await page.textContent('.kf__curve'), /jumps|last key/)
+  await page.close()
+})

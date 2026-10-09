@@ -2133,19 +2133,13 @@ function AutoAnimate({ anim }: { anim: AnimApi }) {
 
 function AnimationPanel({ anim }: { anim: AnimApi }) {
   const { clip } = anim
-  const boneList = useRef<HTMLDivElement>(null)
+  const list = useRef<HTMLDivElement>(null)
+  const [renaming, setRenaming] = useState<string | null>(null)
 
   if (!clip) {
     return (
       <>
-        <p className="editor-hint">
-          No animations yet.
-        </p>
-        <div className="chip-row">
-          <button className="chip chip--go" onClick={anim.newClip}>
-            <Icon name="plus" size={11} /> New animation
-          </button>
-        </div>
+        <p className="editor-hint">No animations yet. Add one with + Clip, or let auto-animate read the rig.</p>
         <div className="editor-rule" />
         <AutoAnimate anim={anim} />
       </>
@@ -2154,19 +2148,63 @@ function AnimationPanel({ anim }: { anim: AnimApi }) {
 
   return (
     <>
-      <label className="editor-field">
-        <span>Name</span>
-        <input
-          className="editor-input"
-          value={clip.name}
-          spellCheck={false}
-          onChange={(e) => anim.patchClip({ name: e.target.value.replace(/\s+/g, '_') })}
-        />
-      </label>
+      {/* the clips as a list, as in the design; Enter or a double-click renames */}
+      <div
+        className="clip-list"
+        role="listbox"
+        aria-label="Clips"
+        ref={list}
+        onKeyDown={(e) => {
+          if (renaming) return
+          if (e.key === 'F2' || e.key === 'Enter') {
+            e.preventDefault()
+            setRenaming(clip.id)
+            return
+          }
+          arrowNav(list.current, e, { select: '[role="option"]' })
+        }}
+      >
+        {anim.clips.map((c) => (
+          <div
+            key={c.id}
+            role="option"
+            aria-selected={c.id === clip.id}
+            tabIndex={c.id === clip.id ? 0 : -1}
+            className="clip-list__row"
+            onFocus={() => c.id !== clip.id && anim.selectClip(c.id)}
+            onClick={() => anim.selectClip(c.id)}
+            onDoubleClick={() => setRenaming(c.id)}
+            title={`${c.name}. Double-click to rename.`}
+          >
+            {renaming === c.id ? (
+              <input
+                className="clip-list__rename"
+                autoFocus
+                defaultValue={c.name}
+                spellCheck={false}
+                aria-label="Clip name"
+                onBlur={(e) => {
+                  const name = e.target.value.trim().replace(/\s+/g, '_')
+                  if (name && name !== c.name) anim.patchClip({ name })
+                  setRenaming(null)
+                }}
+                onKeyDown={(e) => {
+                  e.stopPropagation()
+                  if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
+                  if (e.key === 'Escape') setRenaming(null)
+                }}
+              />
+            ) : (
+              <span className="clip-list__name">{clipLabel(c.name)}</span>
+            )}
+            <span className="clip-list__len">{c.length.toFixed(2)} s</span>
+          </div>
+        ))}
+      </div>
 
-      <div className="num-field-grid" style={{ marginTop: 8 }}>
-        <div className="num-field-row">
-          <span className="num-field-row__label">Length</span>
+      <div className="clip-props">
+        <label className="clip-props__row">
+          <span>Length</span>
           <NumField
             axis="n"
             name="Clip length in seconds"
@@ -2174,47 +2212,31 @@ function AnimationPanel({ anim }: { anim: AnimApi }) {
             value={clip.length}
             onChange={(v) => anim.patchClip({ length: Math.max(0.1, Number(v.toFixed(3))) })}
           />
-          <span className="num-field-row__label" style={{ textAlign: 'right' }}>
-            seconds
+          <span className="clip-props__unit">s</span>
+        </label>
+        <div className="clip-props__row">
+          <span>Loop</span>
+          <span className="studio-seg clip-props__loop" role="group" aria-label="Loop">
+            {LOOPS.map((l) => (
+              <button key={l} aria-pressed={clip.loop === l} onClick={() => anim.patchClip({ loop: l })} title={LOOP_TIPS[l]}>
+                {l === 'pingpong' ? 'Ping-pong' : l[0].toUpperCase() + l.slice(1)}
+              </button>
+            ))}
           </span>
-          <span className="num-field-row__label" />
         </div>
+        <label className="clip-props__row">
+          <span>Snap</span>
+          <select className="editor-select" value={clip.snapping} onChange={(e) => anim.patchClip({ snapping: Number(e.target.value) })}>
+            {SNAPS.map((s) => (
+              <option key={s} value={s}>
+                {s ? `${s} per second` : 'off'}
+              </option>
+            ))}
+          </select>
+        </label>
       </div>
 
-      <label className="editor-field">
-        <span>Loop</span>
-        <select
-          className="editor-select"
-          value={clip.loop}
-          onChange={(e) => anim.patchClip({ loop: e.target.value as Clip['loop'] })}
-        >
-          {LOOPS.map((l) => (
-            <option key={l} value={l}>
-              {l === 'pingpong' ? 'ping-pong' : l}
-            </option>
-          ))}
-        </select>
-      </label>
-
-      <label className="editor-field">
-        <span>Snap</span>
-        <select
-          className="editor-select"
-          value={clip.snapping}
-          onChange={(e) => anim.patchClip({ snapping: Number(e.target.value) })}
-        >
-          {SNAPS.map((s) => (
-            <option key={s} value={s}>
-              {s ? `${s} per second` : 'off'}
-            </option>
-          ))}
-        </select>
-      </label>
-
-      <div className="chip-row" style={{ marginTop: 9 }}>
-        <button className="chip" onClick={anim.newClip} title="Create another animation">
-          <Icon name="plus" size={11} /> New
-        </button>
+      <div className="chip-row" style={{ marginTop: 12 }}>
         <button className="chip" onClick={anim.duplicateClip}>
           <Icon name="copy" size={11} /> Duplicate
         </button>
@@ -2225,42 +2247,15 @@ function AnimationPanel({ anim }: { anim: AnimApi }) {
           <Icon name="trash" size={11} /> Delete
         </button>
       </div>
-
-      <p className="editor-hint" style={{ marginTop: 10 }}>
-        Animating
-      </p>
-      {/* Roving tabindex: one tab stop for the list, arrows move within
-          it, and selection follows focus. */}
-      <div
-        className="tree tree--short"
-        role="listbox"
-        aria-label="Bone to animate"
-        ref={boneList}
-        onKeyDown={(e) => arrowNav(boneList.current, e, { select: '[role="option"]' })}
-      >
-        {anim.bones.map((b) => (
-          <div
-            key={b.id}
-            role="option"
-            aria-selected={b.id === anim.bone}
-            tabIndex={b.id === anim.bone ? 0 : -1}
-            className="tree__row"
-            style={{ paddingLeft: 6 + b.depth * 13 }}
-            onFocus={() => anim.setBone(b.id)}
-            onClick={() => anim.setBone(b.id)}
-          >
-            <Icon name="folder" size={12} className="tree__icon" />
-            <span className="tree__name">{b.name}</span>
-            {clip.tracks.some((t) => t.bone === b.id) ? <span className="timeline-name__channel">keyed</span> : null}
-          </div>
-        ))}
-        {!anim.bones.length ? <p className="editor-hint">This model has no bones to animate.</p> : null}
-      </div>
-
-      <div className="editor-rule" />
-      <AutoAnimate anim={anim} />
     </>
   )
+}
+
+const LOOP_TIPS: Record<Clip['loop'], string> = {
+  loop: 'Plays again from the start',
+  once: 'Plays once and returns to the rest pose',
+  hold: 'Plays once and holds the last frame',
+  pingpong: 'Plays forwards, then backwards',
 }
 
 const EASINGS: Array<{ id: Key['interp']; label: string }> = [
@@ -2326,40 +2321,41 @@ function KeyframePanel({ anim }: { anim: AnimApi }) {
 
   return (
     <>
-      <p className="editor-hint" style={{ marginBottom: 8 }}>
-        <Icon name="folder" size={11} /> {boneName} <span className="timeline-name__channel">{track.channel}</span>
+      <p className="kf__bone">{boneName}</p>
+      <p className="kf__sub">
+        {track.channel[0].toUpperCase() + track.channel.slice(1)} at {key.time.toFixed(2)} s
       </p>
 
-      <div className="num-field-grid">
-        <NumRow
-          label={track.channel}
-          value={key.value}
-          step={step}
-          onChange={(value) => anim.patchKey(key.id, { value }, true)}
-          onCommit={() => anim.patchKey(key.id, {})}
-        />
-        <div className="num-field-row">
-          <span className="num-field-row__label">Time</span>
-          <NumField axis="n" name="Keyframe time in seconds" step={0.05} value={key.time} onChange={(time) => anim.patchKey(key.id, { time })} />
-          <span className="num-field-row__label" style={{ textAlign: 'right' }}>
-            of {anim.clip?.length}s
-          </span>
-          <span className="num-field-row__label" />
-        </div>
+      <div className="kf__axes">
+        {(['x', 'y', 'z'] as const).map((a, i) => (
+          <NumField
+            key={a}
+            axis={a}
+            name={`${track.channel} ${a.toUpperCase()}`}
+            step={step}
+            value={key.value[i]}
+            onChange={(v) => {
+              const value = [...key.value] as Vec3
+              value[i] = v
+              anim.patchKey(key.id, { value }, true)
+            }}
+            onCommit={() => anim.patchKey(key.id, {})}
+          />
+        ))}
       </div>
 
-      <label className="editor-field">
-        <span>Easing to the next key</span>
-        <select className="editor-select" value={key.interp} onChange={(e) => anim.patchKey(key.id, { interp: e.target.value as Key['interp'] })}>
-          {EASINGS.map((o) => (
-            <option key={o.id} value={o.id}>
-              {o.label}
-            </option>
-          ))}
-        </select>
-      </label>
+      <div className="studio-label">Into the next key</div>
+      <div className="studio-seg kf__ease" role="group" aria-label="Easing to the next key">
+        {EASE_ORDER.map((id) => (
+          <button key={id} aria-pressed={key.interp === id} onClick={() => anim.patchKey(key.id, { interp: id })}>
+            {EASE_SHORT[id]}
+          </button>
+        ))}
+      </div>
+      <EaseCurve track={track} keyId={key.id} />
+
       {key.interp === 'bezier' ? (
-        <div className="num-field-grid">
+        <div className="num-field-grid" style={{ marginTop: 10 }}>
           <NumRow
             label="Out time"
             value={key.handles?.rightTime ?? [0.1, 0.1, 0.1]}
@@ -2374,19 +2370,82 @@ function KeyframePanel({ anim }: { anim: AnimApi }) {
             onChange={(rightValue) => anim.patchKey(key.id, { handles: { ...bezierDefaults(key), rightValue } }, true)}
             onCommit={() => anim.patchKey(key.id, {})}
           />
-          <p className="editor-hint">Drag the handles in the Graph view to shape the curve.</p>
         </div>
       ) : null}
 
-      <div className="chip-row" style={{ marginTop: 9 }}>
-        <button className="chip chip--danger" onClick={() => anim.removeKey(key.id)}>
-          <Icon name="trash" size={11} /> Delete keyframe
+      <label className="clip-props__row" style={{ marginTop: 12 }}>
+        <span>Time</span>
+        <NumField axis="n" name="Keyframe time in seconds" step={0.05} value={key.time} onChange={(time) => anim.patchKey(key.id, { time })} />
+        <span className="clip-props__unit">of {anim.clip?.length.toFixed(2)} s</span>
+      </label>
+
+      <div className="kf__actions">
+        <button className="chip" onClick={anim.copyKeys} title="Copy this key (Ctrl+C); paste it at the playhead with Ctrl+V">
+          Copy key
         </button>
-        <button className="chip" onClick={() => anim.removeTrack(track.bone, track.channel)}>
-          <Icon name="trash" size={11} /> Clear channel
+        <button className="chip chip--danger" onClick={() => anim.removeKey(key.id)}>
+          Delete key
         </button>
       </div>
+      <button className="kf__clear" onClick={() => anim.removeTrack(track.bone, track.channel)}>
+        Clear the whole {track.channel} channel
+      </button>
     </>
+  )
+}
+
+const EASE_ORDER: Key['interp'][] = ['catmullrom', 'linear', 'step', 'bezier']
+const EASE_SHORT: Record<Key['interp'], string> = { catmullrom: 'Smooth', linear: 'Linear', step: 'Step', bezier: 'Bezier' }
+const EASE_LINE: Record<Key['interp'], string> = {
+  catmullrom: 'Eases out of this key and into the next.',
+  linear: 'Keeps an even speed to the next key.',
+  step: 'Holds this value, then jumps at the next key.',
+  bezier: 'Follows its handles. Drag them in the Graph view.',
+}
+
+/**
+ * The motion from a key to the next, drawn on the axis that changes most,
+ * so the easing choice shows as a shape rather than a word.
+ */
+function EaseCurve({ track, keyId }: { track: Track; keyId: string }) {
+  const keys = [...track.keys].sort((a, b) => a.time - b.time)
+  const i = keys.findIndex((k) => k.id === keyId)
+  const key = keys[i]
+  const next = keys[i + 1]
+  const W = 220
+  const H = 86
+  if (!key) return null
+  if (!next) {
+    return (
+      <div className="kf__curve">
+        <svg viewBox={`0 0 ${W} ${H}`} aria-hidden>
+          <line className="kf__base" x1={10} y1={H / 2} x2={W - 10} y2={H / 2} />
+          <rect className="kf__dot" x={6} y={H / 2 - 4} width={8} height={8} transform={`rotate(45 10 ${H / 2})`} />
+        </svg>
+        <p>The last key: the pose holds to the end of the clip.</p>
+      </div>
+    )
+  }
+  const axis = [0, 1, 2].reduce((best, a) => (Math.abs(next.value[a] - key.value[a]) > Math.abs(next.value[best] - key.value[best]) ? a : best), 0)
+  const from = key.value[axis]
+  const to = next.value[axis]
+  const span = to - from || 1
+  const pts: string[] = []
+  for (let n = 0; n <= 40; n++) {
+    const t = key.time + ((next.time - key.time) * n) / 40
+    const v = (sampleTrack(track, t)[axis] - from) / span
+    pts.push(`${(10 + (n / 40) * (W - 20)).toFixed(1)},${(H - 12 - Math.max(-0.3, Math.min(1.3, v)) * (H - 24)).toFixed(1)}`)
+  }
+  return (
+    <div className="kf__curve">
+      <svg viewBox={`0 0 ${W} ${H}`} aria-hidden>
+        <line className="kf__base" x1={10} y1={H - 12} x2={W - 10} y2={H - 12} />
+        <polyline className="kf__line" points={pts.join(' ')} />
+        <rect className="kf__dot" x={6} y={H - 16} width={8} height={8} transform={`rotate(45 10 ${H - 12})`} />
+        <rect className="kf__dot" x={W - 14} y={8} width={8} height={8} transform={`rotate(45 ${W - 10} 12)`} />
+      </svg>
+      <p>{EASE_LINE[key.interp]}</p>
+    </div>
   )
 }
 
@@ -5300,9 +5359,23 @@ export function Editor({ segments }: { segments: string[] }) {
               </>
             ) : null}
             {mode === 'animate' ? (
-              <Panel title="Clips" count={clip ? clipLabel(clip.name) : 'none'}>
-                <AnimationPanel anim={anim} />
-              </Panel>
+              <>
+                <Panel
+                  title="Clips"
+                  actions={
+                    <span className="outliner-add">
+                      <button onClick={anim.newClip} title="Create another animation">+ Clip</button>
+                    </span>
+                  }
+                >
+                  <AnimationPanel anim={anim} />
+                </Panel>
+                {anim.kind === 'mobs' && clip ? (
+                  <Panel title="Auto-animate" defaultOpen={false}>
+                    <AutoAnimate anim={anim} />
+                  </Panel>
+                ) : null}
+              </>
             ) : null}
 
             {mode === 'paint' ? null : (
