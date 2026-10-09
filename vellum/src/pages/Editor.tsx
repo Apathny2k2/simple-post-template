@@ -131,7 +131,7 @@ import {
   unwrapOrigin,
 } from '../lib/uv-edit'
 import type { UvHandle } from '../lib/uv-edit'
-import { PRIMITIVES, centreOf, faceOrder, deleteEdges, deleteFaces, deleteVertices, edgeEnds, edgeVerticesOf, edgesOf, extrudeFaces, flipFaces, loopCut, makeMesh, mergeVertices, moveVertices, subdivide, verticesOf, mirrorFacesUv, projectUv, turnFacesUv, bevelEdges, cubeToMesh, joinMeshes, mergeByDistance, separateFaces, dissolveEdges, edgeLoop, fillFace, insetFaces, knifeCut, rotateVertices, scaleVertices, slideEdges } from '../lib/mesh'
+import { PRIMITIVES, centreOf, faceOrder, deleteEdges, deleteFaces, deleteVertices, edgeEnds, edgeVerticesOf, edgesOf, extrudeFaces, flipFaces, loopCut, makeMesh, mergeVertices, moveVertices, subdivide, verticesOf, mirrorFacesUv, projectUv, turnFacesUv, bevel, cubeToMesh, joinMeshes, mergeByDistance, separateFaces, dissolveEdges, edgeLoop, fillFace, insetFaces, knifeCut, rotateVertices, scaleVertices, slideEdges } from '../lib/mesh'
 import type { KnifePoint } from '../lib/mesh'
 import type { Primitive } from '../lib/mesh'
 import { boxSize, findSpot } from '../lib/uv-pack'
@@ -1988,6 +1988,8 @@ function packMeshFaces(model: Model, mesh: Mesh, faces: readonly string[]): { me
 }
 
 function MeshPanel({
+  segments,
+  onSegments,
   distance,
   onDistance,
   joinable,
@@ -2024,6 +2026,9 @@ function MeshPanel({
   onMove: (bone: string | null) => void
   onDelete: () => void
   pickedFaces: string[]
+  /** faces across a bevel's strip */
+  segments: number
+  onSegments: (v: number) => void
   /** how close vertices must be to merge by distance */
   distance: number
   onDistance: (v: number) => void
@@ -2153,12 +2158,16 @@ function MeshPanel({
                 </div>
               </div>
             ) : null}
-            {mode === 'face' || mode === 'edge' ? (
+            {mode === 'face' || mode === 'edge' || mode === 'vertex' ? (
               <div className="num-field-grid">
                 <div className="num-field-row">
-                  <span className="num-field-row__label">{mode === 'face' ? 'Inset' : 'Width'}</span>
+                  <span className="num-field-row__label">{mode === 'face' ? 'Inset' : 'Bevel'}</span>
                   <NumField axis="n" tag="W" name={mode === 'face' ? 'Inset by' : 'Bevel width'} value={amount} step={0.5} onChange={(v) => onAmount(Math.max(0.05, Math.round(v * 100) / 100))} />
-                  <span className="num-field-row__label" />
+                  {mode === 'face' ? (
+                    <span className="num-field-row__label" />
+                  ) : (
+                    <NumField axis="n" tag="N" name="Bevel segments" value={segments} step={1} onChange={(v) => onSegments(Math.max(1, Math.min(16, Math.round(v))))} />
+                  )}
                   <span className="num-field-row__label" />
                 </div>
               </div>
@@ -2201,6 +2210,9 @@ function MeshPanel({
                 <>
                   <button className="chip" disabled={picked < 2 || locked} onClick={ops.merge} title="Merge the picked vertices into one at their middle (M)">
                     Merge
+                  </button>
+                  <button className="chip" disabled={!picked || locked} onClick={ops.bevel} title="Cut the picked corners off, as wide as the bevel width (Ctrl+B)">
+                    Bevel
                   </button>
                   <button className="chip" disabled={picked < 3 || locked} onClick={ops.fill} title="Make a face through the picked vertices (F)">
                     Fill
@@ -4334,6 +4346,8 @@ export function Editor({ segments }: { segments: string[] }) {
   const [knife, setKnife] = useState<KnifePoint[] | null>(null)
   /** how far bevel and inset go, in units */
   const [meshAmount, setMeshAmount] = useState(1)
+  /** how many faces across a bevel's strip */
+  const [meshSegments, setMeshSegments] = useState(1)
   /** how close two vertices must be for merge by distance */
   const [mergeDistance, setMergeDistance] = useState(0.1)
   const meshId = selectedMesh?.id
@@ -4425,11 +4439,14 @@ export function Editor({ segments }: { segments: string[] }) {
         if (faces.length) setMeshFaces(Object.keys(next.faces).filter((k) => faces.includes(k) || !selectedMesh.faces[k]))
       },
       bevel: () => {
-        if (!selectedMesh || selectedMesh.locked || meshMode !== 'edge' || !meshEdges.length) return
-        const r = bevelEdges(selectedMesh, meshEdges, meshAmount)
+        if (!selectedMesh || selectedMesh.locked) return
+        const pick = meshMode === 'edge' ? { edges: meshEdges } : meshMode === 'vertex' ? { vertices: meshVerts } : null
+        if (!pick || !(pick.edges ?? pick.vertices ?? []).length) return
+        const r = bevel(selectedMesh, pick, meshAmount, meshSegments)
         if (r.mesh === selectedMesh) return
-        history.commit('bevel', (m) => ({ ...m, meshes: (m.meshes ?? []).map((x) => (x.id === selectedMesh.id ? r.mesh : x)) }))
-        setMeshEdges(r.edges)
+        history.commit(meshMode === 'edge' ? 'bevel edges' : 'bevel vertices', (m) => ({ ...m, meshes: (m.meshes ?? []).map((x) => (x.id === selectedMesh.id ? r.mesh : x)) }))
+        if (meshMode === 'edge') setMeshEdges(r.edges)
+        else setMeshVerts([])
       },
       inset: () => {
         if (!selectedMesh || selectedMesh.locked || meshMode !== 'face' || !meshFaces.length) return
@@ -4524,7 +4541,7 @@ export function Editor({ segments }: { segments: string[] }) {
         },
       },
     }),
-    [selectedMesh, meshMode, meshFaces, meshVerts, meshEdges, history, meshAmount, model, knife, mergeDistance, notify, selection, rig, setSelection],
+    [selectedMesh, meshMode, meshFaces, meshVerts, meshEdges, history, meshAmount, meshSegments, model, knife, mergeDistance, notify, selection, rig, setSelection],
   )
 
   /* Dragging on the mesh UV sheet: one undo step per drag. */
@@ -6275,7 +6292,7 @@ export function Editor({ segments }: { segments: string[] }) {
         if (!mod && k === 'p' && meshMode === 'face') return run(meshOps.separate)
         if (meshMode !== 'object') {
           if (mod && k === 'r' && meshMode === 'edge') return run(meshOps.loopCut)
-          if (mod && k === 'b' && meshMode === 'edge') return run(meshOps.bevel)
+          if (mod && k === 'b' && (meshMode === 'edge' || meshMode === 'vertex')) return run(meshOps.bevel)
           if (!mod && k === 'i' && meshMode === 'face') return run(meshOps.inset)
           // F fills between the picked vertices or edges; with too few picked it still frames the view
           if (!mod && k === 'f' && ((meshMode === 'vertex' && meshVerts.length >= 3) || (meshMode === 'edge' && meshEdges.length >= 2))) return run(meshOps.fill)
@@ -6748,6 +6765,8 @@ export function Editor({ segments }: { segments: string[] }) {
                   pickedFaces={meshMode === 'face' ? meshFaces : []}
                   amount={meshAmount}
                   onAmount={setMeshAmount}
+                  segments={meshSegments}
+                  onSegments={setMeshSegments}
                   distance={mergeDistance}
                   onDistance={setMergeDistance}
                   joinable={selection.filter((id) => id !== selectedMesh.id && (model.meshes ?? []).some((x) => x.id === id)).length}

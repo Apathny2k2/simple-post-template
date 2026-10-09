@@ -327,3 +327,49 @@ test('in the editor: convert a cube, separate faces, join them back, merge by di
   assert.deepEqual(errors, [])
   await page.close()
 })
+
+test('bevel: mitred corners, the whole cube, rounded segments and a vertex', async () => {
+  const { page } = await open()
+  const r = await inApp(page, async () => {
+    const M = await import('/src/lib/mesh.ts')
+    const cube = M.makeMesh('cube', { parent: null, origin: [0, 0, 0], texture: null, place: () => [0, 0] })
+    const shape = (m) => {
+      const n = new Map()
+      for (const f of Object.values(m.faces)) {
+        const o = M.faceOrder(m, f)
+        o.forEach((a, i) => n.set(M.edgeKey(a, o[(i + 1) % o.length]), (n.get(M.edgeKey(a, o[(i + 1) % o.length])) ?? 0) + 1))
+      }
+      const mid = M.centreOf(m, Object.keys(m.vertices))
+      const outward = Object.values(m.faces).every((f) => {
+        const nn = M.faceNormal(m, f)
+        const c = M.faceCentre(m, f)
+        return (c[0] - mid[0]) * nn[0] + (c[1] - mid[1]) * nn[1] + (c[2] - mid[2]) * nn[2] > 0
+      })
+      return { faces: Object.keys(m.faces).length, vertices: Object.keys(m.vertices).length, open: [...n.values()].filter((c) => c !== 2).length, outward }
+    }
+    const top = Object.keys(cube.faces).find((k) => M.faceNormal(cube, cube.faces[k])[1] > 0.9)
+    const o = M.faceOrder(cube, cube.faces[top])
+    const ring = o.map((a, i) => M.edgeKey(a, o[(i + 1) % 4]))
+    const topRing = M.bevel(cube, { edges: ring }, 1)
+    const all = M.bevel(cube, { edges: M.edgesOf(cube) }, 1)
+    const round = M.bevel(cube, { edges: [ring[0]] }, 2, 3)
+    const corner = M.bevel(cube, { vertices: [o[0]] }, 1)
+    // the top face, after the ring's bevel, is a smaller square: its corners mitred 1 in from each side
+    const lid = Object.values(topRing.mesh.faces).find((f) => f.vertices.every((v) => Math.abs(topRing.mesh.vertices[v][1] - 8) < 1e-6) && f.vertices.length === 4)
+    return {
+      ring: shape(topRing.mesh),
+      lid: lid ? lid.vertices.map((v) => [Math.abs(topRing.mesh.vertices[v][0]), Math.abs(topRing.mesh.vertices[v][2])]) : null,
+      all: shape(all.mesh),
+      round: { ...shape(round.mesh), edges: round.edges.length },
+      corner: shape(corner.mesh),
+    }
+  })
+  assert.deepEqual(r.ring, { faces: 10, vertices: 12, open: 0, outward: true }, 'four strips meet in mitres, and the sides lose their top corners')
+  assert.deepEqual(r.lid, [[3, 3], [3, 3], [3, 3], [3, 3]])
+  assert.deepEqual(r.all, { faces: 26, vertices: 24, open: 0, outward: true }, 'every edge: 12 strips and 8 corner triangles')
+  assert.equal(r.round.open, 0)
+  assert.equal(r.round.faces, 9, 'three faces across the strip')
+  assert.ok(r.round.outward)
+  assert.deepEqual(r.corner, { faces: 7, vertices: 10, open: 0, outward: true }, 'a bevelled corner is cut off by a triangle')
+  await page.close()
+})

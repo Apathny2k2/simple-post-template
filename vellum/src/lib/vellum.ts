@@ -416,10 +416,7 @@ export function toVellumDocument(model: Model): VellumDocument {
   })
 }
 
-/**
- * The Blockbench extras, less any kept for an element, group, texture or
- * clip the model no longer has. Absent when nothing is left.
- */
+/** The Blockbench extras whose element, group, texture or clip is in the model; absent when none are. */
 function blockbenchOf(model: Model): Record<string, unknown> | undefined {
   const bag = model.blockbench
   if (!bag || typeof bag !== 'object') return undefined

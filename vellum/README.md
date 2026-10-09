@@ -982,12 +982,19 @@ take UVs the same way along the face's own UVs, so the texture stays put.
 - **Knife** (`knifeCut`): each point becomes a vertex on its edge (or the
   corner it sits on), and consecutive points that share a face split it.
   Every point sits on an edge; a click in the middle of a face adds none.
-- **Bevel** (`bevelEdges`): the edge becomes a strip, its two faces pulled
-  back along their other edges. Where three faces meet at an end the third
-  loses its corner; where more meet a triangle fills the gap. Several edges
-  are bevelled one after another, so a corner where two bevels meet is cut
-  twice; Blender would mitre it. The strip borrows its texture
-  from the first face, along the edge.
+- **Bevel** (Ctrl B, in Edge or Vertex mode; `bevel`): all picked edges at
+  once. Each face corner at a bevelled vertex moves in: between two
+  bevelled edges to where the two edges, each moved the bevel width into
+  the face, cross (a mitred corner); beside one bevelled edge it slides
+  along the face's other edge, to the point the face across that edge uses
+  too, so they stay joined. A corner with no bevelled edge of its own, the
+  third face at a cube's corner or any corner of a bevelled vertex, is cut
+  off between its two slid points. Each edge becomes a strip **Segments**
+  faces across (N in the panel, up to 16), bowed toward the old edge; two
+  strips meeting at a vertex share their curve, and a cut corner that a
+  curve ends on follows it. Any gap left at a vertex is filled with one
+  face. A bevelled vertex is cut off by a face. The strip borrows its
+  texture from the edge's first face, along the edge.
 - **Edge slide** (`slideEdges`): each end moves along the rail beside it
   (`slideRails` keeps one side the same all along a loop). The slider runs
   from -100% to 100%; each drag or key press is one undo step.

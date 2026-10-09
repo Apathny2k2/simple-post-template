@@ -763,99 +763,224 @@ export function knifeCut(mesh: Mesh, points: readonly KnifePoint[]): { mesh: Mes
 }
 
 /**
- * Bevels edges: each edge becomes a strip `width` wide, its two faces
- * pulled back from it along their other edges. At an end where three
- * faces meet, the third face loses its corner to a cut; where more meet,
- * a triangle fills the gap. Edges are bevelled one after another, and an
- * edge whose end an earlier bevel moved follows that end. The strip takes
- * its texture from the edge's first face, along the edge. Returns the
- * strip's long edges.
+ * Bevels edges (Blender's Ctrl B) or vertices (Ctrl Shift B), all at once.
+ * Corners between two bevelled edges are mitred, corners beside one slide
+ * along the other edge, and corners with none are cut off. Each edge
+ * becomes a strip `segments` faces across, bowed toward the old edge, and
+ * gaps left at a vertex are filled. Returns the strips' long edges. The
+ * README's Meshes section has the details.
  */
-export function bevelEdges(mesh: Mesh, edges: readonly string[], width: number): { mesh: Mesh; edges: string[] } {
-  let m = mesh
-  const made: string[] = []
-  // the vertex an earlier bevel put on the edge from → to, near `from`
-  const moved = new Map<string, string>()
-  const follow = (v: string, other: string) => (m.vertices[v] ? v : moved.get(`${v}>${other}`) ?? v)
-  for (const e0 of edges) {
-    const [a0, b0] = edgeEnds(e0)
-    const a = follow(a0, b0)
-    const b = follow(b0, a0)
-    if (!m.vertices[a] || !m.vertices[b]) continue
-    const around = facesByEdge(m).get(edgeKey(a, b)) ?? []
-    if (around.length !== 2) continue
-    let [k1, k2] = around
-    if (!runs(faceOrder(m, m.faces[k1]), a, b)) [k1, k2] = [k2, k1]
-    const f1 = m.faces[k1]
-    const f2 = m.faces[k2]
-    const o1 = faceOrder(m, f1)
-    const o2 = faceOrder(m, f2)
-    const p1 = o1[(o1.indexOf(a) - 1 + o1.length) % o1.length]
-    const q1 = o1[(o1.indexOf(b) + 1) % o1.length]
-    const p2 = o2[(o2.indexOf(a) + 1) % o2.length]
-    const q2 = o2[(o2.indexOf(b) - 1 + o2.length) % o2.length]
-    const vertices = { ...m.vertices }
-    const inserts = new Map<string, Array<{ v: string; from: string; t: number }>>()
-    const share = new Map<string, string>()
-    const place = (from: string, to: string) => {
-      const e = edgeKey(from, to)
-      const have = share.get(`${from}>${to}`)
-      if (have) return { v: have, t: inserts.get(e)![0].t }
-      const t = Math.min(width / Math.max(1e-6, length(sub(m.vertices[to], m.vertices[from]))), 0.45)
-      const v = key8()
-      vertices[v] = lerp3(m.vertices[from], m.vertices[to], t)
-      inserts.set(e, [...(inserts.get(e) ?? []), { v, from, t }])
-      share.set(`${from}>${to}`, v)
-      moved.set(`${from}>${to}`, v)
-      return { v, t }
+export function bevel(mesh: Mesh, pick: { edges?: readonly string[]; vertices?: readonly string[] }, width: number, segments = 1): { mesh: Mesh; edges: string[] } {
+  const byEdge = facesByEdge(mesh)
+  const bevelled = new Set((pick.edges ?? []).filter((e) => byEdge.get(e)?.length === 2))
+  const corners = new Set((pick.vertices ?? []).filter((v) => mesh.vertices[v]))
+  const active = new Set(corners)
+  for (const e of bevelled) edgeEnds(e).forEach((v) => active.add(v))
+  if (!active.size || width <= 0) return { mesh, edges: [] }
+  const n = Math.max(1, Math.min(16, Math.round(segments)))
+  const P = (k: string) => mesh.vertices[k]
+  const span = (a: string, b: string) => length(sub(P(b), P(a)))
+  const toward = (a: string, b: string) => unit(sub(P(b), P(a)))
+  const sine = (v: string, a: string, b: string) => Math.max(0.05, length(cross(toward(v, a), toward(v, b))))
+  const orders = new Map(Object.entries(mesh.faces).map(([k, f]) => [k, faceOrder(mesh, f)]))
+  const isBevelled = (a: string, b: string) => bevelled.has(edgeKey(a, b))
+
+  // how far along each unbevelled edge its corners slide: one distance per edge end, shared by both faces
+  const pulls = new Map<string, number[]>()
+  const pull = (v: string, to: string, d: number) => pulls.set(`${v}>${to}`, [...(pulls.get(`${v}>${to}`) ?? []), d])
+  for (const o of orders.values()) {
+    o.forEach((v, i) => {
+      if (!active.has(v)) return
+      const a = o[(i - 1 + o.length) % o.length]
+      const b = o[(i + 1) % o.length]
+      const pb = isBevelled(a, v)
+      const nb = isBevelled(v, b)
+      if (pb && !nb) pull(v, b, width / sine(v, a, b))
+      if (nb && !pb) pull(v, a, width / sine(v, a, b))
+      if (!pb && !nb) {
+        pull(v, a, width)
+        pull(v, b, width)
+      }
+    })
+  }
+  const slideBy = (v: string, to: string) => {
+    const list = pulls.get(`${v}>${to}`) ?? [width]
+    return Math.min(list.reduce((x, y) => x + y, 0) / list.length, 0.45 * span(v, to))
+  }
+
+  const vertices = { ...mesh.vertices }
+  const made = new Map<string, string>()
+  const point = (id: string, at: () => Vec3) => {
+    let k = made.get(id)
+    if (!k) {
+      k = key8()
+      made.set(id, k)
+      vertices[k] = at().map(round) as Vec3
     }
-    const A1 = place(a, p1)
-    const B1 = place(b, q1)
-    const A2 = place(a, p2)
-    const B2 = place(b, q2)
-    const faces = { ...m.faces }
-    const swap = (f: MeshFace, o: string[], at: Record<string, { v: string; t: number; to: string }>) => {
-      const vs = o.map((v) => at[v]?.v ?? v)
-      const uv: Record<string, UV> = {}
-      o.forEach((v) => {
-        const r = at[v]
-        if (r) uv[r.v] = lerpUv(f.uv[v], f.uv[r.to], r.t)
-        else uv[v] = f.uv[v] ?? [0, 0]
+    return k
+  }
+  const slid = (v: string, to: string) => point(`s:${v}>${to}`, () => lerp3(P(v), P(to), slideBy(v, to) / span(v, to)))
+
+  // each face, its bevelled corners moved in; the point each corner became is remembered for the strips
+  const faces = { ...mesh.faces }
+  const cornerOf = new Map<string, string>()
+  const anyUv = new Map<string, UV>()
+  // corners cut off between two slid points, which follow a strip's curve if one ends there
+  const cuts: Array<{ face: string; v: string; p: string; q: string }> = []
+  for (const [k, f] of Object.entries(mesh.faces)) {
+    const o = orders.get(k)!
+    if (!o.some((v) => active.has(v))) continue
+    const vs: string[] = []
+    const uv: Record<string, UV> = {}
+    const put = (key: string, at: UV) => {
+      vs.push(key)
+      uv[key] = at
+      if (!anyUv.has(key)) anyUv.set(key, at)
+    }
+    o.forEach((v, i) => {
+      const a = o[(i - 1 + o.length) % o.length]
+      const b = o[(i + 1) % o.length]
+      if (!active.has(v)) return put(v, f.uv[v] ?? [0, 0])
+      const pb = isBevelled(a, v)
+      const nb = isBevelled(v, b)
+      const along = (to: string) => lerpUv(f.uv[v], f.uv[to], slideBy(v, to) / span(v, to))
+      if (pb && nb) {
+        // mitred: both edges moved `width` in, where they cross
+        const d = Math.min(width / sine(v, a, b), 0.45 * Math.min(span(v, a), span(v, b)))
+        const m = point(`m:${v}:${k}`, () => addV(P(v), addV(scale(toward(v, a), d), scale(toward(v, b), d))))
+        const base = f.uv[v] ?? [0, 0]
+        const ua = f.uv[a] ?? base
+        const ub = f.uv[b] ?? base
+        const ka = d / span(v, a)
+        const kb = d / span(v, b)
+        put(m, [round(base[0] + (ua[0] - base[0]) * ka + (ub[0] - base[0]) * kb), round(base[1] + (ua[1] - base[1]) * ka + (ub[1] - base[1]) * kb)])
+        cornerOf.set(`${k}:${v}`, m)
+      } else if (pb) {
+        const s1 = slid(v, b)
+        put(s1, along(b))
+        cornerOf.set(`${k}:${v}`, s1)
+      } else if (nb) {
+        const s1 = slid(v, a)
+        put(s1, along(a))
+        cornerOf.set(`${k}:${v}`, s1)
+      } else {
+        // a corner with no bevelled edge of its own is cut off
+        put(slid(v, a), along(a))
+        put(slid(v, b), along(b))
+        cuts.push({ face: k, v, p: slid(v, a), q: slid(v, b) })
+      }
+    })
+    faces[k] = { ...f, vertices: vs, uv }
+  }
+
+  // the strips, bowed toward the old edge, sharing their curve where two meet
+  const curve = (v: string, p: string, q: string) => {
+    const [lo, hi] = p < q ? [p, q] : [q, p]
+    const pts = Array.from({ length: n + 1 }, (_, i) => {
+      if (i === 0) return lo
+      if (i === n) return hi
+      const t = i / n
+      return point(`c:${v}:${lo}:${hi}:${i}`, () => {
+        const a = vertices[lo]
+        const c = vertices[hi]
+        return [0, 1, 2].map((j) => (1 - t) ** 2 * a[j] + 2 * (1 - t) * t * P(v)[j] + t * t * c[j]) as Vec3
       })
-      return { ...f, vertices: vs, uv }
-    }
-    faces[k1] = swap(f1, o1, { [a]: { ...A1, to: p1 }, [b]: { ...B1, to: q1 } })
-    faces[k2] = swap(f2, o2, { [a]: { ...A2, to: p2 }, [b]: { ...B2, to: q2 } })
-    const strip = [B1.v, A1.v, A2.v, B2.v].filter((v, i, all) => all.indexOf(v) === i)
-    const stripKey = key8()
-    faces[stripKey] = {
-      vertices: strip,
-      uv: { [B1.v]: faces[k1].uv[B1.v], [A1.v]: faces[k1].uv[A1.v], [A2.v]: f1.uv[a] ?? [0, 0], [B2.v]: f1.uv[b] ?? [0, 0] },
-      texture: f1.texture,
-    }
-    const cut: Mesh = { ...m, vertices }
-    insertOnEdges(cut, faces, inserts, new Set([k1, k2, stripKey]))
-    // close the gap left at each end
-    const closeAt = (corner: string, first: string, second: string, tri: string[]) => {
-      if (first === second) return
-      const holder = (v: string) => Object.keys(faces).find((k) => k !== stripKey && faces[k].vertices.includes(corner) && faces[k].vertices.includes(v))
-      const g = holder(first)
-      const h = holder(second)
-      if (g && g === h) {
-        const f = faces[g]
-        const uv = { ...f.uv }
-        delete uv[corner]
-        faces[g] = { ...f, vertices: f.vertices.filter((v) => v !== corner), uv }
-      } else if (g && h) {
-        faces[key8()] = { vertices: tri, uv: { [first]: faces[g].uv[first], [corner]: faces[g].uv[corner], [second]: faces[h].uv[second] }, texture: faces[g].texture }
+    })
+    return lo === p ? pts : pts.reverse()
+  }
+  const long: string[] = []
+  for (const e of bevelled) {
+    const [x, y] = edgeEnds(e)
+    let [k1, k2] = byEdge.get(e)!
+    let [a, b] = [x, y]
+    if (!runs(orders.get(k1)!, a, b)) [a, b] = [b, a]
+    if (!runs(orders.get(k1)!, a, b)) [k1, k2] = [k2, k1]
+    const A1 = cornerOf.get(`${k1}:${a}`)
+    const B1 = cornerOf.get(`${k1}:${b}`)
+    const A2 = cornerOf.get(`${k2}:${a}`)
+    const B2 = cornerOf.get(`${k2}:${b}`)
+    if (!A1 || !B1 || !A2 || !B2) continue
+    const ca = curve(a, A1, A2)
+    const cb = curve(b, B1, B2)
+    const f1 = mesh.faces[k1]
+    const uvA1 = faces[k1].uv[A1]
+    const uvB1 = faces[k1].uv[B1]
+    const uvA2 = f1.uv[a] ?? [0, 0]
+    const uvB2 = f1.uv[b] ?? [0, 0]
+    for (let i = 0; i < n; i++) {
+      const quad = [cb[i], ca[i], ca[i + 1], cb[i + 1]]
+      const t0 = i / n
+      const t1 = (i + 1) / n
+      faces[key8()] = {
+        vertices: quad.filter((v, j) => quad.indexOf(v) === j),
+        uv: { [cb[i]]: lerpUv(uvB1, uvB2, t0), [ca[i]]: lerpUv(uvA1, uvA2, t0), [ca[i + 1]]: lerpUv(uvA1, uvA2, t1), [cb[i + 1]]: lerpUv(uvB1, uvB2, t1) },
+        texture: f1.texture,
+      }
+      for (const [p, q] of [[ca[i], cb[i]], [ca[i + 1], cb[i + 1]]]) {
+        anyUv.set(p, anyUv.get(p) ?? lerpUv(uvA1, uvA2, t0))
+        anyUv.set(q, anyUv.get(q) ?? lerpUv(uvB1, uvB2, t0))
       }
     }
-    closeAt(a, A1.v, A2.v, [A2.v, A1.v, a])
-    closeAt(b, B1.v, B2.v, [B1.v, B2.v, b])
-    m = dropLoose({ ...cut, faces })
-    made.push(edgeKey(A1.v, B1.v), edgeKey(A2.v, B2.v))
+    long.push(edgeKey(A1, B1), edgeKey(A2, B2))
   }
-  return { mesh: m, edges: [...new Set(made)].filter((e) => edgeEnds(e).every((v) => m.vertices[v])) }
+
+  // a cut corner that a strip's curve ends on takes the curve, as Blender's end faces do
+  if (n > 1) {
+    for (const { face, v, p, q } of cuts) {
+      const [lo, hi] = p < q ? [p, q] : [q, p]
+      if (!made.has(`c:${v}:${lo}:${hi}:1`)) continue
+      const f = faces[face]
+      const between = curve(v, p, q).slice(1, -1)
+      const at = f.vertices.indexOf(p)
+      const vs = [...f.vertices.slice(0, at + 1), ...between, ...f.vertices.slice(at + 1)]
+      const uv = { ...f.uv }
+      between.forEach((k, i) => (uv[k] = lerpUv(f.uv[p], f.uv[q], (i + 1) / n)))
+      faces[face] = { ...f, vertices: vs, uv }
+    }
+  }
+
+  // whatever gap is left at a vertex: a loop of edges only one face uses, all of them new points
+  let out = dropLoose({ ...mesh, vertices, faces })
+  const fresh = new Set(made.values())
+  const uses = new Map<string, number>()
+  const next = new Map<string, string>()
+  for (const f of Object.values(out.faces)) {
+    const o = faceOrder(out, f)
+    o.forEach((p, i) => {
+      const q = o[(i + 1) % o.length]
+      uses.set(edgeKey(p, q), (uses.get(edgeKey(p, q)) ?? 0) + 1)
+    })
+  }
+  for (const f of Object.values(out.faces)) {
+    const o = faceOrder(out, f)
+    o.forEach((p, i) => {
+      const q = o[(i + 1) % o.length]
+      // the gap runs the other way round from the face beside it
+      if (uses.get(edgeKey(p, q)) === 1 && fresh.has(p) && fresh.has(q)) next.set(q, p)
+    })
+  }
+  const filled: Record<string, MeshFace> = {}
+  const seen = new Set<string>()
+  const texture = Object.values(mesh.faces)[0]?.texture ?? null
+  for (const startAt of next.keys()) {
+    if (seen.has(startAt)) continue
+    const loop: string[] = []
+    let at: string | undefined = startAt
+    while (at && !seen.has(at)) {
+      seen.add(at)
+      loop.push(at)
+      at = next.get(at)
+    }
+    if (at !== startAt || loop.length < 3) continue
+    filled[key8()] = { vertices: loop, uv: Object.fromEntries(loop.map((v) => [v, anyUv.get(v) ?? [0, 0]])), texture }
+  }
+  out = { ...out, faces: { ...out.faces, ...filled } }
+  return { mesh: out, edges: [...new Set(long)].filter((e) => edgeEnds(e).every((v) => out.vertices[v])) }
+}
+
+/** Bevels edges; see `bevel`. */
+export function bevelEdges(mesh: Mesh, edges: readonly string[], width: number, segments = 1): { mesh: Mesh; edges: string[] } {
+  return bevel(mesh, { edges }, width, segments)
 }
 
 /** Drops vertices no face uses. */
