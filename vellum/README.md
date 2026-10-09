@@ -845,7 +845,18 @@ node picked is the primary one, which the panels and the gizmo follow.
 | Numpad 5 | Perspective or orthographic |
 | F, Numpad . | Focus on the selection |
 | Home | Frame the whole model |
-| Esc | Clear the selection |
+| Esc | Clear the selection (in Animate, the keys first) |
+
+**Blender keys.** Edit ▸ Keys switches to Blender's keys, and the choice is
+kept per browser. G grabs (the Move tool), X deletes, A selects everything
+and Alt A nothing, Shift D duplicates, Shift A adds a cube, and I sets a key
+in Animate. R, S, H, B, Space, the numpad views and Ctrl Z are the same in
+both. There is no modal grab yet: G picks the Move tool, and dragging an
+arrow moves the selection.
+
+**History.** The History panel lists every undo step, oldest first. A click
+jumps back or forward to that point; undone steps stay listed in italics
+until a new edit drops them.
 
 **Transform** has Flip X, Y and Z, which mirror the selection about its own
 middle, and Mirror across the centre line, which mirrors it across x = 8 for
@@ -890,6 +901,22 @@ position can be keyed in Animate like a bone's. The solver is cyclic coordinate
 descent in `lib/kinematics.ts`, and it writes the bend into the pose as
 rotation offsets, the way keyed rotations are applied.
 
+### Painting
+
+Paint mode puts the texture sheet in the middle, as the Studio design does.
+A press on the sheet picks the face under it, and with **Keep strokes inside
+the face** on, a stroke stays in that face. **Paint on: Model** brings the 3D
+viewport back for painting straight onto the cubes.
+
+- **Brush sizes** count UV texels, so a 1 px brush covers a whole texel on a
+  texture drawn at twice the sheet's size.
+- **Strength** below 100% lays the colour over what is there. Each pixel is
+  blended once per stroke, so overlapping stamps don't pile up.
+- **Mirror painting** puts a brush or eraser stroke on the cube mirrored
+  across X as well, with east and west swapped, as Blockbench does.
+- **On this model** in the Colour panel offers the colours the texture uses
+  most. The status bar reads out the texel under the pointer and its colour.
+
 ### Editing UVs and textures
 
 The UV panel is Blockbench's UV editor. It shows the selected cube's six
@@ -911,6 +938,9 @@ unwrap that starts at `uvOffset`:
 With it off, each face is edited on its own. Turning it on keeps the stored
 start while the faces still sit where it put them. Otherwise it unwraps from
 the faces' top left. The code is in `lib/uv-edit.ts`.
+
+**Move pixels with the face**, under the sheet, makes a face dragged to a
+new place take its pixels with it, in the same undo step.
 
 **Re-unwrap** lays the selected cubes out again as a box at their size. A cube
 stays where its unwrap starts when it still fits and overlaps nothing.
@@ -1005,6 +1035,7 @@ code the editor runs.
 | `layout.test.mjs` | Every mode of a mob, an item and a block opens without errors and with no control covered; the Studio layout; the other pages load |
 | `interchange.test.mjs` | A Blockbench project with groups, loose cubes, a mesh, Molang, bezier keys, effects and an IK null comes in whole; Java JSON comes in and round-trips; glTF has a node per bone, an animation per clip and no inward triangles; the OBJ zip; opening both through the editor |
 | `paint.test.mjs` | The paint sheet, face picking, keeping strokes inside a face, painting on the model, the palette |
+| `modes.test.mjs` | A display slot takes and resets a transform; the real-world view opens and closes; a behaviour cycle runs and takes a stage |
 | `bundle.test.mjs` | `dist/vellum.html` opens and keeps its unprefixed `backdrop-filter`; skipped until `pnpm build:single` has run |
 
 Chromium is taken from `/opt/pw-browsers/chromium` when it is there,

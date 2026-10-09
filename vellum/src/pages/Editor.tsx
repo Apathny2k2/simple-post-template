@@ -195,7 +195,7 @@ type Actions = {
 
 function buildMenus(
   actions: Actions,
-  state: { undoLabel: string | null; redoLabel: string | null; hasClip: boolean },
+  state: { undoLabel: string | null; redoLabel: string | null; hasClip: boolean; keymap: Keymap; onKeymap: (k: Keymap) => void },
 ): Array<{ label: string; entries: MenuEntry[] }> {
   return [
     {
@@ -233,6 +233,12 @@ function buildMenus(
           icon: 'redo',
           shortcut: 'Ctrl ⇧ Z',
           onSelect: actions.onRedo,
+        },
+        { kind: 'separator' },
+        {
+          label: state.keymap === 'blender' ? 'Keys: Blender (switch to Blockbench)' : 'Keys: Blockbench (switch to Blender)',
+          icon: 'sliders',
+          onSelect: () => state.onKeymap(state.keymap === 'blender' ? 'blockbench' : 'blender'),
         },
         { kind: 'separator' },
         { label: 'Cut', icon: 'copy', shortcut: 'Ctrl X', onSelect: actions.onCut },
@@ -618,6 +624,23 @@ function StatusTexel({ sink, fallback }: { sink: React.MutableRefObject<((text: 
   }, [sink])
   return <>{text ?? fallback}</>
 }
+
+/* ================= keymap ================= */
+
+/** Blockbench's keys by default; Blender's for people who come from there. */
+type Keymap = 'blockbench' | 'blender'
+
+const KEYMAP_STORE = 'vellum.keymap'
+const readKeymap = (): Keymap => {
+  try {
+    return localStorage.getItem(KEYMAP_STORE) === 'blender' ? 'blender' : 'blockbench'
+  } catch {
+    return 'blockbench'
+  }
+}
+
+/** The key a tool shows on the dock under each keymap; Blender grabs with G. */
+const keyFor = (keymap: Keymap, id: string, key?: string) => (keymap === 'blender' && id === 'move' ? 'G' : keymap === 'blender' && id === 'vertex' ? undefined : key)
 
 /* ================= panel shell ================= */
 
@@ -5056,9 +5079,23 @@ export function Editor({ segments }: { segments: string[] }) {
     [model, fileName, kind, textureIndex, loadModel, runSave, selected, selection, bones, history, anim, animBone, guarded, rescale, refuseLocked, setSelected, focusOn, removeNull],
   )
 
+  const [keymap, setKeymap] = useState<Keymap>(readKeymap)
+  const chooseKeymap = useCallback(
+    (k: Keymap) => {
+      setKeymap(k)
+      try {
+        localStorage.setItem(KEYMAP_STORE, k)
+      } catch {
+        /* kept for this visit only */
+      }
+      notify(k === 'blender' ? 'Blender keys: G grab, R rotate, S scale, X delete, A select all, Alt+A none, Shift+D duplicate, Shift+A add cube, I key.' : 'Blockbench keys: V move, S resize, R rotate, P pivot, X vertex snap, K key.', 8000)
+    },
+    [notify],
+  )
+
   const menus = useMemo(
-    () => buildMenus(actions, { undoLabel: history.undoLabel, redoLabel: history.redoLabel, hasClip: !!clip }),
-    [actions, history.undoLabel, history.redoLabel, clip],
+    () => buildMenus(actions, { undoLabel: history.undoLabel, redoLabel: history.redoLabel, hasClip: !!clip, keymap, onKeymap: chooseKeymap }),
+    [actions, history.undoLabel, history.redoLabel, clip, keymap, chooseKeymap],
   )
 
   // keyboard shortcuts; all but Ctrl+S are ignored while a field has focus
@@ -5189,6 +5226,26 @@ export function Editor({ segments }: { segments: string[] }) {
         return
       }
 
+      /* Blender's keys, when chosen: G grab, X delete, A and Alt+A select all
+         and none, Shift+D duplicate, Shift+A add, I insert a key. R and S
+         already match; the numpad views and H are shared. */
+      if (keymap === 'blender' && (mode === 'edit' || mode === 'animate')) {
+        const k = e.key.toLowerCase()
+        const run = (fn: () => void) => {
+          e.preventDefault()
+          fn()
+        }
+        if (k === 'g' && !e.shiftKey && !e.altKey) return run(() => setTool('move'))
+        if (k === 'x' && !e.shiftKey && !e.altKey)
+          return run(() => (mode === 'animate' && anim.selectedKeys.length ? anim.removeKeys() : editing ? actions.onDelete() : undefined))
+        if (k === 'a' && e.altKey) return run(() => (mode === 'animate' ? anim.selectKeys([], 'set') : setSelection([])))
+        if (k === 'a' && e.shiftKey && editing) return run(actions.onAddCube)
+        if (k === 'a' && !e.shiftKey)
+          return run(() => (mode === 'animate' && clip ? anim.selectKeys(clip.tracks.flatMap((t) => t.keys.map((x) => x.id)), 'set') : actions.onSelectAll()))
+        if (k === 'd' && e.shiftKey) return run(() => (mode === 'animate' ? anim.duplicateClip() : actions.onDuplicate()))
+        if (k === 'i' && mode === 'animate') return run(actions.onAddKey)
+      }
+
       /* tool keys, Blockbench's: V move, S resize (scale when posing), R rotate, P pivot, X vertex snap;
          in Paint B brush, E eraser, F fill, C colour picker, U shape */
       const toolKey = toolsets[mode].find((t) => t.key && t.key.toLowerCase() === e.key.toLowerCase() && !e.altKey)
@@ -5251,7 +5308,7 @@ export function Editor({ segments }: { segments: string[] }) {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [history, actions, anim, mode, selectedKey, selectedKeys, selectedEvent, selectedNull, animBone, selected, vertexFrom, clip, notify])
+  }, [history, actions, anim, mode, selectedKey, selectedKeys, selectedEvent, selectedNull, animBone, selected, vertexFrom, clip, notify, keymap])
 
   /* .vellum opens as it is. A Blockbench project or a Java model is
      converted on the way in and saves as a .vellum; what did not carry
@@ -5372,7 +5429,7 @@ export function Editor({ segments }: { segments: string[] }) {
             viewApi.current?.setView(at[0], at[1])
           }}
           dock={
-            mode === 'edit' || mode === 'animate' ? <ToolDock tools={toolsets[mode]} tool={tool} onTool={(id) => { setTool(id); setVertexFrom(null) }} /> : null
+            mode === 'edit' || mode === 'animate' ? <ToolDock tools={toolsets[mode].map((t) => ({ ...t, key: keyFor(keymap, t.id, t.key) }))} tool={tool} onTool={(id) => { setTool(id); setVertexFrom(null) }} /> : null
           }
           controls={
             <>
