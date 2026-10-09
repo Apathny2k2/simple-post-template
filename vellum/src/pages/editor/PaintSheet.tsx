@@ -1,11 +1,14 @@
 /* Paint mode's middle: the texture sheet, large, as the Studio design draws
    it. The selected cube's faces are outlined and labelled, the face being
    painted is lit, and other cubes' faces are dashed. Strokes go to the
-   editor in UV units; the editor turns them into the texture's pixels. */
+   editor in UV units; the editor turns them into the texture's pixels.
+   An animated texture shows the frame being painted, and the bar under
+   the sheet picks it and sets how the frames play. */
 
 import { useEffect, useRef, useState } from 'react'
 import { FACES } from '../../lib/model'
-import type { Cube, FaceKey, Mesh, Model, Texture } from '../../lib/model'
+import type { Cube, FaceKey, Mesh, Model, Texture, TextureAnimation } from '../../lib/model'
+import { frameCount, sheetImage } from '../../lib/texture-anim'
 import { faceOrder } from '../../lib/mesh'
 import { faceBounds } from '../../lib/texture'
 import { Icon } from '../../lib/icons'
@@ -21,6 +24,11 @@ export function PaintSheet({
   face,
   onPaint,
   onHover,
+  frame = 0,
+  onFrame,
+  onAddFrame,
+  onRemoveFrame,
+  onAnimation,
 }: {
   model: Model
   texture: Texture | null
@@ -32,16 +40,23 @@ export function PaintSheet({
   onPaint: (u: number, v: number, phase: 'down' | 'move') => void
   /** the point under the pointer, in UV units, or null when it leaves */
   onHover: (at: [number, number] | null) => void
+  /** the frame painted on, for an animated texture */
+  frame?: number
+  onFrame?: (frame: number) => void
+  /** adds a copy of the frame shown, after it; a still texture becomes animated */
+  onAddFrame?: () => void
+  onRemoveFrame?: () => void
+  onAnimation?: (next: TextureAnimation) => void
 }) {
   const { width, height } = model.resolution
-  const frame = useRef<HTMLDivElement>(null)
+  const box = useRef<HTMLDivElement>(null)
   const sheet = useRef<HTMLDivElement>(null)
   const [zoom, setZoom] = useState<number | null>(null)
 
   // the first zoom fits the sheet to the frame, in whole steps so texels stay square
   useEffect(() => {
-    if (zoom !== null || !frame.current) return
-    const r = frame.current.getBoundingClientRect()
+    if (zoom !== null || !box.current) return
+    const r = box.current.getBoundingClientRect()
     const fit = Math.min((r.width - 48) / width, (r.height - 48) / height)
     setZoom(ZOOMS.filter((z) => z <= fit).pop() ?? 1)
   }, [zoom, width, height])
@@ -54,7 +69,7 @@ export function PaintSheet({
   }
 
   useEffect(() => {
-    const node = frame.current
+    const node = box.current
     if (!node) return
     const onWheel = (e: WheelEvent) => {
       if (!e.ctrlKey && !e.metaKey) return
@@ -112,7 +127,7 @@ export function PaintSheet({
         </span>
       </header>
 
-      <div className="psheet__frame" ref={frame}>
+      <div className="psheet__frame" ref={box}>
         <div
           ref={sheet}
           className={`psheet__sheet${z >= 6 ? ' psheet__sheet--grid' : ''}`}
@@ -120,7 +135,7 @@ export function PaintSheet({
             width: width * z,
             height: height * z,
             ['--texel' as string]: `${z}px`,
-            ...(texture?.source ? { backgroundImage: `url(${texture.source})` } : {}),
+            ...sheetImage(texture, model, frame),
           }}
           onPointerDown={(e) => {
             if (e.button !== 0) return
@@ -169,6 +184,10 @@ export function PaintSheet({
         </div>
       </div>
 
+      {texture && onAddFrame ? (
+        <FrameBar model={model} texture={texture} frame={frame} onFrame={onFrame} onAddFrame={onAddFrame} onRemoveFrame={onRemoveFrame} onAnimation={onAnimation} />
+      ) : null}
+
       <footer className="psheet__foot">
         {mesh ? (
           <>
@@ -182,6 +201,83 @@ export function PaintSheet({
           'Pick a cube in the outliner, or click one of its faces here, to paint it.'
         )}
       </footer>
+    </div>
+  )
+}
+
+/** An animated texture's frames: which one is painted, and how they play. */
+function FrameBar({
+  model,
+  texture,
+  frame,
+  onFrame,
+  onAddFrame,
+  onRemoveFrame,
+  onAnimation,
+}: {
+  model: Model
+  texture: Texture
+  frame: number
+  onFrame?: (frame: number) => void
+  onAddFrame: () => void
+  onRemoveFrame?: () => void
+  onAnimation?: (next: TextureAnimation) => void
+}) {
+  const n = frameCount(texture, model)
+  const a: TextureAnimation = texture.animation ?? { frameTime: 1 }
+  if (n < 2) {
+    return (
+      <div className="psheet__frames" role="group" aria-label="Frames">
+        <span className="psheet__frames-label">One frame</span>
+        <button className="chip" onClick={onAddFrame} title="Copy this image as a second frame, making the texture animated">
+          <Icon name="plus" size={11} /> Frame
+        </button>
+      </div>
+    )
+  }
+  return (
+    <div className="psheet__frames" role="group" aria-label="Frames">
+      <span className="psheet__frames-label">Frame</span>
+      <button className="icon-btn" aria-label="Previous frame" disabled={frame <= 0} onClick={() => onFrame?.(frame - 1)}>
+        <Icon name="chevronLeft" size={13} />
+      </button>
+      <span className="psheet__frame-no mono" aria-live="polite">
+        {frame + 1} / {n}
+      </span>
+      <button className="icon-btn" aria-label="Next frame" disabled={frame >= n - 1} onClick={() => onFrame?.(frame + 1)}>
+        <Icon name="chevronRight" size={13} />
+      </button>
+      <button className="chip" onClick={onAddFrame} title="Add a copy of this frame after it">
+        <Icon name="plus" size={11} /> Frame
+      </button>
+      <button className="chip chip--danger" onClick={onRemoveFrame} title="Delete this frame">
+        Delete
+      </button>
+      <label className="psheet__field" title="Game ticks each frame shows for; 20 ticks is a second">
+        Ticks
+        <input
+          type="number"
+          min={1}
+          max={200}
+          aria-label="Ticks per frame"
+          value={a.frameTime}
+          onChange={(e) => onAnimation?.({ ...a, frameTime: Math.max(1, Math.round(Number(e.target.value) || 1)) })}
+        />
+      </label>
+      <select
+        className="psheet__select"
+        aria-label="Frame order"
+        value={a.mode ?? 'loop'}
+        onChange={(e) => onAnimation?.({ ...a, mode: e.target.value === 'loop' ? undefined : (e.target.value as TextureAnimation['mode']) })}
+      >
+        <option value="loop">Loop</option>
+        <option value="backwards">Backwards</option>
+        <option value="back_and_forth">Back and forth</option>
+      </select>
+      <label className="psheet__check">
+        <input type="checkbox" checked={!!a.interpolate} onChange={(e) => onAnimation?.({ ...a, interpolate: e.target.checked || undefined })} />
+        Blend
+      </label>
     </div>
   )
 }

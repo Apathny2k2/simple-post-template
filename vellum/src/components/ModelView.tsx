@@ -10,6 +10,7 @@ import type { BuiltScene } from '../lib/gl/scene'
 import { drawView, glAvailable, onTextureReady } from '../lib/gl/renderer'
 import type { Rgba } from '../lib/gl/renderer'
 import { pickAt } from '../lib/gl/pick'
+import { hasAnimatedTextures, textureFrames } from '../lib/texture-anim'
 import type { Hit } from '../lib/gl/pick'
 import { Gizmo } from './Gizmo'
 import type { Basis, GizmoEvent, GizmoSpec } from './Gizmo'
@@ -143,6 +144,8 @@ type Props = {
   anchorAt?: 'floor' | 'centre'
   /** an explicit stage origin, in model units, overriding `anchorAt` */
   anchorOn?: Vec3 | null
+  /** holds animated textures on these frames (by texture id) instead of playing them; Paint holds the frame being painted */
+  textureFrame?: ReadonlyMap<string, number> | null
   /** 'wire' draws every edge and no faces */
   shading?: 'solid' | 'wire'
   className?: string
@@ -226,6 +229,7 @@ export function ModelView({
   anchorAt = 'floor',
   anchorOn = null,
   shading = 'solid',
+  textureFrame = null,
   className = '',
 }: Props) {
   const [ownYaw, setYaw] = useState(initialYaw)
@@ -396,6 +400,7 @@ export function ModelView({
 
   /* ---------------- drawing ---------------- */
 
+  const animated = useMemo(() => hasAnimatedTextures(model), [model])
   const draw = useCallback(() => {
     const c = canvas.current
     if (!c || !size.w || !size.h) return
@@ -410,12 +415,29 @@ export function ModelView({
       scene,
       ghosts: ghostScenes,
       grid: grid ? { size: 16 * 2.6, cell: 4, at: anchor, line: colours.grid, border: colours.border } : null,
+      frames: animated ? textureFrames(model, performance.now() / 1000, textureFrame) : undefined,
     })
-  }, [camera, scene, ghostScenes, grid, anchor, colours, size])
+  }, [camera, scene, ghostScenes, grid, anchor, colours, size, animated, model, textureFrame])
   const drawRef = useRef(draw)
   drawRef.current = draw
   useLayoutEffect(() => draw(), [draw])
   useEffect(() => onTextureReady(() => drawRef.current()), [])
+  // animated textures play on the game's clock, twenty ticks a second; reduced motion holds their first frame
+  useEffect(() => {
+    if (!animated || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return
+    let raf = 0
+    let last = -1
+    const tick = (now: number) => {
+      const t = Math.floor(now / 50)
+      if (t !== last) {
+        last = t
+        drawRef.current()
+      }
+      raf = requestAnimationFrame(tick)
+    }
+    raf = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(raf)
+  }, [animated])
 
   /* ---------------- picking ---------------- */
 

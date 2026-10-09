@@ -121,6 +121,24 @@ export type Texture = {
    * flattened, so whatever reads `source` sees the finished image.
    */
   layers?: TextureLayer[]
+  /**
+   * How an animated texture plays (v14). A texture is animated when its
+   * image is a strip of frames, top to bottom, each the UV sheet's shape
+   * (`frameCount`); this says how fast and in what order they go.
+   */
+  animation?: TextureAnimation
+}
+
+/** Playback of an animated texture, as Blockbench and Java's `.mcmeta` describe it. */
+export type TextureAnimation = {
+  /** game ticks (1/20 s) each frame shows for */
+  frameTime: number
+  /** the frames in order, front to back and round again, or back and forth; unset is 'loop' */
+  mode?: 'loop' | 'backwards' | 'back_and_forth'
+  /** an explicit frame order, by index; overrides `mode` */
+  order?: number[]
+  /** cross-fade into the next frame, as Java's `interpolate` does */
+  interpolate?: boolean
 }
 
 /** One layer of a texture: its own pixels, whether it shows, and how strongly. */

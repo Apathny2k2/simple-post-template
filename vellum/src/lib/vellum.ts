@@ -37,12 +37,13 @@ import type {
   ProjectKind,
   Subtype,
   Texture,
+  TextureAnimation,
   UVRect,
   Vec3,
 } from './model'
 
 export const FORMAT = 'model'
-export const CURRENT_VERSION = 13
+export const CURRENT_VERSION = 14
 
 /** A well-formed `.vellum` begins with exactly these bytes. */
 export const HEADER_PREFIX = `{"vellum":{"format":"${FORMAT}","version":${CURRENT_VERSION}},`
@@ -101,6 +102,8 @@ type VellumTexture = {
   source?: string
   /** added in v13: paint layers, bottom first; `source` is them flattened */
   layers?: Array<{ id: string; name: string; source: string; hidden?: boolean; opacity?: number }>
+  /** added in v14: how an animated texture (a strip of frames) plays */
+  animation?: { frame_time: number; mode?: 'backwards' | 'back_and_forth'; order?: number[]; interpolate?: true }
 }
 
 /** A bezier key's handles: all four arrays or none. A partial set is dropped on read. */
@@ -315,6 +318,14 @@ export function toVellumDocument(model: Model): VellumDocument {
       layers: t.layers?.length
         ? t.layers.map((l) => compact({ id: l.id, name: l.name, source: l.source, hidden: l.visible ? undefined : true, opacity: l.opacity === 1 ? undefined : l.opacity }))
         : undefined,
+      animation: t.animation
+        ? compact({
+            frame_time: t.animation.frameTime,
+            mode: t.animation.mode && t.animation.mode !== 'loop' ? t.animation.mode : undefined,
+            order: t.animation.order?.length ? t.animation.order : undefined,
+            interpolate: t.animation.interpolate ? (true as const) : undefined,
+          })
+        : undefined,
     }),
   )
 
@@ -464,6 +475,16 @@ function writeControllers(model: Model): VellumController[] | undefined {
 }
 
 /** Controllers off disk; a state, clip or transition missing what it needs is dropped. */
+/** A texture's animation off disk; a frame time that isn't a positive number makes it 1. */
+function readTextureAnimation(raw: unknown): { animation?: TextureAnimation } {
+  if (!raw || typeof raw !== 'object') return {}
+  const a = raw as Record<string, unknown>
+  const ft = typeof a.frame_time === 'number' && a.frame_time > 0 ? a.frame_time : 1
+  const mode = a.mode === 'backwards' || a.mode === 'back_and_forth' ? a.mode : undefined
+  const order = Array.isArray(a.order) ? a.order.filter((i): i is number => Number.isInteger(i) && i >= 0) : []
+  return { animation: { frameTime: ft, ...(mode ? { mode } : {}), ...(order.length ? { order } : {}), ...(a.interpolate === true ? { interpolate: true } : {}) } }
+}
+
 function readControllers(raw: unknown): Controller[] | undefined {
   const text = (v: unknown) => (typeof v === 'string' ? v : '')
   const list = objects(raw as VellumController[] | undefined)
@@ -700,6 +721,9 @@ function upgrade(doc: VellumDocument): VellumDocument {
       case 12: // v13 added texture layers; absent is already correct
         version = 13
         break
+      case 13: // v14 added texture animation; absent is already correct
+        version = 14
+        break
       default:
         throw new VellumFormatError(`No upgrade path from .vellum version ${version}.`)
     }
@@ -765,6 +789,7 @@ export function fromVellumDocument(doc: VellumDocument): Model {
         }))
       return layers.length ? { layers } : {}
     })(),
+    ...readTextureAnimation(t.animation),
   }))
 
   const cubes: Cube[] = (doc.cubes ?? []).map((c) => {

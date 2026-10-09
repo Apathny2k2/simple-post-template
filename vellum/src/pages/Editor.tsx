@@ -132,6 +132,7 @@ import {
   unwrapOrigin,
 } from '../lib/uv-edit'
 import type { UvHandle } from '../lib/uv-edit'
+import { frameCount, frameHeight, restack, sheetImage } from '../lib/texture-anim'
 import { PRIMITIVES, centreOf, faceOrder, deleteEdges, deleteFaces, deleteVertices, edgeEnds, edgeVerticesOf, edgesOf, extrudeFaces, flipFaces, loopCut, makeMesh, mergeVertices, moveVertices, subdivide, verticesOf, mirrorFacesUv, projectUv, turnFacesUv, bevel, cubeToMesh, joinMeshes, mergeByDistance, separateFaces, dissolveEdges, edgeLoop, fillFace, insetFaces, knifeCut, rotateVertices, scaleVertices, slideEdges, unwrapJoined, followMirrorVertices } from '../lib/mesh'
 import type { KnifePoint } from '../lib/mesh'
 import type { Primitive } from '../lib/mesh'
@@ -1254,7 +1255,7 @@ function UVPanel({
         style={{
           width: `${zoom * 100}%`,
           aspectRatio: `${width} / ${height}`,
-          ...(texture?.source ? { backgroundImage: `url(${texture.source})`, backgroundSize: '100% 100%', imageRendering: 'pixelated' } : {}),
+          ...sheetImage(texture, model),
         }}
         onPointerDown={
           onPaint
@@ -2464,6 +2465,7 @@ function Viewport({
   onDeselect,
   onPaint,
   display,
+  textureFrame,
   selection,
   gizmo,
   onGizmo,
@@ -2522,6 +2524,8 @@ function Viewport({
   view: ViewPreset
   onViewPreset: (v: ViewPreset) => void
   onPaint?: (cubeId: string, face: FaceKey, u: number, v: number, phase: 'down' | 'move') => void
+  /** animated textures held on these frames, by texture id */
+  textureFrame?: ReadonlyMap<string, number> | null
   display?: { rotation: Vec3; translation: Vec3; scale: Vec3 } | null
 }) {
   const [shading, setShading] = useState<'solid' | 'wire'>('solid')
@@ -2567,6 +2571,7 @@ function Viewport({
                   meshPick={meshPick}
                   onPaintMesh={onPaintMesh}
                   shading={shading}
+                  textureFrame={textureFrame}
                   display={display}
                   gizmo={gizmo}
                   onGizmo={onGizmo}
@@ -2591,6 +2596,7 @@ function Viewport({
                   meshPick={meshPick}
                   onPaintMesh={onPaintMesh}
             shading={shading}
+            textureFrame={textureFrame}
             display={display}
             gizmo={gizmo}
             onGizmo={onGizmo}
@@ -4098,6 +4104,8 @@ export function Editor({ segments }: { segments: string[] }) {
   const strokeTouched = useRef<Set<number>>(new Set())
   /** the texture picked on the sheet's bar; null follows the selected face */
   const [paintPick, setPaintPick] = useState<string | null>(null)
+  /** the frame painted on, per animated texture; the viewport and the sheet hold it while in Paint */
+  const [paintFrame, setPaintFrame] = useState<Record<string, number>>({})
   /** where a sheet stroke may write, in pixels: the face it started on */
   const strokeClip = useRef<UVRect | null>(null)
   /** the status bar's texel readout, set without re-rendering the editor */
@@ -4290,6 +4298,31 @@ export function Editor({ segments }: { segments: string[] }) {
       history.commit(label, (m) => ({ ...m, textures: m.textures.map((x) => (x.id === texId ? done : x)) }))
     },
     [model.textures, history],
+  )
+  /** Paint holds each animated texture on the frame being painted. */
+  const heldFrames = useMemo(() => new Map(Object.entries(paintFrame)), [paintFrame])
+  /** Adds a copy of a frame after it, or deletes one, on the texture and every layer. */
+  const editFrames = useCallback(
+    async (texId: string, op: 'add' | 'remove') => {
+      const t = model.textures.find((x) => x.id === texId)
+      if (!t) return
+      const n = frameCount(t, model)
+      const fh = t.height / n
+      const at = Math.min(n - 1, paintFrame[texId] ?? 0)
+      if (op === 'remove' && n < 2) return
+      const picks = Array.from({ length: n }, (_, i) => i).flatMap((i) => (op === 'add' ? (i === at ? [i, i] : [i]) : i === at ? [] : [i]))
+      const source = await restack(t.source, t.width, fh, t.height, picks)
+      const layers = t.layers?.length
+        ? await Promise.all(t.layers.map(async (l) => ({ ...l, source: await restack(l.source, t.width, fh, t.height, picks) })))
+        : undefined
+      const height = Math.round(fh * picks.length)
+      const next: Texture = { ...t, source, height, ...(layers ? { layers } : {}) }
+      // down to one frame the texture is still again
+      if (picks.length < 2) delete next.animation
+      history.commit(op === 'add' ? 'add frame' : 'delete frame', (m) => ({ ...m, textures: m.textures.map((x) => (x.id === texId ? next : x)) }))
+      setPaintFrame((cur) => ({ ...cur, [texId]: op === 'add' ? at + 1 : Math.max(0, at - 1) }))
+    },
+    [model, paintFrame, history],
   )
   const layerOps = useMemo(
     () => ({
@@ -5409,6 +5442,18 @@ export function Editor({ segments }: { segments: string[] }) {
       /* skip while the texture is being decoded again (after an undo, say),
          or the stroke would land on the stale canvas */
       if (!surface || decoding.current.has(textureId)) return
+      // an animated texture paints the frame picked for it, and stays inside that frame
+      const tex = model.textures.find((t) => t.id === textureId)
+      const frames = tex ? frameCount(tex, model) : 1
+      if (frames > 1) {
+        const fh = surface.height / frames
+        const oy = Math.min(frames - 1, paintFrame[textureId] ?? 0) * fh
+        const frame: UVRect = [0, oy, surface.width, oy + fh]
+        const shift = (r: UVRect | null): UVRect | null => (r ? [r[0], r[1] + oy, r[2], r[3] + oy] : null)
+        y += oy
+        bounds = shift(bounds) ?? frame
+        clip = shift(clip) ?? frame
+      }
 
       if (tool === 'pipette') {
         const sampled = pick(surface, x, y)
@@ -5460,7 +5505,7 @@ export function Editor({ segments }: { segments: string[] }) {
       last.current = [x, y]
       commitTexture(textureId)
     },
-    [tool, colour, brush, shape, shapeFilled, commitTexture, opacity],
+    [tool, colour, brush, shape, shapeFilled, commitTexture, opacity, model, paintFrame],
   )
 
   /* A stroke is one undo step. Flush the pending frame first, or it would
@@ -5668,11 +5713,13 @@ export function Editor({ segments }: { segments: string[] }) {
       const [sx, sy] = pixelScale(model, texture)
       const x = Math.floor(at[0] * sx)
       const y = Math.floor(at[1] * sy)
+      // on an animated texture, read from the frame being painted
+      const f = Math.min(frameCount(texture, model) - 1, paintFrame[texture.id] ?? 0)
       const surface = surfaces.current.get(texture.id)
-      const rgba = surface ? pick(surface, x, y) : null
+      const rgba = surface ? pick(surface, x, y + f * frameHeight(texture, model)) : null
       hoverSink.current?.(`Texel ${x}, ${y}${rgba && rgba[3] ? ` \u00b7 ${rgbaToHex(rgba).toUpperCase()}` : ' \u00b7 clear'}`)
     },
-    [paintTexture, model],
+    [paintTexture, model, paintFrame],
   )
 
   /** The colours the painted texture uses most, for the Colour panel. */
@@ -5721,11 +5768,15 @@ export function Editor({ segments }: { segments: string[] }) {
             const tex = model.textures.find((t) => t.id === texId)
             if (!surface || !tex) continue
             const [sx, sy] = pixelScale(model, tex)
-            const px = (r: UVRect) => [Math.round(r[0] * sx), Math.round(r[1] * sy), Math.round((r[2] - r[0]) * sx), Math.round((r[3] - r[1]) * sy)] as const
-            // lift every face first, then clear and set down, so faces that swap places both survive
-            const lifted = list.map(({ a, b }) => ({ img: surface.ctx.getImageData(...px(a)), a, b }))
-            for (const { a } of lifted) surface.ctx.clearRect(...px(a))
-            for (const { img, b } of lifted) surface.ctx.putImageData(img, px(b)[0], px(b)[1])
+            // an animated texture's faces move in every frame
+            const fh = frameHeight(tex, model)
+            for (let f = 0; f < frameCount(tex, model); f++) {
+              const px = (r: UVRect) => [Math.round(r[0] * sx), Math.round(r[1] * sy + f * fh), Math.round((r[2] - r[0]) * sx), Math.round((r[3] - r[1]) * sy)] as const
+              // lift every face first, then clear and set down, so faces that swap places both survive
+              const lifted = list.map(({ a, b }) => ({ img: surface.ctx.getImageData(...px(a)), a, b }))
+              for (const { a } of lifted) surface.ctx.clearRect(...px(a))
+              for (const { img, b } of lifted) surface.ctx.putImageData(img, px(b)[0], px(b)[1])
+            }
             const source = toDataUrl(surface)
             encoded.current.set(texId, source)
             history.amend((m) => ({ ...m, textures: m.textures.map((t) => (t.id === texId ? { ...t, source } : t)) }))
@@ -6760,6 +6811,7 @@ export function Editor({ segments }: { segments: string[] }) {
             setVertexFrom(null)
           }}
           onPaint={mode === 'paint' ? paintOnModel : undefined}
+          textureFrame={mode === 'paint' ? heldFrames : null}
           display={mode === 'display' && kind !== 'mobs' ? displayState[slot] : null}
           gizmo={gizmo}
           onGizmo={onGizmo}
@@ -7208,6 +7260,14 @@ export function Editor({ segments }: { segments: string[] }) {
                 face={face}
                 onPaint={paintOnSheet}
                 onHover={hoverSheet}
+                frame={paintTexture ? Math.min(frameCount(paintTexture, model) - 1, paintFrame[paintTexture.id] ?? 0) : 0}
+                onFrame={(f) => paintTexture && setPaintFrame((cur) => ({ ...cur, [paintTexture.id]: f }))}
+                onAddFrame={() => paintTexture && void editFrames(paintTexture.id, 'add')}
+                onRemoveFrame={() => paintTexture && void editFrames(paintTexture.id, 'remove')}
+                onAnimation={(a) =>
+                  paintTexture &&
+                  history.commit('frame timing', (m) => ({ ...m, textures: m.textures.map((x) => (x.id === paintTexture.id ? { ...x, animation: a } : x)) }))
+                }
               />
             ) : null}
           </div>

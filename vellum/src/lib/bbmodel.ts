@@ -14,7 +14,7 @@
    checks that for every sample. */
 
 import { FACES, keyAddress } from './model'
-import type { Bone, BoneChild, Clip, ClipEvent, Cube, Face, FaceKey, Interpolation, Key, Mesh, MeshFace, Model, NullObject, ProjectKind, Texture, Track, UVRect, Vec3 } from './model'
+import type { Bone, BoneChild, Clip, ClipEvent, Cube, Face, FaceKey, Interpolation, Key, Mesh, MeshFace, Model, NullObject, ProjectKind, Texture, TextureAnimation, Track, UVRect, Vec3 } from './model'
 import { newId } from './new-model'
 import { boxFaces, unwrapOrigin } from './uv-edit'
 import { CURRENT_VERSION, readVellumOnly, vellumOnlyOf } from './vellum'
@@ -110,6 +110,21 @@ function uuidFor(id: string): string {
   }
   const x = hex.join('').slice(0, 32)
   return `${x.slice(0, 8)}-${x.slice(8, 12)}-4${x.slice(13, 16)}-a${x.slice(17, 20)}-${x.slice(20, 32)}`
+}
+
+/** A Blockbench texture's frame settings, when any differs from Blockbench's default. */
+function animationOf(t: Json): TextureAnimation | undefined {
+  const frameTime = Math.max(1, num(t.frame_time, 1))
+  const type = str(t.frame_order_type, 'loop')
+  const order = str(t.frame_order)
+    .split(/[\s,]+/)
+    .filter(Boolean)
+    .map(Number)
+    .filter((n) => Number.isInteger(n) && n >= 0)
+  const interpolate = t.frame_interpolate === true
+  const mode = type === 'backwards' || type === 'back_and_forth' ? type : undefined
+  if (frameTime === 1 && !mode && !order.length && !interpolate) return undefined
+  return { frameTime, ...(mode ? { mode } : {}), ...(order.length ? { order } : {}), ...(interpolate ? { interpolate } : {}) }
 }
 
 /* ---------------- detecting ---------------- */
@@ -210,7 +225,9 @@ export function fromBbmodel(text: string, fileName = 'model.bbmodel'): Imported 
       uvHeight: num(t.uv_height, resolution.height),
       source: source.startsWith('data:image') ? source : '',
     })
-    const extra = rest(t, ['uuid', 'name', 'width', 'height', 'uv_width', 'uv_height', 'source', 'id'], TEXTURE_DEFAULTS)
+    const extra = rest(t, ['uuid', 'name', 'width', 'height', 'uv_width', 'uv_height', 'source', 'id', 'frame_time', 'frame_order_type', 'frame_order', 'frame_interpolate'], TEXTURE_DEFAULTS)
+    const animation = animationOf(t)
+    if (animation) textures[textures.length - 1].animation = animation
     // the `id` Blockbench gave it, when that isn't just its place in the list
     const own = t.id !== undefined && String(t.id) !== String(i) ? { id: String(t.id) } : undefined
     if (extra || own) bag.textures[id] = { ...extra, ...own }
@@ -645,6 +662,10 @@ export function toBbmodel(model: Model): string {
     uv_height: t.uvHeight,
     uuid: uuidFor(t.id),
     source: t.source,
+    frame_time: t.animation?.frameTime ?? 1,
+    frame_order_type: t.animation?.mode ?? 'loop',
+    frame_order: t.animation?.order?.join(' ') ?? '',
+    frame_interpolate: t.animation?.interpolate === true,
   }))
 
   const nullIds = new Set((model.nulls ?? []).map((n) => n.id))

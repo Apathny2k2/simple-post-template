@@ -574,6 +574,30 @@
   font-size: 13.5px;
 }
 .psheet__foot b { color: var(--s-ink); font-weight: 600; }
+/* an animated texture's frames, under the sheet */
+.psheet__frames {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+  padding: 8px 14px;
+  border-top: 1px solid var(--s-line);
+  color: var(--s-ink-2);
+  font-size: 13px;
+}
+.psheet__frames-label { color: var(--s-ink-2); }
+.psheet__frame-no { min-width: 44px; text-align: center; color: var(--s-ink); font-variant-numeric: tabular-nums; }
+.psheet__field, .psheet__check { display: inline-flex; align-items: center; gap: 6px; }
+.psheet__field input {
+  width: 52px;
+  padding: 3px 6px;
+  border: 1px solid var(--s-line-2);
+  border-radius: 6px;
+  background: var(--s-sunk);
+  color: var(--s-ink);
+  font: 13px var(--font-mono);
+}
 
 /* ---------------- paint: the side panels ---------------- */
 

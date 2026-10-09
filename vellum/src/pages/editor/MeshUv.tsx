@@ -4,6 +4,7 @@
    moves that corner of that face only. Unwrap lays the picked faces out
    flat again, packed into free room. */
 
+import { sheetImage } from '../../lib/texture-anim'
 import { useRef, useState } from 'react'
 import type { Mesh, Model, Texture } from '../../lib/model'
 import { faceOrder, faceCentre, moveFacesUvBy, moveUvCorner, uvBoundsOf } from '../../lib/mesh'
@@ -115,7 +116,7 @@ export function MeshUvPanel({
             style={{
               width: `${zoom * 100}%`,
               aspectRatio: `${width} / ${height}`,
-              ...(texture?.source ? { backgroundImage: `url(${texture.source})`, backgroundSize: '100% 100%', imageRendering: 'pixelated' } : {}),
+              ...sheetImage(texture, model),
             }}
             onPointerMove={move}
             onPointerUp={end}

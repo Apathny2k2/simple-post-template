@@ -15,6 +15,8 @@ import type { Camera } from './camera'
 import type { BuiltScene, TriBatch } from './scene'
 
 export type Rgba = [number, number, number, number]
+/** v scale, the frame's v offset, the next frame's, and the mix toward it */
+export type Frame = [number, number, number, number]
 
 const TRI_VS = `#version 300 es
 uniform mat4 u_clip;
@@ -35,14 +37,20 @@ uniform sampler2D u_tex;
 uniform bool u_useTex;
 // 0: opaque texels only; 1: partly clear texels only; 2: everything
 uniform int u_pass;
-// an animated texture shows one frame: v is scaled and offset into the strip
-uniform vec2 u_frame;
+// an animated texture shows one frame of its strip: v scale, the frame's v offset,
+// the next frame's, and how far to mix toward it
+uniform vec4 u_frame;
 in vec2 v_uv;
 in vec4 v_col;
 out vec4 outColor;
 void main() {
   vec4 c = v_col;
-  if (u_useTex) c *= texture(u_tex, vec2(v_uv.x, v_uv.y * u_frame.x + u_frame.y));
+  if (u_useTex) {
+    vec2 a = vec2(v_uv.x, v_uv.y * u_frame.x + u_frame.y);
+    vec4 t = texture(u_tex, a);
+    if (u_frame.w > 0.0) t = mix(t, texture(u_tex, vec2(v_uv.x, v_uv.y * u_frame.x + u_frame.z)), u_frame.w);
+    c *= t;
+  }
   if (c.a < 0.004) discard;
   if (u_pass == 0 && c.a < 0.999) discard;
   if (u_pass == 1 && c.a >= 0.999) discard;
@@ -221,8 +229,8 @@ export type DrawInput = {
   /** onion-skin poses, drawn faintly over the model */
   ghosts?: BuiltScene[]
   grid?: Grid | null
-  /** which frame of each animated texture to show, by texture id: v scale and offset */
-  frames?: ReadonlyMap<string, [number, number]>
+  /** which frame of each animated texture to show, by texture id (see `textureFrames`) */
+  frames?: ReadonlyMap<string, Frame>
 }
 
 /**
@@ -283,7 +291,7 @@ export function drawView(target: HTMLCanvasElement, input: DrawInput): boolean {
   return true
 }
 
-function tris(g: Gl, batches: TriBatch[], clip: Float32Array, pass: 0 | 1 | 2, writeDepth: boolean, frames?: ReadonlyMap<string, [number, number]>) {
+function tris(g: Gl, batches: TriBatch[], clip: Float32Array, pass: 0 | 1 | 2, writeDepth: boolean, frames?: ReadonlyMap<string, Frame>) {
   const { gl, tri } = g
   if (!batches.length) return
   gl.useProgram(tri.prog)
@@ -300,8 +308,8 @@ function tris(g: Gl, batches: TriBatch[], clip: Float32Array, pass: 0 | 1 | 2, w
     // a textured batch whose image isn't decoded yet waits for it
     if (b.texture && !tex) continue
     gl.uniform1i(tri.loc.u_useTex, tex ? 1 : 0)
-    const f = (b.texture && frames?.get(b.texture.id)) ?? [1, 0]
-    gl.uniform2f(tri.loc.u_frame, f[0], f[1])
+    const f = (b.texture && frames?.get(b.texture.id)) ?? [1, 0, 0, 0]
+    gl.uniform4f(tri.loc.u_frame, f[0], f[1], f[2], f[3])
     if (tex) gl.bindTexture(gl.TEXTURE_2D, tex)
     if (b.doubleSided) gl.disable(gl.CULL_FACE)
     else {

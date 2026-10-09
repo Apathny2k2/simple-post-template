@@ -3,6 +3,7 @@
    Edition JSON. Geometry comes from the same rig maths the viewport and the
    gizmos use, so an export stands exactly as the model does on screen. */
 
+import { frameCount } from './texture-anim'
 import { FACES, textureById } from './model'
 import type { Bone, Cube, FaceKey, Mesh, Model, Vec3 } from './model'
 import { FACE_CORNERS, faceNormal, faceOrder } from './mesh'
@@ -17,6 +18,13 @@ const NORMALS: Record<FaceKey, Vec3> = { north: [0, 0, -1], south: [0, 0, 1], ea
 
 /** A face to write: its corners clockwise as seen from outside, with their UVs (0..1) and the face's normal. */
 export type Quad = { face: FaceKey | string; texture: string | null; points: Vec3[]; normal: Vec3; uv: Array<[number, number]> }
+
+/** A UV (0..1 over one frame) on the whole image, in its first frame: glTF and OBJ embed the strip and show frame one. */
+function frameOne(model: Model, q: Quad, uv: [number, number]): [number, number] {
+  const tex = textureById(model, q.texture)
+  const n = tex ? frameCount(tex, model) : 1
+  return n > 1 ? [uv[0], uv[1] / n] : uv
+}
 
 /** A mesh's faces as polygons, clockwise from outside like a cube's quads, each point through `place`. */
 function meshQuads(model: Model, mesh: Mesh, place: (p: Vec3) => Vec3, placeDir: (v: Vec3) => Vec3): Quad[] {
@@ -262,7 +270,7 @@ export function toGltf(model: Model): string {
         q.points.forEach((p, c) => {
           pos.set(p, (at + c) * 3)
           nor.set(q.normal, (at + c) * 3)
-          uv.set(q.uv[c], (at + c) * 2)
+          uv.set(frameOne(model, q, q.uv[c]), (at + c) * 2)
         })
         for (let c = 1; c < q.points.length - 1; c++) {
           idx.set([at, at + c + 1, at + c], ti)
@@ -415,7 +423,7 @@ export function toObjZip(model: Model): Uint8Array {
         current = mat
       }
       for (const p of q.points) lines.push(`v ${p.map((x) => +x.toFixed(6)).join(' ')}`)
-      for (const [s, t] of q.uv) lines.push(`vt ${+s.toFixed(6)} ${+(1 - t).toFixed(6)}`)
+      for (const [s, t] of q.uv.map((p) => frameOne(model, q, p))) lines.push(`vt ${+s.toFixed(6)} ${+(1 - t).toFixed(6)}`)
       lines.push(`vn ${q.normal.map((x) => +x.toFixed(6)).join(' ')}`)
       vn++
       lines.push(faceLine(4))
@@ -438,7 +446,7 @@ export function toObjZip(model: Model): Uint8Array {
         current = mat
       }
       for (const p of q.points) lines.push(`v ${p.map((x) => +x.toFixed(6)).join(' ')}`)
-      for (const [s2, t] of q.uv) lines.push(`vt ${+s2.toFixed(6)} ${+(1 - t).toFixed(6)}`)
+      for (const [s2, t] of q.uv.map((p) => frameOne(model, q, p))) lines.push(`vt ${+s2.toFixed(6)} ${+(1 - t).toFixed(6)}`)
       lines.push(`vn ${q.normal.map((x) => +x.toFixed(6)).join(' ')}`)
       vn++
       lines.push(faceLine(q.points.length))

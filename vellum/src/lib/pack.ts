@@ -15,7 +15,8 @@ import type { TranslationIssue } from './mcmodel'
 import { dataUriBytes, makeZip } from './zip'
 import type { ZipEntry } from './zip'
 import { bodyOf, configPath, hasConfig, keyConfirmed, toYaml } from './config'
-import type { Model, ProjectKind, Vec3 } from './model'
+import type { Model, ProjectKind, Texture, Vec3 } from './model'
+import { frameCount, frameHeight, frameSequence } from './texture-anim'
 
 export type PackItem = {
   /** the file name inside the pack, without extension */
@@ -163,6 +164,9 @@ export function buildPack(items: PackItem[], opts: PackOptions): PackReport {
         continue
       }
       files.push({ path, kind: 'png', bytes })
+      // an animated texture plays in game from the .mcmeta beside it
+      const meta = mcmetaOf(tex, item.model)
+      if (meta) files.push({ path: `${path}.mcmeta`, kind: 'json', bytes: json(meta) })
     }
   }
 
@@ -205,3 +209,25 @@ export const packZip = (report: PackReport): Uint8Array =>
 
 export const packBytes = (report: PackReport) =>
   report.files.reduce((n, f) => n + f.bytes.length, 0)
+
+/**
+ * A texture's `.mcmeta` for Java, when its image holds more than one frame:
+ * the ticks per frame, blending, and the frames in the order they play. A
+ * frame that isn't square says its size, as Java reads square frames
+ * otherwise.
+ */
+export function mcmetaOf(t: Texture, model: Model): Record<string, unknown> | null {
+  const n = frameCount(t, model)
+  if (n < 2) return null
+  const seq = frameSequence(t, model)
+  const plain = seq.length === n && seq.every((f, i) => f === i)
+  const fh = Math.round(frameHeight(t, model))
+  return {
+    animation: {
+      ...(t.animation?.frameTime && t.animation.frameTime !== 1 ? { frametime: t.animation.frameTime } : {}),
+      ...(t.animation?.interpolate ? { interpolate: true } : {}),
+      ...(plain ? {} : { frames: seq }),
+      ...(fh !== t.width ? { width: t.width, height: fh } : {}),
+    },
+  }
+}

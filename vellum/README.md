@@ -1164,6 +1164,22 @@ single image again. Layers are kept in the `.vellum` (v13) and, under its
 `vellum` key, in a `.bbmodel`, whose Blockbench texture is the flattened
 image.
 
+**Animated textures.** As in Blockbench and Java packs, an animated texture's
+image is a strip of frames from top to bottom, each the shape of the UV
+sheet, so a 16 by 64 image over a 16 by 16 sheet holds four
+(`lib/texture-anim.ts`). UVs stay in one frame's space, and `pixelScale`
+measures a frame, so everything that maps UVs to pixels lands in frame one;
+painting adds the frame being painted. Under the Paint sheet, + Frame adds a
+copy of the frame shown after it (a still texture becomes animated), Delete
+takes it out, and the arrows pick the frame painted on; a stroke can't cross
+into the next frame. Ticks sets how long each frame shows (20 ticks a
+second), the order is loop, backwards or back and forth, and Blend
+cross-fades as Java's `interpolate` does. The viewport plays the frames on
+the game's clock; Paint holds the frame being painted. The `.vellum` keeps
+the timing (v14), a `.bbmodel` writes Blockbench's `frame_time`,
+`frame_order_type`, `frame_order` and `frame_interpolate`, a Java pack gets
+a `.mcmeta` beside the PNG, and glTF and OBJ show the first frame.
+
 ### Editing UVs and textures
 
 The UV panel is Blockbench's UV editor. It shows the selected cube's six
@@ -1346,6 +1362,7 @@ code the editor runs.
 | `molang.test.mjs` | The evaluator's operators, math in degrees, queries, variables and statements; Molang keys playing, and kept through the `.vellum`, Blockbench and Bedrock; typing Molang on a key in Animate |
 | `controllers.test.mjs` | A controller moving between states, adding clips at weights, running entry scripts and cross-fading; controllers kept through the `.vellum`, the `.bbmodel` and Bedrock's files, with the entity file; making, playing and switching one in Animate |
 | `layers.test.mjs` | Layers flattened bottom first at their opacity, hidden ones left out, and merged down as they looked; kept through the `.vellum` and the `.bbmodel`; adding a layer, painting on it alone, hiding it and flattening in Paint |
+| `texture-anim.test.mjs` | Frames counted from the image and played in the order and at the speed set; the `.mcmeta`; timing kept through the `.vellum` and the `.bbmodel`; glTF showing frame one; adding a frame in Paint, painting on it alone, and the viewport playing the frames |
 | `modes.test.mjs` | A display slot takes and resets a transform; the real-world view opens and closes; a behaviour cycle runs and takes a stage |
 | `bundle.test.mjs` | `dist/vellum.html` opens and keeps its unprefixed `backdrop-filter`; skipped until `pnpm build:single` has run |
 

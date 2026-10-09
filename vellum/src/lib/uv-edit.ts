@@ -2,6 +2,7 @@
    rectangle, drag its edges, keep a box unwrap following its cube, give
    faces a texture, and unwrap a cube again after it changed size. */
 
+import { frameHeight } from './texture-anim'
 import { FACES, cubeSize } from './model'
 import type { Cube, Face, FaceKey, Model, Texture, UVRect } from './model'
 import { boxUvFaces, makeRoom } from './uv-pack'
@@ -187,9 +188,13 @@ export function freeTextureName(model: Model, base: string): string {
   return `${stem}_${i}.png`
 }
 
-/** Pixels per UV unit across and down, for a texture drawn larger or smaller than the sheet. */
+/**
+ * Pixels per UV unit across and down, for a texture drawn larger or smaller
+ * than the sheet. An animated texture's UVs cover one frame, so down is
+ * measured on a frame, and a texel lands in the first frame.
+ */
 export function pixelScale(model: Model, t: Texture): [number, number] {
-  return [t.width / (t.uvWidth || model.resolution.width), t.height / (t.uvHeight || model.resolution.height)]
+  return [t.width / (t.uvWidth || model.resolution.width), frameHeight(t, model) / (t.uvHeight || model.resolution.height)]
 }
 
 /**
