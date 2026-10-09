@@ -166,3 +166,10 @@
 /* the knife's cut so far: its points on edges, joined in order */
 .scene3d__knife polyline { fill: none; stroke: #ff7a59; stroke-width: 2; stroke-dasharray: 5 3; }
 .scene3d__knife circle { fill: #ff7a59; stroke: #fff; stroke-width: 1.5; }
+
+/* the axis a grab is held to, through the anchor and across the view */
+.scene3d__guide { position: absolute; inset: 0; z-index: 2; width: 100%; height: 100%; overflow: hidden; pointer-events: none; }
+.scene3d__guide line { stroke-width: 1.5; }
+.scene3d__guide--x line { stroke: #ff5c6c; }
+.scene3d__guide--y line { stroke: #8be04e; }
+.scene3d__guide--z line { stroke: #4e9bff; }

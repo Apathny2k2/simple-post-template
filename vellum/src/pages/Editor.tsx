@@ -181,11 +181,13 @@ type Actions = {
   onCloseLoop: () => void
   onQuad: () => void
   onGrid: () => void
+  /** Blender's grab: the selection follows the pointer */
+  onGrab: () => void
   onExportTexture: () => void
   onExportGltf: () => void
   onExportObj: () => void
   onExportJava: () => void
-  /** saves in the format named, and makes it the one Save and Ctrl S use */
+  /** saves in the format named; Save and Ctrl S then keep using it */
   onSaveAs: (format: SaveFormat) => void
   onSelectAll: () => void
   onCopy: () => void
@@ -273,6 +275,8 @@ function buildMenus(
     {
       label: 'Transform',
       entries: [
+        { label: 'Grab (follows the pointer)', icon: 'move', shortcut: state.keymap === 'blender' ? 'G' : '⇧ G', onSelect: actions.onGrab },
+        { kind: 'separator' },
         { label: 'Flip X', icon: 'move', onSelect: () => actions.onFlip(0) },
         { label: 'Flip Y', icon: 'move', onSelect: () => actions.onFlip(1) },
         { label: 'Flip Z', icon: 'move', onSelect: () => actions.onFlip(2) },
@@ -2412,7 +2416,10 @@ function Viewport({
   onViewPreset,
   meshPick,
   onPaintMesh,
+  guide,
 }: {
+  /** the axis a grab is held to */
+  guide?: 0 | 1 | 2 | null
   meshPick?: MeshPick | null
   onPaintMesh?: (meshId: string, face: string, u: number, v: number, phase: 'down' | 'move') => void
   model: Model
@@ -2527,6 +2534,7 @@ function Viewport({
             vertices={vertices}
             ghosts={ghosts}
             showNulls={showNulls}
+            guide={guide ?? null}
           />
         )}
 
@@ -4776,6 +4784,177 @@ export function Editor({ segments }: { segments: string[] }) {
     [vertexData, vertexFrom, snapVertex, meshVertexLayer],
   )
 
+  /* ---------------- grab ---------------- */
+
+  /* Blender's G: the selection follows the pointer until a click or Enter
+     puts it down, and Esc or a right click puts it back. X, Y or Z holds it
+     to that world axis and Shift with one to the plane across it; typed
+     digits move it exactly that far along the axis. On picked edges a
+     second G slides them along their faces instead. The move goes through
+     the gizmo's own handler, so it snaps and records one undo step the
+     same way a drag does. */
+  type Grab = { x0: number; y0: number; axis: 0 | 1 | 2 | null; plane: boolean; typed: string; slide: boolean; from: Model }
+  const [grab, setGrab] = useState<Grab | null>(null)
+  const grabRef = useRef(grab)
+  grabRef.current = grab
+  const pointerAt = useRef<[number, number]>([0, 0])
+  const grabLast = useRef<GizmoEvent | null>(null)
+  useEffect(() => {
+    const track = (e: PointerEvent) => {
+      pointerAt.current = [e.clientX, e.clientY]
+    }
+    window.addEventListener('pointermove', track, true)
+    return () => window.removeEventListener('pointermove', track, true)
+  }, [])
+
+  const startGrab = useCallback(() => {
+    if ((mode !== 'edit' && mode !== 'animate') || grabRef.current) return
+    // the grab measures the screen with the gizmo, so there must be one to move
+    if (!gizmo || knife !== null) {
+      notify('Pick something to grab first.', 2500)
+      return
+    }
+    if (tool !== 'move') setTool('move')
+    const [x, y] = pointerAt.current
+    const start: GizmoEvent = { phase: 'start', tool: 'move', handle: 'free', delta: [0, 0, 0], shift: false, ctrl: false }
+    onGizmo(start)
+    grabLast.current = start
+    setGrab({ x0: x, y0: y, axis: null, plane: false, typed: '', slide: false, from: model })
+  }, [mode, gizmo, knife, tool, onGizmo, model, notify])
+
+  const grabTo = useCallback(
+    (cx: number, cy: number, shift: boolean, ctrl: boolean) => {
+      const g = grabRef.current
+      if (!g) return
+      if (g.slide) {
+        // left and right slide the edges, a full rail every 160 pixels
+        meshOps.slide.set(Math.round(Math.max(-1, Math.min(1, (cx - g.x0) / 160)) * 50) / 50)
+        return
+      }
+      const b = viewApi.current?.basis()
+      if (!b) return
+      const S = b.s
+      const d = [cx - g.x0, cy - g.y0]
+      const typed = g.typed && g.typed !== '-' && g.typed !== '.' ? Number(g.typed) : NaN
+      let w: Vec3 = [0, 0, 0]
+      if (g.axis !== null && !g.plane) {
+        const s = S[g.axis]
+        const l2 = s[0] * s[0] + s[1] * s[1]
+        w[g.axis] = Number.isFinite(typed) ? typed : l2 > 1e-9 ? (s[0] * d[0] + s[1] * d[1]) / l2 : 0
+      } else if (g.axis !== null) {
+        const [i, j] = ([0, 1, 2] as const).filter((k) => k !== g.axis)
+        const det = S[i][0] * S[j][1] - S[j][0] * S[i][1]
+        if (Math.abs(det) < 1e-9) return
+        w[i] = (d[0] * S[j][1] - S[j][0] * d[1]) / det
+        w[j] = (S[i][0] * d[1] - d[0] * S[i][1]) / det
+      } else {
+        // the smallest world move that lands under the pointer: in the view plane
+        const a11 = S[0][0] ** 2 + S[1][0] ** 2 + S[2][0] ** 2
+        const a12 = S[0][0] * S[0][1] + S[1][0] * S[1][1] + S[2][0] * S[2][1]
+        const a22 = S[0][1] ** 2 + S[1][1] ** 2 + S[2][1] ** 2
+        const det = a11 * a22 - a12 * a12
+        if (Math.abs(det) < 1e-9) return
+        const y0 = (a22 * d[0] - a12 * d[1]) / det
+        const y1 = (-a12 * d[0] + a11 * d[1]) / det
+        w = [0, 1, 2].map((i) => S[i][0] * y0 + S[i][1] * y1) as Vec3
+      }
+      const step = ctrl || Number.isFinite(typed) ? 0 : shift ? increment / 4 : increment
+      if (step) w = w.map((v) => Math.round(v / step) * step) as Vec3
+      const ev: GizmoEvent = { phase: 'move', tool: 'move', handle: 'free', delta: w.map((v) => Math.round(v * 1e4) / 1e4) as Vec3, shift, ctrl }
+      grabLast.current = ev
+      onGizmo(ev)
+    },
+    [meshOps, increment, onGizmo],
+  )
+
+  const endGrab = useCallback(
+    (keep: boolean) => {
+      const g = grabRef.current
+      if (!g) return
+      setGrab(null)
+      if (keep) {
+        if (g.slide) meshOps.slide.end()
+        else onGizmo({ ...(grabLast.current ?? { tool: 'move', handle: 'free', delta: [0, 0, 0], shift: false, ctrl: false }), phase: 'end' })
+        return
+      }
+      // put everything back as it was; an undo step with no change is dropped
+      dragFrom.current = null
+      slideFrom.current = null
+      history.amend(g.from)
+      history.end()
+    },
+    [meshOps, onGizmo, history],
+  )
+
+  useEffect(() => {
+    if (!grab) return
+    const move = (e: PointerEvent) => grabTo(e.clientX, e.clientY, e.shiftKey, e.ctrlKey || e.metaKey)
+    const press = (e: PointerEvent) => {
+      e.preventDefault()
+      e.stopPropagation()
+      endGrab(e.button !== 2)
+    }
+    const menu = (e: MouseEvent) => e.preventDefault()
+    const key = (e: KeyboardEvent) => {
+      if (['Shift', 'Control', 'Meta', 'Alt'].includes(e.key)) return
+      e.preventDefault()
+      e.stopImmediatePropagation()
+      const g = grabRef.current
+      if (!g) return
+      const k = e.key.toLowerCase()
+      // the grab takes a key's change at once, before React draws it
+      const change = (next: Grab) => {
+        grabRef.current = next
+        setGrab(next)
+        grabTo(pointerAt.current[0], pointerAt.current[1], false, false)
+      }
+      if (e.key === 'Escape') return endGrab(false)
+      if (e.key === 'Enter') return endGrab(true)
+      if (k === 'g' && !g.slide && selectedMesh && meshMode === 'edge' && meshEdges.length) {
+        // G G: from moving the edges to sliding them
+        dragFrom.current = null
+        history.amend(g.from)
+        history.end()
+        meshOps.slide.begin()
+        const next = { ...g, x0: pointerAt.current[0], slide: true, axis: null, typed: '' }
+        grabRef.current = next
+        setGrab(next)
+        return
+      }
+      if (g.slide) return
+      if (k === 'x' || k === 'y' || k === 'z') {
+        const axis = 'xyz'.indexOf(k) as 0 | 1 | 2
+        // the same key again lets go of the axis
+        const same = g.axis === axis && g.plane === e.shiftKey
+        change({ ...g, axis: same ? null : axis, plane: same ? false : e.shiftKey })
+        return
+      }
+      if (/^[0-9.]$/.test(e.key) || (e.key === '-' && !g.typed)) {
+        change({ ...g, typed: g.typed + e.key, axis: g.axis ?? 0, plane: false })
+        return
+      }
+      if (e.key === 'Backspace') {
+        change({ ...g, typed: g.typed.slice(0, -1) })
+      }
+    }
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerdown', press, true)
+    window.addEventListener('contextmenu', menu, true)
+    window.addEventListener('keydown', key, true)
+    return () => {
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerdown', press, true)
+      window.removeEventListener('contextmenu', menu, true)
+      window.removeEventListener('keydown', key, true)
+    }
+  }, [grab, grabTo, endGrab, selectedMesh, meshMode, meshEdges, history, meshOps])
+
+  const grabHint = grab
+    ? grab.slide
+      ? 'Slide: move left or right. Click or Enter puts it down, Esc or right click puts it back.'
+      : `Grab${grab.axis !== null ? ` ${grab.plane ? 'across' : 'along'} ${'XYZ'[grab.axis]}` : ''}${grab.typed ? `: ${grab.typed}` : ''}. X, Y or Z holds an axis (Shift for the plane across it), digits move exactly that far${selectedMesh && meshMode === 'edge' ? ', G again slides' : ''}. Click or Enter puts it down, Esc or right click puts it back.`
+    : null
+
   /* ---------------- view ---------------- */
 
   /** Centres the view on the selection, or on the whole model with nothing selected. */
@@ -5791,6 +5970,8 @@ export function Editor({ segments }: { segments: string[] }) {
       },
       onQuad: () => setQuad((q) => !q),
       onGrid: () => setGrid((g) => !g),
+      // from a menu, the grab starts where the pointer is once it's back over the view
+      onGrab: () => startGrab(),
       onSelectAll: () => setSelection(model.cubes.filter((c) => c.visible).map((c) => c.id)),
       onCopy: () => {
         const got = copyNodes(model, selection)
@@ -5888,7 +6069,7 @@ export function Editor({ segments }: { segments: string[] }) {
       onAddKey: () => animBone && anim.addKey(animBone, 'rotation'),
       onCloseLoop: () => anim.closeLoop(),
     }),
-    [model, fileName, kind, saveFormat, textureIndex, loadModel, runSave, selected, selection, bones, history, anim, animBone, guarded, rescale, refuseLocked, setSelected, focusOn, removeNull],
+    [model, fileName, kind, saveFormat, startGrab, textureIndex, loadModel, runSave, selected, selection, bones, history, anim, animBone, guarded, rescale, refuseLocked, setSelected, focusOn, removeNull],
   )
 
   const [keymap, setKeymap] = useState<Keymap>(readKeymap)
@@ -6074,7 +6255,7 @@ export function Editor({ segments }: { segments: string[] }) {
           e.preventDefault()
           fn()
         }
-        if (k === 'g' && !e.shiftKey && !e.altKey) return run(() => setTool('move'))
+        if (k === 'g' && !e.shiftKey && !e.altKey) return run(startGrab)
         if (k === 'x' && !e.shiftKey && !e.altKey)
           return run(() => (mode === 'animate' && anim.selectedKeys.length ? anim.removeKeys() : editing ? actions.onDelete() : undefined))
         if (k === 'a' && e.altKey) return run(() => (mode === 'animate' ? anim.selectKeys([], 'set') : setSelection([])))
@@ -6139,6 +6320,12 @@ export function Editor({ segments }: { segments: string[] }) {
         anim.addKey(animBone, 'rotation')
         return
       }
+      // G shows and hides the grid; Shift+G grabs, Blockbench's keys having no G of their own for it
+      if (e.key.toLowerCase() === 'g' && e.shiftKey && !mod && (mode === 'edit' || mode === 'animate')) {
+        e.preventDefault()
+        startGrab()
+        return
+      }
       if (e.key.toLowerCase() === 'g') setGrid((g) => !g)
       if (e.key === ' ' && mode === 'animate') {
         e.preventDefault()
@@ -6147,7 +6334,7 @@ export function Editor({ segments }: { segments: string[] }) {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [history, actions, anim, mode, selectedKey, selectedKeys, selectedEvent, selectedNull, animBone, selected, vertexFrom, clip, notify, keymap, selectedMesh, meshMode, meshOps, knife, meshVerts, meshEdges])
+  }, [history, actions, anim, mode, selectedKey, selectedKeys, selectedEvent, selectedNull, animBone, selected, vertexFrom, clip, notify, keymap, selectedMesh, meshMode, meshOps, knife, meshVerts, meshEdges, startGrab])
 
   /* .vellum opens as it is. A Blockbench project or a Java model is
      converted on the way in and saves as a .vellum; what did not carry
@@ -6196,7 +6383,7 @@ export function Editor({ segments }: { segments: string[] }) {
 
   return (
     <div
-      className="editor-root editor-root--studio"
+      className={`editor-root editor-root--studio${grab ? " is-grabbing" : ""}`}
       data-swap={mode === 'edit' || mode === 'paint' || mode === 'animate' || undefined}
       // the generated config covers the viewport, so its controls step aside
       data-cover={(mode === 'config' && hasConfig(kind)) || (mode === 'paint' && paintView === 'sheet') || undefined}
@@ -6260,7 +6447,8 @@ export function Editor({ segments }: { segments: string[] }) {
           viewRef={viewApi}
           onBoxSelect={(ids, addTo) => setSelection((cur) => (addTo ? [...cur.filter((x) => !ids.includes(x)), ...ids] : ids))}
           vertices={vertices}
-          hint={mode === 'edit' || mode === 'animate' ? TOOL_HINTS[tool] ?? null : null}
+          hint={grabHint ?? (mode === 'edit' || mode === 'animate' ? TOOL_HINTS[tool] ?? null : null)}
+          guide={grab && !grab.slide && !grab.plane ? grab.axis : null}
           ghosts={ghosts}
           showNulls={mode === 'edit' || mode === 'animate'}
           flash={flash}

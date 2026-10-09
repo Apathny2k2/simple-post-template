@@ -875,11 +875,23 @@ node picked is the primary one, which the panels and the gizmo follow.
 | Esc | Clear the selection (in Animate, the keys first) |
 
 **Blender keys.** Edit ▸ Keys switches to Blender's keys, and the choice is
-kept per browser. G grabs (the Move tool), X deletes, A selects everything
-and Alt A nothing, Shift D duplicates, Shift A adds a cube, and I sets a key
-in Animate. R, S, H, B, Space, the numpad views and Ctrl Z are the same in
-both. There is no modal grab yet: G picks the Move tool, and dragging an
-arrow moves the selection.
+kept per browser. G grabs, X deletes, A selects everything and Alt A
+nothing, Shift D duplicates, Shift A adds a cube, and I sets a key in
+Animate. R, S, H, B, Space, the numpad views and Ctrl Z are the same in
+both.
+
+**Grab.** G with Blender's keys, Shift G with Blockbench's (whose G shows
+and hides the grid), or Transform ▸ Grab. The selection follows the pointer
+in the plane of the screen until a click or Enter puts it down; Esc or a
+right click puts it back, leaving no undo step. X, Y or Z holds it to that
+world axis, drawn across the view; Shift with one holds it to the plane
+across that axis; the same key again lets go. Digits typed while it is held
+move it exactly that far along the axis (X if none was picked). It snaps to
+the grid step as the gizmo does, Shift for a quarter step, Ctrl for none,
+and works on whatever the Move gizmo would move: cubes, bones, null
+objects, a mesh's picked faces, vertices or edges, and a pose in Animate.
+On picked edges a second G turns it into an edge slide, left and right
+along the rails.
 
 **History.** The History panel lists every undo step, oldest first. A click
 jumps back or forward to that point; undone steps stay listed in italics

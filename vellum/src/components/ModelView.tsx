@@ -20,6 +20,8 @@ export type ViewApi = {
   /** the next left-drag on the viewport draws a selection box (Blender's B) */
   armBox: () => void
   view: () => { yaw: number; pitch: number }
+  /** where the gizmo's anchor is on screen and the screen step of one unit along x, y and z; null without a gizmo */
+  basis: () => Basis | null
 }
 
 /** Where the corners of cubes are, for the vertex snap tool. */
@@ -550,6 +552,8 @@ type Props = {
   showNulls?: boolean
   /** a click on empty space */
   onDeselect?: () => void
+  /** a line through the gizmo's anchor along a world axis, while a grab is held to it */
+  guide?: 0 | 1 | 2 | null
   /** When set, a left-button drag on a face paints. Other drags orbit or pan as usual. */
   onPaint?: (cubeId: string, face: FaceKey, u: number, v: number, phase: 'down' | 'move') => void
   /** mesh editing: picked faces, and face picking */
@@ -595,6 +599,7 @@ export function ModelView({
   ghosts,
   showNulls = false,
   onDeselect,
+  guide = null,
   onPaint,
   meshPick = null,
   onPaintMesh,
@@ -859,6 +864,7 @@ export function ModelView({
         boxArmed.current = true
       },
       view: () => ({ yaw, pitch }),
+      basis: () => measureRef.current(),
     }),
     [scale, yaw, pitch],
   )
@@ -880,6 +886,32 @@ export function ModelView({
     const per = (p: [number, number]): [number, number] => [(p[0] - c[0]) / PROBE, (p[1] - c[1]) / PROBE]
     return { c, s: [per(x), per(y), per(z)] }
   }, [])
+  // the view handle above is made before `measure`, so it reaches it through this
+  const measureRef = useRef(measure)
+  measureRef.current = measure
+
+  /* A grab held to an axis draws that axis through the anchor, across the
+     view, as Blender does. It is measured each frame, since the anchor moves. */
+  const [guideLine, setGuideLine] = useState<[number, number, number, number] | null>(null)
+  useEffect(() => {
+    if (guide === null) {
+      setGuideLine(null)
+      return
+    }
+    let raf = 0
+    const tick = () => {
+      const b = measure()
+      if (b) {
+        const [dx, dy] = b.s[guide]
+        const len = Math.hypot(dx, dy) || 1
+        const far = 4000 / len
+        setGuideLine([b.c[0] - dx * far, b.c[1] - dy * far, b.c[0] + dx * far, b.c[1] + dy * far])
+      }
+      raf = requestAnimationFrame(tick)
+    }
+    raf = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(raf)
+  }, [guide, measure])
 
   /* the corners for vertex snap, measured the same way */
   const vertexEls = useRef<Array<HTMLDivElement | null>>([])
@@ -1075,6 +1107,11 @@ export function ModelView({
       </div>
 
       {gizmo && onGizmo ? <Gizmo spec={gizmo} measure={measure} step={snapStep} onGizmo={onGizmo} /> : null}
+      {guideLine && guide !== null ? (
+        <svg className={`scene3d__guide scene3d__guide--${'xyz'[guide]}`} aria-hidden="true">
+          <line x1={guideLine[0]} y1={guideLine[1]} x2={guideLine[2]} y2={guideLine[3]} />
+        </svg>
+      ) : null}
 
       {vertices?.edges && vertexAt.length >= vertices.points.length ? (
         <svg className="scene3d__edges" aria-label="Edges">

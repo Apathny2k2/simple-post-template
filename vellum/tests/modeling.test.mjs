@@ -172,6 +172,8 @@ test('Blender keys, when chosen: G grabs, A selects all, X deletes, Shift+D dupl
   await page.keyboard.press('r')
   await page.keyboard.press('g')
   assert.ok((await page.$$eval('.xform [data-handle]', (els) => els.map((e) => e.dataset.handle))).includes('free'), 'G is the move tool')
+  // G also starts a grab; Esc puts it back
+  await page.keyboard.press('Escape')
   const n0 = await rows(page)
   await page.click('.tree__row:has-text("yoke")')
   await page.keyboard.press('Shift+D')
@@ -186,5 +188,79 @@ test('Blender keys, when chosen: G grabs, A selects all, X deletes, Shift+D dupl
   await page.reload()
   await page.waitForSelector('.dock__tool')
   assert.equal(await page.textContent('.dock__tool:has-text("Move") kbd'), 'G')
+  await page.close()
+})
+
+test('grab: the selection follows the pointer, Esc puts it back, X holds an axis, digits move exactly', async () => {
+  const { page, errors } = await openEditor()
+  await page.click('.tree__row:has-text("yoke")')
+  const at = await fields(page, 0, 3)
+  const view = await page.locator('.editor-view .scene3d').boundingBox()
+  const cx = view.x + view.width / 2
+  const cy = view.y + view.height / 2
+  await page.mouse.move(cx, cy)
+  await page.keyboard.press('Shift+G')
+  assert.match(await page.textContent('.editor-view__hint'), /^Grab/)
+  await page.mouse.move(cx + 120, cy + 10, { steps: 6 })
+  const moved = await fields(page, 0, 3)
+  assert.notDeepEqual(moved, at, 'it follows the pointer')
+  await page.keyboard.press('Escape')
+  assert.deepEqual(await fields(page, 0, 3), at, 'Esc puts it back')
+  assert.equal(await page.locator('.editor-root.is-grabbing').count(), 0)
+  // the undo list has no step for a grab that was put back
+  await page.click('.panel__head:has-text("History")')
+  const steps = await page.locator('.hist__row').count()
+
+  await page.mouse.move(cx, cy)
+  await page.keyboard.press('Shift+G')
+  await page.keyboard.press('x')
+  await page.waitForSelector('.scene3d__guide--x', { timeout: 2000 })
+  await page.keyboard.type('4')
+  await page.keyboard.press('Enter')
+  assert.deepEqual(await fields(page, 0, 3), [at[0] + 4, at[1], at[2]], 'four units along X, exactly')
+  assert.equal(await page.locator('.hist__row').count(), steps + 1, 'one undo step')
+  await page.keyboard.press('Control+z')
+  assert.deepEqual(await fields(page, 0, 3), at)
+
+  // a click puts it down too, and a right click puts it back
+  await page.mouse.move(cx, cy)
+  await page.keyboard.press('Shift+G')
+  await page.mouse.move(cx, cy - 80, { steps: 4 })
+  await page.mouse.click(cx, cy - 80, { button: 'right' })
+  assert.deepEqual(await fields(page, 0, 3), at)
+  assert.deepEqual(errors, [])
+  await page.close()
+})
+
+test('G G on a picked edge ring slides it, and the slide is one undo step', async () => {
+  const { page, errors } = await openEditor('runic_blade')
+  await page.click('.sbar button:has-text("File")')
+  await page.click('[role=menuitem]:has-text("switch to Blender")')
+  await page.click('.mesh-add > button')
+  await page.click('.mesh-add__menu button:has-text("Cube")')
+  await page.waitForSelector('.model-mface')
+  await page.keyboard.press('4')
+  await page.locator('.scene3d__edge-hit').first().click()
+  await page.click('.chip:has-text("Loop cut")')
+  const mid = () =>
+    page.$$eval('.num-field-row', (rows) => {
+      const row = rows.find((r) => r.textContent.includes('Middle of the pick'))
+      return [...row.querySelectorAll('input')].map((i) => Number(i.value))
+    })
+  const before = await mid()
+  const view = await page.locator('.editor-view .scene3d').boundingBox()
+  const cx = view.x + view.width / 2
+  const cy = view.y + view.height / 2 + 120
+  await page.mouse.move(cx, cy)
+  await page.keyboard.press('g')
+  await page.keyboard.press('g')
+  assert.match(await page.textContent('.editor-view__hint'), /^Slide/)
+  await page.mouse.move(cx + 80, cy, { steps: 4 })
+  await page.mouse.click(cx + 80, cy)
+  const after = await mid()
+  assert.notDeepEqual(after, before, 'the ring slid')
+  await page.keyboard.press('Control+z')
+  assert.deepEqual(await mid(), before, 'one undo for the slide')
+  assert.deepEqual(errors, [])
   await page.close()
 })
