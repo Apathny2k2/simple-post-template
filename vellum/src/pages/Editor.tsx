@@ -145,7 +145,9 @@ import type { Behaviour } from '../lib/behaviour'
 import { ConfirmDialog } from './editor/ConfirmDialog'
 import { blockNavigation, navigate, useTitle } from '../lib/router'
 import { scenes } from '../lib/data'
-import { saveDataUrl, saveFile } from '../lib/download'
+import { saveBlob, saveDataUrl, saveFile } from '../lib/download'
+import { toGltf, toJavaJson, toObjZip } from '../lib/exporters'
+import { fromBbmodel, fromJavaModel, isBbmodel, isJavaModel } from '../lib/importers'
 import './Editor.css'
 import './EditorStudio.css'
 
@@ -173,6 +175,9 @@ type Actions = {
   onQuad: () => void
   onGrid: () => void
   onExportTexture: () => void
+  onExportGltf: () => void
+  onExportObj: () => void
+  onExportJava: () => void
   onSelectAll: () => void
   onCopy: () => void
   onCut: () => void
@@ -204,8 +209,13 @@ function buildMenus(
           onSelect: () => actions.onSample(s.id),
         })),
         { kind: 'separator' },
-        { label: 'Open .vellum…', icon: 'folder', shortcut: 'Ctrl O', onSelect: actions.onOpen },
+        { label: 'Open .vellum, .bbmodel or Java JSON…', icon: 'folder', shortcut: 'Ctrl O', onSelect: actions.onOpen },
         { label: 'Save .vellum', icon: 'save', shortcut: 'Ctrl S', onSelect: actions.onSave },
+        { kind: 'separator' },
+        { kind: 'label', label: 'Export' },
+        { label: 'glTF, with the rig and clips (Blender)', icon: 'download', onSelect: actions.onExportGltf },
+        { label: 'OBJ and textures (.zip)', icon: 'download', onSelect: actions.onExportObj },
+        { label: 'Java model JSON', icon: 'download', onSelect: actions.onExportJava },
       ],
     },
     {
@@ -3494,6 +3504,11 @@ export function Editor({ segments }: { segments: string[] }) {
 
   const [openError, setOpenError] = useState<string | null>(null)
   const [saveNote, setSaveNote] = useState<string | null>(null)
+  /** a line in the status bar that clears itself */
+  const notify = useCallback((note: string, ms = 6000) => {
+    setSaveNote(note)
+    window.setTimeout(() => setSaveNote((n) => (n === note ? null : n)), ms)
+  }, [])
 
   /* Dirty compares the current model with the last one saved or opened,
      by identity. Every edit makes a new Model object. */
@@ -4391,7 +4406,21 @@ export function Editor({ segments }: { segments: string[] }) {
             }),
         ),
       ).then((loaded) => {
-        const ok = loaded.filter((x): x is NonNullable<typeof x> => !!x)
+        const all = loaded.filter((x): x is NonNullable<typeof x> => !!x)
+        /* A PNG named like a texture already on the model fills that texture
+           in, which is how a Java model's blank textures get their images. */
+        const byName = new Map(model.textures.map((t) => [t.name.toLowerCase(), t]))
+        const fills = all.filter((x) => byName.has(x.name.toLowerCase()))
+        if (fills.length) {
+          history.commit('replace texture image', (m) => ({
+            ...m,
+            textures: m.textures.map((t) => {
+              const x = fills.find((f) => f.name.toLowerCase() === t.name.toLowerCase())
+              return x ? { ...t, source: x.source, width: x.width, height: x.height } : t
+            }),
+          }))
+        }
+        const ok = all.filter((x) => !byName.has(x.name.toLowerCase()))
         let names = model
         const made: Texture[] = ok.map((x) => {
           const t: Texture = {
@@ -4409,7 +4438,7 @@ export function Editor({ segments }: { segments: string[] }) {
         addTextures(made, made.length > 1 ? 'import textures' : 'import texture')
         const { width, height } = model.resolution
         const odd = ok.filter((x) => x.width * height !== x.height * width)
-        const failed = loaded.length - ok.length
+        const failed = loaded.length - all.length
         const note = failed
           ? `${failed} of the files could not be read as images.`
           : odd.length
@@ -4421,7 +4450,7 @@ export function Editor({ segments }: { segments: string[] }) {
         }
       })
     },
-    [model, addTextures],
+    [model, addTextures, history],
   )
 
   const newTexture = useCallback(() => {
@@ -4813,6 +4842,20 @@ export function Editor({ segments }: { segments: string[] }) {
           window.setTimeout(() => setSaveNote(null), 6000)
         })
       },
+      onExportGltf: () => {
+        const stem = fileName.replace(/\.vellum$/i, '') || 'model'
+        void saveBlob(`${stem}.gltf`, new Blob([toGltf(model)], { type: 'model/gltf+json' })).then(notify)
+      },
+      onExportObj: () => {
+        const stem = fileName.replace(/\.vellum$/i, '') || 'model'
+        void saveBlob(`${stem}-obj.zip`, new Blob([toObjZip(model) as BlobPart], { type: 'application/zip' })).then(notify)
+      },
+      onExportJava: () => {
+        const out = toJavaJson(model, kind === 'blocks' ? 'block' : 'item')
+        void saveFile(out.name, out.text).then((note) =>
+          notify(out.issues.length ? `${note} ${out.issues.length} thing${out.issues.length === 1 ? '' : 's'} could not be said exactly in Java JSON; the Validation panel lists them.` : note),
+        )
+      },
       onNewClip: () => anim.newClip(),
       onDuplicateClip: () => anim.duplicateClip(),
       onDeleteClip: () => anim.removeClip(),
@@ -5017,18 +5060,29 @@ export function Editor({ segments }: { segments: string[] }) {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [history, actions, anim, mode, selectedKey, selectedKeys, selectedEvent, selectedNull, animBone, selected, vertexFrom, clip])
+  }, [history, actions, anim, mode, selectedKey, selectedKeys, selectedEvent, selectedNull, animBone, selected, vertexFrom, clip, notify])
 
-  // only .vellum files open here; anything else is refused before parsing
+  /* .vellum opens as it is. A Blockbench project or a Java model is
+     converted on the way in and saves as a .vellum; what did not carry
+     over is said in the status bar. */
   const onFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
     const text = await file.text()
     try {
-      if (!isVellum(text)) {
-        throw new Error(`${file.name} is not a .vellum - Vellum opens the models it writes.`)
+      if (isVellum(text)) {
+        loadModel(readVellum(text), file.name, kind)
+      } else if (isBbmodel(text) || /\.bbmodel$/i.test(file.name)) {
+        const got = fromBbmodel(text, file.name)
+        loadModel(got.model, file.name, got.kind)
+        notify(`Opened ${file.name} from Blockbench. It saves as ${vellumFileName(file.name)}.${got.notes.length ? ' ' + got.notes.join(' ') : ''}`, 12000)
+      } else if (isJavaModel(text)) {
+        const got = fromJavaModel(text, file.name)
+        loadModel(got.model, file.name, got.kind)
+        notify(`Opened ${file.name} as a Java model.${got.notes.length ? ' ' + got.notes.join(' ') : ''}`, 12000)
+      } else {
+        throw new Error(`${file.name} is not a model Vellum can open: it takes .vellum, Blockbench .bbmodel and Java block or item JSON.`)
       }
-      loadModel(readVellum(text), file.name, kind)
       setOpenError(null)
     } catch (err) {
       setOpenError(err instanceof Error ? err.message : 'That file could not be read as a model.')
@@ -5061,7 +5115,7 @@ export function Editor({ segments }: { segments: string[] }) {
       data-cover={(mode === 'config' && hasConfig(kind)) || (mode === 'paint' && paintView === 'sheet') || undefined}
       style={{ ['--left-w' as string]: `${leftW}px`, ['--right-w' as string]: `${rightW}px` }}
     >
-      <input ref={fileInput} type="file" accept=".vellum,application/json" hidden onChange={onFile} />
+      <input ref={fileInput} type="file" accept=".vellum,.bbmodel,.json,application/json" hidden onChange={onFile} />
 
       <EditorBar
         title={model.name.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())}

@@ -734,5 +734,5 @@ export function isVellum(raw: string) {
 
 /** The save name: a `.json` or `.vellum` extension becomes `.vellum`, and any other name gets it appended. */
 export function vellumFileName(name: string) {
-  return `${name.replace(/\.(vellum|json)$/i, '')}${EXTENSION}`
+  return `${name.replace(/\.(vellum|json|bbmodel)$/i, '')}${EXTENSION}`
 }

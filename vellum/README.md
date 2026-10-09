@@ -106,9 +106,11 @@ entered server's.
 
 ## The `.vellum` format
 
-Every model Vellum opens or writes is a `.vellum`, implemented in
-`src/lib/vellum.ts`. Vellum does not read `.bbmodel`. The first samples were
-migrated from Blockbench files, and those sources have been removed.
+Every model Vellum saves is a `.vellum`, implemented in `src/lib/vellum.ts`.
+It also opens Blockbench projects and Java models, converting them on the way
+in (see Importing and exporting below), and saves those as `.vellum` too. The
+first samples were migrated from Blockbench files, and those sources have been
+removed.
 `voidling.vellum` and `resonator_block.vellum` are still the migrated files. The
 other six samples are built by `scripts/make-samples.mjs`.
 `docs/archive/blockbench/` keeps the research notes.
@@ -947,6 +949,39 @@ everything under it. Each rotation ring is measured:
 it is the world axis that one Euler component turns the node about, found by a small
 step through the real transform.
 
+## Importing and exporting
+
+File ▸ Open takes a `.vellum`, a Blockbench project or a Java model.
+`src/lib/importers.ts` turns a Blockbench or Java file into an ordinary
+model, which then saves as a `.vellum`.
+
+- **Blockbench `.bbmodel`.** Groups become bones and cubes keep their UVs,
+  turns, inflate and box UV. Embedded textures come along. Animations keep
+  their keys, easing and bezier handles. Sound, particle and timeline keys
+  become clip events, and null objects keep their IK target. Blockbench's
+  own ids are kept, so tracks still point at their bones. Some things have
+  nowhere to go. Mesh elements are left out, because Vellum models are
+  cubes. Molang in a key reads as the rest value. A cube outside every group
+  goes under a new `root` bone. The status bar lists each of these.
+- **Java block or item JSON.** Elements become cubes under one `root` bone.
+  The sheet is 16 by 16, as Java UVs are. A model names its textures by path
+  and carries no images, so they open blank and named after the path. Importing a PNG of
+  the same name on the Textures panel fills one in. A model that only names
+  a parent is refused, since it has no elements of its own.
+
+File ▸ Export writes three formats (`src/lib/exporters.ts`). All of them use
+the rig maths the viewport and gizmos use.
+
+- **glTF**, one self-contained `.gltf`. There is a node per bone and the
+  cubes are meshes on their bones. Textures are embedded with
+  nearest-neighbour sampling, and there is a material per texture. Each clip
+  becomes an animation, sampled at its snapping rate, so every easing and IK
+  comes out as it plays here. Blender imports it with the rig and an action
+  per clip. 16 units make a metre.
+- **OBJ**, the rest pose in a zip with its `.mtl` and the textures as PNGs.
+- **Java model JSON**, through the same converter the resource pack uses.
+  Anything Java JSON cannot express is listed in the Validation panel.
+
 ## Tests
 
 ```
@@ -968,6 +1003,8 @@ code the editor runs.
 | `animator.test.mjs` | Posing keys at the playhead; key select, box select and drag; effects, onion skin, graph, playback, IK |
 | `uv.test.mjs` | `lib/uv-edit.ts`, then UV drags and handles, box UV, importing, per-face textures, painting a 2x texture, re-unwrap |
 | `layout.test.mjs` | Every mode of a mob, an item and a block opens without errors and with no control covered; the Studio layout; the other pages load |
+| `interchange.test.mjs` | A Blockbench project with groups, loose cubes, a mesh, Molang, bezier keys, effects and an IK null comes in whole; Java JSON comes in and round-trips; glTF has a node per bone, an animation per clip and no inward triangles; the OBJ zip; opening both through the editor |
+| `paint.test.mjs` | The paint sheet, face picking, keeping strokes inside a face, painting on the model, the palette |
 | `bundle.test.mjs` | `dist/vellum.html` opens and keeps its unprefixed `backdrop-filter`; skipped until `pnpm build:single` has run |
 
 Chromium is taken from `/opt/pw-browsers/chromium` when it is there,
