@@ -1486,3 +1486,38 @@ export function unwrapJoined(mesh: Mesh, faceKeys: readonly string[], place: (w:
   }
   return { ...mesh, faces }
 }
+
+/* ---------------- mirror editing ---------------- */
+
+/** Each vertex's mirror image across the mesh's own x = 0: the vertex there, or itself for one on the plane. */
+export function mirrorPartners(mesh: Mesh): Map<string, string> {
+  const at = new Map<string, string>()
+  const spot = (p: Vec3) => p.map((v) => Math.round(v * 100)).join()
+  for (const [k, p] of Object.entries(mesh.vertices)) at.set(spot(p), k)
+  const out = new Map<string, string>()
+  for (const [k, p] of Object.entries(mesh.vertices)) {
+    const m = at.get(spot([-p[0], p[1], p[2]]))
+    if (m) out.set(k, m)
+  }
+  return out
+}
+
+/**
+ * Blender's X mirror for a mesh: after `moved` vertices were edited, each
+ * one's mirror image in `before` is put back at its mirror position, and a
+ * vertex that sat on the plane stays on it. Partners that were moved too
+ * are left as they are.
+ */
+export function followMirrorVertices(before: Mesh, after: Mesh, moved: readonly string[]): Mesh {
+  const partners = mirrorPartners(before)
+  const set = new Set(moved)
+  const vertices = { ...after.vertices }
+  for (const k of moved) {
+    const p = partners.get(k)
+    const v = after.vertices[k]
+    if (!p || !v) continue
+    if (p === k) vertices[k] = [0, v[1], v[2]]
+    else if (!set.has(p) && vertices[p]) vertices[p] = [round(-v[0]) || 0, v[1], v[2]]
+  }
+  return { ...after, vertices }
+}

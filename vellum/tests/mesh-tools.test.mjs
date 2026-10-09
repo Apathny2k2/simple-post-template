@@ -518,3 +518,56 @@ test('unwrapping joined keeps faces that share edges together, without overlaps'
   assert.ok(r.cylinder.sized)
   await page.close()
 })
+
+test('mirror editing: a cube or a vertex moved on one side moves its mirror image', async () => {
+  const { page } = await open()
+  const r = await inApp(page, async () => {
+    const M = await import('/src/lib/mesh.ts')
+    const T = await import('/src/lib/transform.ts')
+    const S = await import('/src/lib/samples.ts')
+    const base = structuredClone(S.samples.find((x) => x.id === 'voidling').model)
+    const a = { ...base.cubes[0], id: 'a', from: [1, 0, -1], to: [3, 2, 1], origin: [2, 0, 0], rotation: [0, 10, 5] }
+    const b = { ...base.cubes[0], id: 'b', from: [-3, 0, -1], to: [-1, 2, 1], origin: [-2, 0, 0], rotation: [0, -10, -5] }
+    const m0 = { ...base, cubes: [a, b] }
+    const moved = { ...m0, cubes: [{ ...a, from: [2, 0, -1], to: [5, 2, 1], origin: [3, 1, 0], rotation: [0, 20, 5] }, b] }
+    const after = T.followMirrorCubes(m0, moved, ['a'], 0)
+    const partner = after.cubes.find((c) => c.id === 'b')
+    const cube = M.makeMesh('cube', { parent: null, origin: [0, 0, 0], texture: null, place: () => [0, 0] })
+    const right = Object.keys(cube.vertices).find((k) => cube.vertices[k][0] > 0 && cube.vertices[k][1] > 0 && cube.vertices[k][2] > 0)
+    const pulled = M.moveVertices(cube, [right], [2, 1, 0])
+    const mirrored = M.followMirrorVertices(cube, pulled, [right])
+    const left = M.mirrorPartners(cube).get(right)
+    return {
+      partner: [partner.from, partner.to, partner.origin, partner.rotation],
+      left: mirrored.vertices[left],
+      right: mirrored.vertices[right],
+      lone: T.followMirrorCubes({ ...m0, cubes: [a] }, { ...m0, cubes: [{ ...a, from: [9, 9, 9] }] }, ['a'], 0).cubes.length,
+    }
+  })
+  assert.deepEqual(r.partner, [[-5, 0, -1], [-2, 2, 1], [-3, 1, 0], [0, -20, -5]], 'the partner is the edited cube mirrored across x = 0')
+  assert.deepEqual(r.right, [6, 9, 4])
+  assert.deepEqual(r.left, [-6, 9, 4], 'the vertex across x = 0 follows')
+  assert.equal(r.lone, 1, 'a cube with no mirror image is left alone')
+  await page.close()
+})
+
+test('in the editor: Mirror X makes a vertex drag move its partner too', async () => {
+  const { page, errors } = await openEditor('runic_blade')
+  await page.click('.mesh-add > button')
+  await page.click('.mesh-add__menu button:has-text("Cube")')
+  await page.waitForSelector('.model-mface')
+  await page.click('button[aria-label="Mirror editing across X"]')
+  assert.equal(await page.getAttribute('button[aria-label="Mirror editing across X"]', 'aria-pressed'), 'true')
+  await page.keyboard.press('3')
+  await page.waitForSelector('.scene3d__vertex')
+  const dots = () => page.$$eval('.scene3d__vertex', (els) => els.map((e) => `${e.style.left},${e.style.top}`))
+  const before = await dots()
+  await page.locator('.scene3d__vertex').nth(0).click()
+  await dragArrow(page, 'y', 50)
+  await page.waitForTimeout(150)
+  const after = await dots()
+  const changed = after.filter((p, i) => p !== before[i]).length
+  assert.equal(changed, 2, 'the picked vertex and its mirror image moved, nothing else')
+  assert.deepEqual(errors, [])
+  await page.close()
+})

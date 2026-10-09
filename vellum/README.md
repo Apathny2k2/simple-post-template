@@ -893,6 +893,18 @@ objects, a mesh's picked faces, vertices or edges, and a pose in Animate.
 On picked edges a second G turns it into an edge slide, left and right
 along the rails.
 
+**Mirror editing.** The mirror button beside Global (Blockbench's mirror
+modelling, Blender's X mirror) makes an edit on one side follow on the
+other. A cube moved, resized or turned, by the gizmo, a grab or the
+inspector, carries its mirror image across the centre line (x = 8 for
+blocks and items, x = 0 for mobs) with it: the cube whose box and pivot
+were the mirror of its own before the edit gets them again after it, its
+turn about Y and Z reversed (`followMirrorCubes`). On a mesh, moving,
+turning or scaling picked vertices moves each one's mirror image across
+the mesh's own x = 0, and a vertex on that plane stays on it
+(`followMirrorVertices`). A partner that was picked too moves as the edit
+moved it. Edits that make or remove faces don't mirror.
+
 **History.** The History panel lists every undo step, oldest first. A click
 jumps back or forward to that point; undone steps stay listed in italics
 until a new edit drops them.

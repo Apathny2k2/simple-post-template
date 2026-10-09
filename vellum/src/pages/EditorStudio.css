@@ -741,3 +741,14 @@
 /* while a grab is held, the pointer says so everywhere */
 .editor-root.is-grabbing,
 .editor-root.is-grabbing * { cursor: move !important; }
+
+/* a narrower window: the view tabs and the controls opposite them both fit across the view */
+@media (max-width: 1360px) {
+  .editor-root--studio .studio-chip__text { display: none; }
+  .editor-root--studio .editor-view__corner--top-left.studio-seg button { padding-left: 8px; padding-right: 8px; }
+  .editor-root--studio .editor-view__corner--top-right .studio-seg button { padding-left: 8px; padding-right: 8px; }
+}
+/* narrower still: only the view in use shows its tab; the View menu and the numpad keys reach the others */
+@media (max-width: 1240px) {
+  .editor-root--studio .editor-view__corner--top-left.studio-seg button[aria-pressed='false'] { display: none; }
+}

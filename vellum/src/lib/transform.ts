@@ -445,3 +445,45 @@ export function rehomeNulls(model: Model): Model {
   // the null's position is absolute, so only the parent link changes
   return { ...model, nulls: model.nulls.map((n) => (n.parent && !live.has(n.parent) ? { ...n, parent: null, ikTarget: n.ikTarget && live.has(n.ikTarget) ? n.ikTarget : undefined } : n.ikTarget && !live.has(n.ikTarget) ? { ...n, ikTarget: undefined } : n)) }
 }
+
+/* ---------------- mirror editing ---------------- */
+
+const near = (a: Vec3, b: Vec3) => Math.abs(a[0] - b[0]) < 1e-3 && Math.abs(a[1] - b[1]) < 1e-3 && Math.abs(a[2] - b[2]) < 1e-3
+
+/** A cube's shape mirrored across the plane x = `about`: its box, pivot and turn. */
+function mirroredShape(c: Cube, about: number): Pick<Cube, 'from' | 'to' | 'origin' | 'rotation' | 'inflate'> {
+  return {
+    from: [2 * about - c.to[0], c.from[1], c.from[2]],
+    to: [2 * about - c.from[0], c.to[1], c.to[2]],
+    origin: [2 * about - c.origin[0], c.origin[1], c.origin[2]],
+    rotation: mirrorRot(c.rotation, 0),
+    inflate: c.inflate,
+  }
+}
+
+/** The cube that is this one's mirror image across x = `about`, if there is one (never the cube itself). */
+export function mirrorCubeOf(model: Model, cube: Cube, about: number): Cube | null {
+  const want = mirroredShape(cube, about)
+  return model.cubes.find((c) => c.id !== cube.id && near(c.from, want.from) && near(c.to, want.to) && near(c.origin, want.origin)) ?? null
+}
+
+/**
+ * Blockbench's mirror modelling for cubes: each edited cube that had a
+ * mirror image in `before` gets one again in `after`, the partner's box,
+ * pivot and turn rebuilt from it. A partner that was itself edited is left
+ * as the edit made it.
+ */
+export function followMirrorCubes(before: Model, after: Model, ids: readonly string[], about: number): Model {
+  const edited = new Set(ids)
+  const updates = new Map<string, Pick<Cube, 'from' | 'to' | 'origin' | 'rotation' | 'inflate'>>()
+  for (const id of ids) {
+    const b = before.cubes.find((c) => c.id === id)
+    const a = after.cubes.find((c) => c.id === id)
+    if (!a || !b) continue
+    const partner = mirrorCubeOf(before, b, about)
+    if (!partner || edited.has(partner.id) || partner.locked) continue
+    updates.set(partner.id, mirroredShape(a, about))
+  }
+  if (!updates.size) return after
+  return { ...after, cubes: after.cubes.map((c) => (updates.has(c.id) ? { ...c, ...updates.get(c.id)! } : c)) }
+}

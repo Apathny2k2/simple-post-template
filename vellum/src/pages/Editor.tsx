@@ -10,6 +10,7 @@ import {
   copyNodes,
   findBone,
   flipNodes,
+  followMirrorCubes,
   groupNodes,
   movePivots,
   pasteNodes,
@@ -131,7 +132,7 @@ import {
   unwrapOrigin,
 } from '../lib/uv-edit'
 import type { UvHandle } from '../lib/uv-edit'
-import { PRIMITIVES, centreOf, faceOrder, deleteEdges, deleteFaces, deleteVertices, edgeEnds, edgeVerticesOf, edgesOf, extrudeFaces, flipFaces, loopCut, makeMesh, mergeVertices, moveVertices, subdivide, verticesOf, mirrorFacesUv, projectUv, turnFacesUv, bevel, cubeToMesh, joinMeshes, mergeByDistance, separateFaces, dissolveEdges, edgeLoop, fillFace, insetFaces, knifeCut, rotateVertices, scaleVertices, slideEdges, unwrapJoined } from '../lib/mesh'
+import { PRIMITIVES, centreOf, faceOrder, deleteEdges, deleteFaces, deleteVertices, edgeEnds, edgeVerticesOf, edgesOf, extrudeFaces, flipFaces, loopCut, makeMesh, mergeVertices, moveVertices, subdivide, verticesOf, mirrorFacesUv, projectUv, turnFacesUv, bevel, cubeToMesh, joinMeshes, mergeByDistance, separateFaces, dissolveEdges, edgeLoop, fillFace, insetFaces, knifeCut, rotateVertices, scaleVertices, slideEdges, unwrapJoined, followMirrorVertices } from '../lib/mesh'
 import type { KnifePoint } from '../lib/mesh'
 import type { Primitive } from '../lib/mesh'
 import { boxSize, findSpot } from '../lib/uv-pack'
@@ -4348,6 +4349,10 @@ export function Editor({ segments }: { segments: string[] }) {
   const [knife, setKnife] = useState<KnifePoint[] | null>(null)
   /** how far bevel and inset go, in units */
   const [meshAmount, setMeshAmount] = useState(1)
+  /** Blockbench's mirror modelling: edits on one side of x follow on the other */
+  const [mirrorEdit, setMirrorEdit] = useState(false)
+  /** the plane cubes mirror across: a block's or item's centre line is x = 8, a mob's x = 0 */
+  const mirrorAt = kind === 'mobs' ? 0 : 8
   /** how many faces across a bevel's strip */
   const [meshSegments, setMeshSegments] = useState(1)
   /** how close two vertices must be for merge by distance */
@@ -4570,9 +4575,11 @@ export function Editor({ segments }: { segments: string[] }) {
     (label: string, fn: (m: Mesh) => Mesh) => {
       if (!meshId) return
       // coalesced, so dragging a field is one undo step
-      history.commit(label, (m) => ({ ...m, meshes: (m.meshes ?? []).map((x) => (x.id === meshId && !x.locked ? fn(x) : x)) }), true)
+      // with mirror editing, moving the pick's middle moves its mirror image too
+      const follow = mirrorEdit && label.startsWith('move ') && meshKeys.length
+      history.commit(label, (m) => ({ ...m, meshes: (m.meshes ?? []).map((x) => (x.id === meshId && !x.locked ? (follow ? followMirrorVertices(x, fn(x), meshKeys) : fn(x)) : x)) }), true)
     },
-    [history, meshId],
+    [history, meshId, mirrorEdit, meshKeys],
   )
 
   /** What Animate mode poses: a selected null, else the selected bone, else the bone holding the selected cube. */
@@ -4745,6 +4752,15 @@ export function Editor({ segments }: { segments: string[] }) {
         next = setRotations(m0, rotations)
       }
 
+      // mirror editing: what moved on one side moves on the other, from where the drag began
+      if (mirrorEdit && mode === 'edit' && next !== m0) {
+        if (meshEditing && selectedMesh) {
+          const before = m0.meshes?.find((x) => x.id === selectedMesh.id)
+          if (before) next = { ...next, meshes: (next.meshes ?? []).map((x) => (x.id === before.id ? followMirrorVertices(before, x, meshKeys) : x)) }
+        } else {
+          next = followMirrorCubes(m0, next, ids.filter((id) => m0.cubes.some((c) => c.id === id)), mirrorAt)
+        }
+      }
       history.amend(next)
       if (e.phase === 'end') {
         history.end()
@@ -4763,7 +4779,7 @@ export function Editor({ segments }: { segments: string[] }) {
         }
       }
     },
-    [history, model, rig, pose, selection, kind, mode, clip, poseTarget, time, meshEditing, meshMode, selectedMesh, meshKeys, gizmo],
+    [history, model, rig, pose, selection, kind, mode, clip, poseTarget, time, meshEditing, meshMode, selectedMesh, meshKeys, gizmo, mirrorEdit, mirrorAt],
   )
 
   /* ---------------- vertex snap ---------------- */
@@ -5115,11 +5131,14 @@ export function Editor({ segments }: { segments: string[] }) {
       if (model.cubes.find((c) => c.id === selected)?.locked) return
       history.commit(
         'cube edit',
-        (m) => ({ ...m, cubes: m.cubes.map((c) => (c.id === selected ? fn(c) : c)) }),
+        (m) => {
+          const next = { ...m, cubes: m.cubes.map((c) => (c.id === selected ? fn(c) : c)) }
+          return mirrorEdit ? followMirrorCubes(m, next, [selected], mirrorAt) : next
+        },
         true,
       )
     },
-    [selected, history, model.cubes],
+    [selected, history, model.cubes, mirrorEdit, mirrorAt],
   )
 
   const editNull = useCallback(
@@ -6622,8 +6641,19 @@ export function Editor({ segments }: { segments: string[] }) {
                   <button className="studio-chip" onClick={() => setSpace((v) => (v === 'global' ? 'local' : 'global'))} title="Transform space: Global moves along the world axes, Local along the selection's own (T)">
                     {space === 'global' ? 'Global' : 'Local'}
                   </button>
+                  {mode === 'edit' ? (
+                    <button
+                      className="studio-chip studio-chip--icon"
+                      aria-pressed={mirrorEdit}
+                      aria-label="Mirror editing across X"
+                      onClick={() => setMirrorEdit((v) => !v)}
+                      title={`Mirror editing: moving a cube moves its mirror image across x = ${mirrorAt}, and a mesh's vertices move their mirror images across its own x = 0`}
+                    >
+                      <Icon name="flip" size={13} />
+                    </button>
+                  ) : null}
                   <label className="studio-chip" title="Grid snap. Hold Shift for a quarter of it, Ctrl to move freely.">
-                    <Icon name="magnet" size={12} /> Snap
+                    <Icon name="magnet" size={12} /> <span className="studio-chip__text">Snap</span>
                     <select value={increment} onChange={(e) => setIncrement(Number(e.target.value))} aria-label="Snap increment">
                       {[1, 0.5, 0.25, 0.125, 0.0625].map((n) => (
                         <option key={n} value={n}>
