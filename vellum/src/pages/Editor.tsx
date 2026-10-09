@@ -131,7 +131,7 @@ import {
   unwrapOrigin,
 } from '../lib/uv-edit'
 import type { UvHandle } from '../lib/uv-edit'
-import { PRIMITIVES, centreOf, faceOrder, deleteEdges, deleteFaces, deleteVertices, edgeEnds, edgeVerticesOf, edgesOf, extrudeFaces, flipFaces, loopCut, makeMesh, mergeVertices, moveVertices, subdivide, verticesOf, mirrorFacesUv, projectUv, turnFacesUv, bevelEdges, dissolveEdges, edgeLoop, fillFace, insetFaces, knifeCut, rotateVertices, scaleVertices, slideEdges } from '../lib/mesh'
+import { PRIMITIVES, centreOf, faceOrder, deleteEdges, deleteFaces, deleteVertices, edgeEnds, edgeVerticesOf, edgesOf, extrudeFaces, flipFaces, loopCut, makeMesh, mergeVertices, moveVertices, subdivide, verticesOf, mirrorFacesUv, projectUv, turnFacesUv, bevelEdges, cubeToMesh, joinMeshes, mergeByDistance, separateFaces, dissolveEdges, edgeLoop, fillFace, insetFaces, knifeCut, rotateVertices, scaleVertices, slideEdges } from '../lib/mesh'
 import type { KnifePoint } from '../lib/mesh'
 import type { Primitive } from '../lib/mesh'
 import { boxSize, findSpot } from '../lib/uv-pack'
@@ -181,6 +181,8 @@ type Actions = {
   onCloseLoop: () => void
   onQuad: () => void
   onGrid: () => void
+  /** the selected cubes become meshes */
+  onCubeToMesh: () => void
   /** Blender's grab: the selection follows the pointer */
   onGrab: () => void
   onExportTexture: () => void
@@ -270,6 +272,7 @@ function buildMenus(
         { label: 'Add bone', icon: 'folder', onSelect: actions.onAddBone },
         { label: 'Add null object', icon: 'pivot', onSelect: actions.onAddNull },
         { label: 'Group selection', icon: 'folder', shortcut: 'Ctrl G', onSelect: actions.onGroup },
+        { label: 'Convert cube to mesh', icon: 'vertex', onSelect: actions.onCubeToMesh },
       ],
     },
     {
@@ -869,7 +872,10 @@ function CubePanel({
   onRename,
   onMove,
   onDelete,
+  onToMesh,
 }: {
+  /** Blockbench's Convert to mesh */
+  onToMesh: () => void
   model: Model
   /** the bone the cube is in, or null at the root */
   parent: string | null
@@ -920,6 +926,9 @@ function CubePanel({
             }
           }}
         />
+        <button className="insp-head__delete" aria-label={`Convert ${cube.name} to a mesh`} title="Convert to a mesh, to shape it by its faces and vertices" disabled={locked} onClick={onToMesh}>
+          <Icon name="vertex" size={15} />
+        </button>
         <button className="insp-head__delete" aria-label={`Delete ${cube.name}`} title="Delete this cube (Del)" disabled={locked} onClick={onDelete}>
           <Icon name="trash" size={15} />
         </button>
@@ -1950,6 +1959,9 @@ type MeshOps = {
   fill: () => void
   dissolve: () => void
   knife: () => void
+  mergeNear: () => void
+  separate: () => void
+  join: () => void
   /** an edge slide is a drag: begin, set the amount (-1 to 1) as it goes, end */
   slide: { begin: () => void; set: (amount: number) => void; end: () => void }
 }
@@ -1976,6 +1988,9 @@ function packMeshFaces(model: Model, mesh: Mesh, faces: readonly string[]): { me
 }
 
 function MeshPanel({
+  distance,
+  onDistance,
+  joinable,
   amount,
   onAmount,
   knife,
@@ -2009,6 +2024,11 @@ function MeshPanel({
   onMove: (bone: string | null) => void
   onDelete: () => void
   pickedFaces: string[]
+  /** how close vertices must be to merge by distance */
+  distance: number
+  onDistance: (v: number) => void
+  /** other meshes picked in the outliner, which Join would bring in */
+  joinable: number
   /** how far bevel and inset go */
   amount: number
   onAmount: (v: number) => void
@@ -2084,6 +2104,12 @@ function MeshPanel({
               <button className="chip" disabled={locked} onClick={ops.knife} title="Cut across faces: click points on edges, then Enter (K)">
                 Knife
               </button>
+              <button className="chip" disabled={locked} onClick={ops.mergeNear} title={`Merge vertices closer than ${distance} to each other`}>
+                Merge by distance
+              </button>
+              <button className="chip" disabled={locked || !joinable} onClick={ops.join} title="Bring the other meshes picked in the outliner into this one (Ctrl+J)">
+                Join{joinable ? ` ${joinable + 1}` : ''}
+              </button>
             </div>
           </>
         ) : (
@@ -2117,6 +2143,16 @@ function MeshPanel({
                 </button>
               </div>
             ) : null}
+            {mode === 'vertex' ? (
+              <div className="num-field-grid">
+                <div className="num-field-row">
+                  <span className="num-field-row__label">Distance</span>
+                  <NumField axis="n" tag="D" name="Merge distance" value={distance} step={0.05} onChange={(v) => onDistance(Math.max(0.001, Math.round(v * 1000) / 1000))} />
+                  <span className="num-field-row__label" />
+                  <span className="num-field-row__label" />
+                </div>
+              </div>
+            ) : null}
             {mode === 'face' || mode === 'edge' ? (
               <div className="num-field-grid">
                 <div className="num-field-row">
@@ -2142,6 +2178,9 @@ function MeshPanel({
                   <button className="chip" disabled={!picked || locked} onClick={ops.subdivide} title="Split the picked faces into four each">
                     Subdivide
                   </button>
+                  <button className="chip" disabled={!picked || locked} onClick={ops.separate} title="Move the picked faces into a mesh of their own (P)">
+                    Separate
+                  </button>
                 </>
               ) : mode === 'edge' ? (
                 <>
@@ -2165,6 +2204,9 @@ function MeshPanel({
                   </button>
                   <button className="chip" disabled={picked < 3 || locked} onClick={ops.fill} title="Make a face through the picked vertices (F)">
                     Fill
+                  </button>
+                  <button className="chip" disabled={locked} onClick={ops.mergeNear} title={`Merge the picked vertices (or all) closer than ${distance} to each other`}>
+                    Merge by distance
                   </button>
                 </>
               )}
@@ -4292,6 +4334,8 @@ export function Editor({ segments }: { segments: string[] }) {
   const [knife, setKnife] = useState<KnifePoint[] | null>(null)
   /** how far bevel and inset go, in units */
   const [meshAmount, setMeshAmount] = useState(1)
+  /** how close two vertices must be for merge by distance */
+  const [mergeDistance, setMergeDistance] = useState(0.1)
   const meshId = selectedMesh?.id
   useEffect(() => {
     setMeshFaces([])
@@ -4411,6 +4455,41 @@ export function Editor({ segments }: { segments: string[] }) {
         history.commit('dissolve edges', (m) => ({ ...m, meshes: (m.meshes ?? []).map((x) => (x.id === selectedMesh.id ? r.mesh : x)) }))
         setMeshEdges([])
       },
+      mergeNear: () => {
+        if (!selectedMesh || selectedMesh.locked) return
+        const r = mergeByDistance(selectedMesh, mergeDistance, meshMode === 'vertex' ? meshVerts : undefined)
+        notify(r.removed ? `Merged ${r.removed} vertex${r.removed === 1 ? '' : 'es'} into ${r.removed === 1 ? 'its neighbour' : 'their neighbours'}.` : `No vertices were within ${mergeDistance} of each other.`, 3000)
+        if (!r.removed) return
+        history.commit('merge by distance', (m) => ({ ...m, meshes: (m.meshes ?? []).map((x) => (x.id === selectedMesh.id ? r.mesh : x)) }))
+        setMeshVerts((cur) => cur.filter((k) => r.mesh.vertices[k]))
+      },
+      separate: () => {
+        if (!selectedMesh || selectedMesh.locked || meshMode !== 'face') return
+        const taken = new Set((model.meshes ?? []).map((x) => x.name))
+        let n = 1
+        while (taken.has(`${selectedMesh.name}_${n}`)) n++
+        const r = separateFaces(selectedMesh, meshFaces, `${selectedMesh.name}_${n}`)
+        if (!r) return notify('Pick some faces, not all of them, to separate.', 3000)
+        history.commit('separate', (m) => ({ ...m, meshes: (m.meshes ?? []).flatMap((x) => (x.id === selectedMesh.id ? [r.mesh, r.piece] : [x])) }))
+        setSelection([r.piece.id])
+      },
+      join: () => {
+        if (!selectedMesh || selectedMesh.locked) return
+        const others = selection.flatMap((id) => (model.meshes ?? []).filter((x) => x.id === id && x.id !== selectedMesh.id && !x.locked))
+        if (!others.length) return notify('Pick the other meshes in the outliner too (Shift or Ctrl), then join.', 3500)
+        // each point goes from its own mesh's frame to the world, then into the target's
+        const into = meshFrame(rig, selectedMesh).inverse()
+        const joined = joinMeshes(
+          selectedMesh,
+          others.map((o) => {
+            const f = into.multiply(meshFrame(rig, o))
+            return { mesh: o, toTarget: (p: Vec3) => apply(f, p) }
+          }),
+        )
+        const gone = new Set(others.map((o) => o.id))
+        history.commit('join meshes', (m) => ({ ...m, meshes: (m.meshes ?? []).flatMap((x) => (gone.has(x.id) ? [] : x.id === joined.id ? [joined] : [x])) }))
+        setSelection([selectedMesh.id])
+      },
       knife: () => {
         if (!selectedMesh || selectedMesh.locked) return
         if (knife === null) {
@@ -4445,7 +4524,7 @@ export function Editor({ segments }: { segments: string[] }) {
         },
       },
     }),
-    [selectedMesh, meshMode, meshFaces, meshVerts, meshEdges, history, meshAmount, model, knife],
+    [selectedMesh, meshMode, meshFaces, meshVerts, meshEdges, history, meshAmount, model, knife, mergeDistance, notify, selection, rig, setSelection],
   )
 
   /* Dragging on the mesh UV sheet: one undo step per drag. */
@@ -5970,6 +6049,20 @@ export function Editor({ segments }: { segments: string[] }) {
       },
       onQuad: () => setQuad((q) => !q),
       onGrid: () => setGrid((g) => !g),
+      onCubeToMesh: () => {
+        const ids = selection.filter((id) => model.cubes.some((c) => c.id === id && !c.locked))
+        if (!ids.length) return notify('Pick a cube to convert first.', 2500)
+        let next = model
+        const made: string[] = []
+        for (const id of ids) {
+          const cube = next.cubes.find((c) => c.id === id)!
+          const mesh = cubeToMesh(cube, ownerBone(next.bones, id))
+          next = { ...deleteCube(next, id), meshes: [...(next.meshes ?? []), mesh] }
+          made.push(mesh.id)
+        }
+        history.commit(ids.length === 1 ? 'convert to mesh' : 'convert to meshes', next)
+        setSelection(made)
+      },
       // from a menu, the grab starts where the pointer is once it's back over the view
       onGrab: () => startGrab(),
       onSelectAll: () => setSelection(model.cubes.filter((c) => c.visible).map((c) => c.id)),
@@ -6178,6 +6271,8 @@ export function Editor({ segments }: { segments: string[] }) {
         if (knife !== null && (e.key === 'Enter' || e.key === 'Escape')) return run(e.key === 'Enter' ? meshOps.knife : () => setKnife(null))
         if (!mod && ['1', '2', '3', '4'].includes(k)) return run(() => setMeshMode(MESH_MODES[Number(k) - 1]))
         if (!mod && k === 'k' && knife === null) return run(meshOps.knife)
+        if (mod && k === 'j') return run(meshOps.join)
+        if (!mod && k === 'p' && meshMode === 'face') return run(meshOps.separate)
         if (meshMode !== 'object') {
           if (mod && k === 'r' && meshMode === 'edge') return run(meshOps.loopCut)
           if (mod && k === 'b' && meshMode === 'edge') return run(meshOps.bevel)
@@ -6653,6 +6748,9 @@ export function Editor({ segments }: { segments: string[] }) {
                   pickedFaces={meshMode === 'face' ? meshFaces : []}
                   amount={meshAmount}
                   onAmount={setMeshAmount}
+                  distance={mergeDistance}
+                  onDistance={setMergeDistance}
+                  joinable={selection.filter((id) => id !== selectedMesh.id && (model.meshes ?? []).some((x) => x.id === id)).length}
                   knife={knife === null ? null : knife.length}
                   onKnifeCancel={() => setKnife(null)}
                 />
@@ -6678,6 +6776,7 @@ export function Editor({ segments }: { segments: string[] }) {
                   onRename={(name) => cube && rename(cube.id, name)}
                   onMove={(bone) => cube && move(cube.id, bone)}
                   onDelete={actions.onDelete}
+                  onToMesh={actions.onCubeToMesh}
                 />
               </Panel>
             )}

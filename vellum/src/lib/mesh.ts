@@ -3,7 +3,8 @@
    (move vertices, extrude, delete, merge, flip). Vertices are offsets from
    the mesh's origin; UVs are in UV units like a cube face's. */
 
-import type { Mesh, MeshFace, Model, UVRect, Vec3 } from './model'
+import { FACES } from './model'
+import type { Cube, FaceKey, Mesh, MeshFace, Model, UVRect, Vec3 } from './model'
 import { newId } from './new-model'
 
 const sub = (a: Vec3, b: Vec3): Vec3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
@@ -947,9 +948,9 @@ export function slideEdges(mesh: Mesh, edges: readonly string[], amount: number)
 
 /**
  * The edge loop through an edge, as Alt+click picks it in Blender: at each
- * vertex where four edges meet, it carries on along the edge that shares no
- * face with the one it came in on. It stops anywhere else, or when it comes
- * back round.
+ * vertex where four edges meet, it carries on along the edge sharing no
+ * face with the edge it came in on. It stops anywhere else, or when it
+ * comes back round.
  */
 export function edgeLoop(mesh: Mesh, start: string): string[] {
   const byEdge = facesByEdge(mesh)
@@ -1095,4 +1096,120 @@ export function scaleVertices(mesh: Mesh, keys: readonly string[], factors: Vec3
     vertices[key] = [0, 1, 2].map((i) => round(about[i] + (p[i] - about[i]) * factors[i])) as Vec3
   }
   return { ...mesh, vertices }
+}
+
+/* ---------------- tidying: merge by distance, separate, join, cube to mesh ---------------- */
+
+/**
+ * Blender's merge by distance: vertices (of `keys`, or all) closer than
+ * `distance` to one another become one, at their middle. Returns how many
+ * went.
+ */
+export function mergeByDistance(mesh: Mesh, distance: number, keys?: readonly string[]): { mesh: Mesh; removed: number } {
+  const pool = (keys?.length ? keys : Object.keys(mesh.vertices)).filter((k) => mesh.vertices[k])
+  // union-find over the pairs that are close enough
+  const root = new Map(pool.map((k) => [k, k]))
+  const find = (k: string): string => {
+    let r = k
+    while (root.get(r) !== r) r = root.get(r)!
+    root.set(k, r)
+    return r
+  }
+  for (let i = 0; i < pool.length; i++)
+    for (let j = i + 1; j < pool.length; j++)
+      if (length(sub(mesh.vertices[pool[i]], mesh.vertices[pool[j]])) <= distance) root.set(find(pool[j]), find(pool[i]))
+  const groups = new Map<string, string[]>()
+  for (const k of pool) groups.set(find(k), [...(groups.get(find(k)) ?? []), k])
+  let m = mesh
+  let removed = 0
+  for (const g of groups.values()) {
+    if (g.length < 2) continue
+    m = mergeVertices(m, g).mesh
+    removed += g.length - 1
+  }
+  return { mesh: dropLoose(m), removed }
+}
+
+/**
+ * Blender's separate: the picked faces leave for a mesh of their own, in
+ * the same place, with their own copies of the vertices they share with
+ * the faces left behind.
+ */
+export function separateFaces(mesh: Mesh, faceKeys: readonly string[], name: string): { mesh: Mesh; piece: Mesh } | null {
+  const keys = faceKeys.filter((k) => mesh.faces[k])
+  if (!keys.length || keys.length === Object.keys(mesh.faces).length) return null
+  const vertices = Object.fromEntries(verticesOf(mesh, keys).map((v) => [v, mesh.vertices[v]]))
+  const faces = Object.fromEntries(keys.map((k) => [k, mesh.faces[k]]))
+  const piece: Mesh = { ...mesh, id: newId(), name, vertices, faces }
+  return { mesh: deleteFaces(mesh, keys), piece }
+}
+
+/**
+ * Blender's join: other meshes' faces move into `target`. `toTarget` takes
+ * a point of the other mesh into the target's own frame, so nothing moves
+ * on screen. Keys that clash are made anew.
+ */
+export function joinMeshes(target: Mesh, others: ReadonlyArray<{ mesh: Mesh; toTarget: (p: Vec3) => Vec3 }>): Mesh {
+  const vertices = { ...target.vertices }
+  const faces = { ...target.faces }
+  for (const { mesh, toTarget } of others) {
+    const rename = new Map<string, string>()
+    for (const [k, p] of Object.entries(mesh.vertices)) {
+      const nk = vertices[k] ? key8() : k
+      rename.set(k, nk)
+      vertices[nk] = toTarget(p).map(round) as Vec3
+    }
+    for (const [k, f] of Object.entries(mesh.faces)) {
+      const vs = f.vertices.map((v) => rename.get(v) ?? v)
+      faces[faces[k] ? key8() : k] = { ...f, vertices: vs, uv: Object.fromEntries(Object.entries(f.uv).map(([v, uv]) => [rename.get(v) ?? v, uv])) }
+    }
+  }
+  return { ...target, vertices, faces }
+}
+
+type Corner = [0 | 1, 0 | 1, 0 | 1]
+/** Each cube face's corners as seen from outside, top left first and going clockwise, with the texture upright the way Blockbench and Minecraft draw it. 0 is the cube's `from` side on that axis, 1 its `to` side. */
+export const FACE_CORNERS: Record<FaceKey, [Corner, Corner, Corner, Corner]> = {
+  north: [[1, 1, 0], [0, 1, 0], [0, 0, 0], [1, 0, 0]],
+  south: [[0, 1, 1], [1, 1, 1], [1, 0, 1], [0, 0, 1]],
+  east: [[1, 1, 1], [1, 1, 0], [1, 0, 0], [1, 0, 1]],
+  west: [[0, 1, 0], [0, 1, 1], [0, 0, 1], [0, 0, 0]],
+  up: [[0, 1, 0], [1, 1, 0], [1, 1, 1], [0, 1, 1]],
+  down: [[0, 0, 1], [1, 0, 1], [1, 0, 0], [0, 0, 0]],
+}
+
+/**
+ * A cube as a mesh, Blockbench's "Convert to mesh": eight shared corners
+ * (inflate included) about the cube's pivot, its turn kept, and each face
+ * with its texture and its UVs, the face's quarter turns applied. A face
+ * with no area on the sheet keeps its corners at one point.
+ */
+export function cubeToMesh(cube: Cube, parent: string | null): Mesh {
+  const inf = cube.inflate || 0
+  const lo: Vec3 = [cube.from[0] - inf, cube.from[1] - inf, cube.from[2] - inf]
+  const hi: Vec3 = [cube.to[0] + inf, cube.to[1] + inf, cube.to[2] + inf]
+  const vertices: Record<string, Vec3> = {}
+  const corners = new Map<string, string>()
+  const at = (c: Corner) => {
+    const id = c.join('')
+    let k = corners.get(id)
+    if (!k) {
+      k = key8()
+      corners.set(id, k)
+      vertices[k] = [0, 1, 2].map((i) => round((c[i] ? hi[i] : lo[i]) - cube.origin[i])) as Vec3
+    }
+    return k
+  }
+  const faces: Record<string, MeshFace> = {}
+  for (const f of FACES) {
+    const face = cube.faces[f]
+    const cw = FACE_CORNERS[f].map(at)
+    const [x1, y1, x2, y2] = face.uv
+    const rect: Array<[number, number]> = [[x1, y1], [x2, y1], [x2, y2], [x1, y2]]
+    const turn = (face.rotation ?? 0) / 90
+    const uv = Object.fromEntries(cw.map((k, i) => [k, rect[(i - turn + 4) % 4]]))
+    // meshes run their corners anticlockwise from outside
+    faces[key8()] = { vertices: [cw[0], cw[3], cw[2], cw[1]], uv, texture: face.texture }
+  }
+  return { id: newId(), name: cube.name, parent, origin: [...cube.origin] as Vec3, rotation: [...cube.rotation] as Vec3, vertices, faces, visible: cube.visible, locked: cube.locked }
 }

@@ -5,7 +5,7 @@
 
 import { FACES, textureById } from './model'
 import type { Bone, Cube, FaceKey, Mesh, Model, Vec3 } from './model'
-import { faceNormal, faceOrder } from './mesh'
+import { FACE_CORNERS, faceNormal, faceOrder } from './mesh'
 import { applyDir, buildRig, cubeFrame, meshFrame, posedAt, rotationMatrix } from './kinematics'
 import { dataUriBytes, makeZip } from './zip'
 import { safeId, toMinecraftModel } from './mcmodel'
@@ -13,18 +13,6 @@ import { safeId, toMinecraftModel } from './mcmodel'
 /** 16 units are a block; a block is a metre in glTF and OBJ. */
 const UNIT = 1 / 16
 
-type Corner = [0 | 1, 0 | 1, 0 | 1]
-/* Each face's corners as seen from outside, top left first and going
-   clockwise, with the texture upright the way Blockbench and Minecraft
-   draw it. 0 is the cube's `from` side on that axis, 1 its `to` side. */
-const FACE_CORNERS: Record<FaceKey, [Corner, Corner, Corner, Corner]> = {
-  north: [[1, 1, 0], [0, 1, 0], [0, 0, 0], [1, 0, 0]],
-  south: [[0, 1, 1], [1, 1, 1], [1, 0, 1], [0, 0, 1]],
-  east: [[1, 1, 1], [1, 1, 0], [1, 0, 0], [1, 0, 1]],
-  west: [[0, 1, 0], [0, 1, 1], [0, 0, 1], [0, 0, 0]],
-  up: [[0, 1, 0], [1, 1, 0], [1, 1, 1], [0, 1, 1]],
-  down: [[0, 0, 1], [1, 0, 1], [1, 0, 0], [0, 0, 0]],
-}
 const NORMALS: Record<FaceKey, Vec3> = { north: [0, 0, -1], south: [0, 0, 1], east: [1, 0, 0], west: [-1, 0, 0], up: [0, 1, 0], down: [0, -1, 0] }
 
 /** A face to write: its corners clockwise as seen from outside, with their UVs (0..1) and the face's normal. */

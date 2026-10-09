@@ -997,6 +997,20 @@ take UVs the same way along the face's own UVs, so the texture stays put.
   face is turned to run against a face it shares an edge with, or else away
   from the mesh's middle. Its UVs are packed into free room.
 - **Dissolve** (`dissolveEdges`) and **inset** (`insetFaces`), as Blender's.
+- **Merge by distance** (`mergeByDistance`): vertices closer than the
+  Distance field (0.1 by default) become one at their middle, the picked
+  ones in Vertex mode or every one in Object mode.
+- **Separate** (P, in Face mode; `separateFaces`): the picked faces leave
+  for a mesh of their own in the same place, with copies of the corners
+  they shared, and the new mesh is picked.
+- **Join** (Ctrl J; `joinMeshes`): the other meshes picked in the outliner
+  come into the one shown in the panel. Each point goes from its own mesh's
+  frame through the world into the target's, so nothing moves on screen,
+  even across bones. Merge by distance then closes any seams.
+- **Convert to mesh** (the vertex button on a cube's inspector, or Edit ▸
+  Convert cube to mesh; `cubeToMesh`): eight shared corners about the
+  cube's pivot with its turn and inflate, each face keeping its texture and
+  its UVs with the face's quarter turn applied.
 
 **Faces a flat map can't texture.** A face drawn as one div maps its
 texture by one affine map, which is exact only when its UVs are the same

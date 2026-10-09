@@ -230,3 +230,100 @@ test('a face with a dragged UV corner is drawn as two triangles', async () => {
   assert.deepEqual(errors, [])
   await page.close()
 })
+
+test('merge by distance, separate, join and cube to mesh', async () => {
+  const { page } = await open()
+  const r = await inApp(page, async () => {
+    const M = await import('/src/lib/mesh.ts')
+    const K = await import('/src/lib/kinematics.ts')
+    const S = await import('/src/lib/samples.ts')
+    const cube = M.makeMesh('cube', { parent: null, origin: [0, 0, 0], texture: null, place: () => [0, 0] })
+    const top = Object.keys(cube.faces).find((k) => M.faceNormal(cube, cube.faces[k])[1] > 0.9)
+    const sep = M.separateFaces(cube, [top], 'lid')
+    // joined back, the lid's corners sit on the box's: merge by distance closes it again
+    const joined = M.joinMeshes(sep.mesh, [{ mesh: sep.piece, toTarget: (p) => p }])
+    const merged = M.mergeByDistance(joined, 0.01)
+    const open = (m) => {
+      const n = new Map()
+      for (const f of Object.values(m.faces)) {
+        const o = M.faceOrder(m, f)
+        o.forEach((a, i) => n.set(M.edgeKey(a, o[(i + 1) % o.length]), (n.get(M.edgeKey(a, o[(i + 1) % o.length])) ?? 0) + 1))
+      }
+      return [...n.values()].filter((c) => c !== 2).length
+    }
+    // a turned, inflated cube from a sample: its mesh has the same corners in the world
+    const model = structuredClone(S.samples.find((x) => x.id === 'voidling').model)
+    const c = { ...model.cubes[0], rotation: [10, 20, 30], inflate: 0.5 }
+    model.cubes[0] = c
+    const owner = [...K.buildRig(model, {}).cubeOwner.entries()].find(([id]) => id === c.id)?.[1] ?? null
+    const mesh = M.cubeToMesh(c, owner)
+    const withMesh = { ...model, meshes: [mesh] }
+    const rig = K.buildRig(withMesh, {})
+    const cf = K.cubeFrame(rig, c)
+    const mf = K.meshFrame(rig, mesh)
+    const lo = c.from.map((v) => v - 0.5)
+    const hi = c.to.map((v) => v + 0.5)
+    const cubeCorners = []
+    for (const x of [lo[0], hi[0]]) for (const y of [lo[1], hi[1]]) for (const z of [lo[2], hi[2]]) cubeCorners.push(K.apply(cf, [x - c.origin[0], y - c.origin[1], z - c.origin[2]]).map((v) => Math.round(v * 100) / 100).join())
+    const meshCorners = Object.values(mesh.vertices).map((p) => K.apply(mf, p).map((v) => Math.round(v * 100) / 100).join())
+    // the north face: its top left (seen from outside) is the high x, high y, low z corner, at the UV rect's first corner
+    const north = Object.values(mesh.faces).find((f) => {
+      const n = M.faceNormal(mesh, f)
+      return n[2] < -0.9
+    })
+    const tl = north.vertices.find((k) => {
+      const p = mesh.vertices[k]
+      return Math.abs(p[0] - (hi[0] - c.origin[0])) < 1e-6 && Math.abs(p[1] - (hi[1] - c.origin[1])) < 1e-6
+    })
+    return {
+      sep: { rest: Object.keys(sep.mesh.faces).length, piece: Object.keys(sep.piece.faces).length, pieceVerts: Object.keys(sep.piece.vertices).length, restVerts: Object.keys(sep.mesh.vertices).length },
+      joined: { faces: Object.keys(joined.faces).length, verts: Object.keys(joined.vertices).length },
+      merged: { removed: merged.removed, verts: Object.keys(merged.mesh.vertices).length, open: open(merged.mesh) },
+      corners: JSON.stringify(cubeCorners.sort()) === JSON.stringify(meshCorners.sort()),
+      faces: Object.keys(mesh.faces).length,
+      closed: open(mesh),
+      tlUv: north.uv[tl],
+      rect: c.faces.north.uv.slice(0, 2),
+      turn: c.faces.north.rotation ?? 0,
+    }
+  })
+  assert.deepEqual(r.sep, { rest: 5, piece: 1, pieceVerts: 4, restVerts: 8 }, 'the lid leaves with copies of its corners')
+  assert.deepEqual(r.joined, { faces: 6, verts: 12 })
+  assert.deepEqual(r.merged, { removed: 4, verts: 8, open: 0 }, 'and merging by distance closes the box again')
+  assert.ok(r.corners, 'a turned, inflated cube and its mesh have the same corners in the world')
+  assert.equal(r.faces, 6)
+  assert.equal(r.closed, 0)
+  if (r.turn === 0) assert.deepEqual(r.tlUv, r.rect, 'the north face keeps its UV corner where the cube drew it')
+  await page.close()
+})
+
+test('in the editor: convert a cube, separate faces, join them back, merge by distance', async () => {
+  const { page, errors } = await openEditor()
+  await page.click('.tree__row:has-text("yoke")')
+  const cubes = await page.locator('.model-cube').count()
+  await page.click('button[aria-label="Convert yoke to a mesh"]')
+  await page.waitForSelector('.model-mface')
+  assert.equal(await page.locator('.model-cube').count(), cubes - 1)
+  assert.equal(await page.locator('.model-mface').count(), 6)
+  assert.equal(await page.inputValue('.insp-head__name'), 'yoke')
+
+  // Face mode: pick one face and separate it
+  await page.keyboard.press('2')
+  const face = page.locator('.editor-view .model-mface').first()
+  const b = await face.boundingBox()
+  await page.mouse.click(b.x + b.width / 2, b.y + b.height / 2)
+  await page.keyboard.press('p')
+  assert.equal(await page.inputValue('.insp-head__name'), 'yoke_1', 'the new mesh is picked')
+
+  // pick both meshes and join them
+  await page.click('.tree__row:has(.tree__name:text-is("yoke"))', { modifiers: ['Control'] })
+  assert.equal((await page.$$('.tree__row[aria-selected="true"]')).length, 2)
+  await page.keyboard.press('Control+j')
+  assert.equal(await page.locator('.tree__row:has(.tree__name:text-is("yoke_1"))').count() + (await page.locator('.tree__row:has(.tree__name:text-is("yoke"))').count()), 1, 'one mesh is left')
+  assert.match(await page.textContent('body'), /12 vertices( ·|,) 6 faces/)
+  await page.keyboard.press('1')
+  await page.click('.chip:has-text("Merge by distance")')
+  assert.match(await page.textContent('body'), /8 vertices( ·|,) 6 faces/)
+  assert.deepEqual(errors, [])
+  await page.close()
+})
