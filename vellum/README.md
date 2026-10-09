@@ -566,8 +566,12 @@ The gizmo, vertex dots, edges, knife marks and null markers stay DOM, placed
 by the camera's `project`. A hook layer holds an empty box per face at its
 place on screen (`.model-cube`, `.model-face`, `.model-mface`), drawing
 nothing and taking no clicks, so box select and the tests find faces by
-where they are. `src/components/Model3D.tsx` is still CSS 3D, for plain
-coloured boxes (the Projects tiles, and cards with no model behind them).
+where they are. `src/components/Model3D.tsx` turns plain coloured boxes (the
+Projects tiles, and cards with no model behind them) into a model of cubes
+painted from a strip of swatches, and draws it with the same viewport.
+WebGL draws lines one pixel wide whatever is asked, so each line is two
+triangles widened on screen to its width (1 CSS pixel for edges and the
+grid, 1.5 for the wireframe), times the screen's pixel density.
 
 **Every other page is a dark room.** The Dash, Projects and Settings take after
 Blockbench: grey-blue panels, one bright blue, the axis colours, and the
@@ -833,7 +837,8 @@ middle of the 16-pixel block; a left hand mirrors it):
   `Rx(-90)·Ry(180)` and `(±1/16, 2/16, -10/16)` to the hand;
 - first person: `(±0.56, -0.52, -0.72)` blocks from the eye, at a 70° field
   of view as a 16:9 window has it across the box's width, the view turned
-  from the eye toward the hand;
+  from the eye toward the hand; no arm is drawn, as the game draws none
+  while the hand holds an item;
 - head: the head's pivot, `(0, -0.25, 0)`, a half turn, and five eighths
   scale with Y and Z flipped;
 - inventory: centred in an 18-pixel slot, seen flat;

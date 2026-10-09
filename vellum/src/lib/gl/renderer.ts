@@ -57,14 +57,28 @@ void main() {
   outColor = vec4(min(c.rgb, 1.0) * c.a, c.a);
 }`
 
+/* WebGL draws GL_LINES one pixel wide whatever is asked, so a line is two
+   triangles: each corner is its end, pushed sideways on screen by half the
+   width, toward the side \`a_side\` names. */
 const LINE_VS = `#version 300 es
 uniform mat4 u_clip;
+// clip-space units per device pixel, across and down
+uniform vec2 u_px;
+// the line's width in device pixels
+uniform float u_width;
 in vec3 a_pos;
+in vec3 a_other;
+in float a_side;
 in vec4 a_col;
 out vec4 v_col;
 void main() {
   v_col = a_col;
-  gl_Position = u_clip * vec4(a_pos, 1.0);
+  vec4 p = u_clip * vec4(a_pos, 1.0);
+  vec4 o = u_clip * vec4(a_other, 1.0);
+  vec2 d = (o.xy / o.w - p.xy / p.w) / u_px;
+  float len = length(d);
+  vec2 n = len > 1e-6 ? vec2(-d.y, d.x) / len : vec2(0.0);
+  gl_Position = vec4(p.xy + n * a_side * u_width * 0.5 * u_px * p.w, p.z, p.w);
 }`
 
 const LINE_FS = `#version 300 es
@@ -124,7 +138,7 @@ function init(): Gl | null {
     lastReady.clear()
   })
   const tri = compile(gl, TRI_VS, TRI_FS, ['u_clip', 'u_tex', 'u_useTex', 'u_pass', 'u_frame'], ['a_pos', 'a_uv', 'a_col'])
-  const line = compile(gl, LINE_VS, LINE_FS, ['u_clip'], ['a_pos', 'a_col'])
+  const line = compile(gl, LINE_VS, LINE_FS, ['u_clip', 'u_px', 'u_width'], ['a_pos', 'a_other', 'a_side', 'a_col'])
   const buffer = gl.createBuffer()!
   const triVao = gl.createVertexArray()!
   gl.bindVertexArray(triVao)
@@ -139,10 +153,15 @@ function init(): Gl | null {
   const lineVao = gl.createVertexArray()!
   gl.bindVertexArray(lineVao)
   gl.bindBuffer(gl.ARRAY_BUFFER, buffer)
+  const lineStride = 11 * 4
   gl.enableVertexAttribArray(line.attr.a_pos)
-  gl.vertexAttribPointer(line.attr.a_pos, 3, gl.FLOAT, false, 7 * 4, 0)
+  gl.vertexAttribPointer(line.attr.a_pos, 3, gl.FLOAT, false, lineStride, 0)
+  gl.enableVertexAttribArray(line.attr.a_other)
+  gl.vertexAttribPointer(line.attr.a_other, 3, gl.FLOAT, false, lineStride, 12)
+  gl.enableVertexAttribArray(line.attr.a_side)
+  gl.vertexAttribPointer(line.attr.a_side, 1, gl.FLOAT, false, lineStride, 24)
   gl.enableVertexAttribArray(line.attr.a_col)
-  gl.vertexAttribPointer(line.attr.a_col, 4, gl.FLOAT, false, 7 * 4, 12)
+  gl.vertexAttribPointer(line.attr.a_col, 4, gl.FLOAT, false, lineStride, 28)
   gl.bindVertexArray(null)
   return { gl, canvas, tri, line, buffer, vao: { tri: triVao, line: lineVao } }
 }
@@ -233,7 +252,12 @@ export type DrawInput = {
   grid?: Grid | null
   /** which frame of each animated texture to show, by texture id (see `textureFrames`) */
   frames?: ReadonlyMap<string, Frame>
+  /** device pixels per CSS pixel, so lines keep their width on a dense screen */
+  dpr?: number
 }
+
+/** Line widths in CSS pixels: the grid, edges on faces, and the wireframe drawn over everything. */
+const WIDTH = { grid: 1, edge: 1, top: 1.5 }
 
 /**
  * Draws a scene and copies it onto `target`, whose backing size is the
@@ -265,7 +289,10 @@ export function drawView(target: HTMLCanvasElement, input: DrawInput): boolean {
   gl.depthFunc(gl.LEQUAL)
 
   const { camera, scene } = input
-  if (input.grid) lines(g, gridLines(input.grid), camera.stageClip, false, true)
+  const px: [number, number] = [2 / w, 2 / h]
+  const dpr = input.dpr ?? 1
+  const line = (data: number[], clip: Float32Array, depthTest: boolean, under: boolean, width: number) => lines(g, data, clip, depthTest, under, px, width * dpr)
+  if (input.grid) line(gridLines(input.grid), camera.stageClip, false, true, WIDTH.grid)
 
   // faces: opaque texels, then partly clear ones
   gl.enable(gl.POLYGON_OFFSET_FILL)
@@ -275,8 +302,8 @@ export function drawView(target: HTMLCanvasElement, input: DrawInput): boolean {
   tris(g, plain, camera.clip, 0, true, input.frames)
   for (const c of others) tris(g, c.batches, camera.stageClip, 0, true)
   gl.disable(gl.POLYGON_OFFSET_FILL)
-  lines(g, scene.lines, camera.clip, true, false)
-  for (const c of others) lines(g, c.lines, camera.stageClip, true, false)
+  line(scene.lines, camera.clip, true, false, WIDTH.edge)
+  for (const c of others) line(c.lines, camera.stageClip, true, false, WIDTH.edge)
   tris(g, plain, camera.clip, 1, false, input.frames)
   for (const c of others) tris(g, c.batches, camera.stageClip, 1, false)
   // picked-face tints, then onion skins
@@ -287,7 +314,7 @@ export function drawView(target: HTMLCanvasElement, input: DrawInput): boolean {
   for (const ghost of input.ghosts ?? []) tris(g, ghost.batches, camera.clip, 2, false, input.frames)
   if (scene.topLines.length) {
     gl.disable(gl.DEPTH_TEST)
-    lines(g, scene.topLines, camera.clip, false, false)
+    line(scene.topLines, camera.clip, false, false, WIDTH.top)
     gl.enable(gl.DEPTH_TEST)
   }
   gl.disable(gl.SCISSOR_TEST)
@@ -330,17 +357,43 @@ function tris(g: Gl, batches: TriBatch[], clip: Float32Array, pass: 0 | 1 | 2, w
   gl.depthMask(true)
 }
 
-function lines(g: Gl, data: number[], clip: Float32Array, depthTest: boolean, under: boolean) {
+/** Pairs of points (x y z r g b a each) as quads `width` device pixels wide. */
+function lines(g: Gl, data: number[], clip: Float32Array, depthTest: boolean, under: boolean, px: [number, number], width: number) {
   const { gl, line } = g
   if (!data.length) return
+  const segs = Math.floor(data.length / 14)
+  const out = new Float32Array(segs * 6 * 11)
+  let o = 0
+  for (let i = 0; i < segs; i++) {
+    const a = data.slice(i * 14, i * 14 + 3)
+    const b = data.slice(i * 14 + 7, i * 14 + 10)
+    const ca = data.slice(i * 14 + 3, i * 14 + 7)
+    const cb = data.slice(i * 14 + 10, i * 14 + 14)
+    // seen from b, a's other end is a, so b's sides are named the other way round
+    const corner = (p: number[], q: number[], side: number, c: number[]) => {
+      out.set(p, o)
+      out.set(q, o + 3)
+      out[o + 6] = side
+      out.set(c, o + 7)
+      o += 11
+    }
+    corner(a, b, 1, ca)
+    corner(a, b, -1, ca)
+    corner(b, a, -1, cb)
+    corner(a, b, -1, ca)
+    corner(b, a, 1, cb)
+    corner(b, a, -1, cb)
+  }
   gl.useProgram(line.prog)
   gl.bindVertexArray(g.vao.line)
   gl.uniformMatrix4fv(line.loc.u_clip, false, clip)
+  gl.uniform2f(line.loc.u_px, px[0], px[1])
+  gl.uniform1f(line.loc.u_width, width)
   gl.depthMask(false)
   if (!depthTest && !under) gl.disable(gl.DEPTH_TEST)
   gl.bindBuffer(gl.ARRAY_BUFFER, g.buffer)
-  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(data), gl.STREAM_DRAW)
-  gl.drawArrays(gl.LINES, 0, data.length / 7)
+  gl.bufferData(gl.ARRAY_BUFFER, out, gl.STREAM_DRAW)
+  gl.drawArrays(gl.TRIANGLES, 0, segs * 6)
   gl.enable(gl.DEPTH_TEST)
   gl.depthMask(true)
 }

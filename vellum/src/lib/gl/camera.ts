@@ -36,6 +36,8 @@ export type CameraState = {
   ortho: boolean
   /** a vertical field of view in degrees for a 16:9 window, from an eye at the middle of the box, instead of the 900px perspective */
   fov?: number
+  /** where the eye is down the box, 0 to 1; 0.46 unless set */
+  eyeHeight?: number
 }
 
 export type Camera = {
@@ -73,7 +75,7 @@ function stageMatrix(s: CameraState, withDisplay = true): DOMMatrix {
 function perspectiveMatrix(s: CameraState): DOMMatrix {
   if (s.ortho) return new DOMMatrix()
   const ox = s.width / 2
-  const oy = s.height * (s.fov ? 0.5 : EYE_HEIGHT)
+  const oy = s.height * (s.fov ? 0.5 : (s.eyeHeight ?? EYE_HEIGHT))
   const p = new DOMMatrix()
   p.m34 = -1 / perspectiveOf(s)
   return new DOMMatrix().translate(ox, oy, 0).multiply(p).translate(-ox, -oy, 0)

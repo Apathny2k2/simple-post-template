@@ -130,7 +130,6 @@
 }
 .scene3d__projection:hover { background: rgb(255 255 255 / 0.1); }
 
-.scene3d--ortho { perspective: none; }
 
 /* every corner of every cube, for the vertex snap tool */
 .scene3d__vertex {

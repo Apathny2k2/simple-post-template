@@ -355,8 +355,6 @@
   pointer-events: none;
 }
 
-/* the vanishing point stays at 74% of the stage's height */
-.showcase__model .scene3d { perspective-origin: 50% 47.44%; }
 
 .showcase__model[data-state='in'] { animation: model-in 1000ms var(--ease-spring) backwards; }
 .showcase__model[data-state='out'] { animation: model-out 650ms var(--ease-out) forwards; }

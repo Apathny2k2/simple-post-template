@@ -64,6 +64,7 @@ function Turntable({
   const clip = acting ? action : idle
   const t = acting ? since : clip && clip.length > 0 ? time % clip.length : 0
   const scale = Math.max(0.8, Math.min(14, (box * 0.6) / sizeOf(model)))
+  // the eye sits 47.44% down the box, which is 74% of the way down the stage, level with the disc
 
   return (
     <div className="showcase__model" data-state={state}>
@@ -76,6 +77,7 @@ function Turntable({
         yaw={yaw}
         initialPitch={PITCH}
         anchorAt="floor"
+        eyeHeight={0.4744}
         clip={clip}
         time={t}
       />

@@ -1,5 +1,11 @@
-import { useCallback, useRef, useState } from 'react'
-import './Model3D.css'
+/* Plain coloured boxes (the Projects tiles, and cards with no model behind
+   them), drawn by the same WebGL viewport as a model: each box becomes a
+   cube, coloured from a strip of flat swatches. */
+
+import { useMemo } from 'react'
+import type { Cube, FaceKey, Model } from '../lib/model'
+import { FACES } from '../lib/model'
+import { ModelView } from './ModelView'
 
 export type Box = {
   /** centre of the box, in scene units. +y is up. */
@@ -14,135 +20,82 @@ export type Box = {
   selected?: boolean
 }
 
-function Box3D({ box }: { box: Box }) {
-  const { x, y, z, w, h, d, colors, selected } = box
-  const [top, side, front] = colors
-
-  const face = (
-    key: string,
-    fw: number,
-    fh: number,
-    transform: string,
-    background: string,
-    shade: number,
-  ) => (
-    <div
-      key={key}
-      className="box3d__face"
-      style={{
-        width: fw,
-        height: fh,
-        marginLeft: -fw / 2,
-        marginTop: -fh / 2,
-        transform,
-        background,
-        filter: `brightness(${shade})`,
-      }}
-    />
-  )
-
-  return (
-    <div
-      className={`box3d${selected ? ' box3d--selected' : ''}`}
-      style={{ transform: `translate3d(${x}px, ${-y}px, ${z}px)` }}
-    >
-      {face('front', w, h, `translateZ(${d / 2}px)`, front, 1)}
-      {face('back', w, h, `rotateY(180deg) translateZ(${d / 2}px)`, front, 0.72)}
-      {face('right', d, h, `rotateY(90deg) translateZ(${w / 2}px)`, side, 0.88)}
-      {face('left', d, h, `rotateY(-90deg) translateZ(${w / 2}px)`, side, 0.78)}
-      {face('top', w, d, `rotateX(90deg) translateZ(${h / 2}px)`, top, 1.12)}
-      {face('bottom', w, d, `rotateX(-90deg) translateZ(${h / 2}px)`, top, 0.6)}
-    </div>
-  )
-}
-
 type Props = {
   boxes: Box[]
   /** continuous turntable spin */
   spin?: boolean
   grid?: boolean
-  gridSize?: number
-  cell?: number
   /** drag to orbit */
   orbit?: boolean
   initialYaw?: number
   initialPitch?: number
+  /** the stage pushed along screen z, in pixels; negative moves it away */
   zoom?: number
   className?: string
 }
 
-export function Model3D({
-  boxes,
-  spin,
-  grid,
-  gridSize = 320,
-  cell = 24,
-  orbit,
-  initialYaw = -32,
-  initialPitch = -20,
-  zoom = 0,
-  className = '',
-}: Props) {
-  const [yaw, setYaw] = useState(initialYaw)
-  const [pitch, setPitch] = useState(initialPitch)
-  const drag = useRef<{ x: number; y: number; yaw: number; pitch: number } | null>(null)
+/** The boxes as a model: one cube each, its faces painted from a strip of the colours used. */
+export function boxesModel(boxes: Box[]): Model {
+  const colours = [...new Set(boxes.flatMap((b) => b.colors))]
+  const c = document.createElement('canvas')
+  c.width = Math.max(1, colours.length)
+  c.height = 1
+  const x = c.getContext('2d')
+  colours.forEach((col, i) => {
+    if (!x) return
+    x.fillStyle = col
+    x.fillRect(i, 0, 1, 1)
+  })
+  const uv = (col: string): [number, number, number, number] => {
+    const i = colours.indexOf(col)
+    return [i + 0.25, 0.25, i + 0.75, 0.75]
+  }
+  const role: Record<FaceKey, 0 | 1 | 2> = { up: 0, down: 0, east: 1, west: 1, north: 2, south: 2 }
+  const cubes: Cube[] = boxes.map((b, i) => ({
+    id: `box${i}`,
+    name: `box ${i + 1}`,
+    from: [b.x - b.w / 2, b.y - b.h / 2, b.z - b.d / 2],
+    to: [b.x + b.w / 2, b.y + b.h / 2, b.z + b.d / 2],
+    origin: [b.x, b.y, b.z],
+    rotation: [0, 0, 0],
+    faces: Object.fromEntries(FACES.map((k) => [k, { uv: uv(b.colors[role[k]]), texture: 'swatches' }])) as Cube['faces'],
+    inflate: 0,
+    boxUv: false,
+    visible: true,
+    locked: false,
+  }))
+  return {
+    name: 'boxes',
+    kind: 'items',
+    resolution: { width: c.width, height: 1 },
+    bones: [{ id: 'boxes', name: 'boxes', origin: [0, 0, 0], rotation: [0, 0, 0], visible: true, locked: false, children: cubes.map((cube) => ({ kind: 'cube' as const, id: cube.id })) }],
+    cubes,
+    textures: [{ id: 'swatches', name: 'swatches.png', width: c.width, height: 1, uvWidth: c.width, uvHeight: 1, source: c.toDataURL('image/png') }],
+    clips: [],
+  }
+}
 
-  const onPointerDown = useCallback(
-    (e: React.PointerEvent) => {
-      if (!orbit) return
-      drag.current = { x: e.clientX, y: e.clientY, yaw, pitch }
-      ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
-    },
-    [orbit, yaw, pitch],
-  )
-
-  const onPointerMove = useCallback((e: React.PointerEvent) => {
-    const start = drag.current
-    if (!start) return
-    setYaw(start.yaw + (e.clientX - start.x) * 0.45)
-    setPitch(Math.max(-88, Math.min(88, start.pitch - (e.clientY - start.y) * 0.35)))
-  }, [])
-
-  const endDrag = useCallback(() => {
-    drag.current = null
-  }, [])
-
-  const stageTransform = spin
-    ? undefined
-    : `translateZ(${zoom}px) rotateX(${pitch}deg) rotateY(${yaw}deg)`
-
+export function Model3D({ boxes, spin, grid, orbit = false, initialYaw = -32, initialPitch = -20, zoom = 0, className = '' }: Props) {
+  // rebuilt only when the boxes change, so a spinning tile doesn't repaint its swatches
+  const key = JSON.stringify(boxes)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const model = useMemo(() => boxesModel(boxes), [key])
+  const selection = useMemo(() => boxes.flatMap((b, i) => (b.selected ? [`box${i}`] : [])), [key])
   return (
-    <div
-      className={`scene3d${spin ? ' scene3d--spin' : ''} ${className}`}
-      style={
-        {
-          '--pitch': `${pitch}deg`,
-          '--yaw': `${yaw}deg`,
-          '--zoom': `${zoom}px`,
-          cursor: orbit ? (drag.current ? 'grabbing' : 'grab') : undefined,
-        } as React.CSSProperties
-      }
-      onPointerDown={onPointerDown}
-      onPointerMove={onPointerMove}
-      onPointerUp={endDrag}
-      onPointerCancel={endDrag}
-    >
-      <div className="scene3d__stage" style={{ transform: stageTransform }}>
-        {grid ? (
-          <div className="scene3d__grid">
-            <div
-              className="scene3d__grid-plane"
-              style={{ width: gridSize, height: gridSize, ['--cell' as string]: `${cell}px` }}
-            />
-          </div>
-        ) : null}
-        <div className="scene3d__origin">
-          {boxes.map((b, i) => (
-            <Box3D key={i} box={b} />
-          ))}
-        </div>
-      </div>
-    </div>
+    <ModelView
+      model={model}
+      scale={1}
+      grid={!!grid}
+      orbit={orbit}
+      zoomable={false}
+      spin={spin}
+      initialYaw={initialYaw}
+      initialPitch={initialPitch}
+      zoom={zoom}
+      anchorOn={[0, 0, 0]}
+      selection={selection}
+      className={className}
+    />
   )
 }
 

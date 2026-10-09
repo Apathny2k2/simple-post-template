@@ -150,6 +150,8 @@ type Props = {
   companions?: Model[]
   /** a field of view from an eye at this point, instead of the usual orbit perspective (first person); yaw and pitch turn the view about the eye */
   eye?: { at: Vec3; fov: number } | null
+  /** where the eye is down the box, 0 to 1 (0.46 by default) */
+  eyeHeight?: number
   /** holds animated textures on these frames (by texture id) instead of playing them; Paint holds the frame being painted */
   textureFrame?: ReadonlyMap<string, number> | null
   /** 'wire' draws every edge and no faces */
@@ -239,6 +241,7 @@ export function ModelView({
   companions,
   eye = null,
   textureFrame = null,
+  eyeHeight,
   className = '',
 }: Props) {
   const [ownYaw, setYaw] = useState(initialYaw)
@@ -334,14 +337,14 @@ export function ModelView({
   }, [model, anchorAt, anchorOn, focusAt])
 
   const camState: CameraState = useMemo(() => {
-    const base = { width: size.w || 1, height: size.h || 1, scale, yaw, pitch, factor, pan, zoom, anchor, display, place, ortho, fov: eye?.fov }
+    const base = { width: size.w || 1, height: size.h || 1, scale, yaw, pitch, factor, pan, zoom, anchor, display, place, ortho, fov: eye?.fov, eyeHeight }
     if (!eye) return base
     // the stage's middle sits the perspective distance in front of the eye, along the way the view looks
     const back = perspectiveOf(base) / (scale * factor)
     const [p, y] = [(pitch * Math.PI) / 180, (yaw * Math.PI) / 180]
     const look: Vec3 = [Math.cos(p) * Math.sin(y), Math.sin(p), -Math.cos(p) * Math.cos(y)]
     return { ...base, anchor: [eye.at[0] + look[0] * back, eye.at[1] + look[1] * back, eye.at[2] + look[2] * back] as Vec3 }
-  }, [size.w, size.h, scale, yaw, pitch, factor, pan, zoom, anchor, display, place, ortho, eye])
+  }, [size.w, size.h, scale, yaw, pitch, factor, pan, zoom, anchor, display, place, ortho, eye, eyeHeight])
   const camera = useMemo(() => makeCamera(camState), [camState])
   const cameraRef = useRef(camera)
   cameraRef.current = camera
@@ -435,6 +438,7 @@ export function ModelView({
       companions: companionScenes,
       grid: grid ? { size: 16 * 2.6, cell: 4, at: anchor, line: colours.grid, border: colours.border } : null,
       frames: animated ? textureFrames(model, performance.now() / 1000, textureFrame) : undefined,
+      dpr: size.dpr,
     })
   }, [camera, scene, ghostScenes, companionScenes, grid, anchor, colours, size, animated, model, textureFrame])
   const drawRef = useRef(draw)
