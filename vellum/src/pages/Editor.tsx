@@ -140,6 +140,7 @@ import { boxSize, findSpot } from '../lib/uv-pack'
 import { DEFAULT_DISPLAY, DisplayPanel } from './editor/DisplayPanel'
 import type { DisplayState, SlotId } from './editor/DisplayPanel'
 import { displayScene } from '../lib/display-scene'
+import { centreInBlock } from '../lib/centre'
 import type { DisplayScene } from '../lib/display-scene'
 import { ScenePanel } from './editor/ScenePanel'
 import { BehaviourPanel } from './editor/BehaviourPanel'
@@ -7304,6 +7305,11 @@ export function Editor({ segments }: { segments: string[] }) {
                     <li key={n} data-level={i.level}>
                       <Icon name={i.level === 'error' ? 'warning' : 'info'} size={11} />
                       {i.message}
+                      {i.fix === 'centre-in-block' ? (
+                        <button className="chip editor-issues__fix" onClick={() => history.commit('centre in block', (m) => centreInBlock(m))}>
+                          Centre in block
+                        </button>
+                      ) : null}
                     </li>
                   ))}
                 </ul>

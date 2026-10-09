@@ -306,7 +306,7 @@ test('in the editor: convert a cube, separate faces, join them back, merge by di
   await page.waitForSelector('.model-mface')
   assert.equal(await countOf(page, '.model-cube', cubes - 1), cubes - 1)
   assert.equal(await countOf(page, '.model-mface', 6), 6)
-  assert.equal(await page.inputValue('.insp-head__name'), 'yoke')
+  await page.waitForFunction(() => document.querySelector('.insp-head__name')?.value === 'yoke', null, { timeout: 3000 })
 
   // Face mode: pick one face and separate it
   await page.keyboard.press('2')
@@ -319,10 +319,11 @@ test('in the editor: convert a cube, separate faces, join them back, merge by di
 
   // pick both meshes and join them
   await page.click('.tree__row:has(.tree__name:text-is("yoke"))', { modifiers: ['Control'] })
-  assert.equal((await page.$$('.tree__row[aria-selected="true"]')).length, 2)
+  await page.waitForFunction(() => document.querySelectorAll('.tree__row[aria-selected="true"]').length === 2, null, { timeout: 3000 })
   await page.keyboard.press('Control+j')
   await page.waitForFunction(() => /12 vertices( ·|,) 6 faces/.test(document.body.textContent), null, { timeout: 3000 })
-  assert.equal(await page.locator('.tree__row:has(.tree__name:text-is("yoke_1"))').count() + (await page.locator('.tree__row:has(.tree__name:text-is("yoke"))').count()), 1, 'one mesh is left')
+  // one mesh is left
+  await page.waitForFunction(() => [...document.querySelectorAll('.tree__row .tree__name')].filter((e) => e.textContent === 'yoke' || e.textContent === 'yoke_1').length === 1, null, { timeout: 3000 })
   assert.match(await page.textContent('body'), /12 vertices( ·|,) 6 faces/)
   await page.keyboard.press('1')
   await page.click('.chip:has-text("Merge by distance")')

@@ -489,7 +489,8 @@ export function samplePose(clip: Clip | null, t: number): Pose {
 
 /* ---------------- validation ---------------- */
 
-export type Issue = { level: 'error' | 'warning'; message: string }
+/** A problem, and for some a one-click fix the editor offers beside it. */
+export type Issue = { level: 'error' | 'warning'; message: string; fix?: 'centre-in-block' }
 
 const BLOCK_ROTATIONS = new Set([-45, -22.5, 0, 22.5, 45])
 
@@ -660,6 +661,25 @@ export function validateModel(model: Model, kind?: ProjectKind, subtype?: Subtyp
           message: `${span.toFixed(1)} units across ${axis[i]} is ${(span / 16).toFixed(2)} blocks in hand, because items render in a 16-unit slot`,
         })
       }
+    }
+  }
+
+  /* An item's middle belongs at the middle of the block the game draws it
+     in, x and z 8. A lopsided item (a blade with teeth on one side) is a
+     unit or so off by design, so only one built around another point, as
+     an item made around 0 is, is flagged. Measured on cubes only here; the
+     fix moves meshes too. */
+  if (kind === 'items' && model.cubes.length) {
+    const lo = [0, 2].map((i) => Math.min(...model.cubes.map((c) => c.from[i])))
+    const hi = [0, 2].map((i) => Math.max(...model.cubes.map((c) => c.to[i])))
+    const dx = (lo[0] + hi[0]) / 2 - 8
+    const dz = (lo[1] + hi[1]) / 2 - 8
+    if (Math.abs(dx) > 2 || Math.abs(dz) > 2) {
+      issues.push({
+        level: 'warning',
+        message: `The item's middle is ${Math.hypot(dx, dz).toFixed(1)} units from its block's (x ${(8 + dx).toFixed(1)}, z ${(8 + dz).toFixed(1)}), so in the game it sits off its slot, frame and hand`,
+        fix: 'centre-in-block',
+      })
     }
   }
 

@@ -848,9 +848,15 @@ middle of the 16-pixel block; a left hand mirrors it):
 These numbers are recalled from Java's renderers and are still to be
 checked against the game. The player is Steve's shape and size in flat colours, a ruler
 for the item and nothing more, and is drawn with the item but never picked.
-An item built around x = 0, as the samples are, sits off the middle of its
-block in a slot and a frame, as it would in the game; the Java export writes
-positions as they are.
+Items are built where Java and Blockbench put them, in the 16-unit block
+from 0 to 16 with their middle at x and z 8, so the editor, the pack, a
+`.bbmodel` and Mirror X (whose plane for items is x = 8) all agree with no
+conversion. The samples and the New item starters stand there. An item
+built around another point, as one made around 0 would be, sits off its
+slot, frame and hand in the game; Validation says so when its middle is
+more than 2 units off (a blade with teeth on one side sits a unit or so off, as it should), and
+its Centre in block button moves every cube, pivot, mesh and null over,
+to the nearest sixteenth.
 
 **Configs go in a second zip.** A config is how a mob becomes a thing in the
 game. Minecraft never reads it. The Vellum plugin does. The pack goes in
@@ -1411,6 +1417,7 @@ code the editor runs.
 | `layers.test.mjs` | Layers flattened bottom first at their opacity, hidden ones left out, and merged down as they looked; kept through the `.vellum` and the `.bbmodel`; adding a layer, painting on it alone, hiding it and flattening in Paint |
 | `texture-anim.test.mjs` | Frames counted from the image and played in the order and at the speed set; the `.mcmeta`; timing kept through the `.vellum` and the `.bbmodel`; glTF showing frame one; adding a frame in Paint, painting on it alone, and the viewport playing the frames |
 | `texture-mesh.test.mjs` | A texture mesh's faces from its pixels (front, back, a strip per bordering edge), scaled and moved by its pivot; a `.bbmodel` `texture_mesh` opening, built, and saving back as one through the `.vellum`; adding, scaling and converting one in the editor |
+| `centre.test.mjs` | Item samples stand in the middle of their block; an item built around 0 is flagged and Centre in block puts every cube and pivot back; the button in Validation, and its undo |
 | `modes.test.mjs` | A display slot takes and resets a transform; each slot places the item where the game draws it (hand, head, slot, ground, frame, first person) with the player or props it needs, never picked; the real-world view opens and closes; a behaviour cycle runs and takes a stage |
 | `bundle.test.mjs` | `dist/vellum.html` opens and keeps its unprefixed `backdrop-filter`; skipped until `pnpm build:single` has run |
 

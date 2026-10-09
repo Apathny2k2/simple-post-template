@@ -137,6 +137,16 @@ const files = await p.evaluate(async () => {
         ),
       }))
     }
+    /* An item model lives in the 16-unit block a Java model is drawn in,
+       0 to 16 on each axis, so it is drawn around the block's middle and
+       moved there: x and z by 8. Blocks are drawn in place already. Clip
+       position keys are offsets and stay as they are. */
+    if (kind === 'items') {
+      const move = (p) => p && [p[0] + 8, p[1], p[2] + 8]
+      cubes = cubes.map((c) => ({ ...c, from: move(c.from), to: move(c.to), origin: move(c.origin) }))
+      const shift = (spec) => ({ ...spec, origin: move(spec.origin), children: spec.children?.map(shift) })
+      bones = bones.map(shift)
+    }
     const texture = {
       id: newId(), name: `${name}.png`,
       width: sheet, height: sheet, uvWidth: sheet, uvHeight: sheet, source: '',

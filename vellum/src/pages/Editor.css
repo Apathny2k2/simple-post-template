@@ -1124,6 +1124,7 @@
 }
 
 .editor-issues li svg { margin-top: 2px; flex: none; }
+.editor-issues__fix { flex: none; margin-left: auto; align-self: center; }
 .editor-issues li[data-level='error'] { color: var(--danger); }
 .editor-issues li[data-level='error'] svg { color: var(--danger); }
 .editor-issues li[data-level='warning'] svg { color: var(--warn); }

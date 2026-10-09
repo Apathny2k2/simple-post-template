@@ -139,19 +139,20 @@ function itemStarter(name: string): Model {
 }
 
 /* A flask with a use clip: it tips back, the cork comes out, the level
-   drops. The validator warns about a consumable with no clip. */
+   drops. The validator warns about a consumable with no clip. Like every
+   item it stands in the middle of its 16-unit block, at x and z 8. */
 function consumableStarter(name: string): Model {
   const texture = starterTexture(32, `${name}.png`)
   const t = texture.id
 
-  const body = makeCube('body', [-3, 0, -3], [3, 8, 3], { origin: [0, 0, 0], uvAt: [0, 0], texture: t })
-  const neck = makeCube('neck', [-1.5, 8, -1.5], [1.5, 11, 1.5], { origin: [0, 8, 0], uvAt: [0, 14], texture: t })
-  const fill = makeCube('fill', [-2.5, 0.5, -2.5], [2.5, 6, 2.5], { origin: [0, 0.5, 0], uvAt: [12, 14], texture: t })
-  const cork = makeCube('cork', [-2, 11, -2], [2, 13, 2], { origin: [0, 11, 0], uvAt: [0, 24], texture: t })
+  const body = makeCube('body', [5, 0, 5], [11, 8, 11], { origin: [8, 0, 8], uvAt: [0, 0], texture: t })
+  const neck = makeCube('neck', [6.5, 8, 6.5], [9.5, 11, 9.5], { origin: [8, 8, 8], uvAt: [0, 14], texture: t })
+  const fill = makeCube('fill', [5.5, 0.5, 5.5], [10.5, 6, 10.5], { origin: [8, 0.5, 8], uvAt: [12, 14], texture: t })
+  const cork = makeCube('cork', [6, 11, 6], [10, 13, 10], { origin: [8, 11, 8], uvAt: [0, 24], texture: t })
 
-  const corkBone = makeBone('cork', [0, 11, 0], [{ kind: 'cube', id: cork.id }])
-  const fillBone = makeBone('fill', [0, 0.5, 0], [{ kind: 'cube', id: fill.id }])
-  const root = makeBone(name, [0, 0, 0], [
+  const corkBone = makeBone('cork', [8, 11, 8], [{ kind: 'cube', id: cork.id }])
+  const fillBone = makeBone('fill', [8, 0.5, 8], [{ kind: 'cube', id: fill.id }])
+  const root = makeBone(name, [8, 0, 8], [
     { kind: 'cube', id: body.id },
     { kind: 'cube', id: neck.id },
     { kind: 'bone', bone: fillBone },
