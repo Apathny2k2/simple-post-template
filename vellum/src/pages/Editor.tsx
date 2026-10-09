@@ -125,6 +125,7 @@ import {
   removeTexture,
   resizeFaceUv,
   reunwrap,
+  mirrorPoint,
   setBoxUv,
   unwrapOrigin,
 } from '../lib/uv-edit'
@@ -508,7 +509,15 @@ function PaintTools({
   onView,
   keepInside,
   onKeepInside,
+  opacity,
+  onOpacity,
+  mirror,
+  onMirror,
 }: {
+  opacity: number
+  onOpacity: (v: number) => void
+  mirror: boolean
+  onMirror: (v: boolean) => void
   view: 'sheet' | 'model'
   onView: (v: 'sheet' | 'model') => void
   keepInside: boolean
@@ -563,6 +572,28 @@ function PaintTools({
           </button>
         </div>
       ) : null}
+      <label className="ptools__strength">
+        <span>Strength</span>
+        <input
+          type="range"
+          min={10}
+          max={100}
+          step={5}
+          value={Math.round(opacity * 100)}
+          aria-label="Brush strength"
+          onChange={(e) => onOpacity(Number(e.target.value) / 100)}
+        />
+        <span className="ptools__pct">{Math.round(opacity * 100)}%</span>
+      </label>
+      <button
+        className="uv-switch ptools__keep"
+        role="switch"
+        aria-checked={mirror}
+        title="A brush or eraser stroke also lands on the cube mirrored across X, as in Blockbench"
+        onClick={() => onMirror(!mirror)}
+      >
+        <span>Mirror painting</span> <span className="uv-switch__track" />
+      </button>
       <button
         className="uv-switch ptools__keep"
         role="switch"
@@ -3483,6 +3514,12 @@ export function Editor({ segments }: { segments: string[] }) {
   // Paint mode paints on the large sheet by default, as the design has it, or on the model
   const [paintView, setPaintView] = useState<'sheet' | 'model'>('sheet')
   const [keepInside, setKeepInside] = useState(true)
+  /** brush strength, 0.1 to 1; below 1 a stroke is laid over the texture */
+  const [opacity, setOpacity] = useState(1)
+  /** Blockbench's mirror painting: a stroke on one side lands on the cube mirrored across X too */
+  const [mirrorPaint, setMirrorPaint] = useState(false)
+  const mirrorTexel = useRef<[number, number] | null>(null)
+  const strokeTouched = useRef<Set<number>>(new Set())
   /** the texture picked on the sheet's bar; null follows the selected face */
   const [paintPick, setPaintPick] = useState<string | null>(null)
   /** where a sheet stroke may write, in pixels: the face it started on */
@@ -4137,8 +4174,14 @@ export function Editor({ segments }: { segments: string[] }) {
        * sheet. `bounds` limits only the bucket fill.
        */
       clip: UVRect | null = null,
+      /** texture pixels per UV texel, so the brush covers the same texels on a finer sheet */
+      scale = 1,
+      /** 1 for the mirrored half of a stroke, which joins its own points */
+      lane: 0 | 1 = 0,
     ) => {
       const surface = surfaces.current.get(textureId)
+      const size = Math.max(1, Math.round(brush * scale))
+      const last = lane ? mirrorTexel : lastTexel
       /* skip while the texture is being decoded again (after an undo, say),
          or the stroke would land on the stale canvas */
       if (!surface || decoding.current.has(textureId)) return
@@ -4161,15 +4204,15 @@ export function Editor({ segments }: { segments: string[] }) {
         if (phase === 'down') {
           shapeFrom.current = [x, y]
           shapeUndo.current = surface.ctx.getImageData(0, 0, surface.width, surface.height)
-          lastTexel.current = [x, y]
+          last.current = [x, y]
           return
         }
         const from = shapeFrom.current
         const snapshot = shapeUndo.current
         if (!from || !snapshot) return
         surface.ctx.putImageData(snapshot, 0, 0)
-        drawShape(surface, from, [x, y], hexToRgba(colour), shape, shapeFilled, brush, clip)
-        lastTexel.current = [x, y]
+        drawShape(surface, from, [x, y], hexToRgba(colour), shape, shapeFilled, size, clip)
+        last.current = [x, y]
         commitTexture(textureId)
         return
       }
@@ -4183,16 +4226,17 @@ export function Editor({ segments }: { segments: string[] }) {
       }
 
       const rgba = tool === 'eraser' ? ([0, 0, 0, 0] as [number, number, number, number]) : hexToRgba(colour)
-      const stamp = (px: number, py: number) => paintTexels(surface, px, py, rgba, brush, clip)
+      if (phase === 'down' && lane === 0) strokeTouched.current = new Set()
+      const stamp = (px: number, py: number) => paintTexels(surface, px, py, rgba, size, clip, opacity, strokeTouched.current)
 
       // fill the gap since the last move so a fast drag draws a line
-      if (phase === 'move' && lastTexel.current) strokeBetween(lastTexel.current, [x, y], stamp)
+      if (phase === 'move' && last.current) strokeBetween(last.current, [x, y], stamp)
       else stamp(x, y)
 
-      lastTexel.current = [x, y]
+      last.current = [x, y]
       commitTexture(textureId)
     },
-    [tool, colour, brush, shape, shapeFilled, commitTexture],
+    [tool, colour, brush, shape, shapeFilled, commitTexture, opacity],
   )
 
   /* A stroke is one undo step. Flush the pending frame first, or it would
@@ -4203,6 +4247,7 @@ export function Editor({ segments }: { segments: string[] }) {
       shapeUndo.current = null
       if (!lastTexel.current && !commitTimer.current) return
       lastTexel.current = null
+      mirrorTexel.current = null
       flushTexture()
       history.end()
     }
@@ -4213,6 +4258,44 @@ export function Editor({ segments }: { segments: string[] }) {
       window.removeEventListener('pointercancel', done)
     }
   }, [flushTexture, history])
+
+  /**
+   * A point on a face (u, v from its top left, 0..1) as a pixel of the
+   * face's texture, with the face's pixel box and the pixels per UV texel.
+   * Null for an untextured or zero-area face.
+   */
+  const faceTexel = useCallback(
+    (cube: Cube, faceKey: FaceKey, u: number, v: number) => {
+      const f = cube.faces[faceKey]
+      const texture = textureById(model, f.texture)
+      if (!texture || !texelOfFace(f.uv, u, v)) return null
+      // UV units to the texture's own pixels, for a sheet drawn finer or coarser than the UVs
+      const [sx, sy] = pixelScale(model, texture)
+      const [ax, ay, bx, by] = faceBounds(f.uv)
+      const box: UVRect = [Math.round(ax * sx), Math.round(ay * sy), Math.round(bx * sx), Math.round(by * sy)]
+      return {
+        texture: texture.id,
+        x: Math.min(box[2] - 1, Math.floor((ax + u * (bx - ax)) * sx)),
+        y: Math.min(box[3] - 1, Math.floor((ay + v * (by - ay)) * sy)),
+        box,
+        scale: (sx + sy) / 2,
+      }
+    },
+    [model],
+  )
+
+  /** With mirror painting on, the same brush stroke on the cube mirrored across X. */
+  const paintMirror = useCallback(
+    (cube: Cube, faceKey: FaceKey, u: number, v: number, phase: 'down' | 'move') => {
+      if (!mirrorPaint || (tool !== 'brush' && tool !== 'eraser')) return
+      const m = mirrorPoint(model, cube, faceKey, u, v)
+      if (!m || m.cube.locked) return
+      const at = faceTexel(m.cube, m.face, m.u, m.v)
+      if (!at) return
+      applyTool(at.texture, at.x, at.y, at.box, phase, at.box, at.scale, 1)
+    },
+    [mirrorPaint, tool, model, faceTexel, applyTool],
+  )
 
   /** Paints where a click lands on the model, mapped through that face's UV rectangle. */
   const paintOnModel = useCallback(
@@ -4229,20 +4312,12 @@ export function Editor({ segments }: { segments: string[] }) {
         setSelected(cubeId)
         setFace(faceKey)
       }
-      const f = target.faces[faceKey]
-      const texture = textureById(model, f.texture)
-      if (!texture) return
-      // a zero-area UV has no texel under the click
-      if (!texelOfFace(f.uv, u, v)) return
-      // UV units to the texture's own pixels, for a sheet drawn finer or coarser than the UVs
-      const [sx, sy] = pixelScale(model, texture)
-      const [ax, ay, bx, by] = faceBounds(f.uv)
-      const box: UVRect = [Math.round(ax * sx), Math.round(ay * sy), Math.round(bx * sx), Math.round(by * sy)]
-      const px = Math.min(box[2] - 1, Math.floor((ax + u * (bx - ax)) * sx))
-      const py = Math.min(box[3] - 1, Math.floor((ay + v * (by - ay)) * sy))
-      applyTool(texture.id, px, py, box, phase, box)
+      const at = faceTexel(target, faceKey, u, v)
+      if (!at) return
+      applyTool(at.texture, at.x, at.y, at.box, phase, at.box, at.scale)
+      paintMirror(target, faceKey, u, v, phase)
     },
-    [model, applyTool, history, tool, refuseLocked, setSelected],
+    [applyTool, history, tool, refuseLocked, setSelected, faceTexel, paintMirror],
   )
 
   /** The selected face's texture, which the UV sheet shows; a face without one shows the texture picked in Textures. */
@@ -4292,9 +4367,13 @@ export function Editor({ segments }: { segments: string[] }) {
         }
         strokeClip.current = keepInside && hit ? hit.box : null
       }
-      applyTool(texture.id, Math.floor(u * sx), Math.floor(v * sy), hit?.box ?? null, phase, strokeClip.current)
+      applyTool(texture.id, Math.floor(u * sx), Math.floor(v * sy), hit?.box ?? null, phase, strokeClip.current, (sx + sy) / 2)
+      if (hit) {
+        const [bx1, by1, bx2, by2] = faceBounds(hit.cube.faces[hit.key].uv)
+        paintMirror(hit.cube, hit.key, (u - bx1) / (bx2 - bx1), (v - by1) / (by2 - by1), phase)
+      }
     },
-    [applyTool, model, paintTexture, history, tool, selected, setSelected, keepInside, refuseLocked],
+    [applyTool, model, paintTexture, history, tool, selected, setSelected, keepInside, refuseLocked, paintMirror],
   )
 
   /** Shows the texel under the pointer and its colour in the status bar. */
@@ -5516,6 +5595,10 @@ export function Editor({ segments }: { segments: string[] }) {
                     onView={setPaintView}
                     keepInside={keepInside}
                     onKeepInside={setKeepInside}
+                    opacity={opacity}
+                    onOpacity={setOpacity}
+                    mirror={mirrorPaint}
+                    onMirror={setMirrorPaint}
                   />
                 </Panel>
                 <Panel title="Colour">

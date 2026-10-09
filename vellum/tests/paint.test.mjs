@@ -100,3 +100,50 @@ test('the Colour panel offers the colours the texture uses most', async () => {
   assert.equal((await page.inputValue('.color-hex')).toLowerCase(), dots[2].split(' ')[0].toLowerCase())
   await page.close()
 })
+
+test('strength lays colour over, and mirror painting lands on the twin cube', async () => {
+  const { page } = await openEditor()
+  await mode(page, 'Paint')
+  // a cube with a mirror twin on the other side of X, and where to click on it
+  const pair = await page.evaluate(async () => {
+    const S = await import('/src/lib/samples.ts')
+    const U = await import('/src/lib/uv-edit.ts')
+    const m = S.samples.find((x) => x.id === 'voidling').model
+    for (const c of m.cubes) {
+      const t = U.mirrorPoint(m, c, 'north', 0.25, 0.5)
+      if (t && t.cube.id !== c.id) {
+        const box = (uv) => [Math.min(uv[0], uv[2]), Math.min(uv[1], uv[3]), Math.max(uv[0], uv[2]), Math.max(uv[1], uv[3])]
+        const a = box(c.faces.north.uv)
+        const b = box(t.cube.faces.north.uv)
+        const at = (r, u, v) => [Math.floor(r[0] + u * (r[2] - r[0])), Math.floor(r[1] + v * (r[3] - r[1]))]
+        return { name: c.name, twin: t.cube.name, click: [a[0] + 0.25 * (a[2] - a[0]), a[1] + 0.5 * (a[3] - a[1])], here: at(a, 0.25, 0.5), there: at(b, 0.75, 0.5) }
+      }
+    }
+    return null
+  })
+  assert.ok(pair, 'the voidling has a mirrored pair of cubes')
+  await page.click('.ptools__keep:has-text("Mirror painting")')
+  await page.fill('.color-hex', '#ffffff')
+  await page.press('.color-hex', 'Enter')
+  const b = await page.locator('.psheet__sheet').boundingBox()
+  const k = b.width / 64
+  const before = await pixels(page, [pair.here, pair.there])
+  await page.mouse.click(b.x + (pair.click[0] + 0.01) * k, b.y + (pair.click[1] + 0.01) * k)
+  await page.waitForTimeout(200)
+  const after = await pixels(page, [pair.here, pair.there])
+  assert.equal(after[0], '255,255,255,255', `painted on ${pair.name}`)
+  assert.equal(after[1], '255,255,255,255', `and on its twin ${pair.twin}`)
+  assert.notEqual(before[1], after[1])
+
+  // half strength over the white just painted, in black, gives grey
+  await page.click('.ptools__keep:has-text("Mirror painting")')
+  await page.fill('.color-hex', '#000000')
+  await page.press('.color-hex', 'Enter')
+  await page.locator('input[aria-label="Brush strength"]').fill('50')
+  await page.mouse.click(b.x + (pair.click[0] + 0.01) * k, b.y + (pair.click[1] + 0.01) * k)
+  await page.waitForTimeout(200)
+  const [grey] = await pixels(page, [pair.here])
+  const [r] = grey.split(',').map(Number)
+  assert.ok(r > 100 && r < 155, `half strength mixes: ${grey}`)
+  await page.close()
+})

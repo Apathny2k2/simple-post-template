@@ -191,3 +191,25 @@ export function freeTextureName(model: Model, base: string): string {
 export function pixelScale(model: Model, t: Texture): [number, number] {
   return [t.width / (t.uvWidth || model.resolution.width), t.height / (t.uvHeight || model.resolution.height)]
 }
+
+/**
+ * Where a point on a face lands when the model is mirrored across X, for
+ * Blockbench's mirror painting: the cube whose box is this one's mirror
+ * image (itself, for a cube centred on X), with east and west swapped and
+ * the face read the other way across. Null when no cube mirrors it.
+ */
+export function mirrorPoint(model: Model, cube: Cube, face: FaceKey, u: number, v: number): { cube: Cube; face: FaceKey; u: number; v: number } | null {
+  const near = (a: number, b: number) => Math.abs(a - b) < 1e-3
+  const twin = model.cubes.find(
+    (c) =>
+      near(c.from[0], -cube.to[0]) &&
+      near(c.to[0], -cube.from[0]) &&
+      near(c.from[1], cube.from[1]) &&
+      near(c.to[1], cube.to[1]) &&
+      near(c.from[2], cube.from[2]) &&
+      near(c.to[2], cube.to[2]),
+  )
+  if (!twin) return null
+  const swapped: FaceKey = face === 'east' ? 'west' : face === 'west' ? 'east' : face
+  return { cube: twin, face: swapped, u: 1 - u, v }
+}

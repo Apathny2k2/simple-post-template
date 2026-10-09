@@ -80,7 +80,12 @@ export function faceBounds(uv: UVRect): UVRect {
 const inBounds = (x: number, y: number, s: PixelSurface) =>
   x >= 0 && y >= 0 && x < s.width && y < s.height
 
-/** Stamp a square brush, clipped to `bounds` (one UV island) when given. The eraser paints alpha 0. */
+/**
+ * Stamp a square brush, clipped to `bounds` (one UV island) when given. The
+ * eraser paints alpha 0. Below full `opacity` the colour is laid over what
+ * is there, and `touched` (one set per stroke) keeps a pixel from being
+ * laid over twice in the same stroke, as overlapping stamps would.
+ */
 export function paint(
   s: PixelSurface,
   x: number,
@@ -88,6 +93,8 @@ export function paint(
   colour: RGBA,
   size: number,
   bounds?: UVRect | null,
+  opacity = 1,
+  touched?: Set<number>,
 ) {
   const half = Math.floor((size - 1) / 2)
   const image = s.ctx.createImageData(1, 1)
@@ -98,10 +105,26 @@ export function paint(
       const py = y + dy
       if (!inBounds(px, py, s)) continue
       if (clip && (px < clip[0] || py < clip[1] || px >= clip[2] || py >= clip[3])) continue
-      image.data[0] = colour[0]
-      image.data[1] = colour[1]
-      image.data[2] = colour[2]
-      image.data[3] = colour[3]
+      let out = colour
+      if (opacity < 1) {
+        const key = py * s.width + px
+        if (touched?.has(key)) continue
+        touched?.add(key)
+        const d = s.ctx.getImageData(px, py, 1, 1).data
+        out =
+          colour[3] === 0
+            ? [d[0], d[1], d[2], Math.round(d[3] * (1 - opacity))]
+            : (() => {
+                // "over" compositing, so a half-strength stroke on a clear texel stays half clear
+                const a = opacity + (d[3] / 255) * (1 - opacity)
+                const mix = (c: number, b: number) => Math.round((c * opacity + b * (d[3] / 255) * (1 - opacity)) / (a || 1))
+                return [mix(colour[0], d[0]), mix(colour[1], d[1]), mix(colour[2], d[2]), Math.round(a * 255)]
+              })()
+      }
+      image.data[0] = out[0]
+      image.data[1] = out[1]
+      image.data[2] = out[2]
+      image.data[3] = out[3]
       s.ctx.putImageData(image, px, py)
     }
   }
