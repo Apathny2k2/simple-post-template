@@ -40,6 +40,7 @@ const SUB_NOTE: Record<Subtype, string> = {
   tool: 'Held and used on a block. Dropped on the ground in the world view.',
   consumable: 'Starts as a flask with a use clip. Consumables need one.',
   misc: 'An ordinary item. Hangs in the air in the world view.',
+  pile: 'One flat piece that ores and gems pile up as when placed on the ground. Starts as the gems set.',
   hostile: 'Comes at the player. Give it an attack clip.',
   neutral: 'Fights back when hit.',
   docile: 'Never attacks.',

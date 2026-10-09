@@ -1,6 +1,7 @@
 /* Starter models, and the edits that add, remove and move cubes and
    bones. Each returns a new Model. */
 
+import { pileSetOf } from './pile'
 import { FACES } from './model'
 import { boxUvFaces, makeRoom } from './uv-pack'
 import type { Rescale } from './uv-pack'
@@ -97,7 +98,9 @@ export function createModel(kind: NewModelKind, name: string, subtype?: Subtype)
         ? blockStarter(name)
         : sub === 'consumable'
           ? consumableStarter(name)
-          : itemStarter(name)
+          : sub === 'pile'
+            ? pileStarter(name)
+            : itemStarter(name)
   return { ...base, kind, subtype: sub }
 }
 
@@ -135,6 +138,36 @@ function itemStarter(name: string): Model {
     cubes: [cube],
     textures: [texture],
     clips: [],
+  }
+}
+
+/* A pile set's piece: one flat plane, 8 pixels across in the middle of
+   the block, wearing the whole icon on top and below, its edges bare, as a
+   Java item lies on the ground. It starts as the gems set. */
+function pileStarter(name: string): Model {
+  const texture = starterTexture(16, `${name}.png`)
+  const t = texture.id
+  const cube = makeCube('piece', [4, 0, 4], [12, 0, 12], { origin: [8, 0, 8], texture: t })
+  const bare = { uv: [0, 0, 0, 0] as UVRect, texture: null }
+  cube.faces = {
+    up: { uv: [0, 0, 16, 16], texture: t },
+    down: { uv: [0, 16, 16, 0], texture: t },
+    north: { ...bare },
+    south: { ...bare },
+    east: { ...bare },
+    west: { ...bare },
+  }
+  const root = makeBone(name, [8, 0, 8], [{ kind: 'cube', id: cube.id }])
+  return {
+    name,
+    kind: 'items',
+    subtype: 'pile',
+    resolution: { width: 16, height: 16 },
+    bones: [root],
+    cubes: [cube],
+    textures: [texture],
+    clips: [],
+    pile: pileSetOf('gems'),
   }
 }
 

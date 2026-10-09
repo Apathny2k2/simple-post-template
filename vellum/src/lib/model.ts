@@ -6,6 +6,7 @@
    (see `Texture.uvWidth`) from the top left. A reversed pair mirrors the
    face, so never normalise a rectangle to min/max on load. */
 
+import type { PileSet } from './pile'
 import { validateBehaviour } from './behaviour'
 import { evalMolang } from './molang'
 import type { Behaviour } from './behaviour'
@@ -22,11 +23,11 @@ export type FaceKey = (typeof FACES)[number]
 export type ProjectKind = 'items' | 'mobs' | 'blocks'
 
 /** What an item or mob is for. Picks validation rules and the shelf group; never inferred from a name. */
-export type ItemType = 'weapon' | 'tool' | 'consumable' | 'misc'
+export type ItemType = 'weapon' | 'tool' | 'consumable' | 'misc' | 'pile'
 export type MobType = 'hostile' | 'neutral' | 'docile'
 export type Subtype = ItemType | MobType
 
-export const ITEM_TYPES: readonly ItemType[] = ['weapon', 'tool', 'consumable', 'misc']
+export const ITEM_TYPES: readonly ItemType[] = ['weapon', 'tool', 'consumable', 'misc', 'pile']
 export const MOB_TYPES: readonly MobType[] = ['hostile', 'neutral', 'docile']
 
 /** The subtypes a kind offers, in the order a picker should show them. */
@@ -41,6 +42,7 @@ const SUBTYPE_LABELS: Record<Subtype, string> = {
   tool: 'Tool',
   consumable: 'Consumable',
   misc: 'Misc',
+  pile: 'Pile set',
   hostile: 'Hostile',
   neutral: 'Neutral',
   docile: 'Docile',
@@ -307,6 +309,11 @@ export type Model = {
   meshes?: Mesh[]
   /** Bedrock animation controllers (v12); absent when the model has none */
   controllers?: Controller[]
+  /**
+   * A ground pile set (v16): the model is one flat piece, and the set says
+   * which items pile with it and in what textures; see lib/pile.ts.
+   */
+  pile?: PileSet
   /**
    * What a Blockbench project held that Vellum has no field for (v10): its
    * meta and display settings, and each element's, group's, texture's and

@@ -141,6 +141,7 @@ import { DEFAULT_DISPLAY, DisplayPanel } from './editor/DisplayPanel'
 import type { DisplayState, SlotId } from './editor/DisplayPanel'
 import { displayScene } from '../lib/display-scene'
 import { centreInBlock } from '../lib/centre'
+import { checkPile } from '../lib/pile'
 import type { DisplayScene } from '../lib/display-scene'
 import { ScenePanel } from './editor/ScenePanel'
 import { BehaviourPanel } from './editor/BehaviourPanel'
@@ -148,6 +149,7 @@ import { ConfigPanel } from './editor/ConfigPanel'
 import { ConfigOutput } from './editor/ConfigOutput'
 import { PaintSheet } from './editor/PaintSheet'
 import { TextureMeshPanel } from './editor/TextureMesh'
+import { PilePanel } from './editor/PilePanel'
 import { makeTextureMesh, rebuildTextureMesh, rebuildTextureMeshes } from '../lib/texture-mesh'
 import { MeshUvPanel } from './editor/MeshUv'
 import { hasConfig, setFields, withDefaults } from '../lib/config'
@@ -4467,7 +4469,8 @@ export function Editor({ segments }: { segments: string[] }) {
     return ownerBone(model.bones, selected) ?? bones[0]?.id ?? null
   }, [pickedBone, bones, model.bones, selected])
 
-  const issues = useMemo(() => validateModel(model, kind), [model, kind])
+  // a pile set's own checks join the model's: the piece's size, and each material's items and texture
+  const issues = useMemo(() => [...validateModel(model, kind), ...(model.pile ? checkPile(model, model.pile) : [])], [model, kind])
   // what a resource pack can't express; validateModel checks the model itself
   const translate = useMemo(() => checkTranslation(model, kind), [model, kind])
   // hit regions exist only on mobs
@@ -7441,6 +7444,12 @@ export function Editor({ segments }: { segments: string[] }) {
                   </Panel>
                 ) : null}
               </>
+            ) : null}
+
+            {mode === 'edit' && model.pile ? (
+              <Panel title="Pile set" count={`${model.pile.materials.length} material${model.pile.materials.length === 1 ? '' : 's'}`}>
+                <PilePanel model={model} set={model.pile} onChange={(pile, label) => history.commit(label, (m) => ({ ...m, pile }), true)} />
+              </Panel>
             ) : null}
 
             {mode === 'paint' ? null : (

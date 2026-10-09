@@ -775,6 +775,28 @@ see it without asking for it.
 model, so the plugin draws mobs in game. `buildPack()` names each mob it leaves
 out.
 
+### Ground piles
+
+A **pile set** is an item of type `pile`: the model is one flat piece (at most
+8 pixels across and 3 tall, not turned), and `Model.pile` lists the materials
+that lie as it. A material names the items it takes (ids and `#tags`) and its
+texture, either a vanilla path such as `minecraft:item/diamond`, which follows
+the player's texture pack, or one of the model's own textures. The four vanilla
+sets (gems, ingots, raw ores, dusts) fill the list in one go. `src/lib/pile.ts`
+holds the logic; the Pile set panel in Model mode edits it and previews any
+stage of any material on a grass block.
+
+A pile holds 1 to 8 pieces. `PILE_LAYOUT` places them, turned only about Y by
+angles Java allows, so every stage is a plain model. For a set `gems` and a
+material `diamond` the pack gets `models/item/pile/gems/diamond_<n>.json` and an
+item definition per count, so `vellum:pile/gems/diamond_3` is the stage id an
+`item_model` component points at. The configs zip gets `piles/gems.yml` naming
+the limit, what a full pile does, the sounds and every stage.
+
+Everything that happens in the world (placing, adding, breaking, dropping,
+saving) is the plugin's. The contract is `docs/piles.md`. The `.vellum` keeps
+the set from version 16, and the `.bbmodel` keeps it in Vellum's own block.
+
 ### The zip
 
 `src/lib/zip.ts` writes a **store-only** archive: method 0, real CRC-32, DOS
@@ -1418,6 +1440,7 @@ code the editor runs.
 | `texture-anim.test.mjs` | Frames counted from the image and played in the order and at the speed set; the `.mcmeta`; timing kept through the `.vellum` and the `.bbmodel`; glTF showing frame one; adding a frame in Paint, painting on it alone, and the viewport playing the frames |
 | `texture-mesh.test.mjs` | A texture mesh's faces from its pixels (front, back, a strip per bordering edge), scaled and moved by its pivot; a `.bbmodel` `texture_mesh` opening, built, and saving back as one through the `.vellum`; adding, scaling and converting one in the editor |
 | `centre.test.mjs` | Item samples stand in the middle of their block; an item built around 0 is flagged and Centre in block puts every cube and pivot back; the button in Validation, and its undo |
+| `pile.test.mjs` | The vanilla pile sets and the checks on a piece and its materials; every stage a valid Java model inside the block; the stages, item definitions and `piles/<set>.yml` in the pack and configs; the set kept by the `.vellum` and the `.bbmodel`; the panel, its preview and a bad id named in Validation |
 | `modes.test.mjs` | A display slot takes and resets a transform; each slot places the item where the game draws it (hand, head, slot, ground, frame, first person) with the player or props it needs, never picked; the real-world view opens and closes; a behaviour cycle runs and takes a stage |
 | `bundle.test.mjs` | `dist/vellum.html` opens and keeps its unprefixed `backdrop-filter`; skipped until `pnpm build:single` has run |
 

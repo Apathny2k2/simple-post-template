@@ -17,6 +17,7 @@ import type { ZipEntry } from './zip'
 import { bodyOf, configPath, hasConfig, keyConfirmed, toYaml } from './config'
 import type { Model, ProjectKind, Texture, Vec3 } from './model'
 import { frameCount, frameHeight, frameSequence } from './texture-anim'
+import { pileYaml, stageJson, stagePath, textureRef } from './pile'
 
 export type PackItem = {
   /** the file name inside the pack, without extension */
@@ -155,6 +156,22 @@ export function buildPack(items: PackItem[], opts: PackOptions): PackReport {
       }),
     })
 
+    /* A pile set: a model and an item definition for every stage of every
+       material, so the plugin's display entity shows a stage through the
+       item_model component <ns>:pile/<set>/<material>_<count>. */
+    const pile = item.model.pile
+    if (pile) {
+      for (const m of pile.materials) {
+        const tex = textureRef(m, ns, (id) => names.get(id))
+        const most = Math.min(pile.max, m.max ?? pile.max)
+        for (let n = 1; n <= most; n++) {
+          const id = stagePath(name, m.name, n)
+          files.push({ path: `assets/${ns}/models/item/${id}.json`, kind: 'json', bytes: json(stageJson(item.model, n, tex)) })
+          files.push({ path: `assets/${ns}/items/${id}.json`, kind: 'json', bytes: json({ model: { type: 'minecraft:model', model: `${ns}:item/${id}` } }) })
+        }
+      }
+    }
+
     for (const tex of item.model.textures) {
       const path = texturePath(names.get(tex.id) ?? textureName(tex.name, name))
       if (files.some((f) => f.path === path)) continue
@@ -175,9 +192,14 @@ export function buildPack(items: PackItem[], opts: PackOptions): PackReport {
 
 /* ---------------- the configs, which are not pack files ---------------- */
 
-export function buildConfigs(items: PackItem[]): PackReport {
+export function buildConfigs(items: PackItem[], namespace = 'vellum'): PackReport {
   const files: PackFile[] = []
   const skipped: PackReport['skipped'] = []
+
+  // a pile set's config names its stages, so it needs the pack's namespace
+  for (const item of items) {
+    if (item.model.pile) files.push({ path: `piles/${safeId(item.id)}.yml`, kind: 'text', bytes: utf8(pileYaml(safeId(item.id), item.model.pile, safeId(namespace))) })
+  }
 
   for (const item of items) {
     // blocks have no config form

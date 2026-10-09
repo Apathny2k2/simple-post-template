@@ -23,7 +23,7 @@ export type Group = Subtype | ProjectKind
 export const groupOf = (a: Pick<Asset, 'kind' | 'subtype'>): Group => a.subtype ?? a.kind
 
 const GROUP_ORDER: Group[] = [
-  'weapon', 'tool', 'consumable', 'misc', 'items', 'blocks',
+  'weapon', 'tool', 'consumable', 'misc', 'pile', 'items', 'blocks',
   'hostile', 'neutral', 'docile', 'mobs',
 ]
 
@@ -32,6 +32,7 @@ const GROUP_LABELS: Record<Group, string> = {
   tool: 'Tools',
   consumable: 'Consumables',
   misc: 'Misc',
+  pile: 'Pile sets',
   items: 'Items',
   blocks: 'Blocks',
   hostile: 'Hostile',

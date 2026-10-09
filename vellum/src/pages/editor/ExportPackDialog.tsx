@@ -55,7 +55,7 @@ export function ExportPackDialog({
 
   /* Configs are a separate zip because they go in the plugin's folder,
      while the pack goes in resourcepacks/. */
-  const configs = useMemo(() => buildConfigs(items), [items])
+  const configs = useMemo(() => buildConfigs(items, nsOk ? namespace : 'vellum'), [items, namespace, nsOk])
 
   const stem = safeId(suggestedName)
 

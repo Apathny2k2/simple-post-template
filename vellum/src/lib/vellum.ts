@@ -18,6 +18,7 @@ import { FACES, keyAddress, subtypeFits } from './model'
 import type { Behaviour, BehaviourEffect, BehaviourRequirement, BehaviourStage, EffectKind } from './behaviour'
 import { bodyOf, canonicalise, fieldsOf, hasConfig, looksLegacy } from './config'
 import type { ConfigValue, Config, Row } from './config'
+import type { PileSet } from './pile'
 import type {
   Bone,
   Channel,
@@ -43,7 +44,7 @@ import type {
 } from './model'
 
 export const FORMAT = 'model'
-export const CURRENT_VERSION = 15
+export const CURRENT_VERSION = 16
 
 /** A well-formed `.vellum` begins with exactly these bytes. */
 export const HEADER_PREFIX = `{"vellum":{"format":"${FORMAT}","version":${CURRENT_VERSION}},`
@@ -215,6 +216,8 @@ export type VellumDocument = {
   config?: Record<string, unknown>
   /** Added in v12. Bedrock animation controllers; absent when the model has none. */
   controllers?: VellumController[]
+  /** Added in v16. A ground pile set; see lib/pile.ts. Written as the model holds it. */
+  pile?: PileSet
   /** Added in v10. What a Blockbench project held that Vellum has no field for, kept for the trip back. */
   blockbench?: Record<string, unknown>
 }
@@ -459,6 +462,7 @@ export function toVellumDocument(model: Model): VellumDocument {
     behaviour,
     config,
     controllers: writeControllers(model),
+    pile: model.pile ? writePile(model.pile) : undefined,
     blockbench: blockbenchOf(model),
   })
 }
@@ -484,6 +488,47 @@ function writeControllers(model: Model): VellumController[] | undefined {
 }
 
 /** Controllers off disk; a state, clip or transition missing what it needs is dropped. */
+/** A pile set as written: keys in a fixed order, optional ones left out. */
+function writePile(p: PileSet): PileSet {
+  return compact({
+    max: p.max,
+    whenFull: p.whenFull,
+    sound: p.sound && (p.sound.place || p.sound.break) ? compact({ place: p.sound.place || undefined, break: p.sound.break || undefined }) : undefined,
+    materials: p.materials.map((m) =>
+      compact({
+        name: m.name,
+        match: m.match,
+        texture: m.texture.kind === 'vanilla' ? { kind: 'vanilla' as const, path: m.texture.path } : { kind: 'custom' as const, texture: m.texture.texture },
+        max: m.max,
+      }),
+    ),
+  }) as PileSet
+}
+
+/** A pile set off disk; a material without a name or a usable texture is dropped. */
+function readPile(raw: unknown): PileSet | undefined {
+  if (!raw || typeof raw !== 'object') return undefined
+  const p = raw as Record<string, unknown>
+  const num = (v: unknown, d: number) => (typeof v === 'number' && Number.isFinite(v) ? v : d)
+  const str = (v: unknown) => (typeof v === 'string' ? v : '')
+  const sound = p.sound && typeof p.sound === 'object' ? (p.sound as Record<string, unknown>) : null
+  const materials = (Array.isArray(p.materials) ? p.materials : []).flatMap((x): PileSet['materials'] => {
+    if (!x || typeof x !== 'object') return []
+    const m = x as Record<string, unknown>
+    const t = (m.texture && typeof m.texture === 'object' ? m.texture : {}) as Record<string, unknown>
+    const texture = t.kind === 'custom' && str(t.texture) ? { kind: 'custom' as const, texture: str(t.texture) } : str(t.path) ? { kind: 'vanilla' as const, path: str(t.path) } : null
+    if (!str(m.name) || !texture) return []
+    const max = typeof m.max === 'number' && Number.isFinite(m.max) ? { max: m.max } : {}
+    return [{ name: str(m.name), match: (Array.isArray(m.match) ? m.match : []).filter((v): v is string => typeof v === 'string'), texture, ...max }]
+  })
+  return {
+    max: Math.max(1, Math.min(8, Math.round(num(p.max, 8)))),
+    whenFull: p.whenFull === 'refuse' ? 'refuse' : 'new-pile',
+    ...(sound && (str(sound.place) || str(sound.break)) ? { sound: compact({ place: str(sound.place) || undefined, break: str(sound.break) || undefined }) } : {}),
+    materials,
+  }
+}
+
 /** A texture's animation off disk; a frame time that isn't a positive number makes it 1. */
 function readTextureAnimation(raw: unknown): { animation?: TextureAnimation } {
   if (!raw || typeof raw !== 'object') return {}
@@ -553,13 +598,13 @@ function blockbenchOf(model: Model): Record<string, unknown> | undefined {
  * config), in the shape a .vellum writes it. A .bbmodel export carries it
  * under a `vellum` key so the model comes back whole.
  */
-export function vellumOnlyOf(model: Model): Pick<VellumDocument, 'kind' | 'subtype' | 'behaviour' | 'config' | 'controllers'> {
+export function vellumOnlyOf(model: Model): Pick<VellumDocument, 'kind' | 'subtype' | 'behaviour' | 'config' | 'controllers' | 'pile'> {
   const doc = toVellumDocument(model)
-  return compact({ kind: doc.kind, subtype: doc.subtype, behaviour: doc.behaviour, config: doc.config, controllers: doc.controllers })
+  return compact({ kind: doc.kind, subtype: doc.subtype, behaviour: doc.behaviour, config: doc.config, controllers: doc.controllers, pile: doc.pile })
 }
 
 /** Reads what `vellumOnlyOf` wrote. */
-export function readVellumOnly(raw: unknown): Pick<Model, 'kind' | 'subtype' | 'behaviour' | 'config' | 'controllers'> {
+export function readVellumOnly(raw: unknown): Pick<Model, 'kind' | 'subtype' | 'behaviour' | 'config' | 'controllers' | 'pile'> {
   const doc = (raw && typeof raw === 'object' ? raw : {}) as VellumDocument
   const kind = (['items', 'mobs', 'blocks'] as const).find((k) => k === doc.kind)
   return compact({
@@ -568,6 +613,7 @@ export function readVellumOnly(raw: unknown): Pick<Model, 'kind' | 'subtype' | '
     behaviour: readBehaviour(doc.behaviour),
     config: readConfig(doc.config, kind),
     controllers: readControllers(doc.controllers),
+    pile: readPile(doc.pile),
   })
 }
 
@@ -735,6 +781,9 @@ function upgrade(doc: VellumDocument): VellumDocument {
         break
       case 14: // v15 added texture meshes; absent is already correct
         version = 15
+        break
+      case 15: // v16 added ground pile sets; absent is already correct
+        version = 16
         break
       default:
         throw new VellumFormatError(`No upgrade path from .vellum version ${version}.`)
@@ -968,6 +1017,7 @@ export function fromVellumDocument(doc: VellumDocument): Model {
     nulls: nulls.length ? nulls : undefined,
     meshes: meshes.length ? meshes : undefined,
     controllers: readControllers(doc.controllers),
+    pile: readPile(doc.pile),
     blockbench: doc.blockbench && typeof doc.blockbench === 'object' && !Array.isArray(doc.blockbench) ? doc.blockbench : undefined,
   }
 }
