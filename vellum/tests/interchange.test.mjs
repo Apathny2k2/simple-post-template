@@ -95,7 +95,8 @@ test('a Blockbench project comes in with its rig, textures, clips, effects and n
   assert.equal(r.southTurn, 90)
   assert.equal(r.downTex, null)
   assert.equal(r.northTex, r.texId)
-  assert.deepEqual(r.keys, [[0, -20, 'linear', false], [0.5, 20, 'bezier', true]])
+  // Blockbench keeps keys as Bedrock reads them, Y rotation the other way from the bone's own
+  assert.deepEqual(r.keys, [[0, 20, 'linear', false], [0.5, -20, 'bezier', true]])
   assert.equal(r.posX, 0, 'a Molang value reads as the rest value')
   assert.deepEqual(r.events.map((e) => [e.kind, e.effect, e.locator]), [['sound', 'mob.wolf.bark', 'n-1']])
   assert.deepEqual(r.nulls, [['target', 'g-tail', 'g-tail']])

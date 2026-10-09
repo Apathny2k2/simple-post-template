@@ -124,6 +124,16 @@ export function isBbmodel(text: string): boolean {
 
 const INTERP: Record<string, Interpolation> = { linear: 'linear', catmullrom: 'catmullrom', step: 'step', bezier: 'bezier' }
 
+/**
+ * Blockbench keeps keyframes the way Bedrock reads them, which turns X and
+ * Y the other way from a bone's own rotation and moves along X the other
+ * way: it plays a rotation key as (-x, -y, z) and a position key as
+ * (-x, y, z) on top of the bone. Vellum adds keys straight onto the bone,
+ * so keys cross over with those signs, both ways. Scale is the same.
+ */
+export const keySigns = (channel: string): Vec3 => (channel === 'rotation' ? [-1, -1, 1] : channel === 'position' ? [-1, 1, 1] : [1, 1, 1])
+const signed = (v: Vec3, s: Vec3): Vec3 => [v[0] * s[0] || 0, v[1] * s[1] || 0, v[2] * s[2] || 0]
+
 /** The format a model goes out as when it didn't come from Blockbench with one. */
 function defaultFormat(model: Pick<Model, 'kind' | 'clips' | 'meshes' | 'nulls' | 'bones' | 'cubes'>): string {
   const rotations = (r: Vec3) => r.filter((v) => v !== 0)
@@ -416,15 +426,15 @@ export function fromBbmodel(text: string, fileName = 'model.bbmodel'): Imported 
         const key: Key = {
           id: str(k.uuid) || newId(),
           time,
-          value: [axis(point.x, d), axis(point.y, d), axis(point.z, d)],
+          value: signed([axis(point.x, d), axis(point.y, d), axis(point.z, d)], keySigns(channel)),
           interp: INTERP[str(k.interpolation, 'linear')] ?? 'linear',
         }
         if (key.interp === 'bezier' && k.bezier_right_time !== undefined) {
           key.handles = {
             leftTime: vec(k.bezier_left_time, [-0.1, -0.1, -0.1]),
-            leftValue: vec(k.bezier_left_value),
+            leftValue: signed(vec(k.bezier_left_value), keySigns(channel)),
             rightTime: vec(k.bezier_right_time, [0.1, 0.1, 0.1]),
-            rightValue: vec(k.bezier_right_value),
+            rightValue: signed(vec(k.bezier_right_value), keySigns(channel)),
           }
         }
         byChannel.set(channel, [...(byChannel.get(channel) ?? []), key])
@@ -634,7 +644,7 @@ export function toBbmodel(model: Model): string {
             .sort((a, b) => a.time - b.time)
             .map((k) => ({
               channel: t.channel,
-              data_points: [{ x: k.value[0], y: k.value[1], z: k.value[2] }],
+              data_points: [(([x, y, z]) => ({ x, y, z }))(signed(k.value, keySigns(t.channel)))],
               uuid: uuidFor(k.id),
               time: k.time,
               color: -1,
@@ -643,9 +653,9 @@ export function toBbmodel(model: Model): string {
                 ? {
                     bezier_linked: false,
                     bezier_left_time: k.handles.leftTime,
-                    bezier_left_value: k.handles.leftValue,
+                    bezier_left_value: signed(k.handles.leftValue, keySigns(t.channel)),
                     bezier_right_time: k.handles.rightTime,
-                    bezier_right_value: k.handles.rightValue,
+                    bezier_right_value: signed(k.handles.rightValue, keySigns(t.channel)),
                   }
                 : {}),
             })),

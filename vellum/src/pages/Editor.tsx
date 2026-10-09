@@ -155,6 +155,7 @@ import { scenes } from '../lib/data'
 import { saveBlob, saveDataUrl, saveFile } from '../lib/download'
 import { toGltf, toJavaJson, toObjZip } from '../lib/exporters'
 import { fromBbmodel, fromJavaModel, isBbmodel, isJavaModel, toBbmodel } from '../lib/importers'
+import { applyBedrockAnimations, fromBedrockGeometry, isBedrockAnimation, isBedrockGeometry, toBedrockZip, bedrockName } from '../lib/bedrock'
 import './Editor.css'
 import './EditorStudio.css'
 
@@ -190,6 +191,7 @@ type Actions = {
   onExportGltf: () => void
   onExportObj: () => void
   onExportJava: () => void
+  onExportBedrock: () => void
   /** saves in the format named; Save and Ctrl S then keep using it */
   onSaveAs: (format: SaveFormat) => void
   onSelectAll: () => void
@@ -226,7 +228,7 @@ function buildMenus(
           onSelect: () => actions.onSample(s.id),
         })),
         { kind: 'separator' },
-        { label: 'Open .vellum, .bbmodel or Java JSON…', icon: 'folder', shortcut: 'Ctrl O', onSelect: actions.onOpen },
+        { label: 'Open .vellum, .bbmodel, Java or Bedrock JSON…', icon: 'folder', shortcut: 'Ctrl O', onSelect: actions.onOpen },
         { label: 'Save as .vellum', icon: 'save', onSelect: () => actions.onSaveAs('vellum') },
         { label: 'Save as Blockbench .bbmodel', icon: 'save', onSelect: () => actions.onSaveAs('bbmodel') },
         { kind: 'separator' },
@@ -234,6 +236,7 @@ function buildMenus(
         { label: 'glTF, with the rig and clips (Blender)', icon: 'download', onSelect: actions.onExportGltf },
         { label: 'OBJ and textures (.zip)', icon: 'download', onSelect: actions.onExportObj },
         { label: 'Java model JSON', icon: 'download', onSelect: actions.onExportJava },
+        { label: 'Bedrock geometry and animations (.zip)', icon: 'download', onSelect: actions.onExportBedrock },
       ],
     },
     {
@@ -6193,6 +6196,12 @@ export function Editor({ segments }: { segments: string[] }) {
         const stem = fileName.replace(/\.vellum$/i, '') || 'model'
         void saveBlob(`${stem}-obj.zip`, new Blob([toObjZip(model) as BlobPart], { type: 'application/zip' })).then(notify)
       },
+      onExportBedrock: () => {
+        const out = toBedrockZip({ ...model, kind })
+        void saveBlob(`${bedrockName(model.name)}-bedrock.zip`, new Blob([out.bytes as BlobPart], { type: 'application/zip' })).then((note) =>
+          notify(out.notes.length ? `${note} ${out.notes.join(' ')}` : note, 8000),
+        )
+      },
       onExportJava: () => {
         const out = toJavaJson(model, kind === 'blocks' ? 'block' : 'item')
         void saveFile(out.name, out.text).then((note) =>
@@ -6488,12 +6497,21 @@ export function Editor({ segments }: { segments: string[] }) {
         const got = fromBbmodel(text, file.name)
         loadModel(got.model, file.name, got.kind)
         notify(`Opened ${file.name} from Blockbench. It saves as ${vellumFileName(file.name)}.${got.notes.length ? ' ' + got.notes.join(' ') : ''}`, 12000)
+      } else if (isBedrockAnimation(text)) {
+        // animations alone go onto the model that is open, matched by bone name
+        const got = applyBedrockAnimations(model, text)
+        history.commit('import animations', got.model)
+        notify(`Added ${got.added} animation${got.added === 1 ? '' : 's'} from ${file.name}.${got.notes.length ? ' ' + got.notes.join(' ') : ''}`, 12000)
+      } else if (isBedrockGeometry(text)) {
+        const got = fromBedrockGeometry(text, file.name)
+        loadModel(got.model, file.name.replace(/\.geo\.json$/i, '.vellum'), got.kind)
+        notify(`Opened ${file.name} as Bedrock geometry.${got.notes.length ? ' ' + got.notes.join(' ') : ''}`, 12000)
       } else if (isJavaModel(text)) {
         const got = fromJavaModel(text, file.name)
         loadModel(got.model, file.name, got.kind)
         notify(`Opened ${file.name} as a Java model.${got.notes.length ? ' ' + got.notes.join(' ') : ''}`, 12000)
       } else {
-        throw new Error(`${file.name} is not a model Vellum can open: it takes .vellum, Blockbench .bbmodel and Java block or item JSON.`)
+        throw new Error(`${file.name} is not a model Vellum can open: it takes .vellum, Blockbench .bbmodel, Java block or item JSON, and Bedrock geometry or animation JSON.`)
       }
       setOpenError(null)
     } catch (err) {

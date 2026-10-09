@@ -1173,6 +1173,10 @@ File ▸ Open takes a `.vellum`, a Blockbench project or a Java model.
   their keys, easing and bezier handles; an older file's animator, named by
   its group's name, still finds its bone. Sound, particle and timeline keys
   become clip events. Blockbench's own ids are kept.
+  Blockbench keeps keyframes the way Bedrock reads them: it plays a
+  rotation key as (-x, -y, z) and a position key as (-x, y, z) on top of
+  the bone, while Vellum adds keys straight onto it. Keys cross over with
+  those signs both ways (`keySigns`), so a clip turns the same way in both.
 
   Nothing is dropped. What Vellum has no field for (display settings, a
   face's cullface and tint, element and group colours, a texture's render
@@ -1193,6 +1197,29 @@ File ▸ Open takes a `.vellum`, a Blockbench project or a Java model.
   one made from it, with a map back. So the two files of one model open as
   the same model: `bbmodel.test.mjs` saves every sample as a `.bbmodel`,
   opens it, and checks the `.vellum` it writes is byte for byte the same.
+- **Bedrock geometry and animations** (`src/lib/bedrock.ts`), both ways.
+  File ▸ Export ▸ Bedrock writes a zip laid out as a resource pack's
+  folders: `models/entity/<name>.geo.json` (format 1.12.0),
+  `animations/<name>.animation.json` (1.8.0) and the textures. Bedrock's X
+  runs the other way, so pivots and points go over as (-x, y, z), turns as
+  (-x, -y, z), and a cube's Bedrock `origin` is its corner on the model's
+  `to` side in x. Up and down faces cross over end for end, as Blockbench
+  writes them, because Bedrock draws them turned half round. Box UV cubes
+  write their offset, null objects become locators on their bone. In a
+  clip, linear keys are plain arrays, catmull-rom keys carry `lerp_mode`,
+  a step holds by giving the next key a `pre`, and a bezier segment, which
+  Bedrock can't say, is baked into linear keys at the clip's snapping rate.
+  A ping-pong clip is written out there and back as a loop twice as long.
+  Meshes and tracks on null objects have no Bedrock form and are named in
+  the status bar.
+
+  File ▸ Open takes a `.geo.json` (the 1.12 form or the older one keyed by
+  `geometry.` names) as a new model with a blank texture named after it,
+  and an `.animation.json` as clips added to the open model, matched to its
+  bones by name. Keys may be arrays, one value for all three axes, or
+  `{pre, post, lerp_mode}`; a `pre` equal to the key before makes that key
+  hold. Molang values read as the rest value, and bones the model lacks are
+  named in the status bar.
 - **Java block or item JSON.** Elements become cubes under one `root` bone.
   The sheet is 16 by 16, as Java UVs are. A model names its textures by path
   and carries no images, so they open blank and named after the path. Importing a PNG of
@@ -1238,6 +1265,7 @@ code the editor runs.
 | `mesh.test.mjs` | Every primitive faces outward; extrude, merge, flip and delete keep a mesh whole; the v9 round trip; adding, picking, extruding, moving and merging in the editor; a Blockbench mesh imported and exported to glTF facing outward; painting a mesh face; loop cut and subdivide leave the surface closed; Edge mode, box-picking vertices and dragging mesh UVs on the sheet |
 | `mesh-tools.test.mjs` | Knife, bevel, edge slide, loop select, fill, dissolve, inset, turning and scaling keep a cube closed and facing out; faces a flat map can't fit split into triangles; the knife, bevel, inset, gizmo turn and scale, and slide in the editor; a dragged UV corner drawn as two triangles |
 | `bbmodel.test.mjs` | Every sample saved as a `.bbmodel` opens as the same model; a Blockbench project (4 and 5 outliners) keeps its display, cullfaces, colours, render modes, blend weights and unknown elements through a `.vellum` and back; ids that aren't uuids and ping-pong clips survive; Save's format menu, and a `.bbmodel` saving back as one |
+| `bedrock.test.mjs` | Every sample out to Bedrock geometry and animations and back keeps its bones, cubes, UVs and motion; a hand-written Bedrock file with `pre`/`post`, catmull-rom, Molang, single values, locators and effects; the export zip and adding animations from File ▸ Open |
 | `modes.test.mjs` | A display slot takes and resets a transform; the real-world view opens and closes; a behaviour cycle runs and takes a stage |
 | `bundle.test.mjs` | `dist/vellum.html` opens and keeps its unprefixed `backdrop-filter`; skipped until `pnpm build:single` has run |
 
