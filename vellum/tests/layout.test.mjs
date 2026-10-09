@@ -55,7 +55,7 @@ test('the top bar, columns and status bar follow the design', async () => {
   assert.ok(save.x + save.width > bar.width - 40, 'Save is at the right')
   const outliner = await page.locator('.panel__title', { hasText: 'Outliner' }).boundingBox()
   assert.ok(outliner.x < 100, 'the outliner is on the left in Model')
-  const add = await page.locator('.outliner-add button:has-text("+ Null")').boundingBox()
+  const add = await page.locator('.outliner-add button:has-text("+ More")').boundingBox()
   const left = await page.locator('.editor-column--right').boundingBox()
   assert.ok(add.x + add.width <= left.x + left.width, 'the outliner’s buttons stay inside its column')
   assert.match(await page.textContent('.editor-status'), /cubes/)

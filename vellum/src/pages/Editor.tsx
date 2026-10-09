@@ -3,9 +3,9 @@ import type { ReactNode } from 'react'
 import { Menu } from '../components/Menu'
 import type { MenuEntry } from '../components/Menu'
 import { ModelView } from '../components/ModelView'
-import type { PickMods, VertexLayer, ViewApi } from '../components/ModelView'
+import type { MeshPick, PickMods, VertexLayer, ViewApi } from '../components/ModelView'
 import type { GizmoEvent, GizmoSpec } from '../components/Gizmo'
-import { add, apply, applyDir, buildRig, cubeCorners, cubeFrame, eulerAxes, norm, nullWorld, parentFrame, posedAt, sub, toParentDir } from '../lib/kinematics'
+import { add, apply, applyDir, buildRig, cubeCorners, cubeFrame, eulerAxes, meshFrame, norm, nullWorld, parentFrame, posedAt, sub, toParentDir } from '../lib/kinematics'
 import {
   copyNodes,
   findBone,
@@ -46,6 +46,7 @@ import type {
   Cube,
   FaceKey,
   Key,
+  Mesh,
   Model,
   NullObject,
   ClipEvent,
@@ -130,7 +131,9 @@ import {
   unwrapOrigin,
 } from '../lib/uv-edit'
 import type { UvHandle } from '../lib/uv-edit'
-import { boxSize } from '../lib/uv-pack'
+import { PRIMITIVES, centreOf, faceOrder, deleteFaces, deleteVertices, extrudeFaces, flipFaces, makeMesh, mergeVertices, moveVertices, verticesOf } from '../lib/mesh'
+import type { Primitive } from '../lib/mesh'
+import { boxSize, findSpot } from '../lib/uv-pack'
 import { DEFAULT_DISPLAY, DisplayPanel } from './editor/DisplayPanel'
 import type { DisplayState, SlotId } from './editor/DisplayPanel'
 import { ScenePanel } from './editor/ScenePanel'
@@ -164,6 +167,7 @@ type Actions = {
   onAddCube: () => void
   onAddBone: () => void
   onAddNull: () => void
+  onAddMesh: (kind: Primitive) => void
   onDuplicate: () => void
   onDelete: () => void
   onUndo: () => void
@@ -252,6 +256,7 @@ function buildMenus(
         { label: 'Show all', icon: 'eye', shortcut: 'Alt H', onSelect: actions.onShowAll },
         { kind: 'separator' },
         { label: 'Add cube', icon: 'cube', onSelect: actions.onAddCube },
+        ...PRIMITIVES.map((p) => ({ label: `Add mesh: ${p.label.toLowerCase()}`, icon: 'vertex' as const, onSelect: () => actions.onAddMesh(p.id) })),
         { label: 'Add bone', icon: 'folder', onSelect: actions.onAddBone },
         { label: 'Add null object', icon: 'pivot', onSelect: actions.onAddNull },
         { label: 'Group selection', icon: 'folder', shortcut: 'Ctrl G', onSelect: actions.onGroup },
@@ -482,7 +487,10 @@ function ToolDock({
   tools,
   tool,
   onTool,
+  extra,
 }: {
+  /** more buttons after the tools, such as a mesh's selection modes */
+  extra?: ReactNode
   tools: Array<{ id: string; icon: IconName; label: string; key?: string }>
   tool: string
   onTool: (id: string) => void
@@ -497,6 +505,7 @@ function ToolDock({
           {t.key ? <kbd>{t.key}</kbd> : null}
         </button>
       ))}
+      {extra}
     </div>
   )
 }
@@ -1538,6 +1547,9 @@ function ColorPanel({ colour, onColour, palette }: { colour: string; onColour: (
 
 type Drop = { id: string; where: 'before' | 'after' | 'into' }
 
+/** An outliner row: a bone or cube from the tree, or a mesh listed under its bone. */
+type OutlineRow = ReturnType<typeof flattenBones>[number] | { kind: 'mesh'; depth: number; mesh: Mesh }
+
 function Outliner({
   model,
   selection,
@@ -1565,7 +1577,26 @@ function Outliner({
   /** F2: the id to start renaming, with a counter so the same id can be asked twice */
   renameRequest: { id: string; n: number } | null
 }) {
-  const rows = useMemo(() => flattenBones(model, collapsed), [model, collapsed])
+  /* The bone tree, with each bone's meshes listed first under it (a mesh
+     names its bone; the tree itself does not list meshes), and meshes at
+     the root last. */
+  const rows = useMemo(() => {
+    const meshes = model.meshes ?? []
+    const out: OutlineRow[] = []
+    const bonesSeen = new Set<string>()
+    for (const r of flattenBones(model, collapsed)) {
+      out.push(r)
+      if (r.kind !== 'bone') continue
+      bonesSeen.add(r.bone.id)
+      if (collapsed.has(r.bone.id)) continue
+      for (const m of meshes) if (m.parent === r.bone.id) out.push({ kind: 'mesh', depth: r.depth + 1, mesh: m })
+    }
+    const allBones = new Set<string>()
+    const walk = (bs: Bone[]) => bs.forEach((b) => (allBones.add(b.id), walk(b.children.filter((c) => c.kind === 'bone').map((c) => (c as { bone: Bone }).bone))))
+    walk(model.bones)
+    for (const m of meshes) if (!m.parent || !allBones.has(m.parent)) out.push({ kind: 'mesh', depth: 0, mesh: m })
+    return out
+  }, [model, collapsed])
   const [editing, setEditing] = useState<string | null>(null)
   const [dragId, setDragId] = useState<string | null>(null)
   const [over, setOver] = useState<Drop | null>(null)
@@ -1653,6 +1684,9 @@ function Outliner({
       return { ...m, bones: walk(m.bones) }
     })
 
+  const setMesh = (id: string, patch: Partial<Mesh>) =>
+    onModel('mesh toggle', (m) => ({ ...m, meshes: (m.meshes ?? []).map((x) => (x.id === id ? { ...x, ...patch } : x)) }))
+
   const setCube = (id: string, patch: Partial<Cube>) =>
     onModel('cube toggle', (m) => ({
       ...m,
@@ -1674,7 +1708,8 @@ function Outliner({
     >
       {rows.map((row) => {
         const isBone = row.kind === 'bone'
-        const node = isBone ? row.bone : row.cube
+        const isMesh = row.kind === 'mesh'
+        const node = row.kind === 'bone' ? row.bone : row.kind === 'mesh' ? row.mesh : row.cube
         const visible = node.visible
         const locked = node.locked
         const region = isBone && isRegionBone(model, row.bone)
@@ -1704,7 +1739,7 @@ function Outliner({
                 return
               }
               const mods = { shift: e.shiftKey, ctrl: e.ctrlKey || e.metaKey }
-              const ids = rows.map((r) => (r.kind === 'bone' ? r.bone.id : r.cube.id))
+              const ids = rows.map((r) => (r.kind === 'bone' ? r.bone.id : r.kind === 'mesh' ? r.mesh.id : r.cube.id))
               const a = primary ? ids.indexOf(primary) : -1
               const b = ids.indexOf(node.id)
               const range = a >= 0 && b >= 0 ? ids.slice(Math.min(a, b), Math.max(a, b) + 1) : [node.id]
@@ -1724,7 +1759,7 @@ function Outliner({
                 className="tree__icon"
               />
             ) : null}
-            <Icon name={isBone ? 'folder' : 'cube'} size={12} className="tree__icon" />
+            <Icon name={isBone ? 'folder' : isMesh ? 'vertex' : 'cube'} size={12} className="tree__icon" />
 
             {editing === node.id ? (
               <input
@@ -1789,6 +1824,7 @@ function Outliner({
               onClick={(e) => {
                 e.stopPropagation()
                 if (isBone) setBone(node.id, { locked: !locked })
+                else if (isMesh) setMesh(node.id, { locked: !locked })
                 else setCube(node.id, { locked: !locked })
               }}
             >
@@ -1802,6 +1838,7 @@ function Outliner({
               onClick={(e) => {
                 e.stopPropagation()
                 if (isBone) setBone(node.id, { visible: !visible })
+                else if (isMesh) setMesh(node.id, { visible: !visible })
                 else setCube(node.id, { visible: !visible })
               }}
             >
@@ -1865,6 +1902,167 @@ function BonePanel({
 /* ================= null objects ================= */
 
 /** A null object's settings: where it is, which bone it rides on, and the IK chain that reaches for it. */
+/** The inspector for a mesh: its place, how it is being picked, and the edits on the pick. */
+function MeshPanel({
+  mesh,
+  model,
+  bones,
+  snap,
+  mode,
+  onMode,
+  picked,
+  keys,
+  ops,
+  onEdit,
+  onRename,
+  onMove,
+  onDelete,
+  pickedFaces,
+}: {
+  mesh: Mesh
+  model: Model
+  bones: Array<{ id: string; name: string; depth: number }>
+  snap: boolean
+  mode: 'object' | 'face' | 'vertex'
+  onMode: (m: 'object' | 'face' | 'vertex') => void
+  picked: number
+  keys: string[]
+  ops: { extrude: () => void; remove: () => void; merge: () => void; flip: () => void; selectAll: () => void }
+  onEdit: (label: string, fn: (m: Mesh) => Mesh) => void
+  onRename: (name: string) => void
+  onMove: (bone: string | null) => void
+  onDelete: () => void
+  pickedFaces: string[]
+}) {
+  const locked = mesh.locked
+  const centre = centreOf(mesh, keys)
+  const faceKeys = pickedFaces.length ? pickedFaces : Object.keys(mesh.faces)
+  const textures = new Set(faceKeys.map((k) => mesh.faces[k]?.texture ?? ''))
+  return (
+    <>
+      <div className="insp-head">
+        <Icon name="vertex" size={15} />
+        <input
+          key={`${mesh.id}:${mesh.name}`}
+          className="insp-head__name"
+          defaultValue={mesh.name}
+          aria-label="Mesh name"
+          spellCheck={false}
+          disabled={locked}
+          onBlur={(e) => {
+            const name = e.target.value.trim()
+            if (name && name !== mesh.name) onRename(name)
+            else e.target.value = mesh.name
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
+          }}
+        />
+        <button className="insp-head__delete" aria-label={`Delete ${mesh.name}`} title="Delete this mesh" disabled={locked} onClick={onDelete}>
+          <Icon name="trash" size={15} />
+        </button>
+      </div>
+      <label className="clip-props__row insp-bone">
+        <span>In bone</span>
+        <select className="editor-select" value={mesh.parent ?? ''} disabled={locked} onChange={(e) => onMove(e.target.value || null)}>
+          <option value="">(no bone)</option>
+          {bones.map((b) => (
+            <option key={b.id} value={b.id}>
+              {'\u2002'.repeat(b.depth)}
+              {b.name}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      <div className="num-field-grid">
+        <NumRow label="Position" value={mesh.origin} disabled={locked} snap={snap} onChange={(origin) => onEdit('move mesh', (m) => ({ ...m, origin }))} />
+        <NumRow label="Rotation" value={mesh.rotation} disabled={locked} step={2.5} onChange={(rotation) => onEdit('turn mesh', (m) => ({ ...m, rotation }))} />
+      </div>
+
+      <div className="insp-tex">
+        <div className="insp-tex__head">
+          <span className="studio-label">Edit</span>
+          <span className="studio-seg mesh-modes" role="group" aria-label="Mesh selection">
+            {(['object', 'face', 'vertex'] as const).map((m, i) => (
+              <button key={m} aria-pressed={mode === m} title={`${m[0].toUpperCase() + m.slice(1)} (${i + 1})`} onClick={() => onMode(m)}>
+                {m[0].toUpperCase() + m.slice(1)}
+              </button>
+            ))}
+          </span>
+        </div>
+        {mode === 'object' ? (
+          <p className="editor-hint">The gizmo moves, turns and re-pivots the whole mesh. Pick Face or Vertex (2, 3) to shape it.</p>
+        ) : (
+          <>
+            <p className="editor-hint">
+              {picked
+                ? `${picked} ${mode === 'face' ? (picked === 1 ? 'face' : 'faces') : picked === 1 ? 'vertex' : 'vertices'} picked. Drag the gizmo to move ${picked === 1 ? 'it' : 'them'}.`
+                : `Click ${mode === 'face' ? 'a face' : 'a vertex'} in the viewport. Shift adds, Ctrl+A picks all.`}
+            </p>
+            {keys.length ? (
+              <div className="num-field-grid">
+                <NumRow
+                  label="Middle of the pick"
+                  value={centre.map((v) => Math.round(v * 1000) / 1000) as Vec3}
+                  disabled={locked}
+                  snap={snap}
+                  onChange={(to) => onEdit(`move ${mode === 'face' ? 'faces' : 'vertices'}`, (m) => moveVertices(m, keys, sub(to, centreOf(m, keys))))}
+                />
+              </div>
+            ) : null}
+            <div className="chip-row" style={{ marginTop: 10 }}>
+              {mode === 'face' ? (
+                <>
+                  <button className="chip" disabled={!picked || locked} onClick={ops.extrude} title="Pull the picked faces out by 1, joined by new sides (E)">
+                    Extrude
+                  </button>
+                  <button className="chip" disabled={!picked || locked} onClick={ops.flip} title="Turn the picked faces to face the other way (Shift+F)">
+                    Flip
+                  </button>
+                </>
+              ) : (
+                <button className="chip" disabled={picked < 2 || locked} onClick={ops.merge} title="Merge the picked vertices into one at their middle (M)">
+                  Merge
+                </button>
+              )}
+              <button className="chip chip--danger" disabled={!picked || locked} onClick={ops.remove} title="Delete the pick (Del)">
+                Delete
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+
+      <label className="clip-props__row">
+        <span>Texture</span>
+        <select
+          className="editor-select"
+          aria-label={pickedFaces.length ? 'Texture on the picked faces' : 'Texture on every face'}
+          value={textures.size === 1 ? [...textures][0] : 'mixed'}
+          disabled={locked}
+          onChange={(e) => {
+            const id = e.target.value || null
+            onEdit('mesh texture', (m) => ({
+              ...m,
+              faces: Object.fromEntries(Object.entries(m.faces).map(([k, f]) => [k, faceKeys.includes(k) ? { ...f, texture: id } : f])),
+            }))
+          }}
+        >
+          {textures.size > 1 ? <option value="mixed" disabled>Mixed</option> : null}
+          <option value="">None</option>
+          {model.textures.map((t) => (
+            <option key={t.id} value={t.id}>
+              {t.name}
+            </option>
+          ))}
+        </select>
+      </label>
+      <p className="editor-hint">{pickedFaces.length ? 'Sets the texture on the picked faces.' : 'Sets the texture on every face. Pick faces to set some.'}</p>
+    </>
+  )
+}
+
 function NullPanel({
   item,
   bones,
@@ -2037,7 +2235,11 @@ function Viewport({
   controls,
   view,
   onViewPreset,
+  meshPick,
+  onPaintMesh,
 }: {
+  meshPick?: MeshPick | null
+  onPaintMesh?: (meshId: string, face: string, u: number, v: number, phase: 'down' | 'move') => void
   model: Model
   label: string
   grid: boolean
@@ -2113,6 +2315,8 @@ function Viewport({
                   selection={selection}
                   onSelect={onSelect}
                   onPaint={onPaint}
+                  meshPick={meshPick}
+                  onPaintMesh={onPaintMesh}
                   display={display}
                   gizmo={gizmo}
                   onGizmo={onGizmo}
@@ -2134,6 +2338,8 @@ function Viewport({
             onSelect={onSelect}
             onDeselect={onDeselect}
             onPaint={onPaint}
+                  meshPick={meshPick}
+                  onPaintMesh={onPaintMesh}
             display={display}
             gizmo={gizmo}
             onGizmo={onGizmo}
@@ -3462,6 +3668,29 @@ function Splitter({ onDrag }: { onDrag: (dx: number) => void }) {
 /* ================= editor ================= */
 
 /** Which bone holds a given cube, so Animate mode can follow your selection. */
+/** Whether a point is inside a polygon, by counting edge crossings. */
+function insidePolygon(x: number, y: number, poly: Array<[number, number]>): boolean {
+  let inside = false
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const [xi, yi] = poly[i]
+    const [xj, yj] = poly[j]
+    if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside
+  }
+  return inside
+}
+
+/** `base`, or `base_2`, `base_3` and so on: a name no cube, bone or mesh has yet. */
+function freeName(model: Model, base: string): string {
+  const stem = base.replace(/_\d+$/, '')
+  const taken = new Set<string>([...model.cubes.map((c) => c.name), ...(model.meshes ?? []).map((m) => m.name)])
+  const walk = (bs: Bone[]) => bs.forEach((b) => (taken.add(b.name), walk(b.children.filter((c) => c.kind === 'bone').map((c) => (c as { bone: Bone }).bone))))
+  walk(model.bones)
+  if (!taken.has(stem)) return stem
+  let i = 2
+  while (taken.has(`${stem}_${i}`)) i++
+  return `${stem}_${i}`
+}
+
 function ownerBone(bones: Bone[], cubeId: string | null): string | null {
   if (!cubeId) return null
   for (const b of bones) {
@@ -3555,6 +3784,7 @@ export function Editor({ segments }: { segments: string[] }) {
   const setSelectedKey = useCallback((id: string | null) => setSelectedKeys(id ? [id] : []), [])
   const [selectedEvent, setSelectedEvent] = useState<string | null>(null)
   const [onion, setOnion] = useState(false)
+  const [meshMenu, setMeshMenu] = useState(false)
   const [cues, setCues] = useState(true)
   const audio = useRef<AudioContext | null>(null)
 
@@ -3863,6 +4093,83 @@ export function Editor({ segments }: { segments: string[] }) {
   const rig = useMemo(() => buildRig(model, pose), [model, pose])
   const selectedNull = useMemo(() => (model.nulls ?? []).find((n) => n.id === selected) ?? null, [model.nulls, selected])
 
+  /* ---------------- mesh editing ---------------- */
+
+  /* A selected mesh is edited as a whole (Object), or by its faces or its
+     vertices, as Blockbench's selection modes do. 1, 2 and 3 switch. */
+  const selectedMesh = useMemo(() => (model.meshes ?? []).find((m) => m.id === selected) ?? null, [model.meshes, selected])
+  const [meshMode, setMeshMode] = useState<'object' | 'face' | 'vertex'>('object')
+  const [meshFaces, setMeshFaces] = useState<string[]>([])
+  const [meshVerts, setMeshVerts] = useState<string[]>([])
+  const meshId = selectedMesh?.id
+  useEffect(() => {
+    setMeshFaces([])
+    setMeshVerts([])
+  }, [meshId])
+  /** the vertices the gizmo moves: the picked faces' or the picked vertices */
+  const meshKeys = useMemo(() => {
+    if (!selectedMesh || meshMode === 'object') return []
+    return meshMode === 'face'
+      ? verticesOf(selectedMesh, meshFaces.filter((k) => selectedMesh.faces[k]))
+      : meshVerts.filter((k) => selectedMesh.vertices[k])
+  }, [selectedMesh, meshMode, meshFaces, meshVerts])
+  const meshEditing = mode === 'edit' && !!selectedMesh && meshMode !== 'object'
+
+  const pickFace = useCallback((key: string, mods: { shift: boolean; ctrl: boolean }) => {
+    setMeshFaces((cur) => (mods.shift || mods.ctrl ? (cur.includes(key) ? cur.filter((k) => k !== key) : [...cur, key]) : [key]))
+  }, [])
+
+  /** Mesh edits on the current pick, as the panel's buttons and the keys run them. */
+  const meshOps = useMemo(
+    () => ({
+      extrude: () => {
+        if (!selectedMesh || meshMode !== 'face' || !meshFaces.length) return
+        const r = extrudeFaces(selectedMesh, meshFaces, 1)
+        history.commit('extrude', (m) => ({ ...m, meshes: (m.meshes ?? []).map((x) => (x.id === selectedMesh.id ? r.mesh : x)) }))
+        setMeshFaces(r.faces)
+      },
+      remove: () => {
+        if (!selectedMesh) return
+        if (meshMode === 'face' && meshFaces.length) {
+          const next = deleteFaces(selectedMesh, meshFaces)
+          history.commit('delete faces', (m) => ({ ...m, meshes: (m.meshes ?? []).map((x) => (x.id === selectedMesh.id ? next : x)) }))
+          setMeshFaces([])
+        } else if (meshMode === 'vertex' && meshVerts.length) {
+          const next = deleteVertices(selectedMesh, meshVerts)
+          history.commit('delete vertices', (m) => ({ ...m, meshes: (m.meshes ?? []).map((x) => (x.id === selectedMesh.id ? next : x)) }))
+          setMeshVerts([])
+        }
+      },
+      merge: () => {
+        if (!selectedMesh || meshMode !== 'vertex' || meshVerts.length < 2) return
+        const r = mergeVertices(selectedMesh, meshVerts)
+        history.commit('merge vertices', (m) => ({ ...m, meshes: (m.meshes ?? []).map((x) => (x.id === selectedMesh.id ? r.mesh : x)) }))
+        setMeshVerts(r.kept ? [r.kept] : [])
+      },
+      flip: () => {
+        if (!selectedMesh || meshMode !== 'face' || !meshFaces.length) return
+        const next = flipFaces(selectedMesh, meshFaces)
+        history.commit('flip faces', (m) => ({ ...m, meshes: (m.meshes ?? []).map((x) => (x.id === selectedMesh.id ? next : x)) }))
+      },
+      selectAll: () => {
+        if (!selectedMesh) return
+        if (meshMode === 'face') setMeshFaces(Object.keys(selectedMesh.faces))
+        if (meshMode === 'vertex') setMeshVerts(Object.keys(selectedMesh.vertices))
+      },
+    }),
+    [selectedMesh, meshMode, meshFaces, meshVerts, history],
+  )
+
+  /** Applies a mesh edit to the selected mesh as one undo step. */
+  const editMesh = useCallback(
+    (label: string, fn: (m: Mesh) => Mesh) => {
+      if (!meshId) return
+      // coalesced, so dragging a field is one undo step
+      history.commit(label, (m) => ({ ...m, meshes: (m.meshes ?? []).map((x) => (x.id === meshId && !x.locked ? fn(x) : x)) }), true)
+    },
+    [history, meshId],
+  )
+
   /** What Animate mode poses: a selected null, else the selected bone, else the bone holding the selected cube. */
   const poseTarget = useMemo(() => selectedNull?.id ?? animBone, [selectedNull, animBone])
 
@@ -3893,8 +4200,20 @@ export function Editor({ segments }: { segments: string[] }) {
 
     if (mode !== 'edit' || !selected) return null
     if (selectedNull) return asNull(selectedNull)
+    // picked faces or vertices only move, whatever the tool
+    if (selectedMesh && meshMode !== 'object') {
+      if (!selectedMesh.visible || selectedMesh.locked || !meshKeys.length) return null
+      const f = meshFrame(rig, selectedMesh)
+      return { tool: 'move', anchor: apply(f, centreOf(selectedMesh, meshKeys)), axes: space === 'local' ? frameAxes(f) : world }
+    }
     if (!['move', 'resize', 'rotate', 'pivot'].includes(tool)) return null
     const t = tool as GizmoSpec['tool']
+    if (selectedMesh) {
+      if (!selectedMesh.visible || selectedMesh.locked || t === 'resize') return null
+      const f = meshFrame(rig, selectedMesh)
+      const rings = eulerAxes(parentFrame(rig, selectedMesh.id).matrix, selectedMesh.rotation).map((r) => r.axis) as [Vec3, Vec3, Vec3]
+      return { tool: t, anchor: apply(f, [0, 0, 0]), axes: space === 'local' ? frameAxes(f) : world, rings }
+    }
     const c = model.cubes.find((x) => x.id === selected)
     if (c) {
       if (!c.visible || c.locked) return null
@@ -3910,7 +4229,7 @@ export function Editor({ segments }: { segments: string[] }) {
     if (!f) return null
     const rings = eulerAxes(parentFrame(rig, b.id).matrix, b.rotation).map((r) => r.axis) as [Vec3, Vec3, Vec3]
     return { tool: t, anchor: apply(f, [0, 0, 0]), axes: space === 'local' ? frameAxes(f) : world, rings }
-  }, [mode, tool, selected, selectedNull, model, rig, pose, space, clip, poseTarget])
+  }, [mode, tool, selected, selectedNull, model, rig, pose, space, clip, poseTarget, selectedMesh, meshMode, meshKeys])
 
   /** The model and rig when a drag began; every move is applied to these, never on top of the last move. */
   const dragFrom = useRef<{ model: Model; rig: ReturnType<typeof buildRig>; pose: Pose; ids: string[] } | null>(null)
@@ -3919,7 +4238,7 @@ export function Editor({ segments }: { segments: string[] }) {
     (e: GizmoEvent) => {
       if (e.phase === 'start') {
         const label =
-          mode === 'animate' ? 'pose' : { move: 'move', resize: 'resize', rotate: 'rotate', pivot: 'move pivot', scale: 'scale' }[e.tool]
+          mode === 'animate' ? 'pose' : meshEditing ? `move ${meshMode === 'face' ? 'faces' : 'vertices'}` : { move: 'move', resize: 'resize', rotate: 'rotate', pivot: 'move pivot', scale: 'scale' }[e.tool]
         history.begin(label)
         dragFrom.current = { model, rig, pose, ids: topLevel(model, selection) }
       }
@@ -3964,6 +4283,13 @@ export function Editor({ segments }: { segments: string[] }) {
         const c0 = m0.clips.find((c) => c.id === clip.id)
         const existing = c0?.tracks.find((t) => t.bone === poseTarget && t.channel === channel)?.keys.find((k) => Math.abs(k.time - time) < 1e-4)
         next = setKey(m0, clip.id, poseTarget, channel, time, value, existing?.interp ?? 'linear')
+      } else if (meshEditing && selectedMesh && e.delta) {
+        // the drag in world space, taken into the mesh's own frame
+        const mesh0 = m0.meshes?.find((x) => x.id === selectedMesh.id)
+        if (mesh0) {
+          const local = applyDir(meshFrame(r0, mesh0).inverse(), e.delta)
+          next = { ...m0, meshes: (m0.meshes ?? []).map((x) => (x.id === mesh0.id ? moveVertices(x, meshKeys, local) : x)) }
+        }
       } else if ((e.tool === 'move' || e.tool === 'pivot') && e.delta) {
         const deltas = new Map(ids.filter((id) => !nulls.some((n) => n.id === id)).map((id) => [id, toParentDir(r0, id, e.delta!)] as const))
         next = e.tool === 'move' ? translateNodes(m0, deltas) : movePivots(m0, deltas)
@@ -4014,7 +4340,7 @@ export function Editor({ segments }: { segments: string[] }) {
         }
       }
     },
-    [history, model, rig, pose, selection, kind, mode, clip, poseTarget, time],
+    [history, model, rig, pose, selection, kind, mode, clip, poseTarget, time, meshEditing, meshMode, selectedMesh, meshKeys],
   )
 
   /* ---------------- vertex snap ---------------- */
@@ -4059,16 +4385,34 @@ export function Editor({ segments }: { segments: string[] }) {
     [vertexData, vertexFrom, model, selection, rig, history],
   )
 
+  /* In Vertex mode every vertex of the selected mesh is a dot; a click
+     picks it, Shift or Ctrl adds or drops it. */
+  const meshVertexLayer = useMemo<VertexLayer | null>(() => {
+    if (!meshEditing || meshMode !== 'vertex' || !selectedMesh) return null
+    const f = meshFrame(rig, selectedMesh)
+    const keys = Object.keys(selectedMesh.vertices)
+    const picked = new Set(meshVerts)
+    return {
+      points: keys.map((k) => apply(f, selectedMesh.vertices[k])),
+      own: keys.map((k) => picked.has(k)),
+      onPick: (i, mods) => {
+        const k = keys[i]
+        setMeshVerts((cur) => (mods?.shift || mods?.ctrl ? (cur.includes(k) ? cur.filter((x) => x !== k) : [...cur, k]) : [k]))
+      },
+    }
+  }, [meshEditing, meshMode, selectedMesh, rig, meshVerts])
+
   const vertices = useMemo<VertexLayer | null>(
     () =>
-      vertexData
+      meshVertexLayer ??
+      (vertexData
         ? {
             points: vertexData.points,
             own: vertexFrom === null ? vertexData.own : vertexData.own.map((_, i) => i === vertexFrom),
             onPick: snapVertex,
           }
-        : null,
-    [vertexData, vertexFrom, snapVertex],
+        : null),
+    [vertexData, vertexFrom, snapVertex, meshVertexLayer],
   )
 
   /* ---------------- view ---------------- */
@@ -4346,6 +4690,35 @@ export function Editor({ segments }: { segments: string[] }) {
     [model],
   )
 
+  /** Paints where a click lands on a mesh face; u and v arrive in UV units. */
+  const paintOnMesh = useCallback(
+    (meshIdHit: string, faceKey: string, u: number, v: number, phase: 'down' | 'move') => {
+      const mesh = model.meshes?.find((x) => x.id === meshIdHit)
+      const f = mesh?.faces[faceKey]
+      if (!mesh || !f) return
+      if (mesh.locked) {
+        if (phase === 'down') refuseLocked(`"${mesh.name}"`)
+        return
+      }
+      const texture = textureById(model, f.texture)
+      if (!texture) return
+      if (phase === 'down') {
+        if (tool !== 'pipette') history.begin('paint')
+        setSelected(mesh.id)
+      }
+      const [sx, sy] = pixelScale(model, texture)
+      const uvs = Object.values(f.uv)
+      const box: UVRect = [
+        Math.floor(Math.min(...uvs.map((p) => p[0])) * sx),
+        Math.floor(Math.min(...uvs.map((p) => p[1])) * sy),
+        Math.ceil(Math.max(...uvs.map((p) => p[0])) * sx),
+        Math.ceil(Math.max(...uvs.map((p) => p[1])) * sy),
+      ]
+      applyTool(texture.id, Math.floor(u * sx), Math.floor(v * sy), box, phase, keepInside ? box : null, (sx + sy) / 2)
+    },
+    [model, applyTool, history, tool, refuseLocked, setSelected, keepInside],
+  )
+
   /** With mirror painting on, the same brush stroke on the cube mirrored across X. */
   const paintMirror = useCallback(
     (cube: Cube, faceKey: FaceKey, u: number, v: number, phase: 'down' | 'move') => {
@@ -4415,6 +4788,34 @@ export function Editor({ segments }: { segments: string[] }) {
           }
         }
         if (hit) break
+      }
+      // a mesh face on the sheet is a polygon, so the hit is a point-in-polygon test
+      let meshHit: { mesh: Mesh; box: UVRect } | null = null
+      if (!hit) {
+        for (const m of model.meshes ?? []) {
+          for (const f of Object.values(m.faces)) {
+            if (f.texture !== texture.id) continue
+            const poly = faceOrder(m, f).map((k) => f.uv[k] ?? [0, 0])
+            if (!insidePolygon(u, v, poly)) continue
+            const xs = poly.map((p) => p[0])
+            const ys = poly.map((p) => p[1])
+            meshHit = { mesh: m, box: [Math.floor(Math.min(...xs) * sx), Math.floor(Math.min(...ys) * sy), Math.ceil(Math.max(...xs) * sx), Math.ceil(Math.max(...ys) * sy)] }
+            break
+          }
+          if (meshHit) break
+        }
+      }
+      if (phase === 'down' && meshHit) {
+        if (meshHit.mesh.locked) {
+          refuseLocked(`"${meshHit.mesh.name}"`)
+          strokeClip.current = null
+          return
+        }
+        if (tool !== 'pipette') history.begin('paint')
+        if (meshHit.mesh.id !== selected) setSelected(meshHit.mesh.id)
+        strokeClip.current = keepInside ? meshHit.box : null
+        applyTool(texture.id, Math.floor(u * sx), Math.floor(v * sy), meshHit.box, phase, strokeClip.current, (sx + sy) / 2)
+        return
       }
       if (phase === 'down') {
         if (hit?.cube.locked) {
@@ -4594,7 +4995,7 @@ export function Editor({ segments }: { segments: string[] }) {
       ).then((loaded) => {
         const all = loaded.filter((x): x is NonNullable<typeof x> => !!x)
         /* A PNG named like a texture already on the model fills that texture
-           in, which is how a Java model's blank textures get their images. */
+           in. A Java model's blank textures get their images this way. */
         const byName = new Map(model.textures.map((t) => [t.name.toLowerCase(), t]))
         const fills = all.filter((x) => byName.has(x.name.toLowerCase()))
         if (fills.length) {
@@ -4913,6 +5314,30 @@ export function Editor({ segments }: { segments: string[] }) {
         setPickedBone(next.id)
       },
       // a null object starts at the pivot of the bone it rides on
+      // a mesh primitive, standing on the bone it goes in, its faces packed into free room on the sheet
+      onAddMesh: (kind: Primitive) => {
+        const selMesh = model.meshes?.find((m) => m.id === selected)
+        const parent = bones.some((b) => b.id === selected) ? selected : selMesh ? selMesh.parent : ownerBone(model.bones, selected)
+        const at = parent ? findBone(model.bones, parent)?.origin ?? [0, 0, 0] : ([0, 0, 0] as Vec3)
+        const placed: UVRect[] = []
+        let crowded = false
+        const mesh = makeMesh(kind, {
+          name: freeName(model, kind),
+          parent,
+          origin: [...at] as Vec3,
+          texture: model.textures[0]?.id ?? null,
+          place: (w, h) => {
+            const spot = findSpot(model, [w, h], placed)
+            if (!spot) crowded = true
+            const [x, y] = spot ?? [0, 0]
+            placed.push([x, y, x + w, y + h])
+            return [x, y]
+          },
+        })
+        history.commit(`add ${kind} mesh`, (m) => ({ ...m, meshes: [...(m.meshes ?? []), mesh] }))
+        setSelected(mesh.id)
+        if (crowded) notify('The sheet had no room for some of its faces, so they share texels at the corner. Grow the sheet or move them in the UV panel.', 7000)
+      },
       onAddNull: () => {
         const parent = bones.some((b) => b.id === selected) ? selected : ownerBone(model.bones, selected)
         const at = parent ? findBone(model.bones, parent)?.origin ?? [0, 8, 0] : ([0, 8, 0] as Vec3)
@@ -4927,6 +5352,12 @@ export function Editor({ segments }: { segments: string[] }) {
         // every selected node, a bone with its whole subtree
         let m = model
         const made: string[] = []
+        for (const mesh of model.meshes ?? []) {
+          if (!selection.includes(mesh.id)) continue
+          const copy = { ...structuredClone(mesh), id: newId(), name: freeName(m, mesh.name) }
+          m = { ...m, meshes: [...(m.meshes ?? []), copy] }
+          made.push(copy.id)
+        }
         for (const id of topLevel(model, selection)) {
           const next = bones.some((b) => b.id === id) ? duplicateBone(m, id) : duplicateCube(m, id)
           if (!next) continue
@@ -4938,6 +5369,17 @@ export function Editor({ segments }: { segments: string[] }) {
         setSelection(made)
       },
       onDelete: () => {
+        const meshIds = new Set((model.meshes ?? []).filter((x) => !x.locked).map((x) => x.id))
+        if (selection.some((id) => meshIds.has(id))) {
+          history.commit('delete mesh', (m) => {
+            const left = (m.meshes ?? []).filter((x) => !(meshIds.has(x.id) && selection.includes(x.id)))
+            return { ...m, meshes: left.length ? left : undefined }
+          })
+          if (selection.every((id) => meshIds.has(id))) {
+            setSelection([])
+            return
+          }
+        }
         const nullIds = new Set((model.nulls ?? []).map((n) => n.id))
         if (selection.some((id) => nullIds.has(id))) {
           for (const id of selection) if (nullIds.has(id)) removeNull(id)
@@ -5172,6 +5614,25 @@ export function Editor({ segments }: { segments: string[] }) {
       }
 
       const editing = mode === 'edit'
+      /* A selected mesh: 1, 2 and 3 pick Object, Face or Vertex; in Face and
+         Vertex, E extrudes, M merges, Shift+F flips, Del deletes and Ctrl+A
+         picks everything. */
+      if (editing && selectedMesh && !e.altKey) {
+        const k = e.key.toLowerCase()
+        const run = (fn: () => void) => {
+          e.preventDefault()
+          fn()
+        }
+        if (!mod && (k === '1' || k === '2' || k === '3')) return run(() => setMeshMode(k === '1' ? 'object' : k === '2' ? 'face' : 'vertex'))
+        if (meshMode !== 'object') {
+          if (mod && k === 'a') return run(meshOps.selectAll)
+          if (!mod && k === 'e' && meshMode === 'face') return run(meshOps.extrude)
+          if (!mod && k === 'm' && meshMode === 'vertex') return run(meshOps.merge)
+          if (!mod && k === 'f' && e.shiftKey && meshMode === 'face') return run(meshOps.flip)
+          if (e.key === 'Delete' || e.key === 'Backspace') return run(meshOps.remove)
+          if (e.key === 'Escape') return run(() => (meshMode === 'face' ? setMeshFaces([]) : setMeshVerts([])))
+        }
+      }
       // in Animate, Ctrl C and Ctrl V copy and paste keyframes
       if (mod && mode === 'animate') {
         const k = e.key.toLowerCase()
@@ -5308,7 +5769,7 @@ export function Editor({ segments }: { segments: string[] }) {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [history, actions, anim, mode, selectedKey, selectedKeys, selectedEvent, selectedNull, animBone, selected, vertexFrom, clip, notify, keymap])
+  }, [history, actions, anim, mode, selectedKey, selectedKeys, selectedEvent, selectedNull, animBone, selected, vertexFrom, clip, notify, keymap, selectedMesh, meshMode, meshOps])
 
   /* .vellum opens as it is. A Blockbench project or a Java model is
      converted on the way in and saves as a .vellum; what did not carry
@@ -5393,6 +5854,8 @@ export function Editor({ segments }: { segments: string[] }) {
           {fileName} {'\u2014'} {kind} model, {mode} mode
         </h1>
         <Viewport
+          onPaintMesh={mode === 'paint' && paintView === 'model' ? paintOnMesh : undefined}
+          meshPick={mode === 'edit' && selectedMesh ? { mesh: selectedMesh.id, faces: new Set(meshMode === 'face' ? meshFaces : []), onFace: meshMode === 'face' ? pickFace : undefined } : null}
           model={model}
           label={kind}
           grid={grid}
@@ -5429,7 +5892,29 @@ export function Editor({ segments }: { segments: string[] }) {
             viewApi.current?.setView(at[0], at[1])
           }}
           dock={
-            mode === 'edit' || mode === 'animate' ? <ToolDock tools={toolsets[mode].map((t) => ({ ...t, key: keyFor(keymap, t.id, t.key) }))} tool={tool} onTool={(id) => { setTool(id); setVertexFrom(null) }} /> : null
+            mode === 'edit' || mode === 'animate' ? (
+              <ToolDock
+                // resize and vertex snap are for cubes, so a selected mesh's dock leaves them out for its modes
+                tools={toolsets[mode].filter((t) => !(mode === 'edit' && selectedMesh && (t.id === 'resize' || t.id === 'vertex'))).map((t) => ({ ...t, key: keyFor(keymap, t.id, t.key) }))}
+                tool={tool}
+                onTool={(id) => {
+                  setTool(id)
+                  setVertexFrom(null)
+                }}
+                extra={
+                  mode === 'edit' && selectedMesh ? (
+                    <span className="dock__modes" role="group" aria-label="Mesh selection">
+                      {(['object', 'face', 'vertex'] as const).map((m, i) => (
+                        <button key={m} className="dock__tool" aria-pressed={meshMode === m} title={`${m[0].toUpperCase() + m.slice(1)} (${i + 1})`} onClick={() => setMeshMode(m)}>
+                          <span>{m[0].toUpperCase() + m.slice(1)}</span>
+                          <kbd>{i + 1}</kbd>
+                        </button>
+                      ))}
+                    </span>
+                  ) : null
+                }
+              />
+            ) : null
           }
           controls={
             <>
@@ -5577,6 +6062,25 @@ export function Editor({ segments }: { segments: string[] }) {
             ) : selectedNull ? (
               <Panel title="Null object" count={selectedNull.name}>
                 <NullPanel item={selectedNull} bones={bones} snap={snap} onChange={(patch) => editNull(selectedNull.id, patch)} onDelete={() => removeNull(selectedNull.id)} />
+              </Panel>
+            ) : selectedMesh ? (
+              <Panel title="Mesh" count={`${Object.keys(selectedMesh.vertices).length} vertices \u00b7 ${Object.keys(selectedMesh.faces).length} faces`}>
+                <MeshPanel
+                  mesh={selectedMesh}
+                  model={model}
+                  bones={bones}
+                  snap={snap}
+                  mode={meshMode}
+                  onMode={setMeshMode}
+                  picked={meshMode === 'face' ? meshFaces.length : meshVerts.length}
+                  keys={meshKeys}
+                  ops={meshOps}
+                  onEdit={editMesh}
+                  onRename={(name) => rename(selectedMesh.id, name)}
+                  onMove={(bone) => move(selectedMesh.id, bone)}
+                  onDelete={actions.onDelete}
+                  pickedFaces={meshMode === 'face' ? meshFaces : []}
+                />
               </Panel>
             ) : selectedBone ? (
               <Panel title="Bone" count={selectedBone.name}>
@@ -5770,6 +6274,7 @@ export function Editor({ segments }: { segments: string[] }) {
                 texture={paintTexture}
                 onTexture={setPaintPick}
                 cube={cube}
+                mesh={selectedMesh}
                 face={face}
                 onPaint={paintOnSheet}
                 onHover={hoverSheet}
@@ -5834,7 +6339,38 @@ export function Editor({ segments }: { segments: string[] }) {
                   <span className="outliner-add">
                     <button onClick={actions.onAddCube} title="Add a cube to the selected bone">+ Cube</button>
                     <button onClick={actions.onAddBone} title="Add a bone">+ Bone</button>
-                    <button onClick={actions.onAddNull} title="Add a null object (locator or IK target)">+ Null</button>
+                    <span className="mesh-add">
+                      <button aria-expanded={meshMenu} aria-haspopup="menu" onClick={() => setMeshMenu((v) => !v)} title="Add a null object or a free-form mesh">
+                        + More
+                      </button>
+                      {meshMenu ? (
+                        <span className="mesh-add__menu" role="menu">
+                          <button
+                            role="menuitem"
+                            title="A point on a bone, for effects and as an IK target"
+                            onClick={() => {
+                              setMeshMenu(false)
+                              actions.onAddNull()
+                            }}
+                          >
+                            Null object
+                          </button>
+                          <span className="mesh-add__label">Mesh</span>
+                          {PRIMITIVES.map((p) => (
+                            <button
+                              key={p.id}
+                              role="menuitem"
+                              onClick={() => {
+                                setMeshMenu(false)
+                                actions.onAddMesh(p.id)
+                              }}
+                            >
+                              {p.label}
+                            </button>
+                          ))}
+                        </span>
+                      ) : null}
+                    </span>
                   </span>
                 ) : null
               }
@@ -6008,7 +6544,9 @@ export function Editor({ segments }: { segments: string[] }) {
               ? `${cube.name} \u00b7 position ${cube.from.join(', ')} \u00b7 size ${cubeSize(cube).join(' \u00d7 ')}`
               : selection.length > 1
                 ? `${selection.length} selected`
-                : selectedBone
+                : selectedMesh
+                  ? `${selectedMesh.name} \u00b7 mesh, ${Object.keys(selectedMesh.vertices).length} vertices, ${Object.keys(selectedMesh.faces).length} faces${meshMode !== 'object' ? ` \u00b7 ${meshMode === 'face' ? meshFaces.length : meshVerts.length} picked` : ''}`
+                  : selectedBone
                   ? `${selectedBone.name} \u00b7 pivot ${selectedBone.origin.join(', ')}`
                   : selectedNull
                     ? `${selectedNull.name} \u00b7 at ${selectedNull.position.join(', ')}`

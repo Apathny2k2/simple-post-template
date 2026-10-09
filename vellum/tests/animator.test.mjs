@@ -97,7 +97,8 @@ test('Space plays the clip and stops it', async () => {
 test('a null object as an IK target bends the arm towards it', async () => {
   const { page } = await openEditor()
   await page.click('.tree__row:has-text("root") >> nth=0')
-  await page.click('.outliner-add button:has-text("+ Null")')
+  await page.click('.mesh-add > button')
+  await page.click('.mesh-add__menu button:has-text("Null object")')
   const ik = page.locator('.editor-field', { hasText: 'IK' }).locator('select')
   const claw = await ik.evaluate((s) => [...s.options].find((o) => o.textContent.trim() === 'claw_left')?.value)
   assert.ok(claw, 'claw_left is offered as an IK end')

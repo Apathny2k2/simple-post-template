@@ -698,3 +698,29 @@
 .hist__row:hover { background: var(--s-hover); color: var(--s-ink); }
 .hist__row[aria-current='true'] { background: var(--s-active); color: var(--s-ink); box-shadow: inset 2px 0 0 var(--s-sage); }
 .hist__row--undone { color: var(--s-ink-3); font-style: italic; }
+
+/* + Mesh and its menu of primitives */
+.editor-root--studio .outliner-add { gap: 10px; }
+.editor-root--studio .outliner-add button { font-size: 13px; }
+.mesh-add { position: relative; }
+.mesh-add__menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 30;
+  display: grid;
+  min-width: 132px;
+  padding: 5px;
+  border: 1px solid var(--s-line-2);
+  border-radius: 10px;
+  background: var(--s-card, #171b20);
+  box-shadow: 0 10px 28px rgb(0 0 0 / 0.45);
+}
+.mesh-add__menu button { padding: 7px 10px; border-radius: 7px; text-align: left; font-weight: 500 !important; color: var(--s-ink); }
+.mesh-add__menu button:hover { background: var(--s-hover); }
+.mesh-add__label { padding: 8px 10px 3px; border-top: 1px solid var(--s-line); margin-top: 4px; color: var(--s-ink-3); font-size: 11px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; }
+.editor-root--studio .mesh-modes { display: flex; }
+.editor-root--studio .mesh-modes button { padding: 0 9px; font-size: 12.5px; }
+.dock__modes { display: inline-flex; gap: 2px; margin-left: 6px; padding-left: 8px; border-left: 1px solid var(--s-line-2); }
+.psheet__mesh { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 1; }
+.psheet__mesh polygon { fill: rgb(167 196 160 / 0.08); stroke: var(--s-sage); stroke-width: 1.5; vector-effect: non-scaling-stroke; }

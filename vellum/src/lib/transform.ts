@@ -50,7 +50,7 @@ const mapBones = (bones: Bone[], fn: (b: Bone) => Bone): Bone[] =>
   })
 
 const isLocked = (model: Model, id: string) =>
-  model.cubes.find((c) => c.id === id)?.locked ?? findBone(model.bones, id)?.locked ?? false
+  model.cubes.find((c) => c.id === id)?.locked ?? model.meshes?.find((m) => m.id === id)?.locked ?? findBone(model.bones, id)?.locked ?? false
 
 /**
  * Drops ids already covered by a selected ancestor bone, and locked nodes, so
@@ -98,6 +98,11 @@ export function translateNodes(model: Model, deltas: ReadonlyMap<string, Vec3>):
       const d = n.parent ? boneShift.get(n.parent) : undefined
       return d ? { ...n, position: addV(n.position, d) } : n
     }),
+    // a mesh moves when picked itself or when its bone moves; its vertices are offsets, so only the origin changes
+    meshes: model.meshes?.map((m) => {
+      const d = deltas.get(m.id) ?? (m.parent ? boneShift.get(m.parent) : undefined)
+      return d ? { ...m, origin: addV(m.origin, d) } : m
+    }),
   }
 }
 
@@ -105,6 +110,15 @@ export function translateNodes(model: Model, deltas: ReadonlyMap<string, Vec3>):
 export function movePivots(model: Model, deltas: ReadonlyMap<string, Vec3>): Model {
   return {
     ...model,
+    /* A mesh's vertices hang off its pivot, turned by its rotation, so they
+       shift back by the same distance in the mesh's own frame. */
+    meshes: model.meshes?.map((m) => {
+      const d = deltas.get(m.id)
+      if (!d) return m
+      const back = inverseTurn(m.rotation, d)
+      const vertices = Object.fromEntries(Object.entries(m.vertices).map(([k, v]) => [k, [v[0] - back[0], v[1] - back[1], v[2] - back[2]] as Vec3]))
+      return { ...m, origin: addV(m.origin, d), vertices }
+    }),
     cubes: model.cubes.map((c) => {
       const d = deltas.get(c.id)
       return d ? { ...c, origin: addV(c.origin, d) } : c
@@ -135,7 +149,21 @@ export function setRotations(model: Model, rotations: ReadonlyMap<string, Vec3>)
     ...model,
     cubes: model.cubes.map((c) => (rotations.has(c.id) ? { ...c, rotation: rotations.get(c.id)! } : c)),
     bones: mapBones(model.bones, (b) => (rotations.has(b.id) ? { ...b, rotation: rotations.get(b.id)! } : b)),
+    meshes: model.meshes?.map((m) => (rotations.has(m.id) ? { ...m, rotation: rotations.get(m.id)! } : m)),
   }
+}
+
+/** A direction taken back through an Euler rotation (Rx·Ry·Rz), into the frame it turns. */
+function inverseTurn(r: Vec3, v: Vec3): Vec3 {
+  const [x, y, z] = r.map((a) => (a * Math.PI) / 180)
+  const cx = Math.cos(x), sx = Math.sin(x), cy = Math.cos(y), sy = Math.sin(y), cz = Math.cos(z), sz = Math.sin(z)
+  // the transpose of Rx·Ry·Rz
+  const m = [
+    [cy * cz, sx * sy * cz + cx * sz, -cx * sy * cz + sx * sz],
+    [-cy * sz, -sx * sy * sz + cx * cz, cx * sy * sz + sx * cz],
+    [sy, -sx * cy, cx * cy],
+  ]
+  return [m[0][0] * v[0] + m[0][1] * v[1] + m[0][2] * v[2], m[1][0] * v[0] + m[1][1] * v[1] + m[1][2] * v[2], m[2][0] * v[0] + m[2][1] * v[1] + m[2][2] * v[2]]
 }
 
 /* ---------------- flip ---------------- */

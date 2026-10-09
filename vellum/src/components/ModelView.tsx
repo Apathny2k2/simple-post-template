@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { Ref } from 'react'
 import { FACES, samplePose, textureById } from '../lib/model'
-import { buildRig, nullWorld, solveIK } from '../lib/kinematics'
-import type { Bone, Clip, Cube, Face as ModelFace, FaceKey, Model, Pose, Vec3 } from '../lib/model'
+import { applyDir, buildRig, nullWorld, rotationMatrix, solveIK } from '../lib/kinematics'
+import type { Bone, Clip, Cube, Face as ModelFace, FaceKey, Mesh, Model, Pose, Vec3 } from '../lib/model'
+import { faceBasis, uvToFlat } from '../lib/mesh'
 import { Gizmo } from './Gizmo'
 import type { Basis, GizmoEvent, GizmoSpec } from './Gizmo'
 import './Model3D.css'
@@ -26,7 +27,7 @@ export type VertexLayer = {
   points: Vec3[]
   /** marks the corners of the cube being moved */
   own: boolean[]
-  onPick: (index: number) => void
+  onPick: (index: number, mods?: PickMods) => void
 }
 
 const EMPTY: ReadonlySet<string> = new Set()
@@ -255,6 +256,139 @@ function CubeBox({
   )
 }
 
+/** Mesh editing state the viewport draws: which faces are picked, and where a face click goes. */
+export type MeshPick = {
+  mesh: string
+  faces: ReadonlySet<string>
+  /** set while picking faces; a click on a face of `mesh` calls it instead of selecting the mesh */
+  onFace?: (face: string, mods: PickMods) => void
+}
+
+/* The brightness a cube's face gets in each direction, blended by a mesh
+   face's normal, so meshes and cubes are shaded alike. */
+function meshShade(n: Vec3): number {
+  const [x, y, z] = n
+  return x * x * (x > 0 ? 0.9 : 0.84) + y * y * (y > 0 ? 1.14 : 0.62) + z * z * (z > 0 ? 1 : 0.78)
+}
+
+/**
+ * A mesh: each face a div laid on the face's plane with matrix3d, cut to
+ * its outline with clip-path, its texture mapped by the affine map from
+ * its UVs. Model space is Y-up and CSS Y-down, so every point goes through
+ * (x, -y, z).
+ */
+function MeshBody({
+  mesh,
+  parentOrigin,
+  model,
+  scale,
+  selected,
+  pick,
+  onSelect,
+  onPaint,
+}: {
+  mesh: Mesh
+  parentOrigin: Vec3
+  model: Model
+  scale: number
+  selected: boolean
+  pick?: MeshPick | null
+  onSelect?: (id: string, mods: PickMods) => void
+  onPaint?: (meshId: string, face: string, u: number, v: number, phase: 'down' | 'move') => void
+}) {
+  if (!mesh.visible) return null
+  const at: Vec3 = [mesh.origin[0] - parentOrigin[0], mesh.origin[1] - parentOrigin[1], mesh.origin[2] - parentOrigin[2]]
+  const picking = pick && pick.mesh === mesh.id ? pick : null
+  const turn = rotationMatrix(mesh.rotation)
+  return (
+    <div className="model-pivot" style={{ transform: transformOf(at, mesh.rotation, scale) }}>
+      <div className={`model-mesh${selected ? ' model-mesh--selected' : ''}`} data-mesh={mesh.id}>
+        {Object.entries(mesh.faces).map(([key, face]) => {
+          if (face.vertices.length < 3) return null
+          const { keys, origin, e1, e2, n, flat } = faceBasis(mesh, face)
+          const xs = flat.map((p) => p[0])
+          const ys = flat.map((p) => p[1])
+          const minx = Math.min(...xs)
+          const maxy = Math.max(...ys)
+          const w = (Math.max(...xs) - minx) * scale
+          const h = (maxy - Math.min(...ys)) * scale
+          if (w < 0.01 || h < 0.01) return null
+          const css = (v: Vec3): Vec3 => [v[0], -v[1], v[2]]
+          const ca = css(e1)
+          const cb = css(e2).map((v) => -v) as Vec3
+          const cn = css(n)
+          const o = css([origin[0] + e1[0] * minx + e2[0] * maxy, origin[1] + e1[1] * minx + e2[1] * maxy, origin[2] + e1[2] * minx + e2[2] * maxy])
+          const m3 = [ca[0], ca[1], ca[2], 0, cb[0], cb[1], cb[2], 0, cn[0], cn[1], cn[2], 0, o[0] * scale, o[1] * scale, o[2] * scale, 1]
+          const pts = flat.map(([x, y]) => `${((x - minx) * scale).toFixed(2)}px ${((maxy - y) * scale).toFixed(2)}px`).join(', ')
+          const tex = model.textures.find((t) => t.id === face.texture)
+          const map = tex?.source ? uvToFlat(keys.map((k) => face.uv[k] ?? [0, 0]), flat) : null
+          const worldN = applyDir(turn, n)
+          const isPicked = picking?.faces.has(key)
+          return (
+            <div
+              key={key}
+              className={`model-mface${isPicked ? ' model-mface--picked' : ''}`}
+              data-mface={key}
+              style={{
+                width: w,
+                height: h,
+                transform: `matrix3d(${m3.map((v) => +v.toFixed(5)).join(',')})`,
+                clipPath: `polygon(${pts})`,
+                filter: tex?.shaded ? undefined : `brightness(${meshShade(worldN).toFixed(3)})`,
+              }}
+              onPointerDown={(e) => {
+                if (e.button !== 0 || e.altKey) return
+                if (onPaint) {
+                  e.stopPropagation()
+                  ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
+                  paintAt(e, 'down')
+                  return
+                }
+                if (picking?.onFace) {
+                  e.stopPropagation()
+                  picking.onFace(key, { shift: e.shiftKey, ctrl: e.ctrlKey || e.metaKey })
+                  return
+                }
+                onSelect?.(mesh.id, { shift: e.shiftKey, ctrl: e.ctrlKey || e.metaKey })
+              }}
+              onPointerMove={onPaint ? (e) => e.buttons === 1 && paintAt(e, 'move') : undefined}
+            >
+              {map ? (
+                <div
+                  className="model-mface__skin"
+                  style={{
+                    width: tex!.uvWidth,
+                    height: tex!.uvHeight,
+                    backgroundImage: `url(${tex!.source})`,
+                    transform: `matrix(${[map.a * scale, -map.b * scale, map.c * scale, -map.d * scale, (map.tx - minx) * scale, (maxy - map.ty) * scale].map((v) => +v.toFixed(5)).join(',')})`,
+                  }}
+                />
+              ) : null}
+              {selected ? (
+                <svg className="model-mface__edges" width={w} height={h} aria-hidden="true">
+                  <polygon points={flat.map(([x, y]) => `${(x - minx) * scale},${(maxy - y) * scale}`).join(' ')} />
+                </svg>
+              ) : null}
+            </div>
+          )
+
+          /* A hit's face pixels back to UV units, through the inverse of the face's UV map. */
+          function paintAt(e: React.PointerEvent<HTMLDivElement>, phase: 'down' | 'move') {
+            if (!onPaint || !map) return
+            const x = minx + e.nativeEvent.offsetX / scale
+            const y = maxy - e.nativeEvent.offsetY / scale
+            const det = map.a * map.d - map.c * map.b
+            if (Math.abs(det) < 1e-9) return
+            const dx = x - map.tx
+            const dy = y - map.ty
+            onPaint(mesh.id, key, (map.d * dx - map.c * dy) / det, (map.a * dy - map.b * dx) / det, phase)
+          }
+        })}
+      </div>
+    </div>
+  )
+}
+
 function BoneNode({
   bone,
   parentOrigin,
@@ -264,6 +398,8 @@ function BoneNode({
   selected,
   onSelect,
   onPaint,
+  pick,
+  onPaintMesh,
 }: {
   bone: Bone
   parentOrigin: Vec3
@@ -273,6 +409,8 @@ function BoneNode({
   selected: ReadonlySet<string>
   onSelect?: (id: string, mods: PickMods) => void
   onPaint?: (cubeId: string, face: FaceKey, u: number, v: number, phase: 'down' | 'move') => void
+  pick?: MeshPick | null
+  onPaintMesh?: (meshId: string, face: string, u: number, v: number, phase: 'down' | 'move') => void
 }) {
   if (!bone.visible) return null
 
@@ -306,6 +444,8 @@ function BoneNode({
             selected={selected}
             onSelect={onSelect}
             onPaint={onPaint}
+            pick={pick}
+            onPaintMesh={onPaintMesh}
           />
         ) : (
           (() => {
@@ -326,6 +466,11 @@ function BoneNode({
           })()
         ),
       )}
+      {(model.meshes ?? [])
+        .filter((m) => m.parent === bone.id)
+        .map((m) => (
+          <MeshBody key={m.id} mesh={m} parentOrigin={bone.origin} model={model} scale={scale} selected={selected.has(m.id)} pick={pick} onSelect={onSelect} onPaint={onPaintMesh} />
+        ))}
     </div>
   )
 }
@@ -375,6 +520,10 @@ type Props = {
   onDeselect?: () => void
   /** When set, a left-button drag on a face paints. Other drags orbit or pan as usual. */
   onPaint?: (cubeId: string, face: FaceKey, u: number, v: number, phase: 'down' | 'move') => void
+  /** mesh editing: picked faces, and face picking */
+  meshPick?: MeshPick | null
+  /** painting on a mesh face; u and v are in UV units */
+  onPaintMesh?: (meshId: string, face: string, u: number, v: number, phase: 'down' | 'move') => void
   /** a display-slot transform applied to the whole model, as a pack would */
   display?: { rotation: Vec3; translation: Vec3; scale: Vec3 } | null
   /** 'floor' stands the model's lowest point on the grid; 'centre' centres it vertically. */
@@ -415,6 +564,8 @@ export function ModelView({
   showNulls = false,
   onDeselect,
   onPaint,
+  meshPick = null,
+  onPaintMesh,
   display = null,
   anchorAt = 'floor',
   anchorOn = null,
@@ -445,6 +596,12 @@ export function ModelView({
     const rig = buildRig(model, pose)
     return model.nulls.filter((n) => n.visible).map((n) => ({ n, at: nullWorld(rig, n, pose) }))
   }, [showNulls, model, pose])
+  const boneIds = useMemo(() => {
+    const ids = new Set<string>()
+    const walk = (bs: Bone[]) => bs.forEach((b) => (ids.add(b.id), walk(b.children.filter((c) => c.kind === 'bone').map((c) => (c as { bone: Bone }).bone))))
+    walk(model.bones)
+    return ids
+  }, [model.bones])
   const picked = useMemo(
     () => new Set<string>(selection ?? (selected ? [selected] : [])),
     [selection, selected],
@@ -803,8 +960,16 @@ export function ModelView({
                 selected={picked}
                 onSelect={onSelect}
                 onPaint={onPaint}
+                pick={meshPick}
+                onPaintMesh={onPaintMesh}
               />
             ))}
+            {/* meshes at the root, or naming a bone the model doesn't have */}
+            {(model.meshes ?? [])
+              .filter((m) => !m.parent || !boneIds.has(m.parent))
+              .map((m) => (
+                <MeshBody key={m.id} mesh={m} parentOrigin={[0, 0, 0]} model={model} scale={scale} selected={picked.has(m.id)} pick={meshPick} onSelect={onSelect} onPaint={onPaintMesh} />
+              ))}
             {ghostPoses.map((g) => (
               <div key={`ghost${g.time}`} className={`model-ghost model-ghost--${g.side}`} aria-hidden="true">
                 {model.bones.map((b) => (
@@ -876,7 +1041,7 @@ export function ModelView({
               aria-label={vertices.own[i] ? 'Corner of the selection' : 'Corner to snap to'}
               onPointerDown={(e) => {
                 e.stopPropagation()
-                vertices.onPick(i)
+                vertices.onPick(i, { shift: e.shiftKey, ctrl: e.ctrlKey || e.metaKey })
               }}
             />
           ))

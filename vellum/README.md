@@ -159,6 +159,21 @@ changes nothing.
 - **`pingpong`**, a fourth `loop` value: the clip plays to its end and back. A
   reader that meets a loop value it doesn't know plays it as `loop`.
 
+### Version 9: meshes
+
+v9 adds **`meshes`**, after `nulls`: Blockbench's free-form elements. It is
+optional, so a v8 file reads as a v9 file with no meshes and the upgrade
+changes nothing. A model with no meshes writes no `meshes` key.
+
+Each mesh has an `id`, a `name`, the `parent` bone it moves with (as a null
+object does), an `origin` that is also its pivot, and a `rotation` (written
+only when not zero). `vertices` maps a vertex key to its offset from the
+origin. `faces` maps a face key to `{vertices, uv, texture?}`: three or more
+vertex keys, a UV in UV units for each, and the texture's id. Vertex and face
+keys are written sorted, so a mesh always writes the same bytes. A face that
+names a vertex the mesh lacks drops it, and a face left with fewer than three
+is dropped.
+
 ### Box UV
 
 Every cube writes all six face rects in full, so UV *positions* survive a round
@@ -901,6 +916,47 @@ position can be keyed in Animate like a bone's. The solver is cyclic coordinate
 descent in `lib/kinematics.ts`, and it writes the bend into the pose as
 rotation offsets, the way keyed rotations are applied.
 
+### Meshes
+
+A mesh is Blockbench's free-form element: vertices and faces of any shape,
+next to the cubes. **+ More** in the outliner adds one (cube, plane, pyramid,
+cylinder, cone or sphere), on the selected bone, with each face's UVs laid
+flat and packed into free room on the sheet. A mesh is listed under its bone
+in the outliner. It names that bone, as a null object does, so moving it to
+another bone only changes the name.
+
+With a mesh selected, the dock shows three selection modes, as Blockbench's
+toolbar does:
+
+| Mode | Key | The gizmo, and what else works |
+| --- | --- | --- |
+| Object | 1 | Moves, turns and re-pivots the whole mesh |
+| Face | 2 | Click faces to pick them (Shift adds). Moves their vertices. E extrudes by 1, Shift F flips, Del deletes |
+| Vertex | 3 | Click the dots (Shift adds). Moves them. M merges them at their middle, Del deletes |
+
+Ctrl A picks every face or vertex, and Esc picks none. The Mesh panel has the
+same edits as buttons, the middle of the pick as fields, and the texture for
+the picked faces (or all of them). Extruding keeps the picked faces picked,
+so a drag on the gizmo pulls them straight out.
+
+**Drawing them.** The viewport is CSS 3D, so each face is a div laid on the
+face's plane by `matrix3d` and cut to its outline with `clip-path`. Its
+texture is mapped by the affine map from the face's UVs to its flat outline
+(`uvToFlat` in `lib/mesh.ts`), so a quad shows exactly when its UVs are a
+parallelogram, which primitives' and most Blockbench faces' are. Shading
+blends the per-direction brightness cubes get, by the face's normal.
+
+**Order of a face's corners.** A quad's vertices can be stored in any order.
+An order whose edges cross encloses less area, so `faceOrder` takes the
+order with most area, turned to face the way the first three vertices do.
+Everything that draws or exports a face uses it.
+
+Painting works on meshes as on cubes: in 3D, through the same UV map run
+backwards, and on the sheet, where a selected mesh's faces are outlined and a
+press inside one picks it. glTF and OBJ export meshes with the cubes. Java
+block and item models are boxes only, so a pack leaves meshes out and the
+Validation panel says so.
+
 ### Painting
 
 Paint mode puts the texture sheet in the middle, as the Studio design does.
@@ -1035,6 +1091,7 @@ code the editor runs.
 | `layout.test.mjs` | Every mode of a mob, an item and a block opens without errors and with no control covered; the Studio layout; the other pages load |
 | `interchange.test.mjs` | A Blockbench project with groups, loose cubes, a mesh, Molang, bezier keys, effects and an IK null comes in whole; Java JSON comes in and round-trips; glTF has a node per bone, an animation per clip and no inward triangles; the OBJ zip; opening both through the editor |
 | `paint.test.mjs` | The paint sheet, face picking, keeping strokes inside a face, painting on the model, the palette |
+| `mesh.test.mjs` | Every primitive faces outward; extrude, merge, flip and delete keep a mesh whole; the v9 round trip; adding, picking, extruding, moving and merging in the editor; a Blockbench mesh imported and exported to glTF facing outward; painting a mesh face |
 | `modes.test.mjs` | A display slot takes and resets a transform; the real-world view opens and closes; a behaviour cycle runs and takes a stage |
 | `bundle.test.mjs` | `dist/vellum.html` opens and keeps its unprefixed `backdrop-filter`; skipped until `pnpm build:single` has run |
 

@@ -77,6 +77,7 @@ test('a Blockbench project comes in with its rig, textures, clips, effects and n
         posX: pos.keys[0].value[0],
         events: model.clips[0].events,
         nulls: model.nulls.map((n) => [n.name, n.parent, n.ikTarget]),
+        meshes: (model.meshes ?? []).map((m) => m.name),
         notes,
         stable: written === V.writeVellum(V.readVellum(written)),
         issues: (await import('/src/lib/model.ts')).validateModel(model, kind).filter((i) => i.level === 'error').map((i) => i.message),
@@ -88,7 +89,8 @@ test('a Blockbench project comes in with its rig, textures, clips, effects and n
   assert.equal(r.kind, 'mobs')
   assert.deepEqual(r.bones[0], ['root', ['loose']], 'a cube outside every group goes under a root bone')
   assert.deepEqual(r.bones[1], ['body', ['body', 'tail']])
-  assert.deepEqual(r.cubes, ['body', 'tail', 'loose'], 'the mesh is left out')
+  assert.deepEqual(r.cubes, ['body', 'tail', 'loose'])
+  assert.deepEqual(r.meshes, ['tri'], 'the mesh element comes in as a mesh')
   assert.deepEqual(r.rotation, [0, 10, 0])
   assert.equal(r.southTurn, 90)
   assert.equal(r.downTex, null)
@@ -97,7 +99,6 @@ test('a Blockbench project comes in with its rig, textures, clips, effects and n
   assert.equal(r.posX, 0, 'a Molang value reads as the rest value')
   assert.deepEqual(r.events.map((e) => [e.kind, e.effect, e.locator]), [['sound', 'mob.wolf.bark', 'n-1']])
   assert.deepEqual(r.nulls, [['target', 'g-tail', 'g-tail']])
-  assert.ok(r.notes.some((n) => /mesh/.test(n)), 'the note says the mesh was left out')
   assert.ok(r.notes.some((n) => /Molang/.test(n)), 'and that Molang was not run')
   assert.ok(r.stable, 'the imported model saves and reopens byte for byte')
   assert.deepEqual(r.issues, [])

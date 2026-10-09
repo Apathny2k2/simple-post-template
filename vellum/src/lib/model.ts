@@ -190,6 +190,32 @@ export type NullObject = {
   locked: boolean
 }
 
+/** One face of a mesh: three or more of its vertices, each with its own UV, in UV units. */
+export type MeshFace = {
+  vertices: string[]
+  uv: Record<string, [number, number]>
+  texture: string | null
+}
+
+/**
+ * A free-form mesh (v9), Blockbench's mesh element. Vertices are offsets
+ * from `origin`, which is also the point it turns about. Like a null
+ * object it names the bone it rides on with `parent`; the bone tree does
+ * not list it.
+ */
+export type Mesh = {
+  id: string
+  name: string
+  /** a bone's id; null at the model root */
+  parent: string | null
+  origin: Vec3
+  rotation: Vec3
+  vertices: Record<string, Vec3>
+  faces: Record<string, MeshFace>
+  visible: boolean
+  locked: boolean
+}
+
 export type Model = {
   name: string
   /** what the model is; drives which validation rules apply */
@@ -207,6 +233,8 @@ export type Model = {
   clips: Clip[]
   /** absent when the model has none (v8) */
   nulls?: NullObject[]
+  /** absent when the model has none (v9) */
+  meshes?: Mesh[]
 }
 
 /* ---------------- lookups ---------------- */
@@ -574,6 +602,20 @@ export function validateModel(model: Model, kind?: ProjectKind, subtype?: Subtyp
 
   issues.push(...validateBehaviour(model, model.behaviour))
   issues.push(...validateConfig(model.name, kind, model.config))
+
+  // meshes: what each face names must exist
+  for (const m of model.meshes ?? []) {
+    if (seen.has(m.name)) issues.push({ level: 'warning', message: `More than one node is called "${m.name}"` })
+    else seen.add(m.name)
+    if (m.parent && !boneById(model, m.parent)) issues.push({ level: 'warning', message: `"${m.name}" names a bone the model does not have, so it sits at the root` })
+    for (const f of Object.values(m.faces)) {
+      if (f.texture !== null && !textureById(model, f.texture)) {
+        issues.push({ level: 'error', message: `A face of "${m.name}" names a texture that does not exist` })
+        break
+      }
+    }
+    if (!Object.keys(m.faces).length) issues.push({ level: 'warning', message: `"${m.name}" has no faces, so nothing of it shows` })
+  }
 
   return issues
 }

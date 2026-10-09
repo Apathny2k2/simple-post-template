@@ -138,3 +138,34 @@
 }
 .model-null--ik span { border-color: #ffd36b; }
 .model-null--selected span { background: #ffd36b; border-color: #fff; }
+
+/* a mesh face: laid on its plane by matrix3d and cut to its outline */
+.model-mesh { position: absolute; left: 50%; top: 50%; transform-style: preserve-3d; }
+.model-mface {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform-origin: 0 0;
+  overflow: hidden;
+  pointer-events: auto;
+  background: rgba(146, 165, 202, 0.35);
+}
+.model-mface__skin {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform-origin: 0 0;
+  background-size: 100% 100%;
+  background-repeat: no-repeat;
+  image-rendering: pixelated;
+  pointer-events: none;
+}
+.model-mface__edges { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none; }
+.model-mface__edges polygon { fill: none; stroke: var(--accent-mark, #a7c4a0); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+.model-mface--picked::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: rgb(255 214 107 / 0.42);
+  pointer-events: none;
+}

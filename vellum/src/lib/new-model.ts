@@ -369,6 +369,9 @@ export function deleteBone(model: Model, id: string): Model {
 /** Rename a cube or a bone, whichever carries the id. */
 export function renameNode(model: Model, id: string, name: string): Model {
   const clean = name.trim().slice(0, 64) || 'unnamed'
+  if (model.meshes?.some((m) => m.id === id)) {
+    return { ...model, meshes: model.meshes.map((m) => (m.id === id ? { ...m, name: clean } : m)) }
+  }
   if (model.cubes.some((c) => c.id === id)) {
     return { ...model, cubes: model.cubes.map((c) => (c.id === id ? { ...c, name: clean } : c)) }
   }
@@ -455,6 +458,10 @@ function contains(bone: Bone, id: string): boolean {
 /** Move a cube or bone under `parentId`. Null makes a bone a root and takes a cube out of the tree. */
 export function reparent(model: Model, id: string, parentId: string | null): Model {
   if (id === parentId) return model
+  // a mesh names its bone, so moving it is changing that name
+  if (model.meshes?.some((m) => m.id === id)) {
+    return { ...model, meshes: model.meshes.map((m) => (m.id === id ? { ...m, parent: parentId } : m)) }
+  }
 
   let moving: BoneChild | null = null
   const lift = (bones: Bone[]): Bone[] =>

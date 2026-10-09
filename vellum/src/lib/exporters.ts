@@ -4,8 +4,9 @@
    gizmos use, so an export stands exactly as the model does on screen. */
 
 import { FACES, textureById } from './model'
-import type { Bone, Cube, FaceKey, Model, Vec3 } from './model'
-import { applyDir, buildRig, cubeFrame, posedAt, rotationMatrix } from './kinematics'
+import type { Bone, Cube, FaceKey, Mesh, Model, Vec3 } from './model'
+import { faceNormal, faceOrder } from './mesh'
+import { applyDir, buildRig, cubeFrame, meshFrame, posedAt, rotationMatrix } from './kinematics'
 import { dataUriBytes, makeZip } from './zip'
 import { safeId, toMinecraftModel } from './mcmodel'
 
@@ -26,7 +27,29 @@ const FACE_CORNERS: Record<FaceKey, [Corner, Corner, Corner, Corner]> = {
 }
 const NORMALS: Record<FaceKey, Vec3> = { north: [0, 0, -1], south: [0, 0, 1], east: [1, 0, 0], west: [-1, 0, 0], up: [0, 1, 0], down: [0, -1, 0] }
 
-type Quad = { face: FaceKey; texture: string | null; points: Vec3[]; normal: Vec3; uv: Array<[number, number]> }
+/** A face to write: its corners clockwise as seen from outside, with their UVs (0..1) and the face's normal. */
+type Quad = { face: FaceKey | string; texture: string | null; points: Vec3[]; normal: Vec3; uv: Array<[number, number]> }
+
+/** A mesh's faces as polygons, clockwise from outside like a cube's quads, each point through `place`. */
+function meshQuads(model: Model, mesh: Mesh, place: (p: Vec3) => Vec3, placeDir: (v: Vec3) => Vec3): Quad[] {
+  const out: Quad[] = []
+  for (const [key, f] of Object.entries(mesh.faces)) {
+    const ccw = faceOrder(mesh, f)
+    if (ccw.length < 3) continue
+    const cw = [ccw[0], ...ccw.slice(1).reverse()]
+    const tex = textureById(model, f.texture)
+    const W = tex?.uvWidth || model.resolution.width
+    const H = tex?.uvHeight || model.resolution.height
+    out.push({
+      face: key,
+      texture: f.texture,
+      points: cw.map((k) => place(mesh.vertices[k])),
+      normal: placeDir(faceNormal(mesh, f)),
+      uv: cw.map((k) => [(f.uv[k]?.[0] ?? 0) / W, (f.uv[k]?.[1] ?? 0) / H] as [number, number]),
+    })
+  }
+  return out
+}
 
 /**
  * A cube's faces as quads, each point passed through `place`. UVs are 0..1
@@ -211,8 +234,22 @@ export function toGltf(model: Model): string {
     if (b) cubesOf.set(b, [...(cubesOf.get(b) ?? []), c])
     else loose.push(c)
   }
-  const meshFor = (cubes: Cube[], boneOrigin: Vec3, name: string): number | null => {
+  const meshFor = (cubes: Cube[], boneOrigin: Vec3, name: string, free: Mesh[] = []): number | null => {
     const groups = new Map<number, Quad[]>()
+    const add = (q: Quad) => {
+      const mat = q.texture !== null && materialOf.has(q.texture) ? materialOf.get(q.texture)! : plain()
+      groups.set(mat, [...(groups.get(mat) ?? []), q])
+    }
+    for (const mesh of free) {
+      const m = new DOMMatrix()
+        .translate(mesh.origin[0] - boneOrigin[0], mesh.origin[1] - boneOrigin[1], mesh.origin[2] - boneOrigin[2])
+        .multiply(rotationMatrix(mesh.rotation))
+      const place = (p: Vec3): Vec3 => {
+        const q = m.transformPoint(new DOMPoint(p[0], p[1], p[2]))
+        return [q.x * UNIT, q.y * UNIT, q.z * UNIT]
+      }
+      meshQuads(model, mesh, place, (v) => applyDir(m, v)).forEach(add)
+    }
     for (const cube of cubes) {
       const m = new DOMMatrix()
         .translate(cube.origin[0] - boneOrigin[0], cube.origin[1] - boneOrigin[1], cube.origin[2] - boneOrigin[2])
@@ -221,26 +258,30 @@ export function toGltf(model: Model): string {
         const q = m.transformPoint(new DOMPoint(p[0] - cube.origin[0], p[1] - cube.origin[1], p[2] - cube.origin[2]))
         return [q.x * UNIT, q.y * UNIT, q.z * UNIT]
       }
-      for (const q of quads(model, cube, place, (v) => applyDir(m, v))) {
-        const mat = q.texture !== null && materialOf.has(q.texture) ? materialOf.get(q.texture)! : plain()
-        groups.set(mat, [...(groups.get(mat) ?? []), q])
-      }
+      quads(model, cube, place, (v) => applyDir(m, v)).forEach(add)
     }
     if (!groups.size) return null
     const primitives = [...groups.entries()].map(([material, qs]) => {
-      const pos = new Float32Array(qs.length * 12)
-      const nor = new Float32Array(qs.length * 12)
-      const uv = new Float32Array(qs.length * 8)
-      const idx = new Uint32Array(qs.length * 6)
-      qs.forEach((q, i) => {
-        for (let c = 0; c < 4; c++) {
-          pos.set(q.points[c], i * 12 + c * 3)
-          nor.set(q.normal, i * 12 + c * 3)
-          uv.set(q.uv[c], i * 8 + c * 2)
+      // every face is a fan from its first corner; corners run clockwise, so each triangle is (0, i+1, i)
+      const corners = qs.reduce((n, q) => n + q.points.length, 0)
+      const pos = new Float32Array(corners * 3)
+      const nor = new Float32Array(corners * 3)
+      const uv = new Float32Array(corners * 2)
+      const idx = new Uint32Array(qs.reduce((n, q) => n + (q.points.length - 2) * 3, 0))
+      let at = 0
+      let ti = 0
+      for (const q of qs) {
+        q.points.forEach((p, c) => {
+          pos.set(p, (at + c) * 3)
+          nor.set(q.normal, (at + c) * 3)
+          uv.set(q.uv[c], (at + c) * 2)
+        })
+        for (let c = 1; c < q.points.length - 1; c++) {
+          idx.set([at, at + c + 1, at + c], ti)
+          ti += 3
         }
-        const b = i * 4
-        idx.set([b, b + 3, b + 2, b, b + 2, b + 1], i * 6)
-      })
+        at += q.points.length
+      }
       return {
         attributes: {
           POSITION: accessor(pos, 'VEC3', 34962, true),
@@ -254,13 +295,19 @@ export function toGltf(model: Model): string {
     meshes.push({ name, primitives })
     return meshes.length - 1
   }
+  const meshesOf = new Map<string, Mesh[]>()
+  const looseMeshes: Mesh[] = []
+  for (const m of model.meshes ?? []) {
+    if (m.parent && nodeOf.has(m.parent)) meshesOf.set(m.parent, [...(meshesOf.get(m.parent) ?? []), m])
+    else looseMeshes.push(m)
+  }
   flat.forEach((f, i) => {
-    const mesh = meshFor(cubesOf.get(f.bone.id) ?? [], f.bone.origin, f.bone.name)
+    const mesh = meshFor(cubesOf.get(f.bone.id) ?? [], f.bone.origin, f.bone.name, meshesOf.get(f.bone.id))
     if (mesh !== null) nodes[i].mesh = mesh
   })
   const roots = model.bones.map((b) => nodeOf.get(b.id)!)
-  if (loose.length) {
-    const mesh = meshFor(loose, [0, 0, 0], 'loose')
+  if (loose.length || looseMeshes.length) {
+    const mesh = meshFor(loose, [0, 0, 0], 'loose', looseMeshes)
     if (mesh !== null) {
       nodes.push({ name: 'loose cubes', mesh })
       roots.push(nodes.length - 1)
@@ -363,6 +410,8 @@ export function toObjZip(model: Model): Uint8Array {
   let v = 0
   let vt = 0
   let vn = 0
+  // OBJ wants counter-clockwise from outside; the corners come clockwise, so the first stays and the rest reverse
+  const faceLine = (n: number) => `f ${[0, ...Array.from({ length: n - 1 }, (_, i) => n - 1 - i)].map((i) => `${v + i + 1}/${vt + i + 1}/${vn}`).join(' ')}`
   for (const cube of model.cubes) {
     const frame = cubeFrame(rig, cube)
     const place = (p: Vec3): Vec3 => {
@@ -381,11 +430,32 @@ export function toObjZip(model: Model): Uint8Array {
       for (const [s, t] of q.uv) lines.push(`vt ${+s.toFixed(6)} ${+(1 - t).toFixed(6)}`)
       lines.push(`vn ${q.normal.map((x) => +x.toFixed(6)).join(' ')}`)
       vn++
-      // counter-clockwise from outside: top left, bottom left, bottom right, top right
-      const f = [0, 3, 2, 1].map((i) => `${v + i + 1}/${vt + i + 1}/${vn}`)
-      lines.push(`f ${f.join(' ')}`)
+      lines.push(faceLine(4))
       v += 4
       vt += 4
+    }
+  }
+  for (const mesh of model.meshes ?? []) {
+    const frame = meshFrame(rig, mesh)
+    const place = (p: Vec3): Vec3 => {
+      const q = frame.transformPoint(new DOMPoint(p[0], p[1], p[2]))
+      return [q.x * UNIT, q.y * UNIT, q.z * UNIT]
+    }
+    lines.push(`o ${safeId(mesh.name) || 'mesh'}`)
+    let current = ''
+    for (const q of meshQuads(model, mesh, place, (d) => applyDir(frame, d))) {
+      const mat = matName.get(q.texture) ?? 'untextured'
+      if (mat !== current) {
+        lines.push(`usemtl ${mat}`)
+        current = mat
+      }
+      for (const p of q.points) lines.push(`v ${p.map((x) => +x.toFixed(6)).join(' ')}`)
+      for (const [s2, t] of q.uv) lines.push(`vt ${+s2.toFixed(6)} ${+(1 - t).toFixed(6)}`)
+      lines.push(`vn ${q.normal.map((x) => +x.toFixed(6)).join(' ')}`)
+      vn++
+      lines.push(faceLine(q.points.length))
+      v += q.points.length
+      vt += q.points.length
     }
   }
   const enc = new TextEncoder()

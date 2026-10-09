@@ -8,7 +8,7 @@
    drift apart. Needs DOMMatrix, which every browser has. */
 
 import { samplePose } from './model'
-import type { Bone, Clip, Cube, Model, NullObject, Pose, Vec3 } from './model'
+import type { Bone, Clip, Cube, Mesh, Model, NullObject, Pose, Vec3 } from './model'
 
 const flip = () => new DOMMatrix().scale(1, -1, 1)
 
@@ -87,7 +87,7 @@ export type Rig = {
   bone: Map<string, DOMMatrix>
   /** bone id → the bone itself */
   bones: Map<string, Bone>
-  /** cube id → id of the bone that holds it */
+  /** cube or mesh id → id of the bone that holds it */
   cubeOwner: Map<string, string>
   /** bone id → parent bone id, or null at the root */
   boneParent: Map<string, string | null>
@@ -116,7 +116,15 @@ export function buildRig(model: Model, pose: Pose = {}): Rig {
     }
   }
   walk(model.bones, new DOMMatrix(), [0, 0, 0], null)
+  // a mesh names its bone, as a null object does
+  for (const m of model.meshes ?? []) if (m.parent && rig.bone.has(m.parent)) rig.cubeOwner.set(m.id, m.parent)
   return rig
+}
+
+/** A mesh's world frame; its vertices are offsets in it, from the mesh's origin. */
+export function meshFrame(rig: Rig, mesh: Mesh): DOMMatrix {
+  const f = parentFrame(rig, mesh.id)
+  return f.matrix.multiply(translation(sub(mesh.origin, f.origin))).multiply(rotationMatrix(mesh.rotation))
 }
 
 /** A cube's world frame; its local origin is the cube's pivot (`origin`). */

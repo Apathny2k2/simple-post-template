@@ -100,6 +100,11 @@ export function checkTranslation(
   const boneLevel = target === 'pack' ? 'error' : 'warning'
   const carried = target === 'pack' ? '' : '. The plugin applies it as the bone’s rest rotation'
 
+  // Java block and item models are boxes only
+  for (const m of model.meshes ?? []) {
+    out.push({ level: 'error', where: m.name, message: `"${m.name}" is a mesh, and Java block and item models are made of boxes only, so it is left out of the pack.` })
+  }
+
   if (kind === 'mobs') {
     out.push({
       level: 'note',

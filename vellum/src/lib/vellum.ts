@@ -11,7 +11,8 @@
      stamps CURRENT_VERSION.
 
    Not in the file: pack models and textures, display transforms and
-   editor state. v8 added `nulls`, clip `events` and `pingpong`. */
+   editor state. v8 added `nulls`, clip `events` and `pingpong`; v9 added
+   `meshes`. */
 
 import { FACES, subtypeFits } from './model'
 import type { Behaviour, BehaviourEffect, BehaviourRequirement, BehaviourStage, EffectKind } from './behaviour'
@@ -25,6 +26,8 @@ import type {
   Cube,
   EventKind,
   NullObject,
+  Mesh,
+  MeshFace,
   Face,
   FaceKey,
   Handles,
@@ -38,7 +41,7 @@ import type {
 } from './model'
 
 export const FORMAT = 'model'
-export const CURRENT_VERSION = 8
+export const CURRENT_VERSION = 9
 
 /** A well-formed `.vellum` begins with exactly these bytes. */
 export const HEADER_PREFIX = `{"vellum":{"format":"${FORMAT}","version":${CURRENT_VERSION}},`
@@ -154,6 +157,21 @@ type VellumNull = {
   locked?: boolean
 }
 
+/** A mesh (v9): Blockbench's free-form element. Vertices are offsets from `origin`. */
+type VellumMesh = {
+  id: string
+  name: string
+  parent?: string
+  origin: Vec3
+  rotation?: Vec3
+  /** vertex key to position, keys sorted */
+  vertices: Record<string, Vec3>
+  /** face key to its vertices (in order), per-vertex UV and texture id */
+  faces: Record<string, { vertices: string[]; uv: Record<string, [number, number]>; texture?: string }>
+  hidden?: boolean
+  locked?: boolean
+}
+
 export type VellumBehaviour = {
   requires?: Array<{ id?: string; at?: number[]; block?: string }>
   stages?: Array<{
@@ -179,6 +197,8 @@ export type VellumDocument = {
   clips: VellumClip[]
   /** Added in v8. Absent when the model has none. */
   nulls?: VellumNull[]
+  /** Added in v9. Absent when the model has none. */
+  meshes?: VellumMesh[]
   /** Added in v4. Absent when the model has no requirements and no stages. */
   behaviour?: VellumBehaviour
   /** Added in v5. The body from `bodyOf`: nested by field path, set fields only. */
@@ -322,6 +342,27 @@ export function toVellumDocument(model: Model): VellumDocument {
       )
     : undefined
 
+  // keys are sorted so the same mesh always writes the same bytes
+  const sortKeys = <T,>(rec: Record<string, T>, map: (v: T) => unknown) =>
+    Object.fromEntries(Object.keys(rec).sort().map((k) => [k, map(rec[k])]))
+  const meshes: VellumMesh[] | undefined = model.meshes?.length
+    ? model.meshes.map((m) =>
+        compact({
+          id: m.id,
+          name: m.name,
+          parent: m.parent ?? undefined,
+          origin: m.origin,
+          rotation: m.rotation.some((v) => v !== 0) ? m.rotation : undefined,
+          vertices: sortKeys(m.vertices, (v) => v) as Record<string, Vec3>,
+          faces: sortKeys(m.faces, (f: MeshFace) =>
+            compact({ vertices: f.vertices, uv: sortKeys(f.uv, (v) => v), texture: f.texture ?? undefined }),
+          ) as VellumMesh['faces'],
+          hidden: m.visible ? undefined : true,
+          locked: m.locked || undefined,
+        }),
+      )
+    : undefined
+
   const b = model.behaviour
   const behaviour: VellumBehaviour | undefined =
     b && (b.requires.length || b.stages.length)
@@ -366,6 +407,7 @@ export function toVellumDocument(model: Model): VellumDocument {
     textures,
     clips,
     nulls,
+    meshes,
     behaviour,
     config,
   })
@@ -514,6 +556,9 @@ function upgrade(doc: VellumDocument): VellumDocument {
       }
       case 7: // v8 added null objects, clip events and `pingpong`; absent is already correct
         version = 8
+        break
+      case 8: // v9 added meshes; absent is already correct
+        version = 9
         break
       default:
         throw new VellumFormatError(`No upgrade path from .vellum version ${version}.`)
@@ -671,6 +716,39 @@ export function fromVellumDocument(doc: VellumDocument): Model {
       locked: Boolean(n.locked),
     }))
 
+  const uv2 = (v: unknown): [number, number] =>
+    Array.isArray(v) && v.length >= 2 && Number.isFinite(v[0]) && Number.isFinite(v[1]) ? [v[0], v[1]] : [0, 0]
+  const meshes: Mesh[] = objects(doc.meshes)
+    .filter((m) => typeof m.id === 'string')
+    .map((m) => {
+      const vertices: Record<string, Vec3> = {}
+      for (const [k, v] of Object.entries((m.vertices ?? {}) as Record<string, unknown>)) vertices[k] = vec3(v, [0, 0, 0])
+      const faces: Record<string, MeshFace> = {}
+      for (const [k, raw] of Object.entries((m.faces ?? {}) as Record<string, unknown>)) {
+        const f = (raw ?? {}) as { vertices?: unknown; uv?: unknown; texture?: unknown }
+        // a face keeps only vertices the mesh has, and needs three of them
+        const vs = Array.isArray(f.vertices) ? f.vertices.filter((x): x is string => typeof x === 'string' && x in vertices) : []
+        if (vs.length < 3) continue
+        const uvRaw = (f.uv ?? {}) as Record<string, unknown>
+        faces[k] = {
+          vertices: vs,
+          uv: Object.fromEntries(vs.map((v) => [v, uv2(uvRaw[v])])),
+          texture: typeof f.texture === 'string' ? f.texture : null,
+        }
+      }
+      return {
+        id: m.id,
+        name: typeof m.name === 'string' ? m.name : 'mesh',
+        parent: typeof m.parent === 'string' ? m.parent : null,
+        origin: vec3(m.origin, [0, 0, 0]),
+        rotation: vec3(m.rotation, [0, 0, 0]),
+        vertices,
+        faces,
+        visible: !m.hidden,
+        locked: Boolean(m.locked),
+      }
+    })
+
   const subtype: Subtype | undefined = subtypeFits(kind, doc.subtype) ? doc.subtype : undefined
 
   return {
@@ -685,6 +763,7 @@ export function fromVellumDocument(doc: VellumDocument): Model {
     textures,
     clips,
     nulls: nulls.length ? nulls : undefined,
+    meshes: meshes.length ? meshes : undefined,
   }
 }
 

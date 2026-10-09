@@ -5,7 +5,8 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { FACES } from '../../lib/model'
-import type { Cube, FaceKey, Model, Texture } from '../../lib/model'
+import type { Cube, FaceKey, Mesh, Model, Texture } from '../../lib/model'
+import { faceOrder } from '../../lib/mesh'
 import { faceBounds } from '../../lib/texture'
 import { Icon } from '../../lib/icons'
 
@@ -16,6 +17,7 @@ export function PaintSheet({
   texture,
   onTexture,
   cube,
+  mesh,
   face,
   onPaint,
   onHover,
@@ -24,6 +26,8 @@ export function PaintSheet({
   texture: Texture | null
   onTexture: (id: string) => void
   cube: Cube | null
+  /** a selected mesh, whose faces are outlined on the sheet */
+  mesh?: Mesh | null
   face: FaceKey
   onPaint: (u: number, v: number, phase: 'down' | 'move') => void
   /** the point under the pointer, in UV units, or null when it leaves */
@@ -153,11 +157,24 @@ export function PaintSheet({
                 )
               })
             : null}
+          {mesh ? (
+            <svg className="psheet__mesh" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" aria-hidden="true">
+              {Object.entries(mesh.faces)
+                .filter(([, f]) => !texture || f.texture === texture.id)
+                .map(([k, f]) => (
+                  <polygon key={k} points={faceOrder(mesh, f).map((v) => (f.uv[v] ?? [0, 0]).join(',')).join(' ')} />
+                ))}
+            </svg>
+          ) : null}
         </div>
       </div>
 
       <footer className="psheet__foot">
-        {cube ? (
+        {mesh ? (
+          <>
+            Painting on <b>{mesh.name}</b>, a mesh: its faces are outlined. Ctrl + wheel zooms.
+          </>
+        ) : cube ? (
           <>
             Painting on <b>{cube.name}</b> {'·'} <b>{face}</b>. The other faces of the {cube.name} are outlined. Ctrl + wheel zooms.
           </>

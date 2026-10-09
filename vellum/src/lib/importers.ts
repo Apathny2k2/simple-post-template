@@ -4,7 +4,7 @@
    listed in `notes`, so nothing is dropped without saying so. */
 
 import { FACES } from './model'
-import type { Bone, BoneChild, Clip, ClipEvent, Cube, Face, FaceKey, Interpolation, Key, Model, NullObject, ProjectKind, Texture, Track, UVRect, Vec3 } from './model'
+import type { Bone, BoneChild, Clip, ClipEvent, Cube, Face, FaceKey, Interpolation, Key, Mesh, MeshFace, Model, NullObject, ProjectKind, Texture, Track, UVRect, Vec3 } from './model'
 import { newId } from './new-model'
 import { boxFaces } from './uv-edit'
 
@@ -87,6 +87,7 @@ export function fromBbmodel(text: string, fileName = 'model.bbmodel'): Imported 
   const boxDefault = meta.box_uv === true
   const cubes: Cube[] = []
   const nulls: NullObject[] = []
+  const meshes: Mesh[] = []
   const elementKinds = new Map<string, string>()
   let skipped = 0
   for (const raw of arr(j.elements)) {
@@ -106,6 +107,21 @@ export function fromBbmodel(text: string, fileName = 'model.bbmodel'): Imported 
         visible: e.visibility !== false,
         locked: e.locked === true,
       })
+      continue
+    }
+    if (type === 'mesh') {
+      // Blockbench's mesh has the same shape as Vellum's: offsets from an origin, per-vertex UVs
+      const vertices: Record<string, Vec3> = {}
+      for (const [k, v] of Object.entries(obj(e.vertices))) vertices[k] = vec(v)
+      const faces: Record<string, MeshFace> = {}
+      for (const [k, raw] of Object.entries(obj(e.faces))) {
+        const f = obj(raw)
+        const vs = arr(f.vertices).filter((v): v is string => typeof v === 'string' && v in vertices)
+        if (vs.length < 3) continue
+        const uv = obj(f.uv)
+        faces[k] = { vertices: vs, uv: Object.fromEntries(vs.map((v) => [v, [num(arr(uv[v])[0]), num(arr(uv[v])[1])] as [number, number]])), texture: textureOf(f.texture) }
+      }
+      meshes.push({ id, name: str(e.name, 'mesh'), parent: null, origin: vec(e.origin), rotation: vec(e.rotation), vertices, faces, visible: e.visibility !== false, locked: e.locked === true })
       continue
     }
     if (type !== 'cube') {
@@ -151,10 +167,11 @@ export function fromBbmodel(text: string, fileName = 'model.bbmodel'): Imported 
     }
     cubes.push(cube)
   }
-  if (skipped) notes.push(`${skipped} mesh or other non-cube element${skipped === 1 ? ' was' : 's were'} left out: Vellum models are made of cubes.`)
+  if (skipped) notes.push(`${skipped} element${skipped === 1 ? ' of a kind Vellum has no place for was' : 's of kinds Vellum has no place for were'} left out.`)
 
   // the outliner: groups are bones; loose cubes and nulls at the top go under a root bone
   const nullById = new Map(nulls.map((n) => [n.id, n]))
+  const meshById = new Map(meshes.map((m) => [m.id, m]))
   const cubeIds = new Set(cubes.map((c) => c.id))
   const walk = (items: unknown[], parent: string | null): BoneChild[] => {
     const out: BoneChild[] = []
@@ -163,6 +180,8 @@ export function fromBbmodel(text: string, fileName = 'model.bbmodel'): Imported 
         if (cubeIds.has(item)) out.push({ kind: 'cube', id: item })
         const n = nullById.get(item)
         if (n) n.parent = parent
+        const mesh = meshById.get(item)
+        if (mesh) mesh.parent = parent
         continue
       }
       const g = obj(item)
@@ -279,6 +298,7 @@ export function fromBbmodel(text: string, fileName = 'model.bbmodel'): Imported 
       textures,
       clips,
       ...(nulls.length ? { nulls } : {}),
+      ...(meshes.length ? { meshes } : {}),
     },
     kind,
     notes,

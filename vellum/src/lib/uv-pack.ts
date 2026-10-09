@@ -18,13 +18,22 @@ const normalise = (uv: UVRect): UVRect => [
   Math.max(uv[1], uv[3]),
 ]
 
-/** Every island already claimed. Zero-area faces claim nothing. */
+/** Every island already claimed, cubes' and meshes'. Zero-area faces claim nothing. */
 export function occupied(model: Model, skip?: string): UVRect[] {
   const out: UVRect[] = []
   for (const cube of model.cubes) {
     if (cube.id === skip) continue
     for (const key of FACES) {
       const r = normalise(cube.faces[key].uv)
+      if (r[2] > r[0] && r[3] > r[1]) out.push(r)
+    }
+  }
+  for (const mesh of model.meshes ?? []) {
+    if (mesh.id === skip) continue
+    for (const f of Object.values(mesh.faces)) {
+      const uvs = Object.values(f.uv)
+      if (uvs.length < 3) continue
+      const r: UVRect = [Math.min(...uvs.map((p) => p[0])), Math.min(...uvs.map((p) => p[1])), Math.max(...uvs.map((p) => p[0])), Math.max(...uvs.map((p) => p[1]))]
       if (r[2] > r[0] && r[3] > r[1]) out.push(r)
     }
   }
@@ -35,12 +44,12 @@ const overlaps = (a: UVRect, b: UVRect) => a[0] < b[2] && b[0] < a[2] && a[1] < 
 
 /* First fit over candidate corners at 0 and the island edges. Any free
    spot can slide up and left onto one of them, so none is missed. */
-export function findSpot(model: Model, box: [number, number]): [number, number] | null {
+export function findSpot(model: Model, box: [number, number], also: readonly UVRect[] = []): [number, number] | null {
   const [bw, bh] = box
   const { width, height } = model.resolution
   if (bw > width || bh > height) return null
 
-  const taken = occupied(model)
+  const taken = [...occupied(model), ...also]
   const xs = new Set<number>([0])
   const ys = new Set<number>([0])
   for (const r of taken) {
