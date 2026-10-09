@@ -42,6 +42,11 @@ export type History<T> = {
   end: () => void
   undo: () => void
   redo: () => void
+  /** the steps that can be undone, oldest first, and those that can be redone, nearest first */
+  pastLabels: string[]
+  futureLabels: string[]
+  /** undo (negative) or redo (positive) that many steps at once, for the history panel */
+  jump: (steps: number) => void
   /** clear history for a newly opened model */
   reset: (next: T) => void
 }
@@ -139,6 +144,26 @@ export function useHistory<T>(initial: T): History<T> {
     })
   }, [])
 
+  const jump = useCallback((steps: number) => {
+    setState((s) => {
+      let { past, present, future } = s
+      for (let i = 0; i < -steps && past.length; i++) {
+        const last = past[past.length - 1]
+        future = [{ label: last.label, value: present }, ...future]
+        present = last.value
+        past = past.slice(0, -1)
+      }
+      for (let i = 0; i < steps && future.length; i++) {
+        const [next, ...rest] = future
+        past = [...past, { label: next.label, value: present }]
+        present = next.value
+        future = rest
+      }
+      if (past === s.past && future === s.future) return s
+      return { past: trim(past), present, future, lastLabel: null, lastAt: 0, travel: s.travel + 1 }
+    })
+  }, [])
+
   const reset = useCallback(
     (next: T) => setState({ past: [], present: next, future: [], lastLabel: null, lastAt: 0, travel: 0 }),
     [],
@@ -151,6 +176,8 @@ export function useHistory<T>(initial: T): History<T> {
       canRedo: state.future.length > 0,
       undoLabel: state.past[state.past.length - 1]?.label ?? null,
       redoLabel: state.future[0]?.label ?? null,
+      pastLabels: state.past.map((e) => e.label),
+      futureLabels: state.future.map((e) => e.label),
       travel: state.travel,
       commit,
       begin,
@@ -158,8 +185,9 @@ export function useHistory<T>(initial: T): History<T> {
       end,
       undo,
       redo,
+      jump,
       reset,
     }),
-    [state, commit, begin, amend, end, undo, redo, reset],
+    [state, commit, begin, amend, end, undo, redo, jump, reset],
   )
 }

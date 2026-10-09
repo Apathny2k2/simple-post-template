@@ -5612,6 +5612,35 @@ export function Editor({ segments }: { segments: string[] }) {
             </Panel>
             )}
 
+            <Panel title="History" count={history.pastLabels.length || undefined} defaultOpen={false}>
+              <ol className="hist" aria-label="Undo history">
+                {/* oldest at the top, as in Blockbench; a click jumps to that point */}
+                <li>
+                  <button className="hist__row" aria-current={history.pastLabels.length === 0 || undefined} onClick={() => history.jump(-history.pastLabels.length)}>
+                    Opened {fileName}
+                  </button>
+                </li>
+                {history.pastLabels.map((label, i) => (
+                  <li key={`p${i}`}>
+                    <button
+                      className="hist__row"
+                      aria-current={i === history.pastLabels.length - 1 || undefined}
+                      onClick={() => history.jump(i + 1 - history.pastLabels.length)}
+                    >
+                      {label[0].toUpperCase() + label.slice(1)}
+                    </button>
+                  </li>
+                ))}
+                {history.futureLabels.map((label, i) => (
+                  <li key={`f${i}`}>
+                    <button className="hist__row hist__row--undone" onClick={() => history.jump(i + 1)} title="Undone. Click to redo up to here.">
+                      {label[0].toUpperCase() + label.slice(1)}
+                    </button>
+                  </li>
+                ))}
+              </ol>
+            </Panel>
+
             <div id="validation" />
             <Panel
               title="Validation"

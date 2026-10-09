@@ -691,3 +691,10 @@
 .ptools__strength input { accent-color: var(--s-sage); min-width: 0; }
 .ptools__pct { color: var(--s-ink-3); font-size: 12.5px; text-align: right; font-variant-numeric: tabular-nums; }
 .uv-carry { display: flex; width: 100%; justify-content: space-between; margin-top: 10px; color: var(--s-ink-2); }
+
+/* ---------------- history ---------------- */
+.hist { list-style: none; margin: 0 -8px; padding: 0; max-height: 260px; overflow: auto; }
+.hist__row { display: block; width: 100%; padding: 6px 10px; border-radius: 7px; color: var(--s-ink-2); font-size: 13px; text-align: left; }
+.hist__row:hover { background: var(--s-hover); color: var(--s-ink); }
+.hist__row[aria-current='true'] { background: var(--s-active); color: var(--s-ink); box-shadow: inset 2px 0 0 var(--s-sage); }
+.hist__row--undone { color: var(--s-ink-3); font-style: italic; }
