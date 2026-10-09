@@ -121,3 +121,26 @@ test('the outliner adds cubes, bones and null objects', async () => {
   assert.equal(await page.locator('.model-null').count(), 1, 'the null shows in the viewport')
   await page.close()
 })
+
+test('the inspector renames, moves to another bone, and shifts the unwrap', async () => {
+  const { page } = await openEditor()
+  await page.fill('.insp-head__name', 'hips')
+  await page.keyboard.press('Enter')
+  assert.equal(await page.textContent('.tree__row[aria-selected="true"] .tree__name'), 'hips')
+  await page.keyboard.press('Control+z')
+  assert.equal(await page.inputValue('.insp-head__name'), 'pelvis', 'undo restores the name in the field')
+
+  const boneOf = () => page.$eval('.insp-bone select', (s) => s.selectedOptions[0].textContent.trim())
+  assert.equal(await boneOf(), 'root')
+  await page.selectOption('.insp-bone select', { label: ' torso' })
+  assert.equal(await boneOf(), 'torso')
+
+  assert.deepEqual(await page.$$eval('.num-field-row--vec:nth-child(2) .num-field__axis', (els) => els.map((e) => e.textContent)), ['W', 'H', 'D'])
+  const u = page.locator('input[aria-label="Unwrap U"]')
+  const before = await page.$$eval('input[aria-label^="UV "]', (els) => els.map((e) => Number(e.value)))
+  await u.fill(String(Number(await u.inputValue()) + 2))
+  await u.press('Enter')
+  const after = await page.$$eval('input[aria-label^="UV "]', (els) => els.map((e) => Number(e.value)))
+  assert.equal(after[0], before[0] + 2, 'U moved the faces two texels right')
+  await page.close()
+})

@@ -650,3 +650,40 @@
 .kf__actions .chip { justify-content: center; }
 .kf__clear { margin-top: 10px; color: var(--s-ink-3); font-size: 12.5px; text-decoration: underline; text-underline-offset: 3px; }
 .kf__clear:hover { color: var(--s-danger); }
+
+/* ---------------- model: the inspector's head and texture ---------------- */
+
+.insp-head { display: flex; align-items: center; gap: 10px; color: var(--s-ink-2); }
+.insp-head__name {
+  flex: 1;
+  min-width: 0;
+  height: 36px;
+  padding: 0 10px;
+  border: 1px solid var(--s-line-2);
+  border-radius: 9px;
+  background: var(--s-deep);
+  color: var(--s-ink);
+  font: 600 15px var(--font-mono);
+}
+.insp-head__name:focus { outline: none; border-color: var(--s-sage); }
+.insp-head__delete { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 8px; color: var(--s-danger); }
+.insp-head__delete:hover:not(:disabled) { background: rgb(224 154 138 / 0.12); }
+.insp-head__delete:disabled { opacity: 0.4; }
+.insp-bone { margin: 12px 0 16px; }
+
+.insp-tex { margin: 18px 0 14px; padding-top: 16px; border-top: 1px solid var(--s-line); }
+.insp-tex__head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.insp-tex__head .studio-label { margin: 0; }
+.insp-tex__uv { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.insp-tex__sheet {
+  position: relative;
+  width: 72%;
+  margin-top: 10px;
+  border: 1px solid var(--s-line-2);
+  border-radius: 6px;
+  background-color: #0b0e10;
+  background-size: 100% 100%;
+  image-rendering: pixelated;
+  overflow: hidden;
+}
+.insp-tex__sheet span { position: absolute; border: 1.5px solid var(--s-sage); background: rgb(167 196 160 / 0.12); }

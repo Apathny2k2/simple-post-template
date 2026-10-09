@@ -120,13 +120,16 @@ import {
   followBoxUv,
   freeTextureName,
   moveFaceUv,
+  moveFacesUv,
   pixelScale,
   removeTexture,
   resizeFaceUv,
   reunwrap,
   setBoxUv,
+  unwrapOrigin,
 } from '../lib/uv-edit'
 import type { UvHandle } from '../lib/uv-edit'
+import { boxSize } from '../lib/uv-pack'
 import { DEFAULT_DISPLAY, DisplayPanel } from './editor/DisplayPanel'
 import type { DisplayState, SlotId } from './editor/DisplayPanel'
 import { ScenePanel } from './editor/ScenePanel'
@@ -627,7 +630,10 @@ function NumField({
   disabled,
   onCommit,
   snap,
+  tag,
 }: {
+  /** a letter shown in place of the axis's own, such as W for a width */
+  tag?: string
   axis: 'x' | 'y' | 'z' | 'n'
   /** the input's accessible name, also used in the scrub tooltip */
   name: string
@@ -665,7 +671,7 @@ function NumField({
           drag.current = null
         }}
       >
-        {axis === 'n' ? '#' : axis.toUpperCase()}
+        {tag ?? (axis === 'n' ? '#' : axis.toUpperCase())}
       </span>
       <input
         className="num-field__input"
@@ -709,7 +715,9 @@ function NumRow({
   disabled,
   onCommit,
   snap,
+  tags,
 }: {
+  tags?: [string, string, string]
   label: string
   value: Vec3
   onChange: (v: Vec3) => void
@@ -726,6 +734,7 @@ function NumRow({
         <NumField
           key={a}
           axis={a}
+          tag={tags?.[i]}
           name={`${label} ${a.toUpperCase()}`}
           step={step}
           disabled={disabled}
@@ -750,7 +759,20 @@ function CubePanel({
   kind,
   onChange,
   snap,
+  model,
+  parent,
+  bones,
+  onRename,
+  onMove,
+  onDelete,
 }: {
+  model: Model
+  /** the bone the cube is in, or null at the root */
+  parent: string | null
+  bones: Array<{ id: string; name: string; depth: number }>
+  onRename: (name: string) => void
+  onMove: (bone: string | null) => void
+  onDelete: () => void
   cube: Cube | null
   kind: ProjectKind
   onChange: (fn: (c: Cube) => Cube) => void
@@ -766,8 +788,51 @@ function CubePanel({
   const blockLocked = kind === 'blocks'
   const locked = cube.locked
 
+  const texture = textureById(model, cube.faces.north.texture) ?? model.textures[0] ?? null
+  const [u0, v0] = unwrapOrigin(cube)
+  const box = boxSize(size)
+
   return (
     <>
+      <div className="insp-head">
+        <Icon name="cube" size={15} />
+        <input
+          key={`${cube.id}:${cube.name}`}
+          className="insp-head__name"
+          defaultValue={cube.name}
+          aria-label="Cube name"
+          spellCheck={false}
+          disabled={locked}
+          onBlur={(e) => {
+            const name = e.target.value.trim()
+            if (name && name !== cube.name) onRename(name)
+            else e.target.value = cube.name
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
+            if (e.key === 'Escape') {
+              ;(e.target as HTMLInputElement).value = cube.name
+              ;(e.target as HTMLInputElement).blur()
+            }
+          }}
+        />
+        <button className="insp-head__delete" aria-label={`Delete ${cube.name}`} title="Delete this cube (Del)" disabled={locked} onClick={onDelete}>
+          <Icon name="trash" size={15} />
+        </button>
+      </div>
+      <label className="clip-props__row insp-bone">
+        <span>In bone</span>
+        <select className="editor-select" value={parent ?? ''} disabled={locked} onChange={(e) => onMove(e.target.value || null)}>
+          <option value="">(no bone)</option>
+          {bones.map((b) => (
+            <option key={b.id} value={b.id}>
+              {'\u2002'.repeat(b.depth)}
+              {b.name}
+            </option>
+          ))}
+        </select>
+      </label>
+
       {locked ? (
         <p className="editor-hint editor-hint--warn" style={{ marginBottom: 9 }}>
           <Icon name="lock" size={11} /> Locked. Unlock it below to move, resize or paint it.
@@ -782,7 +847,7 @@ function CubePanel({
           snap={snap}
           onChange={(from) => onChange((c) => setCubePosition(c, from))}
         />
-        <NumRow label="Size" value={size} disabled={locked} snap={snap} onChange={(s) => onChange((c) => followBoxUv(setCubeSize(c, s)))} />
+        <NumRow label="Size" tags={['W', 'H', 'D']} value={size} disabled={locked} snap={snap} onChange={(s) => onChange((c) => followBoxUv(setCubeSize(c, s)))} />
         <NumRow
           label="Pivot"
           value={cube.origin}
@@ -824,6 +889,41 @@ function CubePanel({
           <Icon name="warning" size={11} /> Block models rotate on 1 axis only, at {'\u00b1'}22.5{'\u00b0'} or {'\u00b1'}45{'\u00b0'}.
         </p>
       ) : null}
+
+      <div className="insp-tex">
+        <div className="insp-tex__head">
+          <span className="studio-label">Texture</span>
+          <button
+            className="uv-switch"
+            role="switch"
+            aria-checked={cube.boxUv}
+            disabled={locked}
+            title="Box UV: the faces are one unwrap that follows the cube's size"
+            onClick={() => onChange((c) => setBoxUv(c, !c.boxUv))}
+          >
+            Box UV <span className="uv-switch__track" />
+          </button>
+        </div>
+        <div className="insp-tex__uv">
+          <NumField axis="n" tag="U" name="Unwrap U" value={u0} disabled={locked} onChange={(v) => onChange((c) => moveFacesUv(c, FACES, v - unwrapOrigin(c)[0], 0))} />
+          <NumField axis="n" tag="V" name="Unwrap V" value={v0} disabled={locked} onChange={(v) => onChange((c) => moveFacesUv(c, FACES, 0, v - unwrapOrigin(c)[1]))} />
+        </div>
+        {texture?.source ? (
+          <div className="insp-tex__sheet" style={{ backgroundImage: `url(${texture.source})`, aspectRatio: `${model.resolution.width} / ${model.resolution.height}` }}>
+            {FACES.map((k) => {
+              const r = faceBounds(cube.faces[k].uv)
+              if (r[2] <= r[0] || r[3] <= r[1]) return null
+              const { width: W, height: H } = model.resolution
+              return <span key={k} style={{ left: `${(r[0] / W) * 100}%`, top: `${(r[1] / H) * 100}%`, width: `${((r[2] - r[0]) / W) * 100}%`, height: `${((r[3] - r[1]) / H) * 100}%` }} />
+            })}
+          </div>
+        ) : null}
+        <p className="editor-hint">
+          {cube.boxUv
+            ? `The ${cube.name}\u2019s box UV: ${box[0]} \u00d7 ${box[1]} texels at ${u0}, ${v0}. Its faces follow when you resize it.`
+            : `Its faces start at ${u0}, ${v0}, and each is set on its own in the UV panel. Turn on Box UV to keep them one unwrap.`}
+        </p>
+      </div>
 
       <div className="chip-row">
         <button
@@ -2405,7 +2505,7 @@ const EASE_LINE: Record<Key['interp'], string> = {
 
 /**
  * The motion from a key to the next, drawn on the axis that changes most,
- * so the easing choice shows as a shape rather than a word.
+ * so the easing choice can be seen at a glance.
  */
 function EaseCurve({ track, keyId }: { track: Track; keyId: string }) {
   const keys = [...track.keys].sort((a, b) => a.time - b.time)
@@ -5186,7 +5286,18 @@ export function Editor({ segments }: { segments: string[] }) {
               </Panel>
             ) : (
               <Panel title="Cube" count={cube?.name ?? 'none'}>
-                <CubePanel cube={cube} kind={kind} onChange={editCube} snap={snap} />
+                <CubePanel
+                  cube={cube}
+                  kind={kind}
+                  onChange={editCube}
+                  snap={snap}
+                  model={model}
+                  parent={cube ? ownerBone(model.bones, cube.id) : null}
+                  bones={bones}
+                  onRename={(name) => cube && rename(cube.id, name)}
+                  onMove={(bone) => cube && move(cube.id, bone)}
+                  onDelete={actions.onDelete}
+                />
               </Panel>
             )}
 

@@ -59,6 +59,7 @@ test('dragging a face moves it, a handle resizes it, and each drag is one undo',
   const { page, errors } = await openEditor()
   await page.click('.uv-faces .chip:has-text("north")')
   const start = await uvFields(page)
+  await page.locator('.uv').first().scrollIntoViewIfNeeded()
   const k = await texel(page)
   const [fx, fy] = await centre(page.locator('.uv__face[data-face="north"]'))
   await drag(page, [fx, fy], [fx + 3 * k, fy], 6)
@@ -79,8 +80,8 @@ test('dragging a face moves it, a handle resizes it, and each drag is one undo',
 
 test('Box UV makes the faces follow the cube and move as one', async () => {
   const { page } = await openEditor()
-  await page.click('.uv-switch')
-  assert.equal(await page.getAttribute('.uv-switch', 'aria-checked'), 'true')
+  await page.click('.uv-head .uv-switch')
+  assert.equal(await page.getAttribute('.uv-head .uv-switch', 'aria-checked'), 'true')
   assert.equal(await page.locator('.uv__handle').count(), 0, 'no per-face handles with box UV on')
   await page.click('.uv-faces .chip:has-text("north")')
   const before = await uvFields(page)
@@ -91,6 +92,7 @@ test('Box UV makes the faces follow the cube and move as one', async () => {
   assert.equal(after[2] - after[0], 10, 'the north face is as wide as the cube')
   assert.equal(after[1], before[1])
 
+  await page.locator('.uv').first().scrollIntoViewIfNeeded()
   const k = await texel(page)
   const [ux, uy] = await centre(page.locator('.uv__face[data-face="up"]'))
   await drag(page, [ux, uy], [ux, uy + 2 * k], 5)
