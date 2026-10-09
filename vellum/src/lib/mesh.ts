@@ -1393,3 +1393,96 @@ export function cubeToMesh(cube: Cube, parent: string | null): Mesh {
   }
   return { id: newId(), name: cube.name, parent, origin: [...cube.origin] as Vec3, rotation: [...cube.rotation] as Vec3, vertices, faces, visible: cube.visible, locked: cube.locked }
 }
+
+/* ---------------- unwrapping faces joined ---------------- */
+
+type P2 = [number, number]
+
+/** Whether two convex outlines overlap by more than a sliver (separating axis test). */
+function overlaps2(a: P2[], b: P2[]): boolean {
+  for (const poly of [a, b]) {
+    for (let i = 0; i < poly.length; i++) {
+      const p = poly[i]
+      const q = poly[(i + 1) % poly.length]
+      const nx = q[1] - p[1]
+      const ny = p[0] - q[0]
+      const l = Math.hypot(nx, ny) || 1
+      const proj = (pts: P2[]) => pts.map(([x, y]) => (x * nx + y * ny) / l)
+      const pa = proj(a)
+      const pb = proj(b)
+      if (Math.max(...pa) <= Math.min(...pb) + 0.01 || Math.max(...pb) <= Math.min(...pa) + 0.01) return false
+    }
+  }
+  return true
+}
+
+/**
+ * Unwraps faces joined: each group of faces that share edges unfolds flat
+ * as one island, every face laid beside the face it was reached from by
+ * turning it about their shared edge, at one texel per unit. A face that
+ * would land on part of its island starts an island of its own. Each
+ * island is packed where `place` says, given its size.
+ */
+export function unwrapJoined(mesh: Mesh, faceKeys: readonly string[], place: (w: number, h: number) => [number, number]): Mesh {
+  const keys = faceKeys.filter((k) => mesh.faces[k])
+  const pickedSet = new Set(keys)
+  const byEdge = facesByEdge(mesh)
+  const layout = new Map<string, Map<string, P2>>()
+  const islands: string[][] = []
+  const left = new Set(keys)
+  while (left.size) {
+    const root = [...left][0]
+    left.delete(root)
+    const { keys: rk, flat } = faceBasis(mesh, mesh.faces[root])
+    layout.set(root, new Map(rk.map((k, i) => [k, flat[i]])))
+    const island = [root]
+    const queue = [root]
+    while (queue.length) {
+      const f = queue.shift()!
+      const placed = layout.get(f)!
+      const o = faceOrder(mesh, mesh.faces[f])
+      o.forEach((a, i) => {
+        const b = o[(i + 1) % o.length]
+        for (const g of byEdge.get(edgeKey(a, b)) ?? []) {
+          if (g === f || !left.has(g) || !pickedSet.has(g)) continue
+          // G's own flat outline, turned and moved so its edge lands on F's
+          const gb = faceBasis(mesh, mesh.faces[g])
+          const ga = gb.flat[gb.keys.indexOf(a)]
+          const gbp = gb.flat[gb.keys.indexOf(b)]
+          const fa = placed.get(a)!
+          const fb = placed.get(b)!
+          const turn = Math.atan2(fb[1] - fa[1], fb[0] - fa[0]) - Math.atan2(gbp[1] - ga[1], gbp[0] - ga[0])
+          const c = Math.cos(turn)
+          const s = Math.sin(turn)
+          const put = (p: P2): P2 => {
+            const x = p[0] - ga[0]
+            const y = p[1] - ga[1]
+            return [fa[0] + x * c - y * s, fa[1] + x * s + y * c]
+          }
+          const pts = gb.flat.map(put)
+          if (island.some((h) => overlaps2([...layout.get(h)!.values()], pts))) continue
+          layout.set(g, new Map(gb.keys.map((k, j) => [k, pts[j]])))
+          left.delete(g)
+          island.push(g)
+          queue.push(g)
+        }
+      })
+    }
+    islands.push(island)
+  }
+  const faces = { ...mesh.faces }
+  for (const island of islands) {
+    const all = island.flatMap((f) => [...layout.get(f)!.values()])
+    const x0 = Math.min(...all.map((p) => p[0]))
+    const y1 = Math.max(...all.map((p) => p[1]))
+    const w = Math.max(1, Math.ceil(Math.max(...all.map((p) => p[0])) - x0))
+    const h = Math.max(1, Math.ceil(y1 - Math.min(...all.map((p) => p[1]))))
+    const [ox, oy] = place(w, h)
+    for (const f of island) {
+      // flat y runs up the face; the sheet's v runs down
+      const uv = Object.fromEntries([...layout.get(f)!].map(([k, p]) => [k, [round(ox + p[0] - x0), round(oy + (y1 - p[1]))] as UV]))
+      faces[f] = { ...faces[f], uv }
+    }
+  }
+  return { ...mesh, faces }
+}

@@ -222,6 +222,7 @@ test('a face with a dragged UV corner is drawn as two triangles', async () => {
   await page.mouse.click(pb.x + pb.width / 2, pb.y + pb.height / 2)
   assert.equal(await page.locator(`.model-mface[data-mface="${key}"]`).count(), 1)
   const corner = page.locator(`.uv-mesh__corner[data-corner^="${key}:"]`).first()
+  await corner.scrollIntoViewIfNeeded()
   const cb = await corner.boundingBox()
   await drag(page, [cb.x + cb.width / 2, cb.y + cb.height / 2], [cb.x + cb.width / 2 + 12, cb.y + cb.height / 2 + 9], 4)
   assert.equal(await page.locator(`.model-mface--tri[data-mface="${key}"]`).count(), 2, 'a trapezoid of UVs on a square needs two maps')
@@ -432,5 +433,88 @@ test('in the editor: the knife takes a click inside a face', async () => {
   assert.equal(await page.locator('.editor-view .model-mface:not(.model-mface--tri)').count() + (await page.$$eval('.editor-view .model-mface--tri', (els) => new Set(els.map((e) => e.dataset.mface)).size)), 2, 'two faces')
   await page.waitForFunction((n) => document.querySelectorAll('.scene3d__edge--own').length === n, 2, { timeout: 3000 })
   assert.deepEqual(errors, [])
+  await page.close()
+})
+
+test('a texture is checked once for partly clear pixels', async () => {
+  const { page } = await open()
+  const r = await inApp(page, async () => {
+    const A = await import('/src/lib/alpha.ts')
+    const png = (alpha) => {
+      const c = document.createElement('canvas')
+      c.width = 4
+      c.height = 4
+      const x = c.getContext('2d')
+      x.fillStyle = `rgba(200, 100, 50, ${alpha})`
+      x.fillRect(0, 0, 4, 4)
+      return c.toDataURL('image/png')
+    }
+    const solid = png(1)
+    const glass = png(0.5)
+    const first = [A.partlyClear(solid), A.partlyClear(glass)]
+    for (let i = 0; i < 50 && (A.partlyClear(solid) === undefined || A.partlyClear(glass) === undefined); i++) await new Promise((ok) => setTimeout(ok, 20))
+    return { first, solid: A.partlyClear(solid), glass: A.partlyClear(glass), none: A.partlyClear(undefined) }
+  })
+  assert.deepEqual(r.first, [undefined, undefined], 'unknown until the image is read')
+  assert.equal(r.solid, false)
+  assert.equal(r.glass, true)
+  assert.equal(r.none, false)
+  await page.close()
+})
+
+test('unwrapping joined keeps faces that share edges together, without overlaps', async () => {
+  const { page } = await open()
+  const r = await inApp(page, async () => {
+    const M = await import('/src/lib/mesh.ts')
+    const check = (kind) => {
+      const m0 = M.makeMesh(kind, { parent: null, origin: [0, 0, 0], texture: null, place: () => [0, 0] })
+      const boxes = []
+      const m = M.unwrapJoined(m0, Object.keys(m0.faces), (w, h) => {
+        const at = [boxes.length * 40, 0]
+        boxes.push([w, h])
+        return at
+      })
+      // edges whose two faces give both ends the same UV: the edges an island is joined along
+      let joined = 0
+      for (const e of M.edgesOf(m)) {
+        const [a, b] = M.edgeEnds(e)
+        const fs = Object.values(m.faces).filter((f) => f.vertices.includes(a) && f.vertices.includes(b))
+        if (fs.length === 2 && [a, b].every((v) => JSON.stringify(fs[0].uv[v]) === JSON.stringify(fs[1].uv[v]))) joined++
+      }
+      // no two faces overlap on the sheet (bounding boxes shrunk a little, so shared edges don't count)
+      const rects = Object.values(m.faces).map((f) => {
+        const us = f.vertices.map((v) => f.uv[v][0])
+        const vs = f.vertices.map((v) => f.uv[v][1])
+        return [Math.min(...us) + 0.05, Math.min(...vs) + 0.05, Math.max(...us) - 0.05, Math.max(...vs) - 0.05]
+      })
+      // each face keeps its size: a face's UV outline has the same area as its outline in space
+      const sized = Object.values(m.faces).every((f) => {
+        const o = M.faceOrder(m, f)
+        const uv = o.map((v) => f.uv[v])
+        let a2 = 0
+        uv.forEach((p, i) => {
+          const q = uv[(i + 1) % uv.length]
+          a2 += p[0] * q[1] - q[0] * p[1]
+        })
+        const { flat } = M.faceBasis(m, f)
+        let b2 = 0
+        flat.forEach((p, i) => {
+          const q = flat[(i + 1) % flat.length]
+          b2 += p[0] * q[1] - q[0] * p[1]
+        })
+        return Math.abs(Math.abs(a2) - Math.abs(b2)) < 0.05
+      })
+      const clash = rects.some((a, i) => rects.some((b, j) => j > i && a[0] < b[2] && b[0] < a[2] && a[1] < b[3] && b[1] < a[3]))
+      return { islands: boxes.length, faces: Object.keys(m.faces).length, joined, sized, clash }
+    }
+    return { cube: check('cube'), cylinder: check('cylinder') }
+  })
+  assert.equal(r.cube.islands, 1, 'a cube unfolds as one piece')
+  assert.equal(r.cube.joined, 5, 'its six faces joined along five edges')
+  assert.ok(r.cube.sized)
+  assert.equal(r.cube.clash, false, 'no two faces overlap on the sheet')
+  assert.ok(r.cylinder.islands <= 2)
+  assert.ok(r.cylinder.joined >= r.cylinder.faces - r.cylinder.islands, 'every face but each island’s first is joined to one before it')
+  assert.ok(r.cylinder.sized)
   await page.close()
 })

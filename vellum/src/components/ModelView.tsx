@@ -4,6 +4,7 @@ import { FACES, samplePose, textureById } from '../lib/model'
 import { applyDir, buildRig, nullWorld, rotationMatrix, solveIK } from '../lib/kinematics'
 import type { Bone, Clip, Cube, Face as ModelFace, FaceKey, Mesh, Model, Pose, Vec3 } from '../lib/model'
 import { faceBasis, facePieces, uvToFlat } from '../lib/mesh'
+import { partlyClear, useAlphaAnswers } from '../lib/alpha'
 import { Gizmo } from './Gizmo'
 import type { Basis, GizmoEvent, GizmoSpec } from './Gizmo'
 import './Model3D.css'
@@ -312,6 +313,8 @@ function MeshBody({
   onSelect?: (id: string, mods: PickMods) => void
   onPaint?: (meshId: string, face: string, u: number, v: number, phase: 'down' | 'move') => void
 }) {
+  // re-drawn once a texture has been checked for partly clear pixels
+  useAlphaAnswers()
   if (!mesh.visible) return null
   const at: Vec3 = [mesh.origin[0] - parentOrigin[0], mesh.origin[1] - parentOrigin[1], mesh.origin[2] - parentOrigin[2]]
   const picking = pick && pick.mesh === mesh.id ? pick : null
@@ -341,10 +344,12 @@ function MeshBody({
             const o = css([origin[0] + e1[0] * minx + e2[0] * maxy, origin[1] + e1[1] * minx + e2[1] * maxy, origin[2] + e1[2] * minx + e2[2] * maxy])
             const m3 = [ca[0], ca[1], ca[2], 0, cb[0], cb[1], cb[2], 0, cn[0], cn[1], cn[2], 0, o[0] * scale, o[1] * scale, o[2] * scale, 1]
             const px = flat.map(([x, y]) => [(x - minx) * scale, (maxy - y) * scale] as [number, number])
-            // the triangles of a split face overlap by half a pixel, so no hairline shows between them
+            /* the triangles of a split face overlap by half a pixel, so no hairline
+               shows between them; not on a texture with partly clear pixels, where
+               the overlap would show as a darker line */
             const cx = px.reduce((a, p) => a + p[0], 0) / px.length
             const cy = px.reduce((a, p) => a + p[1], 0) / px.length
-            const grown = split
+            const grown = split && partlyClear(tex?.source) === false
               ? px.map(([x, y]) => {
                   const d = Math.hypot(x - cx, y - cy) || 1
                   return [x + ((x - cx) / d) * 0.6, y + ((y - cy) / d) * 0.6] as [number, number]

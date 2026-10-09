@@ -131,7 +131,7 @@ import {
   unwrapOrigin,
 } from '../lib/uv-edit'
 import type { UvHandle } from '../lib/uv-edit'
-import { PRIMITIVES, centreOf, faceOrder, deleteEdges, deleteFaces, deleteVertices, edgeEnds, edgeVerticesOf, edgesOf, extrudeFaces, flipFaces, loopCut, makeMesh, mergeVertices, moveVertices, subdivide, verticesOf, mirrorFacesUv, projectUv, turnFacesUv, bevel, cubeToMesh, joinMeshes, mergeByDistance, separateFaces, dissolveEdges, edgeLoop, fillFace, insetFaces, knifeCut, rotateVertices, scaleVertices, slideEdges } from '../lib/mesh'
+import { PRIMITIVES, centreOf, faceOrder, deleteEdges, deleteFaces, deleteVertices, edgeEnds, edgeVerticesOf, edgesOf, extrudeFaces, flipFaces, loopCut, makeMesh, mergeVertices, moveVertices, subdivide, verticesOf, mirrorFacesUv, projectUv, turnFacesUv, bevel, cubeToMesh, joinMeshes, mergeByDistance, separateFaces, dissolveEdges, edgeLoop, fillFace, insetFaces, knifeCut, rotateVertices, scaleVertices, slideEdges, unwrapJoined } from '../lib/mesh'
 import type { KnifePoint } from '../lib/mesh'
 import type { Primitive } from '../lib/mesh'
 import { boxSize, findSpot } from '../lib/uv-pack'
@@ -1971,19 +1971,21 @@ type MeshOps = {
  * room the rest of the sheet leaves free. The faces' old UVs don't count as
  * taken. `crowded` says some found no room and sit at the corner.
  */
-function packMeshFaces(model: Model, mesh: Mesh, faces: readonly string[]): { mesh: Mesh; crowded: boolean } {
+function packMeshFaces(model: Model, mesh: Mesh, faces: readonly string[], joined = false): { mesh: Mesh; crowded: boolean } {
   const cleared = { ...mesh, faces: Object.fromEntries(Object.entries(mesh.faces).map(([k, f]) => [k, faces.includes(k) ? { ...f, uv: {} } : f])) }
   const others = (model.meshes ?? []).filter((x) => x.id !== mesh.id)
   const room = { ...model, meshes: [...others, cleared] }
   const placed: UVRect[] = []
   let crowded = false
-  const next = projectUv(mesh, [...faces], (w, h) => {
+  const place = (w: number, h: number): [number, number] => {
     const spot = findSpot(room, [w, h], placed)
     if (!spot) crowded = true
     const [x, y] = spot ?? [0, 0]
     placed.push([x, y, x + w, y + h])
     return [x, y]
-  })
+  }
+  // joined, faces that share edges stay together on the sheet; apart, each face is its own island
+  const next = joined ? unwrapJoined(mesh, [...faces], place) : projectUv(mesh, [...faces], place)
   return { mesh: next, crowded }
 }
 
@@ -4555,10 +4557,10 @@ export function Editor({ segments }: { segments: string[] }) {
   )
 
   /** Lays the picked faces (or all) out flat again, packed into room the rest of the sheet leaves free. */
-  const onUnwrapMesh = useCallback(() => {
+  const onUnwrapMesh = useCallback((joined: boolean) => {
     if (!selectedMesh || selectedMesh.locked) return
     const keys = meshFaces.filter((k) => selectedMesh.faces[k])
-    const r = packMeshFaces(model, selectedMesh, keys.length ? keys : Object.keys(selectedMesh.faces))
+    const r = packMeshFaces(model, selectedMesh, keys.length ? keys : Object.keys(selectedMesh.faces), joined)
     history.commit('unwrap mesh', (m) => ({ ...m, meshes: (m.meshes ?? []).map((x) => (x.id === r.mesh.id ? r.mesh : x)) }))
     if (r.crowded) notify('The sheet had no room for some faces, so they share texels at the corner. Grow the sheet or move them.', 7000)
   }, [selectedMesh, meshFaces, model, history, notify])

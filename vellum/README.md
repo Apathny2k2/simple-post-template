@@ -1016,7 +1016,7 @@ take UVs the same way along the face's own UVs, so the texture stays put.
   for a mesh of their own in the same place, with copies of the corners
   they shared, and the new mesh is picked.
 - **Join** (Ctrl J; `joinMeshes`): the other meshes picked in the outliner
-  come into the one shown in the panel. Each point goes from its own mesh's
+  come into the mesh shown in the panel. Each point goes from its own mesh's
   frame through the world into the target's, so nothing moves on screen,
   even across bones. Merge by distance then closes any seams.
 - **Convert to mesh** (the vertex button on a cube's inspector, or Edit ▸
@@ -1030,8 +1030,9 @@ shape as its outline and the face is flat. Any other face (a quad with a
 corner pulled out of its plane, or UVs dragged into a trapezoid) is drawn
 as triangles, each with its own map, as a GPU draws it (`facePieces`). A
 quad splits along its shorter diagonal. The triangles overlap by half a
-pixel so no hairline shows between them; on a half-transparent texture
-that overlap can show as a faint line. The Mesh panel has the
+pixel so no hairline shows between them. Only a partly see-through pixel
+would show where it is drawn twice, so a texture with any (`lib/alpha.ts`
+reads each image once) gets no overlap. The Mesh panel has the
 same edits as buttons, the middle of the pick as fields, and the texture for
 the picked faces (or all of them). Extruding keeps the picked faces picked,
 so a drag on the gizmo pulls them straight out.
@@ -1059,9 +1060,13 @@ polygons on the sheet. The pick is Face mode's: a click on the sheet picks
 there and in the viewport. Dragging a face moves every picked face, and
 dragging one of the dots at a picked face's corners moves that corner of that
 face only, since each face keeps its own UVs. Whole texels by default, Shift
-for halves, Ctrl for free. **Unwrap** lays the picked faces (or all of them)
-flat again at one texel per unit, packed into room the rest of the sheet
-leaves free; **Turn** and **Mirror X / Y** work about the middle of the
+for halves, Ctrl for free. **Unwrap** (`unwrapJoined`) unfolds the picked
+faces (or all of them) flat at one texel per unit, faces that share an edge
+kept together: each is laid beside the face it was reached from by turning
+it about their shared edge, so a cube comes out as a cross. A face that
+would land on part of its island starts an island of its own. Each island
+is packed into room the rest of the sheet leaves free. **Each face apart**
+lays every face out on its own instead; **Turn** and **Mirror X / Y** work about the middle of the
 pick's UV bounds. Each drag or button is one undo step.
 
 ### Painting

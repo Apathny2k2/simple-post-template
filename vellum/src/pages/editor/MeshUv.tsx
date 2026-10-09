@@ -30,7 +30,8 @@ export function MeshUvPanel({
   onPick: (face: string, mods: Mods) => void
   /** one undo step per drag: `set` replaces the mesh with each new version */
   onDrag: { begin: (label: string) => void; set: (m: Mesh) => void; end: () => void }
-  onUnwrap: () => void
+  /** joined keeps faces that share edges together on the sheet; apart lays each face out alone */
+  onUnwrap: (joined: boolean) => void
   onTurn: () => void
   onMirror: (axis: 'u' | 'v') => void
 }) {
@@ -172,8 +173,11 @@ export function MeshUvPanel({
       )}
 
       <div className="chip-row">
-        <button className="chip" disabled={locked} onClick={onUnwrap} title="Lay the faces out flat again, one texel per unit, in free room on the sheet">
+        <button className="chip" disabled={locked} onClick={() => onUnwrap(true)} title="Unfold the faces flat, those that share edges kept together, one texel per unit, in free room on the sheet">
           Unwrap
+        </button>
+        <button className="chip" disabled={locked} onClick={() => onUnwrap(false)} title="Lay each face out flat on its own, in free room on the sheet">
+          Each face apart
         </button>
         <button className="chip" disabled={locked || !live.length} onClick={onTurn} title="Turn the picked faces' UVs a quarter clockwise">
           Turn

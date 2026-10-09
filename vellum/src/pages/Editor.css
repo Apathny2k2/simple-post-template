@@ -456,14 +456,13 @@
 .uv-switch:disabled { opacity: 0.5; }
 
 /* the sheet scrolls inside a frame once zoomed; the padding leaves room for edge handles */
-.uv-frame { position: relative; }
+.uv-frame { position: relative; display: flex; flex-direction: column; }
 .uv-scroll { max-height: 420px; overflow: auto; padding: 5px; margin: -5px; overscroll-behavior: contain; }
 .uv-scroll .uv { max-width: none; }
+/* above the sheet rather than over it, so it never hides a face in the corner */
 .uv-zoom {
-  position: absolute;
-  top: 6px;
-  right: 6px;
-  z-index: 3;
+  align-self: flex-end;
+  margin-bottom: 6px;
   display: flex;
   align-items: center;
   gap: 2px;
