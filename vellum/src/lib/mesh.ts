@@ -724,13 +724,99 @@ function uvInside(mesh: Mesh, face: MeshFace, at: Vec3): UV {
   return [round((map.d * x - map.c * y) / det), round((map.a * y - map.b * x) / det)]
 }
 
+/** True when segments ab and cd cross, other than where they share an end. */
+function crosses2(a: P2, b: P2, c: P2, d: P2): boolean {
+  const side = (p: P2, q: P2, r: P2) => (q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0])
+  const near = (p: P2, q: P2) => Math.abs(p[0] - q[0]) < 1e-6 && Math.abs(p[1] - q[1]) < 1e-6
+  if (near(a, c) || near(a, d) || near(b, c) || near(b, d)) return false
+  const d1 = side(c, d, a)
+  const d2 = side(c, d, b)
+  const d3 = side(a, b, c)
+  const d4 = side(a, b, d)
+  return ((d1 > 1e-9 && d2 < -1e-9) || (d1 < -1e-9 && d2 > 1e-9)) && ((d3 > 1e-9 && d4 < -1e-9) || (d3 < -1e-9 && d4 > 1e-9))
+}
+
+/**
+ * Gives each run of knife points that ends inside a face an outline point
+ * to end on: the nearest corner of that face that a straight edge from the
+ * loose end reaches without crossing the outline or the cut. A run with
+ * both ends loose (a line drawn wholly inside a face) gets one at each end.
+ * The corners go into `at` in place, so the cut that follows sees every run
+ * start and end on an outline.
+ */
+function anchorLooseEnds(mesh: Mesh, faces: Record<string, MeshFace>, at: Array<{ v: string; inside?: { face: string; uv: UV } }>) {
+  const corner = (end: number, run: number[], avoid: string | null): string | null => {
+    const fk = at[end].inside!.face
+    const f = faces[fk]
+    if (!f) return null
+    const { keys, origin, e1, e2 } = faceBasis(mesh, f)
+    const flat = (k: string): P2 => {
+      const d = sub(mesh.vertices[k], origin)
+      return [dot(d, e1), dot(d, e2)]
+    }
+    const from = flat(at[end].v)
+    const outline = keys.map((k, i) => [flat(k), flat(keys[(i + 1) % keys.length])] as [P2, P2])
+    const path = run.slice(1).map((r, i) => [flat(at[run[i]].v), flat(at[r].v)] as [P2, P2])
+    let best: string | null = null
+    let dist = Infinity
+    for (const k of keys) {
+      if (k === avoid || run.some((r) => at[r].v === k)) continue
+      const to = flat(k)
+      if ([...outline, ...path].some(([c, d]) => crosses2(from, to, c, d))) continue
+      const len = Math.hypot(to[0] - from[0], to[1] - from[1])
+      if (len < dist) {
+        dist = len
+        best = k
+      }
+    }
+    return best
+  }
+  // the runs of inside points, with the outline points either side of each, if any
+  let i = 0
+  while (i < at.length) {
+    if (!at[i].inside) {
+      i++
+      continue
+    }
+    let j = i
+    while (j + 1 < at.length && at[j + 1].inside) j++
+    const before = i > 0 ? i - 1 : null
+    const after = j + 1 < at.length ? j + 1 : null
+    if (before !== null && after !== null) {
+      i = j + 1
+      continue
+    }
+    // the cut as drawn, from its outline end if it has one
+    const run = Array.from({ length: j - i + 1 }, (_, k) => i + k)
+    const drawn = [...(before !== null ? [before] : []), ...run, ...(after !== null ? [after] : [])]
+    // one inside point on its own, with no outline point either side, is no cut at all
+    if (before === null && after === null && run.length < 2) {
+      i = j + 1
+      continue
+    }
+    const tail = after === null ? corner(j, drawn, before !== null ? at[before].v : null) : null
+    const head = before === null ? corner(i, drawn, after !== null ? at[after].v : tail) : null
+    if ((after === null && !tail) || (before === null && !head)) {
+      i = j + 1
+      continue
+    }
+    if (tail) at.splice(j + 1, 0, { v: tail })
+    if (head) at.splice(i, 0, { v: head })
+    i = j + 1 + (head ? 1 : 0) + (tail ? 1 : 0)
+  }
+}
+
 /**
  * Blender's knife. A point on an edge becomes a vertex there (or the corner
  * it sits on), and faces beside that edge take it too. A point inside a
  * face becomes a vertex in it. Each run of points that starts and ends on
  * the outline of one face, with any number of inside points between,
- * splits that face along the run. A run that stops inside a face can't be
- * said by a face's outline, so it cuts nothing. Returns the new edges.
+ * splits that face along the run. A face's outline can't hold a line that
+ * stops inside it, so a run with a loose end is carried on from that end
+ * to the nearest corner of the face it can reach in a straight line
+ * without crossing the face's outline or the cut itself; the cut is kept
+ * where it was drawn, and the face splits along it and that one extra
+ * edge. Returns the new edges, the extra ones among them.
  */
 export function knifeCut(mesh: Mesh, points: readonly KnifePoint[]): { mesh: Mesh; edges: string[] } {
   const vertices = { ...mesh.vertices }
@@ -769,6 +855,7 @@ export function knifeCut(mesh: Mesh, points: readonly KnifePoint[]): { mesh: Mes
   const cut: Mesh = { ...mesh, vertices }
   const faces = { ...mesh.faces }
   insertOnEdges(cut, faces, inserts, new Set())
+  anchorLooseEnds(cut, faces, at)
   const made: string[] = []
   const used = new Set<string>()
   let i = 0

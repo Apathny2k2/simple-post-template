@@ -14,7 +14,7 @@
    editor state. v8 added `nulls`, clip `events` and `pingpong`; v9 added
    `meshes`. */
 
-import { FACES, subtypeFits } from './model'
+import { FACES, keyAddress, subtypeFits } from './model'
 import type { Behaviour, BehaviourEffect, BehaviourRequirement, BehaviourStage, EffectKind } from './behaviour'
 import { bodyOf, canonicalise, fieldsOf, hasConfig, looksLegacy } from './config'
 import type { ConfigValue, Config, Row } from './config'
@@ -499,6 +499,7 @@ function blockbenchOf(model: Model): Record<string, unknown> | undefined {
     groups: new Set<string>(),
     textures: new Set(model.textures.map((t) => t.id)),
     animations: new Set(model.clips.map((c) => c.id)),
+    keys: new Set(model.clips.flatMap((c) => c.tracks.flatMap((t) => t.keys.map((k) => keyAddress(c.id, t.bone, t.channel, k.time))))),
   }
   const walk = (list: Bone[]) =>
     list.forEach((b) => {

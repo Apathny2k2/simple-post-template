@@ -5,7 +5,7 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { drag, dragArrow, dragRing, inApp, open, openEditor, startApp } from './harness.mjs'
+import { countOf, drag, dragArrow, dragRing, inApp, open, openEditor, startApp } from './harness.mjs'
 
 startApp()
 
@@ -304,8 +304,8 @@ test('in the editor: convert a cube, separate faces, join them back, merge by di
   const cubes = await page.locator('.model-cube').count()
   await page.click('button[aria-label="Convert yoke to a mesh"]')
   await page.waitForSelector('.model-mface')
-  assert.equal(await page.locator('.model-cube').count(), cubes - 1)
-  assert.equal(await page.locator('.model-mface').count(), 6)
+  assert.equal(await countOf(page, '.model-cube', cubes - 1), cubes - 1)
+  assert.equal(await countOf(page, '.model-mface', 6), 6)
   assert.equal(await page.inputValue('.insp-head__name'), 'yoke')
 
   // Face mode: pick one face and separate it
@@ -395,8 +395,23 @@ test('the knife cuts through the inside of a face', async () => {
     }
     // in at one edge, a bend inside the top face, out at the opposite edge
     const bent = M.knifeCut(cube, [{ edge: ring[0], t: 0.5 }, { face: top, at: [1, 8, 1] }, { edge: ring[2], t: 0.5 }])
-    // a run that stops inside the face cuts nothing; its edge point still joins the outline
+    // a run that stops inside the face goes on to the nearest corner it can reach
     const dangling = M.knifeCut(cube, [{ edge: ring[0], t: 0.5 }, { face: top, at: [1, 8, 1] }])
+    // a line drawn wholly inside the face goes on to a corner at each end
+    const floating = M.knifeCut(cube, [{ face: top, at: [-1, 8, -1] }, { face: top, at: [1, 8, 1] }])
+    // flat faces that don't overlap: the halves' areas add up to the old top's
+    const area = (m, keys) => keys.reduce((a, k) => a + Math.hypot(...(() => {
+      const o2 = M.faceOrder(m, m.faces[k]).map((v) => m.vertices[v])
+      const n = [0, 0, 0]
+      o2.forEach((p, i) => {
+        const q = o2[(i + 1) % o2.length]
+        n[0] += (p[1] - q[1]) * (p[2] + q[2])
+        n[1] += (p[2] - q[2]) * (p[0] + q[0])
+        n[2] += (p[0] - q[0]) * (p[1] + q[1])
+      })
+      return n.map((x) => x / 2)
+    })()), 0)
+    const tops = (m) => Object.keys(m.faces).filter((k) => M.faceNormal(m, m.faces[k])[1] > 0.9)
     // the inside point's UV is where it sits on the face's own UVs
     const f = cube.faces[top]
     const us = o.map((k) => f.uv[k][0])
@@ -405,13 +420,18 @@ test('the knife cuts through the inside of a face', async () => {
     const uvs = Object.values(bent.mesh.faces).filter((x) => x.vertices.includes(inner)).map((x) => x.uv[inner])
     return {
       bent: { ...shape(bent.mesh), made: bent.edges.length },
-      dangling: shape(dangling.mesh),
+      dangling: { ...shape(dangling.mesh), made: dangling.edges.length },
+      floating: { ...shape(floating.mesh), made: floating.edges.length },
+      areas: [dangling, floating].map((x) => Math.round(area(x.mesh, tops(x.mesh)) * 100) / 100),
+      whole: Math.round(area(cube, [top]) * 100) / 100,
       inner: uvs.length === 2 && JSON.stringify(uvs[0]) === JSON.stringify(uvs[1]),
       inside: uvs[0] && uvs[0][0] > Math.min(...us) && uvs[0][0] < Math.max(...us) && uvs[0][1] > Math.min(...vs) && uvs[0][1] < Math.max(...vs),
     }
   })
   assert.deepEqual(r.bent, { faces: 7, vertices: 11, open: 0, made: 2 }, 'the top splits along a bent line, the sides take the new edge points')
-  assert.deepEqual(r.dangling, { faces: 6, vertices: 9, open: 0 })
+  assert.deepEqual(r.dangling, { faces: 7, vertices: 10, open: 0, made: 2 }, 'a cut that stops inside goes on to a corner, and the top splits')
+  assert.deepEqual(r.floating, { faces: 7, vertices: 10, open: 0, made: 3 }, 'a line inside the face goes on to a corner at each end')
+  assert.deepEqual(r.areas, [r.whole, r.whole], 'the halves cover the top once, with no overlap')
   assert.ok(r.inner, 'both halves give the inside point the same UV')
   assert.ok(r.inside, 'and it lies inside the face on the sheet')
   await page.close()

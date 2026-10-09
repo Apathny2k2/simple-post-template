@@ -144,6 +144,82 @@ test('a hand-written Bedrock file: pre and post, catmull-rom, Molang, one value 
   await page.close()
 })
 
+test('meshes go out as poly meshes and keyed nulls as bones, and both come back', async () => {
+  const { page } = await open()
+  const r = await inApp(page, async () => {
+    const B = await import('/src/lib/bedrock.ts')
+    const M = await import('/src/lib/model.ts')
+    const Me = await import('/src/lib/mesh.ts')
+    const K = await import('/src/lib/kinematics.ts')
+    const S = await import('/src/lib/samples.ts')
+    const base = S.samples.find((s) => s.model.kind === 'mobs' && s.model.clips.length).model
+    const bone = base.bones[0]
+    const cyl = { ...Me.makeMesh('cylinder', { parent: bone.id, origin: [2, 3, -1], size: 6, sides: 8, texture: null, place: () => [0, 0] }), rotation: [0, 30, 15] }
+    const pyr = Me.makeMesh('pyramid', { parent: null, origin: [-4, 0, 4], size: 4, texture: null, place: () => [0, 0] })
+    const keyed = { id: 'n1', name: 'hand_target', parent: bone.id, position: [1, 2, 3], visible: true, locked: false }
+    const still = { id: 'n2', name: 'tip', parent: bone.id, position: [0, 9, 0], visible: true, locked: false }
+    const clip = { ...base.clips[0], tracks: [...base.clips[0].tracks, { bone: 'n1', channel: 'position', keys: [{ id: 'k1', time: 0, value: [0, 0, 0], interp: 'linear' }, { id: 'k2', time: base.clips[0].length, value: [3, -1, 2], interp: 'linear' }] }] }
+    const m = { ...base, meshes: [cyl, pyr], nulls: [keyed, still], clips: [clip, ...base.clips.slice(1)] }
+    const geo = B.toBedrockGeometry(m)
+    const anim = B.toBedrockAnimations(m)
+    const bones = geo.json['minecraft:geometry'][0].bones
+    const polys = bones.flatMap((b) => (b.poly_mesh ? b.poly_mesh.polys : []))
+    const back = B.applyBedrockAnimations(B.fromBedrockGeometry(JSON.stringify(geo.json)).model, JSON.stringify(anim.json)).model
+    const world = (mesh) => Object.values(mesh.vertices).map((v) => {
+      const p = K.rotationMatrix(mesh.rotation).transformPoint(new DOMPoint(...v))
+      return [mesh.origin[0] + p.x, mesh.origin[1] + p.y, mesh.origin[2] + p.z].map((x) => Math.round(x * 100) / 100).join(',')
+    }).sort()
+    // every face faces away from the middle of its (convex) mesh
+    const outward = (mesh) => {
+      const vs = Object.values(mesh.vertices)
+      const mid = [0, 1, 2].map((i) => vs.reduce((a, v) => a + v[i], 0) / vs.length)
+      return Object.values(mesh.faces).every((f) => {
+        const n = Me.faceNormal(mesh, f)
+        const c = Me.faceCentre(mesh, f)
+        return n[0] * (c[0] - mid[0]) + n[1] * (c[1] - mid[1]) + n[2] * (c[2] - mid[2]) > 0
+      })
+    }
+    const sorted = (ms) => ms.map(world).map((w) => w.join(' ')).sort()
+    const nb = back.nulls.find((n) => n.name === 'hand_target')
+    const parentName = (mm, id) => {
+      let name = null
+      const walk = (list) => list.forEach((b) => (b.id === id && (name = b.name), walk(b.children.filter((c) => c.kind === 'bone').map((c) => c.bone))))
+      walk(mm.bones)
+      return name
+    }
+    const track = back.clips[0].tracks.find((t) => t.bone === nb?.id && t.channel === 'position')
+    const L = clip.length
+    return {
+      notes: [...geo.notes, ...anim.notes],
+      allQuads: polys.length > 0 && polys.every((p) => p.length === 4),
+      rootBone: bones.some((b) => b.name === 'meshes' && b.poly_mesh),
+      meshes: back.meshes?.length,
+      sameShape: JSON.stringify(sorted(back.meshes ?? [])) === JSON.stringify(sorted([cyl, pyr])),
+      outward: (back.meshes ?? []).every(outward) && [cyl, pyr].every(outward),
+      faces: (back.meshes ?? []).reduce((a, x) => a + Object.keys(x.faces).length, 0),
+      before: [cyl, pyr].reduce((a, x) => a + Object.values(x.faces).reduce((b, f) => b + (f.vertices.length > 4 ? f.vertices.length - 2 : 1), 0), 0),
+      ngons: Object.values(cyl.faces).some((f) => f.vertices.length > 4),
+      nullBack: !!nb && parentName(back, nb.parent) === bone.name && nb.position.every((v, i) => Math.abs(v - keyed.position[i]) < 1e-3),
+      stillBack: back.nulls.some((n) => n.name === 'tip' && parentName(back, n.parent) === bone.name),
+      bonesKept: !back.bones.some((b) => b.name === 'hand_target'),
+      motion: !!track && [0, L / 3, L].every((t) => M.sampleTrack(track, t).every((v, i) => Math.abs(v - M.sampleTrack(clip.tracks.at(-1), t)[i]) < 1e-3)),
+    }
+  })
+  assert.deepEqual(r.notes.filter((n) => /mesh|null/i.test(n)), [], 'nothing about meshes or nulls is left out')
+  assert.ok(r.allQuads, 'every poly is a quad')
+  assert.ok(r.rootBone, 'a mesh at the root gets a bone of its own')
+  assert.equal(r.meshes, 2, 'both meshes come back')
+  assert.ok(r.sameShape, 'their corners are where they were, turn and all')
+  assert.ok(r.outward, 'their faces still face out')
+  assert.ok(r.ngons, 'the cylinder has eight-sided caps to cut')
+  assert.equal(r.faces, r.before, 'a face of five or more corners comes back as triangles, and the rest as they were')
+  assert.ok(r.nullBack, 'the keyed null comes back as a null on its bone')
+  assert.ok(r.stillBack, 'the unkeyed null is still a locator')
+  assert.ok(r.bonesKept, 'no extra bone is left behind')
+  assert.ok(r.motion, 'the null moves the same')
+  await page.close()
+})
+
 test('File ▸ Export writes a Bedrock zip; File ▸ Open adds Bedrock animations to the model', async () => {
   const { page, errors } = await openEditor('voidling')
   await page.click('.sbar button:has-text("File")')

@@ -683,3 +683,10 @@ export function validateModel(model: Model, kind?: ProjectKind, subtype?: Subtyp
 
 /** Clip names that count as an attack. */
 const ATTACK_CLIP = /attack|strike|swing|bite|lunge|slam|hit|charge/i
+
+/**
+ * Where a key's kept Blockbench fields are filed: by clip, bone, channel and
+ * time, as a .vellum gives keys new ids each time it is read. A key moved
+ * in time leaves them behind.
+ */
+export const keyAddress = (clip: string, bone: string, channel: string, time: number) => `${clip}/${bone}/${channel}/${Math.round(time * 1e4) / 1e4}`

@@ -1027,8 +1027,11 @@ take UVs the same way along the face's own UVs, so the texture stays put.
   inside a face becomes a vertex in it, its UV read back through the face's
   own UV map. Each run of clicks that starts and ends on one face's outline,
   with any number of inside clicks between, splits that face along the run.
-  A run that stops inside a face cuts nothing, since a face's outline can't
-  hold a loose line.
+  A face's outline can't hold a line that stops inside it, so a run with a
+  loose end is carried on from that end to the nearest corner of the face
+  it can reach in a straight line without crossing the outline or the cut.
+  The cut stays where it was drawn and the face splits along it and that
+  one extra edge; a line drawn wholly inside a face gets one at each end.
 - **Bevel** (Ctrl B, in Edge or Vertex mode; `bevel`): all picked edges at
   once. Each face corner at a bevelled vertex moves in: between two
   bevelled edges to where the two edges, each moved the bevel width into
@@ -1222,12 +1225,17 @@ File ▸ Open takes a `.vellum`, a Blockbench project or a Java model.
   rotation key as (-x, -y, z) and a position key as (-x, y, z) on top of
   the bone, while Vellum adds keys straight onto it. Keys cross over with
   those signs both ways (`keySigns`), so a clip turns the same way in both.
+  Checked against a real project: in an animated mob's bite the jaw's key
+  drops the jaw's tip and opens the mouth, and its roar lifts the head, as
+  they were animated.
 
   Nothing is dropped. What Vellum has no field for (display settings, a
   face's cullface and tint, element and group colours, a texture's render
-  mode, an animation's blend weight, the project's other keys, and whole
-  elements Vellum can't show, such as texture meshes) is kept in
-  `model.blockbench` by id, saved in the `.vellum` (v10), and written back
+  mode and id, an animation's blend weight, a key's `uniform` scale,
+  linked handles and plugin fields such as `easing`, the project's other
+  keys, and whole elements Vellum can't show, such as texture meshes) is
+  kept in `model.blockbench` by id (a key's by clip, bone, channel and
+  time, since a `.vellum` gives keys new ids each time it is read), saved in the `.vellum` (v10), and written back
   into a `.bbmodel`. A key holding the value the exporter writes anyway is
   not kept, so a model made in Vellum carries none. Molang in a key is kept and played (see Molang, under Animating), and a cube outside every group goes under a new `root` bone; the status bar says so.
 
@@ -1257,8 +1265,13 @@ File ▸ Open takes a `.vellum`, a Blockbench project or a Java model.
   a step holds by giving the next key a `pre`, and a bezier segment, which
   Bedrock can't say, is baked into linear keys at the clip's snapping rate.
   A ping-pong clip is written out there and back as a loop twice as long.
-  Meshes and tracks on null objects have no Bedrock form and are named in
-  the status bar.
+  A mesh goes in as its bone's `poly_mesh`: positions in rest space with X
+  flipped, every poly a quad (a triangle repeats its last corner, as
+  Blockbench writes them; a face of five or more corners is cut into
+  triangles), UVs 0..1 counted up from the bottom. Meshes at the model root
+  get a bone named `meshes`. Bedrock animates bones only, so a null object
+  that a clip keys goes out as a bone holding one locator of its own name at
+  its pivot, and that shape reads back as the null.
 
   File ▸ Open takes a `.geo.json` (the 1.12 form or the older one keyed by
   `geometry.` names) as a new model with a blank texture named after it,
@@ -1310,9 +1323,9 @@ code the editor runs.
 | `interchange.test.mjs` | A Blockbench project with groups, loose cubes, a mesh, Molang, bezier keys, effects and an IK null comes in whole; Java JSON comes in and round-trips; glTF has a node per bone, an animation per clip and no inward triangles; the OBJ zip; opening both through the editor |
 | `paint.test.mjs` | The paint sheet, face picking, keeping strokes inside a face, painting on the model, the palette |
 | `mesh.test.mjs` | Every primitive faces outward; extrude, merge, flip and delete keep a mesh whole; the v9 round trip; adding, picking, extruding, moving and merging in the editor; a Blockbench mesh imported and exported to glTF facing outward; painting a mesh face; loop cut and subdivide leave the surface closed; Edge mode, box-picking vertices and dragging mesh UVs on the sheet |
-| `mesh-tools.test.mjs` | Knife, bevel, edge slide, loop select, fill, dissolve, inset, turning and scaling keep a cube closed and facing out; faces a flat map can't fit split into triangles; the knife, bevel, inset, gizmo turn and scale, and slide in the editor; a dragged UV corner drawn as two triangles |
-| `bbmodel.test.mjs` | Every sample saved as a `.bbmodel` opens as the same model; a Blockbench project (4 and 5 outliners) keeps its display, cullfaces, colours, render modes, blend weights and unknown elements through a `.vellum` and back; ids that aren't uuids and ping-pong clips survive; Save's format menu, and a `.bbmodel` saving back as one |
-| `bedrock.test.mjs` | Every sample out to Bedrock geometry and animations and back keeps its bones, cubes, UVs and motion; a hand-written Bedrock file with `pre`/`post`, catmull-rom, Molang, single values, locators and effects; the export zip and adding animations from File ▸ Open |
+| `mesh-tools.test.mjs` | Knife (including cuts that stop inside a face), bevel, edge slide, loop select, fill, dissolve, inset, turning and scaling keep a cube closed and facing out; faces a flat map can't fit split into triangles; the knife, bevel, inset, gizmo turn and scale, and slide in the editor; a dragged UV corner drawn as two triangles |
+| `bbmodel.test.mjs` | Every sample saved as a `.bbmodel` opens as the same model; a Blockbench project (4 and 5 outliners) keeps its display, cullfaces, colours, render modes, texture ids, blend weights, keyframe fields and unknown elements through a `.vellum` and back; ids that aren't uuids and ping-pong clips survive; Save's format menu, and a `.bbmodel` saving back as one |
+| `bedrock.test.mjs` | Every sample out to Bedrock geometry and animations and back keeps its bones, cubes, UVs and motion; a hand-written Bedrock file with `pre`/`post`, catmull-rom, Molang, single values, locators and effects; meshes as poly meshes and keyed nulls as bones, both ways; the export zip and adding animations from File ▸ Open |
 | `molang.test.mjs` | The evaluator's operators, math in degrees, queries, variables and statements; Molang keys playing, and kept through the `.vellum`, Blockbench and Bedrock; typing Molang on a key in Animate |
 | `controllers.test.mjs` | A controller moving between states, adding clips at weights, running entry scripts and cross-fading; controllers kept through the `.vellum`, the `.bbmodel` and Bedrock's files, with the entity file; making, playing and switching one in Animate |
 | `layers.test.mjs` | Layers flattened bottom first at their opacity, hidden ones left out, and merged down as they looked; kept through the `.vellum` and the `.bbmodel`; adding a layer, painting on it alone, hiding it and flattening in Paint |

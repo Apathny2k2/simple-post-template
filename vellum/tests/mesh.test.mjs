@@ -4,7 +4,7 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { drag, dragArrow, inApp, mode, open, openEditor, startApp } from './harness.mjs'
+import { countOf, drag, dragArrow, inApp, mode, open, openEditor, startApp } from './harness.mjs'
 
 startApp()
 
@@ -93,7 +93,7 @@ test('add a mesh, pick a face, extrude it, move vertices with the gizmo, undo', 
   await page.click('.mesh-add > button')
   await page.click('.mesh-add__menu button:has-text("Cube")')
   await page.waitForSelector('.model-mface')
-  assert.equal(await page.locator('.model-mface').count(), 6)
+  assert.equal(await countOf(page, '.model-mface', 6), 6)
   assert.equal(await page.inputValue('.insp-head__name'), 'cube')
   assert.ok((await page.$$eval('.tree__row .tree__name', (els) => els.map((e) => e.textContent))).includes('cube'), 'listed in the outliner')
 
@@ -102,14 +102,14 @@ test('add a mesh, pick a face, extrude it, move vertices with the gizmo, undo', 
   const face = page.locator('.model-mface').first()
   const b = await face.boundingBox()
   await page.mouse.click(b.x + b.width / 2, b.y + b.height / 2)
-  assert.equal(await page.locator('.model-mface--picked').count(), 1)
+  assert.equal(await countOf(page, '.model-mface--picked', 1), 1)
   await page.keyboard.press('e')
-  assert.equal(await page.locator('.model-mface').count(), 10, 'extrude adds four sides')
+  assert.equal(await countOf(page, '.model-mface', 10), 10, 'extrude adds four sides')
 
   // Vertex mode: pick every vertex and move them along X with the arrow
   await page.keyboard.press('3')
   await page.keyboard.press('Control+a')
-  assert.equal(await page.locator('.scene3d__vertex--own').count(), 12)
+  assert.equal(await countOf(page, '.scene3d__vertex--own', 12), 12)
   const mid = () => page.$$eval('.num-field-row', (rows) => {
     const row = rows.find((r) => r.textContent.includes('Middle of the pick'))
     return [...row.querySelectorAll('input')].map((i) => Number(i.value))
@@ -128,10 +128,10 @@ test('add a mesh, pick a face, extrude it, move vertices with the gizmo, undo', 
   await dots.nth(0).click()
   await dots.nth(1).click({ modifiers: ['Shift'] })
   await page.keyboard.press('m')
-  assert.equal(await page.locator('.scene3d__vertex').count(), 11)
+  assert.equal(await countOf(page, '.scene3d__vertex', 11), 11)
   await page.keyboard.press('1')
   await page.click('button[aria-label="Delete cube"]')
-  assert.equal(await page.locator('.model-mface').count(), 0)
+  assert.equal(await countOf(page, '.model-mface', 0), 0)
   assert.deepEqual(errors, [])
   await page.close()
 })

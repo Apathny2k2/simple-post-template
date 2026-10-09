@@ -9,8 +9,10 @@
    writes them. Animation keys take the same signs as Blockbench keeps them
    (see `keySigns`). */
 
-import { FACES, sampleTrack } from './model'
-import type { Bone, BoneChild, Clip, ClipEvent, Controller, ControllerState, Cube, Face, FaceKey, Key, Model, NullObject, Track, UVRect, Vec3 } from './model'
+import { FACES, sampleTrack, textureById } from './model'
+import type { Bone, BoneChild, Clip, ClipEvent, Controller, ControllerState, Cube, Face, FaceKey, Key, Mesh, MeshFace, Model, NullObject, Track, UVRect, Vec3 } from './model'
+import { faceNormal, faceOrder } from './mesh'
+import { rotationMatrix } from './kinematics'
 import { newId } from './new-model'
 import { keySigns } from './bbmodel'
 import type { Imported } from './bbmodel'
@@ -41,11 +43,79 @@ export const bedrockName = (name: string) => name.toLowerCase().replace(/[^a-z0-
 
 /* ---------------- geometry out ---------------- */
 
-/** The model as Bedrock geometry, format 1.12.0. Meshes have no Bedrock form yet and are listed in `notes`. */
+/** The ids of null objects some clip keys; Bedrock animates bones, so these go out as bones of their own. */
+function animatedNulls(model: Model): Set<string> {
+  const ids = new Set((model.nulls ?? []).map((n) => n.id))
+  const boneNames = new Set<string>()
+  const walk = (list: Bone[]) => list.forEach((b) => (boneNames.add(b.name), walk(b.children.flatMap((c) => (c.kind === 'bone' ? [c.bone] : [])))))
+  walk(model.bones)
+  const out = new Set<string>()
+  for (const clip of model.clips) for (const t of clip.tracks) if (ids.has(t.bone) && t.keys.length) out.add(t.bone)
+  // a null named like a bone would be read back as that bone, so it stays a locator
+  for (const n of model.nulls ?? []) if (boneNames.has(n.name)) out.delete(n.id)
+  return out
+}
+
+/**
+ * Meshes as one Bedrock `poly_mesh`. Positions are in the model's rest
+ * space with X flipped, as cubes are. Every poly is a quad: a triangle
+ * repeats its last corner, as Blockbench writes them, and a face of more
+ * than four corners is cut into triangles from its first corner. UVs are
+ * 0..1 with v counted up from the bottom of the sheet.
+ */
+function polyMesh(model: Model, meshes: Mesh[]): Json {
+  const positions: Vec3[] = []
+  const normals: Vec3[] = []
+  const uvs: Array<[number, number]> = []
+  const polys: number[][][] = []
+  for (const mesh of meshes) {
+    const R = rotationMatrix(mesh.rotation)
+    const index = new Map<string, number>()
+    const place = (k: string) => {
+      let i = index.get(k)
+      if (i === undefined) {
+        const v = mesh.vertices[k]
+        const p = R.transformPoint(new DOMPoint(v[0], v[1], v[2]))
+        i = positions.push(flipX([mesh.origin[0] + p.x, mesh.origin[1] + p.y, mesh.origin[2] + p.z])) - 1
+        index.set(k, i)
+      }
+      return i
+    }
+    for (const f of Object.values(mesh.faces) as MeshFace[]) {
+      const o = faceOrder(mesh, f)
+      if (o.length < 3) continue
+      const n = faceNormal(mesh, f)
+      const d = R.transformPoint(new DOMPoint(n[0], n[1], n[2], 0))
+      const ni = normals.push(flipX([d.x, d.y, d.z])) - 1
+      const tex = textureById(model, f.texture)
+      const W = tex?.uvWidth || model.resolution.width
+      const H = tex?.uvHeight || model.resolution.height
+      const corner = (k: string) => [place(k), ni, uvs.push([r4((f.uv[k]?.[0] ?? 0) / W), r4(1 - (f.uv[k]?.[1] ?? 0) / H)]) - 1]
+      // flipping X turns the winding over, so the corners go the other way round to keep facing out
+      const pieces = o.length <= 4 ? [o] : Array.from({ length: o.length - 2 }, (_, i) => [o[0], o[i + 1], o[i + 2]])
+      for (const piece of pieces) {
+        const poly = [...piece].reverse().map(corner)
+        if (poly.length === 3) poly.push(poly[2])
+        polys.push(poly)
+      }
+    }
+  }
+  return { normalized_uvs: true, positions, normals, uvs, polys }
+}
+
+/** The model as Bedrock geometry, format 1.12.0. Meshes go in as each bone's `poly_mesh`. */
 export function toBedrockGeometry(model: Model): { json: Json; notes: string[] } {
   const id = `geometry.${bedrockName(model.name)}`
   const notes: string[] = []
-  if (model.meshes?.length) notes.push(`${model.meshes.length} mesh${model.meshes.length === 1 ? ' is' : 'es are'} left out: Bedrock geometry holds cubes.`)
+  const meshesOf = new Map<string | null, Mesh[]>()
+  const boneIds = new Set<string>()
+  const ids = (list: Bone[]) => list.forEach((b) => (boneIds.add(b.id), ids(b.children.flatMap((c) => (c.kind === 'bone' ? [c.bone] : [])))))
+  ids(model.bones)
+  for (const m of model.meshes ?? []) {
+    const at = m.parent && boneIds.has(m.parent) ? m.parent : null
+    meshesOf.set(at, [...(meshesOf.get(at) ?? []), m])
+  }
+  const asBones = animatedNulls(model)
   const cubeById = new Map(model.cubes.map((c) => [c.id, c]))
   const bones: Json[] = []
   let maxR = 1
@@ -80,7 +150,9 @@ export function toBedrockGeometry(model: Model): { json: Json; notes: string[] }
   const walk = (list: Bone[], parent: string | null) => {
     for (const b of list) {
       const cubes = b.children.flatMap((c) => (c.kind === 'cube' && cubeById.has(c.id) ? [cubeJson(cubeById.get(c.id)!)] : []))
-      const locators = Object.fromEntries((model.nulls ?? []).filter((n) => n.parent === b.id).map((n) => [n.name, flipX(n.position)]))
+      const mine = (model.nulls ?? []).filter((n) => n.parent === b.id)
+      const locators = Object.fromEntries(mine.filter((n) => !asBones.has(n.id)).map((n) => [n.name, flipX(n.position)]))
+      const meshes = meshesOf.get(b.id)
       bones.push({
         name: b.name,
         ...(parent ? { parent } : {}),
@@ -89,14 +161,41 @@ export function toBedrockGeometry(model: Model): { json: Json; notes: string[] }
         ...(b.mirrorUv ? { mirror: true } : {}),
         ...(cubes.length ? { cubes } : {}),
         ...(Object.keys(locators).length ? { locators } : {}),
+        ...(meshes ? { poly_mesh: polyMesh(model, meshes) } : {}),
       })
+      for (const n of mine) if (asBones.has(n.id)) bones.push(nullBone(n, b.name))
       walk(b.children.flatMap((c) => (c.kind === 'bone' ? [c.bone] : [])), b.name)
     }
   }
+  // a keyed null becomes a bone holding one locator of its own name at its pivot, which reads back as the null
+  const nullBone = (n: NullObject, parent: string | null): Json => ({
+    name: n.name,
+    ...(parent ? { parent } : {}),
+    pivot: flipX(n.position),
+    locators: { [n.name]: flipX(n.position) },
+  })
   walk(model.bones, null)
-  // null objects at the model root ride on the first bone
-  const loose = (model.nulls ?? []).filter((n) => !n.parent)
-  if (loose.length && bones[0]) bones[0].locators = { ...obj(bones[0].locators), ...Object.fromEntries(loose.map((n) => [n.name, flipX(n.position)])) }
+  const loose = (model.nulls ?? []).filter((n) => !n.parent || !boneIds.has(n.parent))
+  for (const n of loose) if (asBones.has(n.id)) bones.push(nullBone(n, null))
+  // other null objects at the model root ride on the first bone
+  const still = loose.filter((n) => !asBones.has(n.id))
+  if (still.length && bones[0]) bones[0].locators = { ...obj(bones[0].locators), ...Object.fromEntries(still.map((n) => [n.name, flipX(n.position)])) }
+  // meshes at the model root get a bone of their own, at the middle, as Bedrock keeps geometry in bones
+  const rootMeshes = meshesOf.get(null)
+  if (rootMeshes) {
+    const taken = new Set(bones.map((b) => b.name))
+    let name = 'meshes'
+    for (let i = 2; taken.has(name); i++) name = `meshes_${i}`
+    bones.push({ name, pivot: [0, 0, 0], poly_mesh: polyMesh(model, rootMeshes) })
+  }
+  for (const m of model.meshes ?? []) {
+    for (const v of Object.values(m.vertices)) {
+      const R = rotationMatrix(m.rotation)
+      const p = R.transformPoint(new DOMPoint(v[0], v[1], v[2]))
+      maxR = Math.max(maxR, Math.abs(m.origin[0] + p.x), Math.abs(m.origin[2] + p.z))
+      maxY = Math.max(maxY, m.origin[1] + p.y)
+    }
+  }
   const width = Math.ceil((maxR * 2) / 16) + 1
   const height = Math.ceil(maxY / 16) + 1
   return {
@@ -160,6 +259,7 @@ export function toBedrockAnimations(model: Model): { json: Json; notes: string[]
   const walk = (list: Bone[]) => list.forEach((b) => (names.set(b.id, b.name), walk(b.children.flatMap((c) => (c.kind === 'bone' ? [c.bone] : [])))))
   walk(model.bones)
   const nullName = new Map((model.nulls ?? []).map((n) => [n.id, n.name]))
+  for (const id of animatedNulls(model)) names.set(id, nullName.get(id)!)
   const base = bedrockName(model.name)
   const animations: Json = {}
   let nullTracks = 0
@@ -189,7 +289,7 @@ export function toBedrockAnimations(model: Model): { json: Json; notes: string[]
       ...(at('script').length ? { timeline: Object.fromEntries(at('script').map((e) => [time(e.time), e.effect])) } : {}),
     }
   }
-  if (nullTracks) notes.push(`${nullTracks} track${nullTracks === 1 ? '' : 's'} on null objects ${nullTracks === 1 ? 'is' : 'are'} left out: Bedrock animates bones.`)
+  if (nullTracks) notes.push(`${nullTracks} track${nullTracks === 1 ? '' : 's'} on null objects named like a bone ${nullTracks === 1 ? 'is' : 'are'} left out. Rename the null to keep them.`)
   return { json: { format_version: '1.8.0', animations }, notes }
 }
 
@@ -257,9 +357,55 @@ export function isBedrockAnimation(text: string): boolean {
 }
 
 /**
+ * A bone's `poly_mesh` as a mesh on that bone, its origin at the bone's
+ * pivot. Polys come as lists of [position, normal, uv] indices, or as
+ * `tri_list` / `quad_list`, where every corner uses the same index for all
+ * three. A repeated last corner (a triangle written as a quad) is dropped.
+ */
+function meshFromPoly(pm: Json, bone: Bone, res: { width: number; height: number }, texture: string): Mesh | null {
+  const positions = arr(pm.positions).map((p) => flipX(vec(p)))
+  const uvs = arr(pm.uvs).map((u) => [num(arr(u)[0]), num(arr(u)[1])] as [number, number])
+  const normalized = pm.normalized_uvs === true
+  let polys: number[][][]
+  if (pm.polys === 'tri_list' || pm.polys === 'quad_list') {
+    const n = pm.polys === 'tri_list' ? 3 : 4
+    polys = Array.from({ length: Math.floor(positions.length / n) }, (_, i) => Array.from({ length: n }, (_, j) => [i * n + j, i * n + j, i * n + j]))
+  } else polys = arr(pm.polys).map((poly) => arr(poly).map((c) => arr(c).map((x) => num(x))))
+  if (!positions.length || !polys.length) return null
+  const vertices: Record<string, Vec3> = {}
+  const keyOf = new Map<number, string>()
+  const vertex = (i: number) => {
+    let k = keyOf.get(i)
+    if (!k) {
+      k = newId().slice(0, 8)
+      const p = positions[i] ?? [0, 0, 0]
+      vertices[k] = [r4(p[0] - bone.origin[0]), r4(p[1] - bone.origin[1]), r4(p[2] - bone.origin[2])]
+      keyOf.set(i, k)
+    }
+    return k
+  }
+  const faces: Record<string, MeshFace> = {}
+  for (const poly of polys) {
+    const corners = poly.filter((c, i) => !(i > 0 && c[0] === poly[i - 1][0]) && !(i === poly.length - 1 && c[0] === poly[0][0]))
+    if (corners.length < 3) continue
+    // written the other way round to face out once X is flipped back
+    const keys = [...corners].reverse().map((c) => vertex(c[0]))
+    const uv: Record<string, [number, number]> = {}
+    ;[...corners].reverse().forEach((c, i) => {
+      const [u, v] = uvs[c[2]] ?? [0, 0]
+      uv[keys[i]] = normalized ? [r4(u * res.width), r4((1 - v) * res.height)] : [r4(u), r4(res.height - v)]
+    })
+    faces[newId().slice(0, 8)] = { vertices: keys, uv, texture }
+  }
+  if (!Object.keys(faces).length) return null
+  return { id: newId(), name: `${bone.name}_mesh`, parent: bone.id, origin: [...bone.origin] as Vec3, rotation: [0, 0, 0], vertices, faces, visible: true, locked: false }
+}
+
+/**
  * Bedrock geometry as a model. Bones keep their names and parents, cubes
  * their box or per-face UVs, locators become null objects. The texture is
  * blank and named after the geometry, as Bedrock files carry no image;
+ * a poly mesh becomes a mesh on its bone;
  * importing a PNG of that name on the Textures panel fills it in.
  */
 export function fromBedrockGeometry(text: string, fileName = 'model.geo.json'): Imported {
@@ -282,6 +428,8 @@ export function fromBedrockGeometry(text: string, fileName = 'model.geo.json'): 
   const texture = { id: newId(), name: `${identifier.replace(/^geometry\./, '')}.png`, width: resolution.width, height: resolution.height, uvWidth: resolution.width, uvHeight: resolution.height, source: '' }
   const cubes: Cube[] = []
   const nulls: NullObject[] = []
+  const meshes: Mesh[] = []
+  const nullBones = new Map<Bone, string>()
   const byName = new Map<string, Bone>()
   const order: Array<{ bone: Bone; parent: string }> = []
   for (const raw of arr(geo.bones)) {
@@ -330,20 +478,31 @@ export function fromBedrockGeometry(text: string, fileName = 'model.geo.json'): 
       cubes.push(cube)
       bone.children.push({ kind: 'cube', id: cube.id })
     }
-    for (const [name, rawAt] of Object.entries(obj(b.locators))) {
-      const at = Array.isArray(rawAt) ? vec(rawAt) : vec(obj(rawAt).offset)
-      nulls.push({ id: newId(), name, parent: bone.id, position: flipX(at), visible: true, locked: false })
+    const locs = Object.entries(obj(b.locators)).map(([name, rawAt]) => ({ name, at: flipX(Array.isArray(rawAt) ? vec(rawAt) : vec(obj(rawAt).offset)) }))
+    // a bone holding nothing but a locator of its own name at its pivot is how a keyed null goes out
+    const own = locs.length === 1 && locs[0].name === str(b.name) && !arr(b.cubes).length && !b.poly_mesh && locs[0].at.every((v, i) => Math.abs(v - bone.origin[i]) < 1e-3)
+    if (own) nullBones.set(bone, str(b.parent))
+    else for (const l of locs) nulls.push({ id: newId(), name: l.name, parent: bone.id, position: l.at, visible: true, locked: false })
+    if (b.poly_mesh) {
+      const m = meshFromPoly(obj(b.poly_mesh), bone, resolution, texture.id)
+      if (m) meshes.push(m)
+      else notes.push(`Bone "${bone.name}" has a poly mesh that can't be read, and it is left out.`)
     }
-    if (b.poly_mesh) notes.push(`Bone "${bone.name}" has a poly mesh, which is left out.`)
   }
   // parents by name; a bone whose parent isn't in the file goes to the top
   const top: Bone[] = []
+  const hasChild = new Set(order.map((o) => o.parent))
   for (const { bone, parent } of order) {
     const p = parent ? byName.get(parent) : undefined
+    if (nullBones.has(bone) && !hasChild.has(bone.name)) {
+      nulls.push({ id: newId(), name: bone.name, parent: p?.id ?? null, position: bone.origin, visible: true, locked: false })
+      continue
+    }
+    if (nullBones.has(bone)) nulls.push({ id: newId(), name: bone.name, parent: bone.id, position: bone.origin, visible: true, locked: false })
     if (p) p.children.push({ kind: 'bone', bone } as BoneChild)
     else top.push(bone)
   }
-  if (!cubes.length && !top.length) throw new Error(`${fileName} has no bones, so there is nothing to open.`)
+  if (!cubes.length && !top.length && !meshes.length) throw new Error(`${fileName} has no bones, so there is nothing to open.`)
   notes.push(`The texture is blank: Bedrock geometry names no image. Import ${texture.name} on the Textures panel to fill it in.`)
   const model: Model = {
     name: identifier.replace(/^geometry\./, ''),
@@ -354,6 +513,7 @@ export function fromBedrockGeometry(text: string, fileName = 'model.geo.json'): 
     textures: [texture],
     clips: [],
     ...(nulls.length ? { nulls } : {}),
+    ...(meshes.length ? { meshes } : {}),
   }
   return { model, kind: 'mobs', notes }
 }
@@ -386,7 +546,7 @@ export function applyBedrockAnimations(model: Model, text: string): { model: Mod
     const tracks: Track[] = []
     let last = 0
     for (const [boneName, rawBone] of Object.entries(obj(a.bones))) {
-      const bone = boneId.get(boneName)
+      const bone = boneId.get(boneName) ?? nullId.get(boneName)
       if (!bone) {
         missing.add(boneName)
         continue

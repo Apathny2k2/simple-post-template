@@ -132,3 +132,13 @@ export async function dragRing(page, handle) {
   for (let k = 1; k <= 9; k++) await page.mouse.move(svg.x + pts[k][0], svg.y + pts[k][1])
   await page.mouse.up()
 }
+
+/**
+ * How many elements match, once the page shows `want` of them or five
+ * seconds pass. A count read straight after a key press can run before
+ * React has drawn the change, which a loaded machine makes likelier.
+ */
+export async function countOf(page, selector, want) {
+  await page.waitForFunction(([sel, n]) => document.querySelectorAll(sel).length === n, [selector, want], { timeout: 5000 }).catch(() => {})
+  return page.locator(selector).count()
+}

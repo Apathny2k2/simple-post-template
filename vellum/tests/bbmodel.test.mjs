@@ -69,11 +69,14 @@ const project = (groupsApart) => {
     ],
     outliner,
     ...(groupsApart ? { groups: [{ ...body, children: undefined }, { ...arm, children: undefined }] } : {}),
-    textures: [{ name: 'golem.png', uuid: 'eeeeeeee-0000-4000-a000-000000000001', id: '0', width: 16, height: 16, uv_width: 16, uv_height: 16, render_mode: 'emissive', source: 'data:image/png;base64,iVBORw0KGgo=' }],
+    textures: [{ name: 'golem.png', uuid: 'eeeeeeee-0000-4000-a000-000000000001', id: '1', width: 16, height: 16, uv_width: 16, uv_height: 16, render_mode: 'emissive', source: 'data:image/png;base64,iVBORw0KGgo=' }],
     animations: [
       {
         uuid: 'ffffffff-0000-4000-a000-000000000001', name: 'wave', loop: 'loop', length: 1, snapping: 20, blend_weight: '0.5',
-        animators: { 'aaaaaaaa-0000-4000-a000-000000000002': { name: 'arm', type: 'bone', keyframes: [{ channel: 'rotation', time: 0, interpolation: 'linear', data_points: [{ x: 0, y: 0, z: 30 }] }] } },
+        animators: { 'aaaaaaaa-0000-4000-a000-000000000002': { name: 'arm', type: 'bone', keyframes: [
+          { channel: 'rotation', time: 0, interpolation: 'linear', data_points: [{ x: 0, y: 0, z: 30 }], easing: 'linear', easingArgs: [] },
+          { channel: 'scale', time: 0.5, interpolation: 'bezier', data_points: [{ x: 1, y: 1, z: 1 }], uniform: true, bezier_linked: true, bezier_left_time: [-0.1, -0.1, -0.1], bezier_left_value: [0, 0, 0], bezier_right_time: [0.1, 0.1, 0.1], bezier_right_value: [0, 0, 0] },
+        ] } },
       },
     ],
   })
@@ -107,6 +110,8 @@ test('a Blockbench project keeps what Vellum has no field for, through .vellum a
         groupColor: out.outliner[0].color,
         renderMode: out.textures[0].render_mode,
         blend: out.animations[0].blend_weight,
+        keyExtras: Object.values(out.animations[0].animators).flatMap((x) => x.keyframes).map((k) => [k.channel, k.easing, k.easingArgs, k.uniform, k.bezier_linked]),
+        texId: out.textures[0].id,
         format: out.meta.model_format,
         decor: out.elements.some((e) => e.type === 'texture_mesh') && out.outliner.includes('dddddddd-0000-4000-a000-000000000001'),
         notes: a.notes,
@@ -127,6 +132,8 @@ test('a Blockbench project keeps what Vellum has no field for, through .vellum a
   assert.equal(r.groupColor, 3)
   assert.equal(r.renderMode, 'emissive')
   assert.equal(r.blend, '0.5')
+  assert.deepEqual(r.keyExtras, [['rotation', 'linear', [], undefined, undefined], ['scale', undefined, undefined, true, true]], "a key's easing, uniform scale and linked handles are kept")
+  assert.equal(r.texId, '1', 'a texture keeps the id Blockbench gave it')
   assert.equal(r.format, 'bedrock')
   assert.ok(r.decor, 'a texture mesh Vellum cannot show is kept and written back')
   assert.ok(r.notes.some((n) => /texture_mesh/.test(n)), 'and the import says so')

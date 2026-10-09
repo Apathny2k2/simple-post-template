@@ -13,7 +13,7 @@
    .bbmodel opens again exactly as its .vellum would. The round trip test
    checks that for every sample. */
 
-import { FACES } from './model'
+import { FACES, keyAddress } from './model'
 import type { Bone, BoneChild, Clip, ClipEvent, Cube, Face, FaceKey, Interpolation, Key, Mesh, MeshFace, Model, NullObject, ProjectKind, Texture, Track, UVRect, Vec3 } from './model'
 import { newId } from './new-model'
 import { boxFaces, unwrapOrigin } from './uv-edit'
@@ -73,6 +73,9 @@ const TEXTURE_DEFAULTS: Json = {
   internal: true,
   saved: true,
 }
+/** A keyframe's own keys at their defaults; anything else it carries (a plugin's easing, `uniform` on scale) is kept. */
+const KEY_DEFAULTS: Json = { color: -1, bezier_linked: false }
+
 const ANIMATION_DEFAULTS: Json = { override: false, selected: false, anim_time_update: '', blend_weight: '', start_delay: '', loop_delay: '' }
 
 /** The keys of `o` outside `used` whose value isn't the default; undefined when there are none. */
@@ -180,11 +183,12 @@ export function fromBbmodel(text: string, fileName = 'model.bbmodel'): Imported 
   const resolution = { width: num(res.width, 16), height: num(res.height, 16) }
   const derived = new Set(arr(stash.derived_offsets).map((v) => str(v)))
   const pingpong = new Set(arr(stash.pingpong).map((v) => str(v)))
-  const bag: { elements: Record<string, Json>; groups: Record<string, Json>; textures: Record<string, Json>; animations: Record<string, Json>; others: unknown[] } = {
+  const bag: { elements: Record<string, Json>; groups: Record<string, Json>; textures: Record<string, Json>; animations: Record<string, Json>; keys: Record<string, Json>; others: unknown[] } = {
     elements: {},
     groups: {},
     textures: {},
     animations: {},
+    keys: {},
     others: [],
   }
 
@@ -207,7 +211,9 @@ export function fromBbmodel(text: string, fileName = 'model.bbmodel'): Imported 
       source: source.startsWith('data:image') ? source : '',
     })
     const extra = rest(t, ['uuid', 'name', 'width', 'height', 'uv_width', 'uv_height', 'source', 'id'], TEXTURE_DEFAULTS)
-    if (extra) bag.textures[id] = extra
+    // the `id` Blockbench gave it, when that isn't just its place in the list
+    const own = t.id !== undefined && String(t.id) !== String(i) ? { id: String(t.id) } : undefined
+    if (extra || own) bag.textures[id] = { ...extra, ...own }
     texRef.set(String(i), id)
     texRef.set(`#${i}`, id)
     texRef.set(id, id)
@@ -430,6 +436,9 @@ export function fromBbmodel(text: string, fileName = 'model.bbmodel'): Imported 
           interp: INTERP[str(k.interpolation, 'linear')] ?? 'linear',
           ...(exprs.some((e) => e) ? { expr: exprs } : {}),
         }
+        const keyExtra = rest(k, ['channel', 'time', 'data_points', 'uuid', 'interpolation', 'bezier_left_time', 'bezier_left_value', 'bezier_right_time', 'bezier_right_value'], KEY_DEFAULTS)
+        // sorted, since the writer puts `bezier_linked` with the handles wherever the file had it
+        if (keyExtra) bag.keys[keyAddress(clipId, target, channel, time)] = Object.fromEntries(Object.entries(keyExtra).sort(([x], [y]) => (x < y ? -1 : 1)))
         if (key.interp === 'bezier' && k.bezier_right_time !== undefined) {
           key.handles = {
             leftTime: vec(k.bezier_left_time, [-0.1, -0.1, -0.1]),
@@ -495,6 +504,7 @@ export function fromBbmodel(text: string, fileName = 'model.bbmodel'): Imported 
     ...(Object.keys(bag.groups).length ? { groups: bag.groups } : {}),
     ...(Object.keys(bag.textures).length ? { textures: bag.textures } : {}),
     ...(Object.keys(bag.animations).length ? { animations: bag.animations } : {}),
+    ...(Object.keys(bag.keys).length ? { keys: bag.keys } : {}),
     ...(bag.others.length ? { other_elements: bag.others } : {}),
   }
   if (Object.keys(kept).length) model.blockbench = kept
@@ -621,11 +631,14 @@ export function toBbmodel(model: Model): string {
   })
   const outliner = [...model.bones.map(group), ...ridersOf(null), ...arr(bag.other_elements).map((o) => str(obj(o).uuid)).filter(Boolean)]
 
+  // each texture keeps the id it came with, unless two would then share one
+  const texIds = model.textures.map((t, i) => str(extras('textures', t.id).id, String(i)))
+  const idsClash = new Set(texIds).size !== texIds.length
   const textures = model.textures.map((t, i) => ({
     ...TEXTURE_DEFAULTS,
     ...extras('textures', t.id),
     name: t.name,
-    id: String(i),
+    id: idsClash ? String(i) : texIds[i],
     width: t.width,
     height: t.height,
     uv_width: t.uvWidth,
@@ -664,7 +677,8 @@ export function toBbmodel(model: Model): string {
                   }),
                 ),
               ],
-              uuid: uuidFor(k.id),
+              // a key read from a .vellum has a new id each time, so its uuid comes from where it is instead
+              uuid: UUID.test(k.id) ? k.id : uuidFor(keyAddress(clip.id, t.bone, t.channel, k.time)),
               time: k.time,
               color: -1,
               interpolation: k.interp,
@@ -677,6 +691,7 @@ export function toBbmodel(model: Model): string {
                     bezier_right_value: signed(k.handles.rightValue, keySigns(t.channel)),
                   }
                 : {}),
+              ...extras('keys', keyAddress(clip.id, t.bone, t.channel, k.time)),
             })),
         ],
       }
