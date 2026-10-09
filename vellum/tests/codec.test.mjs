@@ -51,7 +51,7 @@ test('version 8: null objects, clip events and ping-pong survive', async () => {
     }
   })
   assert.ok(out.stable)
-  assert.equal(out.version, 10)
+  assert.equal(out.version, 11)
   assert.equal(out.nulls.length, 1)
   assert.equal(out.nulls[0][2], 2)
   assert.deepEqual(out.events.sort(), ['particle@0.1', 'sound@0.5'])
@@ -61,14 +61,14 @@ test('version 8: null objects, clip events and ping-pong survive', async () => {
     page,
     async (text) => {
       const V = await import('/src/lib/vellum.ts')
-      const v7 = V.readVellum(text.replace('"version":10', '"version":7'))
+      const v7 = V.readVellum(text.replace('"version":11', '"version":7'))
       const bad = JSON.parse(text)
       bad.clips[0].loop = 'sideways'
       bad.clips[0].events.push({ kind: 'laser', effect: 'x', time: 1 })
       const rb = V.readVellum(bad)
       let refused = null
       try {
-        V.readVellum(text.replace('"version":10', '"version":11'))
+        V.readVellum(text.replace('"version":11', '"version":12'))
       } catch (e) {
         refused = e.message
       }

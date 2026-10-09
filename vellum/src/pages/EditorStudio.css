@@ -752,3 +752,13 @@
 @media (max-width: 1240px) {
   .editor-root--studio .editor-view__corner--top-left.studio-seg button[aria-pressed='false'] { display: none; }
 }
+
+/* a key's Molang, one field per axis, under its numbers */
+.kf__molang { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin: 8px 0 12px; }
+.kf__molang .studio-label { grid-column: 1 / -1; margin: 0; }
+.kf__molang .editor-hint { grid-column: 1 / -1; margin: 0; }
+.kf__molang-field { min-width: 0; height: 28px; padding: 0 8px; border-radius: 6px; border: 1px solid var(--s-line-3); background: var(--s-sunk); color: var(--s-ink); font: 12px var(--font-mono, monospace); }
+.kf__molang-field:focus { outline: none; border-color: var(--s-sage, #a7c4a0); }
+.kf__molang-field--bad { border-color: var(--s-danger); }
+.kf__molang-open { margin: 6px 0 10px; font-size: 12px; color: var(--s-ink-2, #a8a398); text-decoration: underline dotted; text-underline-offset: 3px; }
+.kf__molang-open:hover { color: var(--s-ink, #e9e4d8); }

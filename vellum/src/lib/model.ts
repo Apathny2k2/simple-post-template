@@ -7,6 +7,7 @@
    face, so never normalise a rectangle to min/max on load. */
 
 import { validateBehaviour } from './behaviour'
+import { evalMolang } from './molang'
 import type { Behaviour } from './behaviour'
 import { validateConfig } from './config'
 import type { Config } from './config'
@@ -135,6 +136,11 @@ export type Key = {
   interp: Interpolation
   /** absent unless the author drew one */
   handles?: Handles
+  /**
+   * Molang for an axis, played instead of that axis's number (v11). Null
+   * where the axis is a plain number; absent when no axis has any.
+   */
+  expr?: Array<string | null>
 }
 
 /** One bone and channel: one row in the timeline. */
@@ -356,9 +362,16 @@ function bezierSegment(a: Key, b: Key, t: number): Vec3 {
   return out
 }
 
+/** A key's value at time `t`: its Molang axes run with the playhead as anim_time and life_time. */
+export function molangValue(k: Key, t: number): Vec3 {
+  const query = { anim_time: t, life_time: t }
+  return k.value.map((v, i) => (k.expr?.[i] ? evalMolang(k.expr[i]!, { query }, v) : v)) as Vec3
+}
+
 /** A track's value at time `t`. Each segment eases by its first key's `interp`. */
 export function sampleTrack(track: Track, t: number): Vec3 {
-  const keys = [...track.keys].sort((a, b) => a.time - b.time)
+  // keys written in Molang take their value at this moment, as Bedrock plays them
+  const keys = [...track.keys].sort((a, b) => a.time - b.time).map((k) => (k.expr ? { ...k, value: molangValue(k, t) } : k))
   if (!keys.length) return DEFAULTS[track.channel]
   if (t <= keys[0].time) return keys[0].value
   const last = keys[keys.length - 1]

@@ -16,6 +16,7 @@ import { keySigns } from './bbmodel'
 import type { Imported } from './bbmodel'
 import { boxFaces, unwrapOrigin } from './uv-edit'
 import { dataUriBytes, makeZip } from './zip'
+import { isPlainNumber, negated } from './molang'
 import type { ZipEntry } from './zip'
 
 type Json = Record<string, unknown>
@@ -134,11 +135,13 @@ function trackJson(track: Track, snapping: number): Json {
   const keys = [...track.keys].sort((a, b) => a.time - b.time)
   const out: Json = {}
   const step = 1 / Math.max(1, snapping || 20)
+  // an axis written in Molang goes out as its expression, signed like the numbers
+  const out3 = (k: Key): Array<number | string> => signed(k.value, s).map((v, i) => (k.expr?.[i] ? (s[i] < 0 ? negated(k.expr[i]!) : k.expr[i]!) : v))
   keys.forEach((k, i) => {
     const prev = keys[i - 1]
-    const value = signed(k.value, s)
+    const value = out3(k)
     const entry: Json = {}
-    if (prev?.interp === 'step') entry.pre = signed(prev.value, s)
+    if (prev?.interp === 'step') entry.pre = out3(prev)
     entry.post = value
     if (k.interp === 'catmullrom') entry.lerp_mode = 'catmullrom'
     out[time(k.time)] = Object.keys(entry).length === 1 ? value : entry
@@ -352,19 +355,12 @@ export function fromBedrockGeometry(text: string, fileName = 'model.geo.json'): 
   return { model, kind: 'mobs', notes }
 }
 
-/** A Bedrock key's value: a number, a numeric string, or Molang, which reads as `rest` and is counted. */
-function axisValue(v: unknown, rest: number, molang: { n: number }): number {
-  const n = num(v, NaN)
-  if (Number.isFinite(n)) return n
-  molang.n++
-  return rest
-}
-
-function vectorOf(v: unknown, rest: number, molang: { n: number }): Vec3 {
-  if (Array.isArray(v)) return [axisValue(v[0], rest, molang), axisValue(v[1], rest, molang), axisValue(v[2], rest, molang)]
-  // a single value stands for all three
-  const one = axisValue(v, rest, molang)
-  return [one, one, one]
+/** A Bedrock key's three axes (one value stands for all three): numbers, and Molang kept per axis with `rest` as its number. */
+function vectorOf(v: unknown, rest: number, molang: { n: number }): { value: Vec3; expr: Array<string | null> } {
+  const raw = Array.isArray(v) ? [v[0], v[1], v[2]] : [v, v, v]
+  const expr = raw.map((x) => (typeof x === 'string' && x.trim() && !isPlainNumber(x) ? x : null))
+  if (expr.some((e) => e)) molang.n++
+  return { value: raw.map((x, i) => (expr[i] ? rest : num(x, rest))) as Vec3, expr }
 }
 
 /**
@@ -406,14 +402,16 @@ export function applyBedrockAnimations(model: Model, text: string): { model: Mod
           .forEach(([t, v]) => {
             const entry = v && typeof v === 'object' && !Array.isArray(v) ? (v as Json) : null
             const post = entry ? (entry.post ?? entry.pre) : v
-            const value = signed(vectorOf(post, rest, molang), s)
+            const read = vectorOf(post, rest, molang)
+            const value = signed(read.value, s)
+            const expr = read.expr.map((e, i) => (e ? (s[i] < 0 ? negated(e) : e) : null))
             // a `pre` that differs from the key before means that key held until now
             if (entry?.pre !== undefined && keys.length) {
-              const pre = signed(vectorOf(entry.pre, rest, molang), s)
+              const pre = signed(vectorOf(entry.pre, rest, { n: 0 }).value, s)
               const prev = keys[keys.length - 1]
               if (pre.every((x, i) => Math.abs(x - prev.value[i]) < 1e-6)) prev.interp = 'step'
             }
-            keys.push({ id: newId(), time: t, value, interp: entry?.lerp_mode === 'catmullrom' ? 'catmullrom' : 'linear' })
+            keys.push({ id: newId(), time: t, value, interp: entry?.lerp_mode === 'catmullrom' ? 'catmullrom' : 'linear', ...(expr.some((e) => e) ? { expr } : {}) })
             last = Math.max(last, t)
           })
         if (keys.length) tracks.push({ bone, channel, keys })
@@ -444,7 +442,7 @@ export function applyBedrockAnimations(model: Model, text: string): { model: Mod
     })
   }
   if (missing.size) notes.push(`No bone is named ${[...missing].map((n) => `"${n}"`).join(', ')}, so ${missing.size === 1 ? 'its keys were' : 'their keys were'} left out.`)
-  if (molang.n) notes.push(`${molang.n} value${molang.n === 1 ? ' was' : 's were'} Molang, read as the rest value.`)
+  if (molang.n) notes.push(`${molang.n} key${molang.n === 1 ? ' is' : 's are'} Molang, kept and played; queries such as ground speed take preview values.`)
   const names = new Set(clips.map((c) => c.name))
   return { model: { ...model, clips: [...model.clips.filter((c) => !names.has(c.name)), ...clips] }, added: clips.length, notes }
 }

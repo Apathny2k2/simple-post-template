@@ -41,7 +41,7 @@ import type {
 } from './model'
 
 export const FORMAT = 'model'
-export const CURRENT_VERSION = 10
+export const CURRENT_VERSION = 11
 
 /** A well-formed `.vellum` begins with exactly these bytes. */
 export const HEADER_PREFIX = `{"vellum":{"format":"${FORMAT}","version":${CURRENT_VERSION}},`
@@ -112,6 +112,8 @@ type VellumKey = {
   time: number
   value: Vec3
   interp: Interpolation
+  /** added in v11: Molang per axis, null for a plain number */
+  expr?: Array<string | null>
   handles?: WireHandles
 }
 
@@ -312,6 +314,7 @@ export function toVellumDocument(model: Model): VellumDocument {
               time: k.time,
               value: k.value,
               interp: k.interp,
+              expr: k.expr?.some((e) => e) ? [0, 1, 2].map((i) => k.expr?.[i] || null) : undefined,
               // after `interp`, which decides whether the handles apply
               handles: k.handles && {
                 left_time: k.handles.leftTime,
@@ -615,11 +618,21 @@ function upgrade(doc: VellumDocument): VellumDocument {
       case 9: // v10 added the Blockbench extras; absent is already correct
         version = 10
         break
+      case 10: // v11 added Molang on keys, as `expr`; absent is already correct
+        version = 11
+        break
       default:
         throw new VellumFormatError(`No upgrade path from .vellum version ${version}.`)
     }
   }
   return { ...doc, vellum: { format: doc.vellum.format, version } }
+}
+
+/** A key's Molang, three strings or nulls; absent when none is a string. */
+function readExpr(raw: unknown): Array<string | null> | undefined {
+  if (!Array.isArray(raw)) return undefined
+  const out = [0, 1, 2].map((i) => (typeof raw[i] === 'string' && raw[i].trim() ? (raw[i] as string) : null))
+  return out.some((e) => e) ? out : undefined
 }
 
 function readHandles(raw: unknown): Handles | undefined {
@@ -750,6 +763,7 @@ export function fromVellumDocument(doc: VellumDocument): Model {
         value: vec3(k?.value, t.channel === 'scale' ? [1, 1, 1] : [0, 0, 0]),
         interp: k?.interp ?? 'linear',
         handles: readHandles((k as { handles?: unknown } | undefined)?.handles),
+        expr: readExpr((k as { expr?: unknown } | undefined)?.expr),
       })),
     })),
   }))

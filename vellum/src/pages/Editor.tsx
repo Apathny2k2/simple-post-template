@@ -155,6 +155,7 @@ import { scenes } from '../lib/data'
 import { saveBlob, saveDataUrl, saveFile } from '../lib/download'
 import { toGltf, toJavaJson, toObjZip } from '../lib/exporters'
 import { fromBbmodel, fromJavaModel, isBbmodel, isJavaModel, toBbmodel } from '../lib/importers'
+import { molangError } from '../lib/molang'
 import { applyBedrockAnimations, fromBedrockGeometry, isBedrockAnimation, isBedrockGeometry, toBedrockZip, bedrockName } from '../lib/bedrock'
 import './Editor.css'
 import './EditorStudio.css'
@@ -2895,6 +2896,47 @@ const EASINGS: Array<{ id: Key['interp']; label: string }> = [
   { id: 'step', label: 'Step' },
 ]
 
+/**
+ * A key's Molang, one field per axis. An axis with an expression plays the
+ * expression instead of its number, as Bedrock does; empty goes back to
+ * the number. What can't be read is said under the fields.
+ */
+function MolangRow({ keyId, expr, channel, onChange }: { keyId: string; expr?: Array<string | null>; channel: string; onChange: (expr: Array<string | null> | undefined) => void }) {
+  const [open, setOpen] = useState(() => !!expr?.some((e) => e))
+  const errors = (expr ?? []).map((e) => (e ? molangError(e) : null))
+  const bad = errors.find((e) => e)
+  if (!open) {
+    return (
+      <button className="kf__molang-open" onClick={() => setOpen(true)} title="Write an axis as a Molang expression, such as math.sin(q.anim_time * 360) * 10">
+        Molang…
+      </button>
+    )
+  }
+  return (
+    <div className="kf__molang">
+      <span className="studio-label">Molang</span>
+      {(['x', 'y', 'z'] as const).map((a, i) => (
+        <input
+          key={`${keyId}:${a}`}
+          className={`kf__molang-field${errors[i] ? ' kf__molang-field--bad' : ''}`}
+          aria-label={`${channel} ${a.toUpperCase()} Molang`}
+          placeholder={a.toUpperCase()}
+          spellCheck={false}
+          defaultValue={expr?.[i] ?? ''}
+          onBlur={(e) => {
+            const next = [0, 1, 2].map((j) => (j === i ? e.target.value.trim() || null : (expr?.[j] ?? null)))
+            onChange(next.some((x) => x) ? next : undefined)
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
+          }}
+        />
+      ))}
+      {bad ? <p className="editor-hint editor-hint--warn">Can't read it: {bad}. That axis plays its number.</p> : null}
+    </div>
+  )
+}
+
 function KeyframePanel({ anim }: { anim: AnimApi }) {
   const found = useMemo(() => {
     const clip = anim.clip
@@ -2973,6 +3015,7 @@ function KeyframePanel({ anim }: { anim: AnimApi }) {
           />
         ))}
       </div>
+      <MolangRow keyId={key.id} expr={key.expr} channel={track.channel} onChange={(expr) => anim.patchKey(key.id, { expr })} />
 
       <div className="studio-label">Into the next key</div>
       <div className="studio-seg kf__ease" role="group" aria-label="Easing to the next key">

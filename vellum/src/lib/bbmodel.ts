@@ -18,6 +18,7 @@ import type { Bone, BoneChild, Clip, ClipEvent, Cube, Face, FaceKey, Interpolati
 import { newId } from './new-model'
 import { boxFaces, unwrapOrigin } from './uv-edit'
 import { CURRENT_VERSION, readVellumOnly, vellumOnlyOf } from './vellum'
+import { isPlainNumber, negated } from './molang'
 
 export type Imported = { model: Model; kind: ProjectKind; notes: string[] }
 
@@ -414,20 +415,20 @@ export function fromBbmodel(text: string, fileName = 'model.bbmodel'): Imported 
           continue
         }
         if (channel !== 'rotation' && channel !== 'position' && channel !== 'scale') continue
-        const axis = (v: unknown, d: number) => {
-          const n = num(v, NaN)
-          if (Number.isNaN(n)) {
-            molang++
-            return d
-          }
-          return n
-        }
         const d = channel === 'scale' ? 1 : 0
+        const signs = keySigns(channel)
+        // a value that isn't a number is Molang, kept and played; its number is the rest value
+        const exprs = [point.x, point.y, point.z].map((v, i) => {
+          if (typeof v !== 'string' || isPlainNumber(v) || !v.trim()) return null
+          molang++
+          return signs[i] < 0 ? negated(v) : v
+        })
         const key: Key = {
           id: str(k.uuid) || newId(),
           time,
-          value: signed([axis(point.x, d), axis(point.y, d), axis(point.z, d)], keySigns(channel)),
+          value: signed([0, 1, 2].map((i) => (exprs[i] ? d : num([point.x, point.y, point.z][i], d))) as Vec3, signs),
           interp: INTERP[str(k.interpolation, 'linear')] ?? 'linear',
+          ...(exprs.some((e) => e) ? { expr: exprs } : {}),
         }
         if (key.interp === 'bezier' && k.bezier_right_time !== undefined) {
           key.handles = {
@@ -461,7 +462,7 @@ export function fromBbmodel(text: string, fileName = 'model.bbmodel'): Imported 
     const extra = rest(a, ['uuid', 'name', 'loop', 'length', 'snapping', 'animators'], ANIMATION_DEFAULTS)
     if (extra) bag.animations[clipId] = extra
   }
-  if (molang) notes.push(`${molang} keyframe value${molang === 1 ? ' was a Molang expression' : 's were Molang expressions'}, which Vellum does not run. ${molang === 1 ? 'It reads' : 'They read'} as the rest value.`)
+  if (molang) notes.push(`${molang} keyframe value${molang === 1 ? ' is' : 's are'} Molang, kept and played; queries such as ground speed take preview values.`)
 
   const only = readVellumOnly(stash)
   const format = str(meta.model_format)
@@ -644,7 +645,14 @@ export function toBbmodel(model: Model): string {
             .sort((a, b) => a.time - b.time)
             .map((k) => ({
               channel: t.channel,
-              data_points: [(([x, y, z]) => ({ x, y, z }))(signed(k.value, keySigns(t.channel)))],
+              data_points: [
+                (([x, y, z]) => ({ x, y, z }))(
+                  signed(k.value, keySigns(t.channel)).map((v, i) => {
+                    const e = k.expr?.[i]
+                    return e ? (keySigns(t.channel)[i] < 0 ? negated(e) : e) : v
+                  }),
+                ),
+              ],
               uuid: uuidFor(k.id),
               time: k.time,
               color: -1,

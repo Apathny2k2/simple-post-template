@@ -921,6 +921,22 @@ pose it with **Move** (V), **Rotate** (R) or **Scale** (S): each drag keys that
 channel at the playhead, on top of what the clip already says there, and keeps
 the key's easing. **K** keys the bone's rotation as it stands.
 
+**Molang.** Any axis of a key can be a Molang expression instead of a
+number: **Molang…** under the key's values opens a field per axis, and an
+empty field goes back to the number. The key then plays the expression,
+run at each moment with the playhead as `q.anim_time` and `q.life_time`,
+and it eases into the next key the way a number would, as Bedrock plays
+it. `lib/molang.ts` reads numbers, `+ - * / %`, comparisons, `&& || !`,
+`?:` and `??`, brackets, and several statements with `v.name = ...` and
+`return`. `math.` has Bedrock's functions, with trig in degrees, and
+`math.random` gives the same numbers each time a frame plays. Queries
+Vellum can't know (ground speed, health) take the values of a walking mob
+in good health, and any other reads 0, as an unset one does in game. An
+expression that can't be read says why under the fields and plays the
+axis's number. Keys keep their Molang in the `.vellum` (v11, as `expr`), and
+through Blockbench and Bedrock, signed for their axes the way the numbers
+are.
+
 The timeline has two views. The **dope sheet** has a row per bone and channel.
 Click a key to select it, Ctrl-click to toggle one and Shift-click to add one.
 Drag across empty track to box-select, and drag any selected key to move them
@@ -1184,9 +1200,7 @@ File ▸ Open takes a `.vellum`, a Blockbench project or a Java model.
   elements Vellum can't show, such as texture meshes) is kept in
   `model.blockbench` by id, saved in the `.vellum` (v10), and written back
   into a `.bbmodel`. A key holding the value the exporter writes anyway is
-  not kept, so a model made in Vellum carries none. Molang in a key reads as
-  the rest value, and a cube outside every group goes under a new `root`
-  bone; the status bar says so.
+  not kept, so a model made in Vellum carries none. Molang in a key is kept and played (see Molang, under Animating), and a cube outside every group goes under a new `root` bone; the status bar says so.
 
   **Save** writes either format: the arrow beside it chooses `.vellum` or
   `.bbmodel`, and the choice sticks for Save and Ctrl S. A `.bbmodel` that
@@ -1218,8 +1232,7 @@ File ▸ Open takes a `.vellum`, a Blockbench project or a Java model.
   and an `.animation.json` as clips added to the open model, matched to its
   bones by name. Keys may be arrays, one value for all three axes, or
   `{pre, post, lerp_mode}`; a `pre` equal to the key before makes that key
-  hold. Molang values read as the rest value, and bones the model lacks are
-  named in the status bar.
+  hold. Molang values are kept and played, and bones the model lacks are named in the status bar.
 - **Java block or item JSON.** Elements become cubes under one `root` bone.
   The sheet is 16 by 16, as Java UVs are. A model names its textures by path
   and carries no images, so they open blank and named after the path. Importing a PNG of
