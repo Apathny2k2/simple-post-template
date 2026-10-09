@@ -88,6 +88,8 @@ export function growUvSpace(model: Model, rescale: Rescale, factor = 2): Model {
     }),
     cubes: model.cubes.map((c) => ({
       ...c,
+      // the unwrap's start moves with its faces, or a box UV cube would snap back to the old spot
+      ...(c.uvOffset ? { uvOffset: [c.uvOffset[0] * factor, c.uvOffset[1] * factor] as [number, number] } : {}),
       faces: Object.fromEntries(
         FACES.map((k) => [k, { ...c.faces[k], uv: scaleRect(c.faces[k].uv) }]),
       ) as Cube['faces'],

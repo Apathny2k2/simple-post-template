@@ -392,7 +392,8 @@
     linear-gradient(45deg, color-mix(in srgb, var(--ink-faint) 7%, transparent) 25%, transparent 25%, transparent 75%, color-mix(in srgb, var(--ink-faint) 7%, transparent) 75%);
   background-size: 16px 16px;
   background-position: 0 0, 8px 8px;
-  overflow: hidden;
+  /* visible, so the handles of a face on the sheet's edge can still be grabbed */
+  overflow: visible;
   box-shadow: inset 0 0 0 1px var(--border);
 }
 
@@ -425,6 +426,88 @@
   font-size: 9px;
   color: rgba(255, 255, 255, 0.55);
 }
+
+/* the face's texture and the Box UV switch, above the sheet */
+.uv-head { display: flex; align-items: center; gap: 10px; margin-bottom: 9px; }
+.uv-head__texture { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; font-size: var(--fs-xs); color: var(--ink-muted); }
+.uv-head__texture .editor-select { flex: 1; min-width: 0; }
+.uv-switch { display: inline-flex; align-items: center; gap: 7px; font-size: var(--fs-xs); color: var(--ink-muted); white-space: nowrap; }
+.uv-switch__track {
+  position: relative;
+  width: 30px;
+  height: 17px;
+  border-radius: 999px;
+  background: var(--border-strong, #3a4048);
+  transition: background var(--dur-fast) var(--ease);
+}
+.uv-switch__track::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform var(--dur-fast) var(--ease);
+}
+.uv-switch[aria-checked='true'] .uv-switch__track { background: var(--accent-mark); }
+.uv-switch[aria-checked='true'] .uv-switch__track::after { transform: translateX(13px); }
+.uv-switch:disabled { opacity: 0.5; }
+
+/* the sheet scrolls inside a frame once zoomed; the padding leaves room for edge handles */
+.uv-frame { position: relative; }
+.uv-scroll { max-height: 420px; overflow: auto; padding: 5px; margin: -5px; overscroll-behavior: contain; }
+.uv-scroll .uv { max-width: none; }
+.uv-zoom {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 7px;
+  background: rgb(16 19 22 / 0.86);
+  border: 1px solid rgb(255 255 255 / 0.08);
+  font: 600 10px/1 var(--font-mono);
+  color: #c9c4b9;
+}
+.uv-zoom button { display: grid; place-items: center; width: 20px; height: 20px; border-radius: 5px; color: inherit; }
+.uv-zoom button:hover:not(:disabled) { background: rgb(255 255 255 / 0.08); }
+.uv-zoom button:disabled { opacity: 0.35; }
+.uv-zoom span { min-width: 34px; text-align: center; }
+
+/* other cubes' faces: outlines only, so free room on the sheet shows */
+.uv__other {
+  position: absolute;
+  border: 1px dashed rgb(255 255 255 / 0.16);
+  pointer-events: none;
+}
+.uv__face { touch-action: none; user-select: none; }
+/* edge and corner handles on the active face */
+.uv__handle {
+  position: absolute;
+  width: 9px;
+  height: 9px;
+  margin: -5px 0 0 -5px;
+  border: 1.5px solid var(--accent-mark);
+  border-radius: 2px;
+  background: #101316;
+  z-index: 1;
+}
+.uv__handle--nw { left: 0; top: 0; cursor: nwse-resize; }
+.uv__handle--n { left: 50%; top: 0; cursor: ns-resize; }
+.uv__handle--ne { left: 100%; top: 0; cursor: nesw-resize; }
+.uv__handle--e { left: 100%; top: 50%; cursor: ew-resize; }
+.uv__handle--se { left: 100%; top: 100%; cursor: nwse-resize; }
+.uv__handle--s { left: 50%; top: 100%; cursor: ns-resize; }
+.uv__handle--sw { left: 0; top: 100%; cursor: nesw-resize; }
+.uv__handle--w { left: 0; top: 50%; cursor: ew-resize; }
+/* with box UV on, the six faces read as one unwrap */
+.uv--box .uv__face { border-style: solid; }
+.uv--box .uv__face:not(.uv__face--active) { border-color: color-mix(in srgb, var(--accent-mark) 55%, transparent); }
 
 /* ---------------- viewport ---------------- */
 
@@ -683,6 +766,24 @@
 }
 
 .texture-row__meta { font-family: var(--font-mono); font-size: 10px; opacity: 0.65; }
+
+/* a row and its two buttons; the buttons show on hover and on the chosen row */
+.texture-list { display: grid; gap: 2px; min-height: 40px; }
+.texture-item { position: relative; display: flex; align-items: center; }
+.texture-item .texture-row { padding-right: 64px; }
+.texture-item__actions {
+  position: absolute;
+  right: 4px;
+  display: flex;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity var(--dur-fast) var(--ease);
+}
+.texture-item:hover .texture-item__actions,
+.texture-item:focus-within .texture-item__actions,
+.texture-item[aria-current='true'] .texture-item__actions { opacity: 1; }
+.texture-item:hover .texture-row__meta,
+.texture-item[aria-current='true'] .texture-row__meta { visibility: hidden; }
 
 /* ---------------- timeline ---------------- */
 

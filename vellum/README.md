@@ -888,6 +888,46 @@ position can be keyed in Animate like a bone's. The solver is cyclic coordinate
 descent in `lib/kinematics.ts`, and it writes the bend into the pose as
 rotation offsets, the way keyed rotations are applied.
 
+### Editing UVs and textures
+
+The UV panel is Blockbench's UV editor. It shows the selected cube's six
+faces on the sheet, with the other cubes' faces dashed so free room shows.
+Drag a face to move it. Drag a handle on the active face to resize it. Moves
+snap to whole texels, Shift to half texels, and Ctrl moves freely. Each drag is
+one undo step. Ctrl + wheel or the +/− buttons zoom the sheet. A warning names
+any cube whose faces overlap the selection's, because painting one would paint
+both.
+
+**Box UV** is the switch above the sheet. With it on, the faces are a box
+unwrap that starts at `uvOffset`:
+
+- they follow the cube when it is resized;
+- dragging any face moves the whole unwrap;
+- Mirror swaps east and west and reads every face right to left, as
+  Blockbench's Mirror UV does.
+
+With it off, each face is edited on its own. Turning it on keeps the stored
+start while the faces still sit where it put them. Otherwise it unwraps from
+the faces' top left. The code is in `lib/uv-edit.ts`.
+
+**Re-unwrap** lays the selected cubes out again as a box at their size. A cube
+stays where its unwrap starts when it still fits and overlaps nothing.
+Otherwise it moves to the first free spot, and the sheet doubles when there is
+none. Pixels do not move with it, so a cube that moved needs painting again.
+
+**Textures.** **+ New** makes a transparent texture the size of the sheet.
+**Import**, or a PNG dropped on the panel, adds an image. The first texture a
+model gets also goes on every face that had none. The panel's row buttons put
+a texture on every face of the selected cubes, or delete it. A deleted
+texture's faces take the first texture left. Each face picks its texture from
+the select above the sheet, and **Texture to all faces** copies it to the rest
+of the cube.
+
+An imported PNG keeps its own size and is stretched over the sheet, so a 128px
+image on a 64-unit sheet is a texture at twice the detail. Painting converts UV
+units to that texture's pixels (`pixelScale`), so the brush lands on the same
+spot whatever the image's size.
+
 ### How the gizmo finds the screen
 
 The viewport is CSS 3D (see The material), so there is no camera matrix to

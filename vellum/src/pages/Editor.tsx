@@ -36,6 +36,7 @@ import {
   setCubePosition,
   setCubeSize,
   subtypeFits,
+  textureById,
   validateModel,
 } from '../lib/model'
 import type {
@@ -50,6 +51,7 @@ import type {
   ClipEvent,
   Pose,
   ProjectKind,
+  Texture,
   Track,
   UVRect,
   Vec3,
@@ -112,6 +114,18 @@ import {
 } from '../lib/texture'
 import type { PixelSurface, ShapeKind } from '../lib/texture'
 import type { Rescale } from '../lib/uv-pack'
+import {
+  assignTexture,
+  followBoxUv,
+  freeTextureName,
+  moveFaceUv,
+  pixelScale,
+  removeTexture,
+  resizeFaceUv,
+  reunwrap,
+  setBoxUv,
+} from '../lib/uv-edit'
+import type { UvHandle } from '../lib/uv-edit'
 import { DEFAULT_DISPLAY, DisplayPanel } from './editor/DisplayPanel'
 import type { DisplayState, SlotId } from './editor/DisplayPanel'
 import { ScenePanel } from './editor/ScenePanel'
@@ -728,7 +742,7 @@ function CubePanel({
           snap={snap}
           onChange={(from) => onChange((c) => setCubePosition(c, from))}
         />
-        <NumRow label="Size" value={size} disabled={locked} snap={snap} onChange={(s) => onChange((c) => setCubeSize(c, s))} />
+        <NumRow label="Size" value={size} disabled={locked} snap={snap} onChange={(s) => onChange((c) => followBoxUv(setCubeSize(c, s)))} />
         <NumRow
           label="Pivot"
           value={cube.origin}
@@ -808,6 +822,12 @@ function CubePanel({
 
 /* ================= UV ================= */
 
+const UV_HANDLES: UvHandle[] = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w']
+
+/** Snaps a UV drag: whole texels, Shift half texels, Ctrl free. */
+const snapUv = (v: number, e: { shiftKey: boolean; ctrlKey: boolean; metaKey: boolean }) =>
+  e.ctrlKey || e.metaKey ? Math.round(v * 100) / 100 : e.shiftKey ? Math.round(v * 2) / 2 : Math.round(v)
+
 function UVPanel({
   model,
   cube,
@@ -815,37 +835,164 @@ function UVPanel({
   onFace,
   onChange,
   onPaint,
+  onDrag,
+  fallbackTexture,
+  onReunwrap,
 }: {
   model: Model
   cube: Cube | null
   face: FaceKey
   onFace: (f: FaceKey) => void
   onChange: (fn: (c: Cube) => Cube) => void
-  /** gets texel coordinates on the sheet; set only in paint mode */
-  onPaint?: (x: number, y: number, phase: 'down' | 'move') => void
+  /** gets a point on the sheet in UV units; set only in paint mode */
+  onPaint?: (u: number, v: number, phase: 'down' | 'move') => void
+  /** one undo step per drag: `set` replaces the cube with each new version */
+  onDrag: { begin: () => void; set: (c: Cube) => void; end: () => void }
+  /** shown when the face has no texture of its own */
+  fallbackTexture: Texture | null
+  onReunwrap: () => void
 }) {
-  const texture = model.textures[0]
   const { width, height } = model.resolution
+  const sheet = useRef<HTMLDivElement>(null)
+  const drag = useRef<{ x: number; y: number; start: Cube; face: FaceKey; handle: UvHandle | null; moved: boolean } | null>(null)
+  // the sheet's zoom: 1 fits the panel; Ctrl + wheel or the buttons change it
+  const [zoom, setZoom] = useState(1)
+  const frame = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const node = frame.current
+    if (!node) return
+    const onWheel = (e: WheelEvent) => {
+      if (!e.ctrlKey && !e.metaKey) return
+      e.preventDefault()
+      setZoom((z) => Math.max(1, Math.min(8, z * Math.exp(-e.deltaY * 0.004))))
+    }
+    node.addEventListener('wheel', onWheel, { passive: false })
+    return () => node.removeEventListener('wheel', onWheel)
+  }, [cube === null])
 
   if (!cube) return <p className="editor-hint">No cube selected.</p>
 
   const pct = (v: number, total: number) => `${(v / total) * 100}%`
   const current = cube.faces[face]
+  const texture = textureById(model, current.texture) ?? fallbackTexture
+  const locked = cube.locked
+
+  /** where the pointer is on the sheet, in UV units */
+  const at = (e: { clientX: number; clientY: number }) => {
+    const r = sheet.current!.getBoundingClientRect()
+    return [((e.clientX - r.left) / r.width) * width, ((e.clientY - r.top) / r.height) * height] as const
+  }
+
+  const beginDrag = (e: React.PointerEvent, key: FaceKey, handle: UvHandle | null) => {
+    if (onPaint || e.button !== 0) return
+    e.stopPropagation()
+    onFace(key)
+    if (locked) return
+    sheet.current?.setPointerCapture(e.pointerId)
+    drag.current = { x: e.clientX, y: e.clientY, start: cube, face: key, handle, moved: false }
+  }
+
+  const moveDrag = (e: React.PointerEvent) => {
+    const d = drag.current
+    if (!d || !sheet.current) return
+    const r = sheet.current.getBoundingClientRect()
+    let dx = snapUv(((e.clientX - d.x) / r.width) * width, e)
+    let dy = snapUv(((e.clientY - d.y) / r.height) * height, e)
+    if (!d.moved) {
+      if (!dx && !dy) return
+      d.moved = true
+      onDrag.begin()
+    }
+    let next: Cube
+    if (d.handle) {
+      next = resizeFaceUv(d.start, d.face, d.handle, dx, dy)
+    } else {
+      // a move stops at the sheet's edges; a box unwrap moves as one
+      const keys = d.start.boxUv ? FACES : [d.face]
+      const rects = keys.map((k) => faceBounds(d.start.faces[k].uv))
+      const lo = [Math.min(...rects.map((q) => q[0])), Math.min(...rects.map((q) => q[1]))]
+      const hi = [Math.max(...rects.map((q) => q[2])), Math.max(...rects.map((q) => q[3]))]
+      dx = Math.max(-lo[0], Math.min(width - hi[0], dx))
+      dy = Math.max(-lo[1], Math.min(height - hi[1], dy))
+      next = moveFaceUv(d.start, d.face, dx, dy)
+    }
+    onDrag.set(next)
+  }
+
+  const endDrag = () => {
+    if (drag.current?.moved) onDrag.end()
+    drag.current = null
+  }
+
+  // other cubes' faces, faintly, so free room on the sheet shows
+  const others = model.cubes.flatMap((c) =>
+    c.id === cube.id
+      ? []
+      : FACES.map((k) => ({ id: `${c.id}:${k}`, name: c.name, r: faceBounds(c.faces[k].uv) })).filter((o) => o.r[2] > o.r[0] && o.r[3] > o.r[1]),
+  )
+  const mine = FACES.map((k) => faceBounds(cube.faces[k].uv)).filter((r) => r[2] > r[0] && r[3] > r[1])
+  const clash = others.find((o) => mine.some((r) => r[0] < o.r[2] && o.r[0] < r[2] && r[1] < o.r[3] && o.r[1] < r[3]))
 
   return (
     <>
+      <div className="uv-head">
+        <label className="uv-head__texture">
+          <span>Texture</span>
+          <select
+            className="editor-select"
+            aria-label={`Texture on the ${face} face`}
+            value={current.texture ?? ''}
+            disabled={locked}
+            onChange={(e) => {
+              const id = e.target.value || null
+              onChange((c) => ({ ...c, faces: { ...c.faces, [face]: { ...c.faces[face], texture: id } } }))
+            }}
+          >
+            <option value="">None</option>
+            {model.textures.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <button
+          className="uv-switch"
+          role="switch"
+          aria-checked={cube.boxUv}
+          disabled={locked}
+          title="Box UV: the faces follow the cube's size and move as one unwrap, as Minecraft's own models do"
+          onClick={() => onChange((c) => setBoxUv(c, !c.boxUv))}
+        >
+          Box UV <span className="uv-switch__track" />
+        </button>
+      </div>
+
+      <div className="uv-frame">
+      <div className="uv-zoom" role="group" aria-label="UV sheet zoom">
+        <button aria-label="Zoom the UV sheet out" disabled={zoom <= 1} onClick={() => setZoom((z) => Math.max(1, z / 1.5))}>
+          <Icon name="minus" size={12} />
+        </button>
+        <span>{Math.round(zoom * 100)}%</span>
+        <button aria-label="Zoom the UV sheet in" disabled={zoom >= 8} onClick={() => setZoom((z) => Math.min(8, z * 1.5))}>
+          <Icon name="plus" size={12} />
+        </button>
+      </div>
+      <div className="uv-scroll" ref={frame}>
       <div
-        className={`uv${onPaint ? ' uv--paint' : ''}`}
+        ref={sheet}
+        className={`uv${onPaint ? ' uv--paint' : ''}${cube.boxUv ? ' uv--box' : ''}`}
+        style={{
+          width: `${zoom * 100}%`,
+          aspectRatio: `${width} / ${height}`,
+          ...(texture?.source ? { backgroundImage: `url(${texture.source})`, backgroundSize: '100% 100%', imageRendering: 'pixelated' } : {}),
+        }}
         onPointerDown={
           onPaint
             ? (e) => {
                 ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
-                const r = e.currentTarget.getBoundingClientRect()
-                onPaint(
-                  Math.floor(((e.clientX - r.left) / r.width) * width),
-                  Math.floor(((e.clientY - r.top) / r.height) * height),
-                  'down',
-                )
+                const [u, v] = at(e)
+                onPaint(u, v, 'down')
               }
             : undefined
         }
@@ -853,25 +1000,22 @@ function UVPanel({
           onPaint
             ? (e) => {
                 if (e.buttons !== 1) return
-                const r = e.currentTarget.getBoundingClientRect()
-                onPaint(
-                  Math.floor(((e.clientX - r.left) / r.width) * width),
-                  Math.floor(((e.clientY - r.top) / r.height) * height),
-                  'move',
-                )
+                const [u, v] = at(e)
+                onPaint(u, v, 'move')
               }
-            : undefined
+            : moveDrag
         }
-        style={
-          texture?.source
-            ? {
-                backgroundImage: `url(${texture.source})`,
-                backgroundSize: '100% 100%',
-                imageRendering: 'pixelated',
-              }
-            : undefined
-        }
+        onPointerUp={onPaint ? undefined : endDrag}
+        onPointerCancel={onPaint ? undefined : endDrag}
       >
+        {others.map((o) => (
+          <span
+            key={o.id}
+            className="uv__other"
+            title={o.name}
+            style={{ left: pct(o.r[0], width), top: pct(o.r[1], height), width: pct(o.r[2] - o.r[0], width), height: pct(o.r[3] - o.r[1], height) }}
+          />
+        ))}
         {FACES.map((key) => {
           const [x1, y1, x2, y2] = cube.faces[key].uv
           const left = Math.min(x1, x2)
@@ -879,22 +1023,37 @@ function UVPanel({
           const w = Math.abs(x2 - x1)
           const h = Math.abs(y2 - y1)
           if (!w || !h) return null
+          const active = key === face
           return (
-            <button
+            <div
               key={key}
-              className={`uv__face${key === face ? ' uv__face--active' : ''}`}
+              role="button"
+              tabIndex={-1}
+              data-face={key}
+              className={`uv__face${active ? ' uv__face--active' : ''}`}
               style={{
                 left: pct(left, width),
                 top: pct(top, height),
                 width: pct(w, width),
                 height: pct(h, height),
                 pointerEvents: onPaint ? 'none' : undefined,
+                cursor: locked ? 'not-allowed' : 'move',
               }}
-              onClick={() => onFace(key)}
-              title={`${key} \u00b7 ${x1},${y1} \u2192 ${x2},${y2}`}
+              onPointerDown={(e) => beginDrag(e, key, null)}
+              title={`${key} · ${x1},${y1} → ${x2},${y2}${locked ? '' : '. Drag to move it.'}`}
             >
               {key[0].toUpperCase()}
-            </button>
+              {active && !onPaint && !locked && !cube.boxUv
+                ? UV_HANDLES.map((hd) => (
+                    <span
+                      key={hd}
+                      className={`uv__handle uv__handle--${hd}`}
+                      data-handle={hd}
+                      onPointerDown={(e) => beginDrag(e, key, hd)}
+                    />
+                  ))
+                : null}
+            </div>
           )
         })}
         <span className="uv__ruler" style={{ left: 4, bottom: 3 }}>
@@ -904,6 +1063,9 @@ function UVPanel({
           {width},{height}
         </span>
       </div>
+      </div>
+      </div>
+      {clash ? <p className="editor-hint editor-hint--warn">Overlaps {clash.name} on the sheet, so painting one paints both.</p> : null}
 
       <div className="uv-faces">
         {FACES.map((key) => (
@@ -916,22 +1078,24 @@ function UVPanel({
       <div className="num-field-grid" style={{ marginTop: 9 }}>
         <div className="num-field-row">
           <span className="num-field-row__label">UV from</span>
-          <NumField axis="x" name="UV from X" value={current.uv[0]} onChange={(v) => onChange((c) => patchUV(c, face, 0, v))} />
-          <NumField axis="y" name="UV from Y" value={current.uv[1]} onChange={(v) => onChange((c) => patchUV(c, face, 1, v))} />
+          <NumField axis="x" name="UV from X" value={current.uv[0]} disabled={locked || cube.boxUv} onChange={(v) => onChange((c) => patchUV(c, face, 0, v))} />
+          <NumField axis="y" name="UV from Y" value={current.uv[1]} disabled={locked || cube.boxUv} onChange={(v) => onChange((c) => patchUV(c, face, 1, v))} />
           <span className="num-field-row__label" />
         </div>
         <div className="num-field-row">
           <span className="num-field-row__label">UV to</span>
-          <NumField axis="x" name="UV to X" value={current.uv[2]} onChange={(v) => onChange((c) => patchUV(c, face, 2, v))} />
-          <NumField axis="y" name="UV to Y" value={current.uv[3]} onChange={(v) => onChange((c) => patchUV(c, face, 3, v))} />
+          <NumField axis="x" name="UV to X" value={current.uv[2]} disabled={locked || cube.boxUv} onChange={(v) => onChange((c) => patchUV(c, face, 2, v))} />
+          <NumField axis="y" name="UV to Y" value={current.uv[3]} disabled={locked || cube.boxUv} onChange={(v) => onChange((c) => patchUV(c, face, 3, v))} />
           <span className="num-field-row__label" />
         </div>
       </div>
+      {cube.boxUv ? <p className="editor-hint">Box UV is on, so drag the unwrap to move it. Turn it off to edit faces one by one.</p> : null}
 
       <div className="chip-row">
         <button
           className="chip"
           title="Turn the texture within this face"
+          disabled={locked}
           onClick={() =>
             onChange((c) => ({
               ...c,
@@ -949,9 +1113,11 @@ function UVPanel({
         </button>
         <button
           className="chip"
-          title="Mirror the texture on this face by swapping its UV horizontally"
+          title={cube.boxUv ? 'Mirror the whole unwrap, as Blockbench’s Mirror UV does' : 'Mirror the texture on this face by swapping its UV horizontally'}
+          disabled={locked}
           onClick={() =>
             onChange((c) => {
+              if (c.boxUv) return followBoxUv({ ...c, mirrorUv: !c.mirrorUv || undefined })
               const uv = c.faces[face].uv
               return {
                 ...c,
@@ -961,6 +1127,22 @@ function UVPanel({
           }
         >
           <Icon name="flip" size={11} /> Mirror
+        </button>
+        <button
+          className="chip"
+          title="Lay the selected cubes out as a box at their current size. A cube that does not fit where it is moves to free room on the sheet."
+          disabled={locked}
+          onClick={onReunwrap}
+        >
+          <Icon name="resize" size={11} /> Re-unwrap
+        </button>
+        <button
+          className="chip"
+          title="Give every face of this cube the texture this face has"
+          disabled={locked}
+          onClick={() => onChange((c) => ({ ...c, faces: Object.fromEntries(FACES.map((k) => [k, { ...c.faces[k], texture: current.texture }])) as Cube['faces'] }))}
+        >
+          <Icon name="cube" size={11} /> Texture to all faces
         </button>
       </div>
     </>
@@ -3482,7 +3664,7 @@ export function Editor({ segments }: { segments: string[] }) {
       } else if (e.tool === 'resize' && e.amount !== undefined) {
         const axis = 'xyz'.indexOf(e.handle) as 0 | 1 | 2
         const cubes = new Set(ids)
-        next = { ...m0, cubes: m0.cubes.map((c) => (cubes.has(c.id) ? resizeCube(c, axis, e.side ?? 1, e.amount!) : c)) }
+        next = { ...m0, cubes: m0.cubes.map((c) => (cubes.has(c.id) ? followBoxUv(resizeCube(c, axis, e.side ?? 1, e.amount!)) : c)) }
       } else if (e.tool === 'rotate' && e.angle !== undefined) {
         const axis = 'xyz'.indexOf(e.handle)
         // Java block and item models only take 22.5° steps
@@ -3824,37 +4006,178 @@ export function Editor({ segments }: { segments: string[] }) {
         setFace(faceKey)
       }
       const f = target.faces[faceKey]
-      if (f.texture === null) return
-      const texel = texelOfFace(f.uv, u, v)
+      const texture = textureById(model, f.texture)
+      if (!texture) return
       // a zero-area UV has no texel under the click
-      if (!texel) return
-      applyTool(f.texture, texel[0], texel[1], faceBounds(f.uv), phase, faceBounds(f.uv))
+      if (!texelOfFace(f.uv, u, v)) return
+      // UV units to the texture's own pixels, for a sheet drawn finer or coarser than the UVs
+      const [sx, sy] = pixelScale(model, texture)
+      const [ax, ay, bx, by] = faceBounds(f.uv)
+      const box: UVRect = [Math.round(ax * sx), Math.round(ay * sy), Math.round(bx * sx), Math.round(by * sy)]
+      const px = Math.min(box[2] - 1, Math.floor((ax + u * (bx - ax)) * sx))
+      const py = Math.min(box[3] - 1, Math.floor((ay + v * (by - ay)) * sy))
+      applyTool(texture.id, px, py, box, phase, box)
     },
-    [model.cubes, applyTool, history, tool, refuseLocked, setSelected],
+    [model, applyTool, history, tool, refuseLocked, setSelected],
   )
 
+  /** The selected face's texture, which the UV sheet shows; a face without one shows the texture picked in Textures. */
+  const sheetTexture = useMemo(() => {
+    const c = model.cubes.find((x) => x.id === selected)
+    return textureById(model, c?.faces[face].texture ?? null) ?? model.textures[textureIndex] ?? model.textures[0] ?? null
+  }, [model, selected, face, textureIndex])
+
   /* On the sheet, a fill stays inside the UV island under the click, which
-     may not be the selected face. On bare sheet only colour bounds it. */
+     may not be the selected face. On bare sheet only colour bounds it.
+     `u`,`v` are in UV units and become the texture's pixels here. */
   const paintOnSheet = useCallback(
-    (x: number, y: number, phase: 'down' | 'move') => {
-      const texture = model.textures[0]
+    (u: number, v: number, phase: 'down' | 'move') => {
+      const texture = sheetTexture
       if (!texture) return
       if (phase === 'down' && tool !== 'pipette') history.begin('paint')
+      const [sx, sy] = pixelScale(model, texture)
       let bounds: UVRect | null = null
       for (const c of model.cubes) {
         for (const key of FACES) {
+          if (c.faces[key].texture !== texture.id) continue
           const [bx1, by1, bx2, by2] = faceBounds(c.faces[key].uv)
-          if (x >= bx1 && x < bx2 && y >= by1 && y < by2) {
-            bounds = [bx1, by1, bx2, by2]
+          if (u >= bx1 && u < bx2 && v >= by1 && v < by2) {
+            bounds = [Math.round(bx1 * sx), Math.round(by1 * sy), Math.round(bx2 * sx), Math.round(by2 * sy)]
             break
           }
         }
         if (bounds) break
       }
-      applyTool(texture.id, x, y, bounds, phase)
+      applyTool(texture.id, Math.floor(u * sx), Math.floor(v * sy), bounds, phase)
     },
-    [applyTool, model.cubes, model.textures, history, tool],
+    [applyTool, model, sheetTexture, history, tool],
   )
+
+  /** A UV drag on the sheet is one undo step; each move replaces the cube. */
+  const uvDrag = useMemo(
+    () => ({
+      begin: () => history.begin('move UV'),
+      set: (c: Cube) => history.amend((m) => ({ ...m, cubes: m.cubes.map((x) => (x.id === c.id ? c : x)) })),
+      end: () => history.end(),
+    }),
+    [history],
+  )
+
+  const onReunwrap = useCallback(() => {
+    const ids = selection.filter((id) => model.cubes.some((c) => c.id === id))
+    if (!ids.length) return
+    const r = reunwrap(model, ids, rescale)
+    if (r.model !== model) history.commit('re-unwrap', r.model)
+    const names = (list: string[]) => list.map((id) => model.cubes.find((c) => c.id === id)?.name ?? id).join(', ')
+    const grew = r.model.resolution.width !== model.resolution.width
+    const note = r.failed.length
+      ? `No room on the sheet for ${names(r.failed)}, even at a larger size.`
+      : grew
+        ? `The sheet was full, so it doubled to ${r.model.resolution.width} \u00d7 ${r.model.resolution.height} (the textures scaled with it) and ${names(r.moved)} went in the new room. Paint it there.`
+        : r.moved.length
+        ? `Moved ${names(r.moved)} to free room on the sheet. Its old pixels stay where they were, so paint it again there.`
+        : 'Unwrapped in place.'
+    setSaveNote(note)
+    window.setTimeout(() => setSaveNote(null), 5000)
+  }, [selection, model, rescale, history])
+
+  /* ---------------- textures ---------------- */
+
+  /** Adds textures to the model. The first texture a model gets also goes on every face that had none. */
+  const addTextures = useCallback(
+    (made: Texture[], label: string) => {
+      if (!made.length) return
+      history.commit(label, (m) => {
+        const first = m.textures.length === 0
+        const next = { ...m, textures: [...m.textures, ...made] }
+        if (!first) return next
+        return {
+          ...next,
+          cubes: next.cubes.map((c) =>
+            FACES.some((k) => c.faces[k].texture === null)
+              ? { ...c, faces: Object.fromEntries(FACES.map((k) => [k, c.faces[k].texture === null ? { ...c.faces[k], texture: made[0].id } : c.faces[k]])) as Cube['faces'] }
+              : c,
+          ),
+        }
+      })
+      setTextureIndex(model.textures.length + made.length - 1)
+    },
+    [history, model.textures.length],
+  )
+
+  const textureInput = useRef<HTMLInputElement>(null)
+
+  /* A PNG of any size is taken as it is and stretched over the model's UV
+     sheet, as Blockbench does: a 128px image on a 64-unit sheet is a
+     texture at twice the detail. */
+  const importTextures = useCallback(
+    (files: FileList | File[]) => {
+      const list = [...files].filter((f) => f.type === 'image/png' || /\.png$/i.test(f.name))
+      if (!list.length) {
+        setSaveNote('Only PNG images can be textures.')
+        window.setTimeout(() => setSaveNote(null), 4000)
+        return
+      }
+      void Promise.all(
+        list.map(
+          (file) =>
+            new Promise<{ name: string; source: string; width: number; height: number } | null>((resolve) => {
+              const reader = new FileReader()
+              reader.onload = () => {
+                const source = String(reader.result)
+                const img = new Image()
+                img.onload = () => resolve({ name: file.name, source, width: img.naturalWidth, height: img.naturalHeight })
+                img.onerror = () => resolve(null)
+                img.src = source
+              }
+              reader.onerror = () => resolve(null)
+              reader.readAsDataURL(file)
+            }),
+        ),
+      ).then((loaded) => {
+        const ok = loaded.filter((x): x is NonNullable<typeof x> => !!x)
+        let names = model
+        const made: Texture[] = ok.map((x) => {
+          const t: Texture = {
+            id: newId(),
+            name: freeTextureName(names, x.name),
+            width: x.width,
+            height: x.height,
+            uvWidth: model.resolution.width,
+            uvHeight: model.resolution.height,
+            source: x.source,
+          }
+          names = { ...names, textures: [...names.textures, t] }
+          return t
+        })
+        addTextures(made, made.length > 1 ? 'import textures' : 'import texture')
+        const { width, height } = model.resolution
+        const odd = ok.filter((x) => x.width * height !== x.height * width)
+        const failed = loaded.length - ok.length
+        const note = failed
+          ? `${failed} of the files could not be read as images.`
+          : odd.length
+            ? `${odd.map((x) => x.name).join(', ')} is not the sheet's shape (${width} \u00d7 ${height}), so it is stretched to fit.`
+            : null
+        if (note) {
+          setSaveNote(note)
+          window.setTimeout(() => setSaveNote(null), 6000)
+        }
+      })
+    },
+    [model, addTextures],
+  )
+
+  const newTexture = useCallback(() => {
+    const { width, height } = model.resolution
+    const canvas = document.createElement('canvas')
+    canvas.width = width
+    canvas.height = height
+    addTextures(
+      [{ id: newId(), name: freeTextureName(model, 'texture'), width, height, uvWidth: width, uvHeight: height, source: canvas.toDataURL('image/png') }],
+      'new texture',
+    )
+  }, [model, addTextures])
 
   /* ---------------- animation ---------------- */
 
@@ -4738,6 +5061,9 @@ export function Editor({ segments }: { segments: string[] }) {
                 onFace={setFace}
                 onChange={editCube}
                 onPaint={mode === 'paint' ? paintOnSheet : undefined}
+                onDrag={uvDrag}
+                fallbackTexture={sheetTexture}
+                onReunwrap={onReunwrap}
               />
             </Panel>
 
@@ -4887,31 +5213,89 @@ export function Editor({ segments }: { segments: string[] }) {
             </Panel>
             )}
 
-            <Panel title="Textures" count={model.textures.length}>
-              {model.textures.map((t, i) => (
-                <button
-                  key={t.id}
-                  className="texture-row"
-                  // aria-selected is not valid on a button; aria-current marks the chosen texture
-                  aria-current={i === textureIndex}
-                  title={`${t.name}. Click to select, then use View \u25b8 Export texture PNG.`}
-                  onClick={() => setTextureIndex(i)}
-                >
-                  <span
-                    className="texture-thumb"
-                    style={{
-                      backgroundImage: `url(${t.source})`,
-                      backgroundSize: 'cover',
-                      imageRendering: 'pixelated',
-                    }}
-                  />
-                  <span style={{ flex: 1, textAlign: 'left', minWidth: 0 }}>{t.name}</span>
-                  <span className="texture-row__meta">
-                    {t.width} x {t.height}
-                  </span>
-                </button>
-              ))}
-              {!model.textures.length ? <p className="editor-hint">No textures on this model.</p> : null}
+            <Panel
+              title="Textures"
+              count={model.textures.length}
+              actions={
+                <span className="outliner-add">
+                  <button onClick={newTexture} title="A new transparent texture the size of the UV sheet">+ New</button>
+                  <button onClick={() => textureInput.current?.click()} title="Import PNG images as textures (or drop them on this panel)">Import</button>
+                </span>
+              }
+            >
+              <input
+                ref={textureInput}
+                type="file"
+                accept="image/png"
+                multiple
+                hidden
+                onChange={(e) => {
+                  if (e.target.files) importTextures(e.target.files)
+                  e.target.value = ''
+                }}
+              />
+              <div
+                className="texture-list"
+                onDragOver={(e) => {
+                  if ([...e.dataTransfer.items].some((it) => it.kind === 'file')) e.preventDefault()
+                }}
+                onDrop={(e) => {
+                  if (!e.dataTransfer.files.length) return
+                  e.preventDefault()
+                  importTextures(e.dataTransfer.files)
+                }}
+              >
+                {model.textures.map((t, i) => {
+                  const uses = model.cubes.reduce((n, c) => n + FACES.filter((k) => c.faces[k].texture === t.id).length, 0)
+                  const cubeIds = selection.filter((id) => model.cubes.some((c) => c.id === id))
+                  return (
+                    <div key={t.id} className="texture-item" aria-current={i === textureIndex}>
+                      <button
+                        className="texture-row"
+                        aria-current={i === textureIndex}
+                        title={`${t.name}, on ${uses} face${uses === 1 ? '' : 's'}. Click to show it on the UV sheet; File \u25b8 Export texture PNG saves it.`}
+                        onClick={() => setTextureIndex(i)}
+                      >
+                        <span
+                          className="texture-thumb"
+                          style={{
+                            backgroundImage: `url(${t.source})`,
+                            backgroundSize: 'cover',
+                            imageRendering: 'pixelated',
+                          }}
+                        />
+                        <span style={{ flex: 1, textAlign: 'left', minWidth: 0 }}>{t.name}</span>
+                        <span className="texture-row__meta">
+                          {t.width} x {t.height}
+                        </span>
+                      </button>
+                      <span className="texture-item__actions">
+                        <button
+                          className="editor-tool"
+                          aria-label={`Put ${t.name} on the selected cubes`}
+                          title={cubeIds.length ? `Put ${t.name} on every face of the selected cubes` : 'Select cubes to put this texture on them'}
+                          disabled={!cubeIds.length}
+                          onClick={() => history.commit('apply texture', (m) => assignTexture(m, cubeIds, t.id))}
+                        >
+                          <Icon name="cube" size={13} />
+                        </button>
+                        <button
+                          className="editor-tool"
+                          aria-label={`Delete ${t.name}`}
+                          title={uses ? `Delete ${t.name}. Its ${uses} faces take ${model.textures.find((x) => x.id !== t.id)?.name ?? 'no texture'} instead.` : `Delete ${t.name}`}
+                          onClick={() => {
+                            history.commit('delete texture', (m) => removeTexture(m, t.id))
+                            setTextureIndex((n) => Math.max(0, Math.min(n, model.textures.length - 2)))
+                          }}
+                        >
+                          <Icon name="trash" size={13} />
+                        </button>
+                      </span>
+                    </div>
+                  )
+                })}
+                {!model.textures.length ? <p className="editor-hint">No textures yet. Make a new one or drop a PNG here.</p> : null}
+              </div>
             </Panel>
           </div>
         </div>
