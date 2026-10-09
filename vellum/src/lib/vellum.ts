@@ -23,6 +23,7 @@ import type {
   Channel,
   Clip,
   ClipEvent,
+  Controller,
   Cube,
   EventKind,
   NullObject,
@@ -41,7 +42,7 @@ import type {
 } from './model'
 
 export const FORMAT = 'model'
-export const CURRENT_VERSION = 11
+export const CURRENT_VERSION = 12
 
 /** A well-formed `.vellum` begins with exactly these bytes. */
 export const HEADER_PREFIX = `{"vellum":{"format":"${FORMAT}","version":${CURRENT_VERSION}},`
@@ -205,8 +206,25 @@ export type VellumDocument = {
   behaviour?: VellumBehaviour
   /** Added in v5. The body from `bodyOf`: nested by field path, set fields only. */
   config?: Record<string, unknown>
+  /** Added in v12. Bedrock animation controllers; absent when the model has none. */
+  controllers?: VellumController[]
   /** Added in v10. What a Blockbench project held that Vellum has no field for, kept for the trip back. */
   blockbench?: Record<string, unknown>
+}
+
+export type VellumController = {
+  id: string
+  name: string
+  initial: string
+  states: Array<{
+    id: string
+    name: string
+    clips: Array<{ clip: string; weight?: string }>
+    transitions: Array<{ to: string; when: string }>
+    blend?: number
+    on_entry?: string
+    on_exit?: string
+  }>
 }
 
 /* ---------------- errors ---------------- */
@@ -415,8 +433,56 @@ export function toVellumDocument(model: Model): VellumDocument {
     meshes,
     behaviour,
     config,
+    controllers: writeControllers(model),
     blockbench: blockbenchOf(model),
   })
+}
+
+function writeControllers(model: Model): VellumController[] | undefined {
+  if (!model.controllers?.length) return undefined
+  return model.controllers.map((c) => ({
+    id: c.id,
+    name: c.name,
+    initial: c.initial,
+    states: c.states.map((st) =>
+      compact({
+        id: st.id,
+        name: st.name,
+        clips: st.clips.map((x) => compact({ clip: x.clip, weight: x.weight?.trim() ? x.weight : undefined })),
+        transitions: st.transitions.map((t) => ({ to: t.to, when: t.when })),
+        blend: st.blend || undefined,
+        on_entry: st.onEntry?.trim() ? st.onEntry : undefined,
+        on_exit: st.onExit?.trim() ? st.onExit : undefined,
+      }),
+    ),
+  }))
+}
+
+/** Controllers off disk; a state, clip or transition missing what it needs is dropped. */
+function readControllers(raw: unknown): Controller[] | undefined {
+  const text = (v: unknown) => (typeof v === 'string' ? v : '')
+  const list = objects(raw as VellumController[] | undefined)
+    .filter((c) => typeof c.id === 'string')
+    .map((c): Controller => {
+      const states = objects(c.states)
+        .filter((st) => typeof st.id === 'string')
+        .map((st) => ({
+          id: st.id,
+          name: text(st.name) || 'state',
+          clips: objects(st.clips)
+            .filter((x) => typeof x.clip === 'string')
+            .map((x) => ({ clip: x.clip, ...(text(x.weight) ? { weight: text(x.weight) } : {}) })),
+          transitions: objects(st.transitions)
+            .filter((t) => typeof t.to === 'string')
+            .map((t) => ({ to: t.to, when: text(t.when) })),
+          ...(typeof st.blend === 'number' && st.blend > 0 ? { blend: st.blend } : {}),
+          ...(text(st.on_entry) ? { onEntry: text(st.on_entry) } : {}),
+          ...(text(st.on_exit) ? { onExit: text(st.on_exit) } : {}),
+        }))
+      const initial = states.some((st) => st.id === c.initial) ? c.initial : (states[0]?.id ?? '')
+      return { id: c.id, name: text(c.name) || 'controller', initial, states }
+    })
+  return list.length ? list : undefined
 }
 
 /** The Blockbench extras whose element, group, texture or clip is in the model; absent when none are. */
@@ -451,13 +517,13 @@ function blockbenchOf(model: Model): Record<string, unknown> | undefined {
  * config), in the shape a .vellum writes it. A .bbmodel export carries it
  * under a `vellum` key so the model comes back whole.
  */
-export function vellumOnlyOf(model: Model): Pick<VellumDocument, 'kind' | 'subtype' | 'behaviour' | 'config'> {
+export function vellumOnlyOf(model: Model): Pick<VellumDocument, 'kind' | 'subtype' | 'behaviour' | 'config' | 'controllers'> {
   const doc = toVellumDocument(model)
-  return compact({ kind: doc.kind, subtype: doc.subtype, behaviour: doc.behaviour, config: doc.config })
+  return compact({ kind: doc.kind, subtype: doc.subtype, behaviour: doc.behaviour, config: doc.config, controllers: doc.controllers })
 }
 
 /** Reads what `vellumOnlyOf` wrote. */
-export function readVellumOnly(raw: unknown): Pick<Model, 'kind' | 'subtype' | 'behaviour' | 'config'> {
+export function readVellumOnly(raw: unknown): Pick<Model, 'kind' | 'subtype' | 'behaviour' | 'config' | 'controllers'> {
   const doc = (raw && typeof raw === 'object' ? raw : {}) as VellumDocument
   const kind = (['items', 'mobs', 'blocks'] as const).find((k) => k === doc.kind)
   return compact({
@@ -465,6 +531,7 @@ export function readVellumOnly(raw: unknown): Pick<Model, 'kind' | 'subtype' | '
     subtype: subtypeFits(kind, doc.subtype) ? (doc.subtype as Subtype) : undefined,
     behaviour: readBehaviour(doc.behaviour),
     config: readConfig(doc.config, kind),
+    controllers: readControllers(doc.controllers),
   })
 }
 
@@ -620,6 +687,9 @@ function upgrade(doc: VellumDocument): VellumDocument {
         break
       case 10: // v11 added Molang on keys, as `expr`; absent is already correct
         version = 11
+        break
+      case 11: // v12 added animation controllers; absent is already correct
+        version = 12
         break
       default:
         throw new VellumFormatError(`No upgrade path from .vellum version ${version}.`)
@@ -833,6 +903,7 @@ export function fromVellumDocument(doc: VellumDocument): Model {
     clips,
     nulls: nulls.length ? nulls : undefined,
     meshes: meshes.length ? meshes : undefined,
+    controllers: readControllers(doc.controllers),
     blockbench: doc.blockbench && typeof doc.blockbench === 'object' && !Array.isArray(doc.blockbench) ? doc.blockbench : undefined,
   }
 }

@@ -44,6 +44,7 @@ test('version 8: null objects, clip events and ping-pong survive', async () => {
     return {
       stable: t1 === V.writeVellum(back),
       version: JSON.parse(t1).vellum.version,
+      current: V.CURRENT_VERSION,
       nulls: back.nulls?.map((n) => [n.name, n.ikTarget, n.ikChain]),
       events: back.clips[0].events?.map((e) => `${e.kind}@${e.time}`),
       loop: back.clips[0].loop,
@@ -51,7 +52,7 @@ test('version 8: null objects, clip events and ping-pong survive', async () => {
     }
   })
   assert.ok(out.stable)
-  assert.equal(out.version, 11)
+  assert.equal(out.version, out.current, 'written at the current version')
   assert.equal(out.nulls.length, 1)
   assert.equal(out.nulls[0][2], 2)
   assert.deepEqual(out.events.sort(), ['particle@0.1', 'sound@0.5'])
@@ -61,14 +62,15 @@ test('version 8: null objects, clip events and ping-pong survive', async () => {
     page,
     async (text) => {
       const V = await import('/src/lib/vellum.ts')
-      const v7 = V.readVellum(text.replace('"version":11', '"version":7'))
+      const now = `"version":${V.CURRENT_VERSION}`
+      const v7 = V.readVellum(text.replace(now, '"version":7'))
       const bad = JSON.parse(text)
       bad.clips[0].loop = 'sideways'
       bad.clips[0].events.push({ kind: 'laser', effect: 'x', time: 1 })
       const rb = V.readVellum(bad)
       let refused = null
       try {
-        V.readVellum(text.replace('"version":11', '"version":12'))
+        V.readVellum(text.replace(now, `"version":${V.CURRENT_VERSION + 1}`))
       } catch (e) {
         refused = e.message
       }

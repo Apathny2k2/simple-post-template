@@ -156,7 +156,11 @@ import { saveBlob, saveDataUrl, saveFile } from '../lib/download'
 import { toGltf, toJavaJson, toObjZip } from '../lib/exporters'
 import { fromBbmodel, fromJavaModel, isBbmodel, isJavaModel, toBbmodel } from '../lib/importers'
 import { molangError } from '../lib/molang'
-import { applyBedrockAnimations, fromBedrockGeometry, isBedrockAnimation, isBedrockGeometry, toBedrockZip, bedrockName } from '../lib/bedrock'
+import { applyBedrockAnimations, applyBedrockControllers, fromBedrockGeometry, isBedrockAnimation, isBedrockControllers, isBedrockGeometry, toBedrockZip, bedrockName } from '../lib/bedrock'
+import { controllerPose, poseAsClip, startController, stepController } from '../lib/controllers'
+import type { ControllerRun } from '../lib/controllers'
+import { ControllersPanel, DEFAULT_PREVIEW } from './editor/Controllers'
+import type { PreviewQueries } from './editor/Controllers'
 import './Editor.css'
 import './EditorStudio.css'
 
@@ -4949,6 +4953,45 @@ export function Editor({ segments }: { segments: string[] }) {
     [vertexData, vertexFrom, snapVertex, meshVertexLayer],
   )
 
+  /* ---------------- animation controllers ---------------- */
+
+  /* Play runs a controller in the viewport: each frame checks its state's
+     transitions against the preview conditions and shows the blended pose
+     as a clip of one moment. */
+  const [ctrlPlaying, setCtrlPlaying] = useState<string | null>(null)
+  const [ctrlPreview, setCtrlPreview] = useState<PreviewQueries>(DEFAULT_PREVIEW)
+  const [ctrlFrame, setCtrlFrame] = useState<{ clip: Clip; state: string } | null>(null)
+  const previewRef = useRef(ctrlPreview)
+  previewRef.current = ctrlPreview
+  const modelRef = useRef(model)
+  modelRef.current = model
+  useEffect(() => {
+    if (!ctrlPlaying || mode !== 'animate') {
+      setCtrlFrame(null)
+      return
+    }
+    const ctrl = modelRef.current.controllers?.find((c) => c.id === ctrlPlaying)
+    if (!ctrl) {
+      setCtrlPlaying(null)
+      return
+    }
+    let run: ControllerRun = startController(ctrl, { ...previewRef.current })
+    const began = performance.now()
+    let raf = 0
+    const tick = () => {
+      const m = modelRef.current
+      const c = m.controllers?.find((x) => x.id === ctrlPlaying)
+      if (!c) return
+      const now = (performance.now() - began) / 1000
+      const q = { ...previewRef.current }
+      run = stepController(c, run, now, q)
+      setCtrlFrame({ clip: poseAsClip(controllerPose(m, c, run, now, q)), state: run.state })
+      raf = requestAnimationFrame(tick)
+    }
+    raf = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(raf)
+  }, [ctrlPlaying, mode])
+
   /* ---------------- grab ---------------- */
 
   /* Blender's G: the selection follows the pointer until a click or Enter
@@ -6540,6 +6583,10 @@ export function Editor({ segments }: { segments: string[] }) {
         const got = fromBbmodel(text, file.name)
         loadModel(got.model, file.name, got.kind)
         notify(`Opened ${file.name} from Blockbench. It saves as ${vellumFileName(file.name)}.${got.notes.length ? ' ' + got.notes.join(' ') : ''}`, 12000)
+      } else if (isBedrockControllers(text)) {
+        const got = applyBedrockControllers(model, text)
+        history.commit('import controllers', got.model)
+        notify(`Added ${got.added} controller${got.added === 1 ? '' : 's'} from ${file.name}.${got.notes.length ? ' ' + got.notes.join(' ') : ''}`, 12000)
       } else if (isBedrockAnimation(text)) {
         // animations alone go onto the model that is open, matched by bone name
         const got = applyBedrockAnimations(model, text)
@@ -6636,8 +6683,8 @@ export function Editor({ segments }: { segments: string[] }) {
           grid={grid}
           quad={quad}
           extent={extent}
-          clip={mode === 'animate' ? clip : mode === 'behaviour' ? bhvClip : null}
-          time={mode === 'behaviour' ? bhvClipTime : time}
+          clip={mode === 'animate' ? (ctrlFrame?.clip ?? clip) : mode === 'behaviour' ? bhvClip : null}
+          time={mode === 'behaviour' ? bhvClipTime : ctrlFrame ? 0 : time}
           selected={selected}
           selection={selection}
           onSelect={selectNode}
@@ -7138,6 +7185,17 @@ export function Editor({ segments }: { segments: string[] }) {
                   }
                 >
                   <AnimationPanel anim={anim} />
+                </Panel>
+                <Panel title="Controllers" count={model.controllers?.length || undefined} defaultOpen={!!model.controllers?.length}>
+                  <ControllersPanel
+                    model={model}
+                    onChange={(controllers, label) => history.commit(label, (m) => ({ ...m, controllers: controllers.length ? controllers : undefined }))}
+                    playing={ctrlPlaying}
+                    onPlay={setCtrlPlaying}
+                    current={ctrlFrame?.state ?? null}
+                    preview={ctrlPreview}
+                    onPreview={setCtrlPreview}
+                  />
                 </Panel>
                 {anim.kind === 'mobs' && clip ? (
                   <Panel title="Auto-animate" defaultOpen={false}>

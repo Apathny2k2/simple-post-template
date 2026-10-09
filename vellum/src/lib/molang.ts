@@ -200,7 +200,8 @@ const MATH: Record<string, (args: number[], rand: () => number) => number> = {
 
 function run(statements: Statement[], ctx: MolangContext): number {
   const query = ctx.query ?? {}
-  const vars: Record<string, number> = { ...ctx.variable }
+  // variables live on the context when it has some, so scripts that set them are seen by later ones
+  const vars: Record<string, number> = ctx.variable ?? {}
   const temp: Record<string, number> = {}
   const rand = seeded(Math.round((query.anim_time ?? 0) * 1000) + 1)
   const read = (p: string[]): number => {

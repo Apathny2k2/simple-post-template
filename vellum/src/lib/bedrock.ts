@@ -10,7 +10,7 @@
    (see `keySigns`). */
 
 import { FACES, sampleTrack } from './model'
-import type { Bone, BoneChild, Clip, ClipEvent, Cube, Face, FaceKey, Key, Model, NullObject, Track, UVRect, Vec3 } from './model'
+import type { Bone, BoneChild, Clip, ClipEvent, Controller, ControllerState, Cube, Face, FaceKey, Key, Model, NullObject, Track, UVRect, Vec3 } from './model'
 import { newId } from './new-model'
 import { keySigns } from './bbmodel'
 import type { Imported } from './bbmodel'
@@ -224,6 +224,9 @@ export function toBedrockZip(model: Model): { bytes: Uint8Array; notes: string[]
     entries.push({ path: `animations/${name}.animation.json`, bytes: enc.encode(JSON.stringify(anim.json, null, 2)) })
     notes.push(...anim.notes)
   }
+  const controllers = toBedrockControllers(model)
+  if (controllers) entries.push({ path: `animation_controllers/${name}.animation_controllers.json`, bytes: enc.encode(JSON.stringify(controllers, null, 2)) })
+  entries.push({ path: `entity/${name}.entity.json`, bytes: enc.encode(JSON.stringify(toBedrockEntity(model), null, 2)) })
   for (const t of model.textures) {
     const bytes = t.source ? dataUriBytes(t.source) : null
     if (bytes) entries.push({ path: `textures/entity/${t.name.replace(/\.png$/i, '')}.png`, bytes })
@@ -445,4 +448,137 @@ export function applyBedrockAnimations(model: Model, text: string): { model: Mod
   if (molang.n) notes.push(`${molang.n} key${molang.n === 1 ? ' is' : 's are'} Molang, kept and played; queries such as ground speed take preview values.`)
   const names = new Set(clips.map((c) => c.name))
   return { model: { ...model, clips: [...model.clips.filter((c) => !names.has(c.name)), ...clips] }, added: clips.length, notes }
+}
+
+/* ---------------- animation controllers ---------------- */
+
+/** The short name a controller or entity file calls a clip by: its name without `animation.<model>.`. */
+export const shortClipName = (clip: Clip) => bedrockName(clip.name.replace(/^animation\.[^.]+\./, ''))
+
+/** Names made unique by a number, in order. */
+function uniqueNames(names: string[]): string[] {
+  const seen = new Map<string, number>()
+  return names.map((n) => {
+    const k = seen.get(n) ?? 0
+    seen.set(n, k + 1)
+    return k ? `${n}_${k + 1}` : n
+  })
+}
+
+/** The model's controllers as Bedrock writes them, format 1.10.0; null when it has none. */
+export function toBedrockControllers(model: Model): Json | null {
+  if (!model.controllers?.length) return null
+  const base = bedrockName(model.name)
+  const out: Json = {}
+  for (const c of model.controllers) {
+    const names = uniqueNames(c.states.map((s) => bedrockName(s.name)))
+    const nameOf = new Map(c.states.map((s, i) => [s.id, names[i]]))
+    const states: Json = {}
+    c.states.forEach((s, i) => {
+      const animations = s.clips.flatMap(({ clip, weight }) => {
+        const found = model.clips.find((x) => x.id === clip)
+        if (!found) return []
+        return [weight?.trim() ? { [shortClipName(found)]: weight } : shortClipName(found)]
+      })
+      states[names[i]] = {
+        ...(animations.length ? { animations } : {}),
+        ...(s.transitions.length ? { transitions: s.transitions.filter((t) => nameOf.has(t.to)).map((t) => ({ [nameOf.get(t.to)!]: t.when || '0' })) } : {}),
+        ...(s.blend ? { blend_transition: s.blend } : {}),
+        ...(s.onEntry?.trim() ? { on_entry: [s.onEntry.trim().endsWith(';') ? s.onEntry.trim() : `${s.onEntry.trim()};`] } : {}),
+        ...(s.onExit?.trim() ? { on_exit: [s.onExit.trim().endsWith(';') ? s.onExit.trim() : `${s.onExit.trim()};`] } : {}),
+      }
+    })
+    out[`controller.animation.${base}.${bedrockName(c.name)}`] = { initial_state: nameOf.get(c.initial) ?? names[0], states }
+  }
+  return { format_version: '1.10.0', animation_controllers: out }
+}
+
+/**
+ * The client entity file that ties the pack together: the geometry, the
+ * texture, every animation and controller by the short names controllers
+ * use, and the controllers set to run.
+ */
+export function toBedrockEntity(model: Model): Json {
+  const base = bedrockName(model.name)
+  const anims = toBedrockAnimations(model).json.animations as Json
+  const ids = Object.keys(anims)
+  const animations: Json = Object.fromEntries(model.clips.map((c, i) => [shortClipName(c), ids[i]]))
+  const controllers = Object.keys(obj(toBedrockControllers(model)?.animation_controllers))
+  controllers.forEach((id) => (animations[id.split('.').pop()!] = id))
+  const texture = model.textures[0]?.name.replace(/\.png$/i, '') ?? base
+  return {
+    format_version: '1.10.0',
+    'minecraft:client_entity': {
+      description: {
+        identifier: `vellum:${base}`,
+        materials: { default: 'entity_alphatest' },
+        textures: { default: `textures/entity/${texture}` },
+        geometry: { default: `geometry.${base}` },
+        render_controllers: ['controller.render.default'],
+        ...(Object.keys(animations).length ? { animations } : {}),
+        ...(controllers.length ? { scripts: { animate: controllers.map((id) => id.split('.').pop()!) } } : {}),
+      },
+    },
+  }
+}
+
+/** Whether text is a Bedrock animation controllers file. */
+export function isBedrockControllers(text: string): boolean {
+  try {
+    const j = JSON.parse(text)
+    return !!j && typeof j === 'object' && typeof j.animation_controllers === 'object'
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Bedrock controllers onto `model`, their animations matched to its clips
+ * by name (a clip named `animation.x.walk`, or `walk`, answers to `walk`).
+ * A controller with a name already used replaces it.
+ */
+export function applyBedrockControllers(model: Model, text: string): { model: Model; added: number; notes: string[] } {
+  const j = JSON.parse(text) as Json
+  const notes: string[] = []
+  const missing = new Set<string>()
+  const clipFor = (short: string) =>
+    model.clips.find((c) => c.name === short || c.name.endsWith(`.${short}`) || shortClipName(c) === bedrockName(short))
+  const controllers: Controller[] = []
+  for (const [fullName, rawC] of Object.entries(obj(j.animation_controllers))) {
+    const c = obj(rawC)
+    const entries = Object.entries(obj(c.states))
+    const ids = new Map(entries.map(([name]) => [name, newId()]))
+    const states: ControllerState[] = entries.map(([name, rawS]) => {
+      const st = obj(rawS)
+      const clips = arr(st.animations).flatMap((a) => {
+        const [short, weight] = typeof a === 'string' ? [a, undefined] : (Object.entries(obj(a))[0] ?? ['', undefined])
+        const clip = clipFor(String(short))
+        if (!clip) {
+          missing.add(String(short))
+          return []
+        }
+        return [{ clip: clip.id, ...(typeof weight === 'string' && weight.trim() ? { weight } : typeof weight === 'number' && weight !== 1 ? { weight: String(weight) } : {}) }]
+      })
+      const transitions = arr(st.transitions).flatMap((t) => {
+        const [to, when] = Object.entries(obj(t))[0] ?? []
+        return to && ids.has(to) ? [{ to: ids.get(to)!, when: typeof when === 'string' ? when : String(when ?? '') }] : []
+      })
+      const script = (v: unknown) => (Array.isArray(v) ? v.filter((x) => typeof x === 'string').join(' ') : typeof v === 'string' ? v : '')
+      return {
+        id: ids.get(name)!,
+        name,
+        clips,
+        transitions,
+        ...(num(st.blend_transition) > 0 ? { blend: num(st.blend_transition) } : {}),
+        ...(script(st.on_entry) ? { onEntry: script(st.on_entry) } : {}),
+        ...(script(st.on_exit) ? { onExit: script(st.on_exit) } : {}),
+      }
+    })
+    if (!states.length) continue
+    const initial = ids.get(str(c.initial_state, 'default')) ?? states[0].id
+    controllers.push({ id: newId(), name: fullName.replace(/^controller\.animation\.([^.]+\.)?/, ''), initial, states })
+  }
+  if (missing.size) notes.push(`No clip answers to ${[...missing].map((n) => `"${n}"`).join(', ')}, so ${missing.size === 1 ? 'it was' : 'they were'} left out of the states.`)
+  const names = new Set(controllers.map((c) => c.name))
+  return { model: { ...model, controllers: [...(model.controllers ?? []).filter((c) => !names.has(c.name)), ...controllers] }, added: controllers.length, notes }
 }

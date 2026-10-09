@@ -475,6 +475,7 @@ export function fromBbmodel(text: string, fileName = 'model.bbmodel'): Imported 
     ...(only.subtype ? { subtype: only.subtype } : {}),
     ...(only.behaviour ? { behaviour: only.behaviour } : {}),
     ...(only.config ? { config: only.config } : {}),
+    ...(only.controllers ? { controllers: only.controllers } : {}),
     resolution,
     bones,
     cubes,

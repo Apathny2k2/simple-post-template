@@ -937,6 +937,20 @@ axis's number. Keys keep their Molang in the `.vellum` (v11, as `expr`), and
 through Blockbench and Bedrock, signed for their axes the way the numbers
 are.
 
+**Controllers.** Bedrock's animation controllers, in the Controllers panel
+(`lib/controllers.ts`, `pages/editor/Controllers.tsx`). A controller has
+states; a state plays some clips together, each from when the state began
+and at a Molang weight (1 by default). Rotation and position add, and scale
+multiplies, as Bedrock layers them. Every frame the state's transitions are
+checked in order, each a target state and a Molang condition, and the
+first that holds moves it on, cross-fading over the new state's **Blend**
+seconds. A state's **on entry** Molang runs as it starts, and the variables
+it sets are seen by the conditions after it. **Play** runs the controller in
+the viewport, the state it's in lit, with checkboxes and a health field
+standing in for the mob: moving (which also sets `q.ground_speed`), on the
+ground, sneaking, in water. Controllers are kept in the `.vellum` (v12), in a
+`.bbmodel` under its `vellum` key, and in the Bedrock zip.
+
 The timeline has two views. The **dope sheet** has a row per bone and channel.
 Click a key to select it, Ctrl-click to toggle one and Shift-click to add one.
 Drag across empty track to box-select, and drag any selected key to move them
@@ -1214,7 +1228,11 @@ File ▸ Open takes a `.vellum`, a Blockbench project or a Java model.
 - **Bedrock geometry and animations** (`src/lib/bedrock.ts`), both ways.
   File ▸ Export ▸ Bedrock writes a zip laid out as a resource pack's
   folders: `models/entity/<name>.geo.json` (format 1.12.0),
-  `animations/<name>.animation.json` (1.8.0) and the textures. Bedrock's X
+  `animations/<name>.animation.json` (1.8.0),
+  `animation_controllers/<name>.animation_controllers.json` (1.10.0), the
+  textures, and `entity/<name>.entity.json`, the client entity file that
+  names the geometry, the texture, every animation and controller by the
+  short names controllers use, and sets the controllers to run. Bedrock's X
   runs the other way, so pivots and points go over as (-x, y, z), turns as
   (-x, -y, z), and a cube's Bedrock `origin` is its corner on the model's
   `to` side in x. Up and down faces cross over end for end, as Blockbench
@@ -1230,7 +1248,8 @@ File ▸ Open takes a `.vellum`, a Blockbench project or a Java model.
   File ▸ Open takes a `.geo.json` (the 1.12 form or the older one keyed by
   `geometry.` names) as a new model with a blank texture named after it,
   and an `.animation.json` as clips added to the open model, matched to its
-  bones by name. Keys may be arrays, one value for all three axes, or
+  bones by name, and an `.animation_controllers.json` as controllers, their
+  animations matched to its clips by short name. Keys may be arrays, one value for all three axes, or
   `{pre, post, lerp_mode}`; a `pre` equal to the key before makes that key
   hold. Molang values are kept and played, and bones the model lacks are named in the status bar.
 - **Java block or item JSON.** Elements become cubes under one `root` bone.
@@ -1279,6 +1298,8 @@ code the editor runs.
 | `mesh-tools.test.mjs` | Knife, bevel, edge slide, loop select, fill, dissolve, inset, turning and scaling keep a cube closed and facing out; faces a flat map can't fit split into triangles; the knife, bevel, inset, gizmo turn and scale, and slide in the editor; a dragged UV corner drawn as two triangles |
 | `bbmodel.test.mjs` | Every sample saved as a `.bbmodel` opens as the same model; a Blockbench project (4 and 5 outliners) keeps its display, cullfaces, colours, render modes, blend weights and unknown elements through a `.vellum` and back; ids that aren't uuids and ping-pong clips survive; Save's format menu, and a `.bbmodel` saving back as one |
 | `bedrock.test.mjs` | Every sample out to Bedrock geometry and animations and back keeps its bones, cubes, UVs and motion; a hand-written Bedrock file with `pre`/`post`, catmull-rom, Molang, single values, locators and effects; the export zip and adding animations from File ▸ Open |
+| `molang.test.mjs` | The evaluator's operators, math in degrees, queries, variables and statements; Molang keys playing, and kept through the `.vellum`, Blockbench and Bedrock; typing Molang on a key in Animate |
+| `controllers.test.mjs` | A controller moving between states, adding clips at weights, running entry scripts and cross-fading; controllers kept through the `.vellum`, the `.bbmodel` and Bedrock's files, with the entity file; making, playing and switching one in Animate |
 | `modes.test.mjs` | A display slot takes and resets a transform; the real-world view opens and closes; a behaviour cycle runs and takes a stage |
 | `bundle.test.mjs` | `dist/vellum.html` opens and keeps its unprefixed `backdrop-filter`; skipped until `pnpm build:single` has run |
 

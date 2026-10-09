@@ -222,6 +222,30 @@ export type Mesh = {
   locked: boolean
 }
 
+/** A state of an animation controller: the clips it plays, added together, and when it moves on. */
+export type ControllerState = {
+  id: string
+  name: string
+  /** clips by id; `weight` is Molang for how much of it plays, 1 when absent */
+  clips: Array<{ clip: string; weight?: string }>
+  /** checked in order each frame; the first whose Molang `when` is true moves to `to` (a state id) */
+  transitions: Array<{ to: string; when: string }>
+  /** seconds to cross-fade from the state before */
+  blend?: number
+  /** Molang run as the state starts and ends, usually setting variables */
+  onEntry?: string
+  onExit?: string
+}
+
+/** A Bedrock animation controller: states and the conditions that move between them. */
+export type Controller = {
+  id: string
+  name: string
+  /** the state it starts in */
+  initial: string
+  states: ControllerState[]
+}
+
 export type Model = {
   name: string
   /** what the model is; drives which validation rules apply */
@@ -241,6 +265,8 @@ export type Model = {
   nulls?: NullObject[]
   /** absent when the model has none (v9) */
   meshes?: Mesh[]
+  /** Bedrock animation controllers (v12); absent when the model has none */
+  controllers?: Controller[]
   /**
    * What a Blockbench project held that Vellum has no field for (v10): its
    * meta and display settings, and each element's, group's, texture's and
