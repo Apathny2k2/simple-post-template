@@ -269,6 +269,9 @@
   transition: color var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease);
 }
 
+.panel__bar { display: flex; align-items: center; }
+.panel__bar .panel__head { flex: 1; min-width: 0; }
+.panel__actions { display: inline-flex; flex: none; padding-right: 12px; }
 .panel__head:hover { color: var(--ink); background: var(--accent-soft); }
 .panel[data-open='true'] .panel__head { border-bottom-color: var(--border); }
 

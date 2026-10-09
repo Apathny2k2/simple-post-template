@@ -43,9 +43,11 @@ export default function App() {
   // the demo server keeps reporting on every page, so Settings shows it too
   useDemoServer()
 
-  const surface = root === 'editor' ? 'paper' : 'dark'
-  // The home page, sign-in and the server picker come before the Studio and have their own headers.
-  const outside = root === undefined || root === 'login' || root === 'servers'
+  // every page is dark now; the editor follows the Studio design too
+  const surface = 'dark'
+  /* The home page, sign-in and the server picker come before the Studio and
+     have their own headers. The editor has its own bar, with a way back. */
+  const outside = root === undefined || root === 'login' || root === 'servers' || root === 'editor'
   useLayoutEffect(() => {
     const html = document.documentElement
     if (surface === 'dark') html.dataset.surface = 'dark'

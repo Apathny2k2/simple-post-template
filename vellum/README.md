@@ -495,7 +495,7 @@ Things to know about `backdrop-filter` and overflow:
   source also carries a prefixed line after the standard one, the minifier
   keeps only the prefixed line, which Chrome and Firefox ignore.
 - A bar that scrolls sideways clips the menus that drop from it. The editor's
-  menu bar doesn't scroll; on a narrow screen the file name gives way instead.
+  top bar doesn't scroll; on a narrow screen the file name gives way instead.
 
 **Type.** Inter and JetBrains Mono, self-hosted as `woff2` under `public/fonts`
 with latin + latin-ext subsets and `unicode-range` splits. No request leaves
@@ -523,9 +523,9 @@ keyframed spin. There is no mesh, no camera and no raster pipeline.
 Blockbench: grey-blue panels, one bright blue, the axis colours, and the
 studio's own models turning on a disc at the top of the Dash. There is no
 second copy of the styles. `App` sets `data-surface="dark"` on `<html>` for
-every route but the editor, and `src/styles/studio.css` re-points the tokens
-under that selector. The top bar, cards, menus, fields and dialogs go dark, and
-turn back to the editor's grey when you open a model. The accent is blue there
+every route, and `src/styles/studio.css` re-points the tokens under that
+selector. The top bar, cards, menus, fields and dialogs go dark. The editor is
+dark too, in its own palette (see below). The accent is blue there
 too, in brighter steps: `--accent-mark` `#5aa2ff` for lines and marks,
 `--accent-text` `#a9ccff` for text. Errors and warnings use `--danger` and
 `--warn` on both surfaces. The dark pages are livelier. Panels are rounded and
@@ -780,6 +780,32 @@ matches what the panel said. They are relative, because where they land on a
 server is the plugin's convention to set. A model with nothing configured is
 left out.
 
+## The editor's layout
+
+The editor follows the Studio design. `src/pages/EditorStudio.css` holds the
+whole skin, scoped to `.editor-root--studio`, and re-points the shared tokens
+there, so the panels underneath need no changes of their own.
+
+- **Top bar.** Back, the model's name with a dot when it has unsaved changes,
+  then the modes in a pill in the middle (Model, Paint, Animate, Config, Scene).
+  On the right: undo, redo, a count of problems that opens the Validation
+  panel, the File menu and Save. File holds every menu the old menu bar had,
+  each under its own heading.
+- **Columns.** In Model, Paint and Animate the outliner (or the paint tools, or
+  the clips) is on the left and the inspector on the right. The root carries
+  `data-swap` for those modes, and the two columns trade grid columns in CSS
+  so the markup keeps one order.
+- **Viewport.** View tabs top left (Perspective, Front, Side, Top), shading and
+  the snap, space and grid controls top right, the tools in a dock at the
+  bottom centre with their keys printed on them.
+- **Status bar.** The model's counts on the left, the selection in the middle,
+  whether it is saved on the right.
+
+Colours: backgrounds `#15191D`, `#12161A`, `#101316`; lines `#23292F` and
+`#2A3036`; ink `#EEE9DF`, `#A8A398`, `#8C887F`. Sage `#A7C4A0` marks the
+selection, amber `#D8B67A` unsaved changes and problems, and Save is cream
+`#F4F0E8`. The type is Archivo, falling back to Inter when it cannot load.
+
 ## The viewport tools
 
 The editor is meant to feel familiar to anyone who has used Blockbench or
@@ -794,7 +820,7 @@ camera keys follow Blender, which Blockbench copies.
 | Pivot | P | Moves the point a cube or bone turns about, without moving it |
 | Vertex snap | X | Click a corner of the selection, then the corner it should meet |
 
-Grid snap is in the toolbar (1 unit down to 1/16). Shift snaps to a quarter of
+Grid snap is the Snap menu at the top right of the viewport (1 unit down to 1/16). Shift snaps to a quarter of
 it and Ctrl turns snapping off. Rotation snaps to 2.5° (Shift 0.5°), and to
 22.5° for blocks, since Minecraft accepts no other angle on a block. **Global** and **Local**
 (T) switch the move and pivot arrows between the world axes and the selection's

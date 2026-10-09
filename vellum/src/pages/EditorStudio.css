@@ -1,0 +1,438 @@
+/* The editor in the Studio design: one dark bar, flush columns, warm ink,
+   sage for what is selected and amber for what needs you. Loaded after
+   Editor.css; everything is scoped to .editor-root--studio and works by
+   re-pointing the shared tokens first, then reshaping the few pieces the
+   design draws differently. */
+
+.editor-root--studio {
+  --s-bg: #15191d;
+  --s-deep: #12161a;
+  --s-sunk: #101316;
+  --s-card: #171b20;
+  --s-line: #23292f;
+  --s-line-2: #2a3036;
+  --s-line-3: #3a4048;
+  --s-hover: #20262c;
+  --s-active: #262c33;
+  --s-ink: #eee9df;
+  --s-ink-2: #a8a398;
+  --s-ink-3: #8c887f;
+  --s-sage: #a7c4a0;
+  --s-amber: #d8b67a;
+  --s-cream: #f4f0e8;
+  --s-danger: #e09a8a;
+
+  --bg-deep: var(--s-bg);
+  --viewport-bg: var(--s-deep);
+  --ink: var(--s-ink);
+  --ink-muted: var(--s-ink-2);
+  --ink-faint: var(--s-ink-3);
+  --border: var(--s-line);
+  --border-strong: var(--s-line-3);
+  --border-accent: var(--s-line-3);
+  --sunken: var(--s-sunk);
+  --sunken-strong: var(--s-hover);
+  --glass: var(--s-card);
+  --glass-thick: var(--s-card);
+  --glass-solid: var(--s-card);
+  --bar-bg: var(--s-bg);
+  --bar-bg-strong: var(--s-bg);
+  --bar-bg-soft: transparent;
+  --surface: var(--s-card);
+  --accent: var(--s-active);
+  --accent-hover: var(--s-hover);
+  --accent-ink: var(--s-ink);
+  --accent-mark: var(--s-sage);
+  --accent-text: var(--s-sage);
+  --accent-soft: rgb(167 196 160 / 0.12);
+  --accent-softer: rgb(167 196 160 / 0.06);
+  --focus-ring: 0 0 0 2px #c9dcc4;
+  --warn: var(--s-amber);
+  --danger: var(--s-danger);
+  --ok: var(--s-sage);
+  --axis-x: #e09a8a;
+  --axis-y: #9cc79a;
+  --axis-z: #9fb8cf;
+  --shadow: none;
+  --shadow-lg: none;
+  --inner-highlight: none;
+  --inner-highlight-soft: none;
+  --font-sans: 'Archivo', 'Vellum Sans', system-ui, sans-serif;
+  --rail-pad: 0px;
+
+  height: 100dvh;
+  background: var(--s-bg);
+  color: var(--s-ink);
+  font-family: var(--font-sans);
+  font-size: 14px;
+}
+
+/* ---------------- the bar ---------------- */
+
+.sbar {
+  position: relative;
+  z-index: 30;
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-height: 58px;
+  padding: 0 14px;
+  border-bottom: 1px solid var(--s-line);
+  background: var(--s-bg);
+}
+.sbar__icon {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  color: var(--s-ink-2);
+}
+.sbar__icon:hover:not(:disabled) { background: var(--s-active); color: var(--s-ink); }
+.sbar__icon:disabled { opacity: 0.4; }
+.sbar__title { min-width: 0; line-height: 1.25; }
+.sbar__name { display: flex; align-items: center; gap: 8px; font-size: 16px; font-weight: 700; white-space: nowrap; }
+.sbar__dirty { width: 7px; height: 7px; border-radius: 50%; background: var(--s-amber); }
+.sbar__sub { font-size: 12.5px; color: var(--s-ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sbar__modes {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 2px;
+  padding: 4px;
+  border: 1px solid var(--s-line-2);
+  border-radius: 999px;
+  background: var(--s-deep);
+}
+.sbar__mode {
+  padding: 6px 15px;
+  border-radius: 999px;
+  color: var(--s-ink-2);
+  font-weight: 600;
+  font-size: 14px;
+}
+.sbar__mode:hover { color: var(--s-ink); }
+.sbar__mode[aria-pressed='true'] { background: var(--s-active); color: var(--s-ink); }
+.sbar__right { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+.sbar__pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 14px;
+  border: 1px solid var(--s-line-3);
+  border-radius: 999px;
+  color: var(--s-ink);
+  font-weight: 600;
+  font-size: 14px;
+}
+.sbar__pill:hover { border-color: #8c887f; }
+.sbar__pill--warn { color: var(--s-amber); border-color: rgb(216 182 122 / 0.45); }
+.sbar__save {
+  height: 34px;
+  padding: 0 18px;
+  border-radius: 999px;
+  background: var(--s-cream);
+  color: var(--s-bg);
+  font-weight: 700;
+  font-size: 14px;
+}
+.sbar__save:hover { background: #fff; }
+
+@media (max-width: 1180px) {
+  .sbar__modes { position: static; transform: none; overflow-x: auto; }
+  .sbar__sub { display: none; }
+}
+
+/* ---------------- columns: flush, full height ---------------- */
+
+.editor-root--studio .editor-rails {
+  padding: 0;
+  grid-template-columns: var(--left-w) 4px minmax(0, 1fr) 4px var(--right-w);
+}
+.editor-root--studio .editor-column {
+  border: 0;
+  border-radius: 0;
+  background: var(--s-bg);
+  backdrop-filter: none;
+  box-shadow: none;
+  align-self: stretch;
+  max-height: none;
+}
+.editor-root--studio .editor-column--left { border-right: 1px solid var(--s-line); }
+.editor-root--studio .editor-column--right { border-left: 1px solid var(--s-line); }
+/* Model, Paint and Animate put the outliner on the left and the inspector on the right */
+.editor-root--studio[data-swap] .editor-column--left { grid-column: 5; grid-row: 1; border-right: 0; border-left: 1px solid var(--s-line); }
+.editor-root--studio[data-swap] .editor-column--right { grid-column: 1; grid-row: 1; border-left: 0; border-right: 1px solid var(--s-line); }
+.editor-root--studio .editor-split::after { background: transparent; }
+
+/* panels are sections of one column, divided by a hairline */
+.editor-root--studio .panel { border-bottom: 1px solid var(--s-line); }
+.editor-root--studio .panel__head {
+  padding: 16px 16px 8px;
+  background: transparent;
+  color: var(--s-ink-2);
+  font-family: var(--font-sans);
+  font-size: 12.5px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+}
+.editor-root--studio .panel__head:hover { color: var(--s-ink); background: transparent; }
+.editor-root--studio .panel__body { padding: 8px 16px 16px; }
+.editor-root--studio .panel--grow .panel__body { padding: 4px 8px 8px; }
+
+.editor-root--studio .panel__bar:has(.panel__actions) .panel__head { flex: 0 0 auto; width: auto; padding-right: 10px; }
+.editor-root--studio .panel__actions { padding: 8px 16px 0 0; }
+.outliner-add { display: inline-flex; gap: 14px; white-space: nowrap; }
+.outliner-add button { color: var(--s-ink); font-weight: 700; font-size: 14px; }
+.outliner-add button:hover { color: #fff; }
+.outliner-foot { margin: 10px 8px 0; padding-top: 12px; border-top: 1px solid var(--s-line); font-size: 13px; color: var(--s-ink-3); }
+
+/* the outliner: mono names, a quiet hover, the selection on a raised row */
+.editor-root--studio .tree__row { border-radius: 7px; font-family: var(--font-mono); font-size: 13.5px; color: var(--s-ink); min-height: 30px; }
+.editor-root--studio .tree__row:hover { background: var(--s-hover); }
+.editor-root--studio .tree__row[aria-selected='true'] { background: var(--s-active); color: var(--s-ink); }
+.editor-root--studio .tree__row[aria-selected='true'][data-primary] { box-shadow: inset 2px 0 0 var(--s-sage); }
+.editor-root--studio .tree__icon { color: var(--s-ink-2); }
+
+/* fields: dark wells with a coloured axis letter */
+.editor-root--studio .num-field,
+.editor-root--studio .editor-input,
+.editor-root--studio .editor-select {
+  border: 1px solid var(--s-line-2);
+  border-radius: 8px;
+  background: var(--s-deep);
+  color: var(--s-ink);
+  font-family: var(--font-sans);
+}
+.editor-root--studio .num-field-row__label,
+.editor-root--studio .editor-field > span {
+  color: var(--s-ink-2);
+  font-family: var(--font-sans);
+  font-size: 12.5px;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+/* a vector's label stands over its three fields, as a small capital heading */
+.editor-root--studio .num-field-grid { gap: 14px; }
+.editor-root--studio .num-field-row--vec { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.editor-root--studio .num-field-row--vec .num-field-row__label {
+  grid-column: 1 / -1;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--s-ink-2);
+}
+.editor-root--studio .num-field { min-height: 32px; }
+
+/* buttons inside panels are outlined pills */
+.editor-root--studio .chip {
+  border: 1px solid var(--s-line-3);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--s-ink);
+  font-family: var(--font-sans);
+  font-weight: 600;
+  font-size: 13px;
+  padding: 6px 13px;
+  height: auto;
+}
+.editor-root--studio .chip:hover { border-color: var(--s-ink-3); }
+.editor-root--studio .chip[aria-pressed='true'] { background: var(--s-active); border-color: var(--s-line-3); }
+.editor-root--studio .chip--danger { color: var(--s-danger); border-color: rgb(224 154 138 / 0.4); }
+.editor-root--studio .chip--go { background: var(--s-cream); color: var(--s-bg); border-color: var(--s-cream); }
+.editor-root--studio .editor-hint { color: var(--s-ink-3); font-family: var(--font-sans); font-size: 13px; }
+
+/* ---------------- viewport ---------------- */
+
+.editor-root--studio .editor-view { background: var(--s-deep); }
+.editor-root--studio .editor-view__corner {
+  padding: 0;
+  border: 0;
+  background: none;
+  backdrop-filter: none;
+  box-shadow: none;
+  gap: 8px;
+  font-family: var(--font-sans);
+  font-size: 14px;
+}
+.editor-root--studio .editor-view__corner--top-left { top: 14px; left: calc(var(--left-w) + 14px); pointer-events: auto; }
+.editor-root--studio .editor-view__corner--top-right { top: 14px; right: calc(var(--right-w) + 14px); }
+/* the hints sit in one line above the tool dock, so a long one never runs under it */
+.editor-root--studio .editor-view__corner--bottom-left {
+  bottom: 76px;
+  left: calc(var(--left-w) + 14px);
+  right: calc(var(--right-w) + 70px);
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  color: var(--s-ink-3);
+  font-size: 13px;
+}
+.editor-root--studio .editor-view__corner--bottom-left > * {
+  max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.editor-root--studio .editor-view__hint { color: var(--s-ink-2); }
+.editor-root--studio .editor-view .scene3d__nav { top: 62px; right: calc(var(--right-w) + 14px); }
+.editor-root--studio .editor-view .scene3d__projection { display: none; }
+.editor-root--studio .editor-view .scene3d__zoom { right: calc(var(--right-w) + 14px); bottom: 18px; }
+.editor-root--studio .editor-view__flash { top: 62px; left: calc(var(--left-w) + 14px); }
+
+.studio-seg {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--s-line-2);
+  border-radius: 10px;
+  background: var(--s-card);
+}
+.studio-seg button {
+  padding: 5px 11px;
+  border-radius: 7px;
+  color: var(--s-ink-2);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  white-space: nowrap;
+}
+.studio-seg button:hover { color: var(--s-ink); }
+.studio-seg button[aria-pressed='true'] { background: var(--s-active); color: var(--s-ink); }
+.studio-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 12px;
+  border: 1px solid var(--s-line-2);
+  border-radius: 10px;
+  background: var(--s-card);
+  color: var(--s-ink);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  cursor: pointer;
+}
+.studio-chip:hover { border-color: var(--s-line-3); }
+.studio-chip--icon { width: 34px; padding: 0; justify-content: center; color: var(--s-ink-2); }
+.studio-chip[aria-pressed='true'] { background: var(--s-active); color: var(--s-ink); border-color: var(--s-line-3); }
+.studio-chip select { border: 0; background: transparent; color: inherit; font: inherit; cursor: pointer; }
+.studio-chip select option { background: var(--s-card); }
+
+/* the tool pill floats at the bottom of the viewport, between the columns */
+.editor-view__dock {
+  position: absolute;
+  z-index: 6;
+  bottom: 16px;
+  left: calc(var(--left-w) + (100% - var(--left-w) - var(--right-w)) / 2);
+  transform: translateX(-50%);
+}
+.dock {
+  display: inline-flex;
+  gap: 2px;
+  padding: 5px;
+  border: 1px solid var(--s-line-2);
+  border-radius: 14px;
+  background: var(--s-card);
+  box-shadow: 0 12px 30px -12px rgb(0 0 0 / 0.7);
+}
+.dock__tool {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 12px;
+  border-radius: 9px;
+  color: var(--s-ink-2);
+  font-family: var(--font-sans);
+  font-weight: 700;
+  font-size: 14px;
+  white-space: nowrap;
+}
+.dock__tool:hover { color: var(--s-ink); }
+.dock__tool[aria-pressed='true'] { background: var(--s-active); color: var(--s-ink); }
+.dock kbd,
+.ptools kbd {
+  padding: 0 5px;
+  border: 1px solid var(--s-line-3);
+  border-radius: 4px;
+  font: 600 11px var(--font-mono);
+  color: var(--s-ink-3);
+}
+
+/* Paint's tool list */
+.ptools { display: grid; gap: 2px; margin-bottom: 4px; }
+.ptools__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border-radius: 9px;
+  color: var(--s-ink-2);
+  font-weight: 700;
+  font-size: 15px;
+}
+.ptools__row:hover { background: var(--s-hover); color: var(--s-ink); }
+.ptools__row[aria-pressed='true'] { background: var(--s-active); color: var(--s-ink); }
+.ptools__row kbd { margin-left: auto; }
+.studio-label {
+  margin: 16px 0 8px;
+  color: var(--s-ink-2);
+  font-size: 12.5px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+.ptools + .studio-label + .studio-seg { display: flex; }
+.ptools + .studio-label + .studio-seg button { flex: 1; padding: 0 2px; white-space: nowrap; }
+
+/* ---------------- timeline ---------------- */
+
+.editor-root--studio .editor-timeline {
+  margin: 0;
+  border: 0;
+  border-top: 1px solid var(--s-line);
+  border-radius: 0;
+  background: var(--s-bg);
+  backdrop-filter: none;
+  box-shadow: none;
+}
+.editor-root--studio .timeline-bar { border-bottom: 1px solid var(--s-line); background: var(--s-bg); }
+.editor-root--studio .timeline-time { font-family: var(--font-sans); color: var(--s-ink); }
+.editor-root--studio .timeline-name { background: var(--s-bg); font-family: var(--font-mono); color: var(--s-ink); }
+.editor-root--studio .timeline-name__channel { color: var(--s-ink-3); font-family: var(--font-sans); }
+.editor-root--studio .timeline-key {
+  width: 10px;
+  height: 10px;
+  margin-left: -5px;
+  border-radius: 1px;
+  transform: rotate(45deg);
+  background: var(--s-ink);
+  border: 0;
+}
+.editor-root--studio .timeline-key[data-selected] { background: var(--s-sage); box-shadow: 0 0 0 2px rgb(167 196 160 / 0.35); }
+.editor-root--studio .timeline-playhead { background: var(--s-sage); }
+.editor-root--studio .timeline-ruler { color: var(--s-ink-3); font-family: var(--font-mono); }
+
+/* ---------------- status bar ---------------- */
+
+.editor-root--studio .editor-status {
+  height: 30px;
+  padding: 0 14px;
+  justify-content: space-between;
+  border-top: 1px solid var(--s-line);
+  background: var(--s-bg);
+  backdrop-filter: none;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  color: var(--s-ink-3);
+}
+.editor-root--studio .editor-status__selection { flex: 1; text-align: center; color: var(--s-ink-2); }
+.editor-root--studio .editor-status__right { display: inline-flex; align-items: center; gap: 6px; margin: 0; }
+.editor-status__dot { width: 6px; height: 6px; border-radius: 50%; background: var(--s-amber); }
+
+/* the selected cube in the model takes the sage outline */
+.editor-root--studio .model-cube--selected .model-face { outline-color: var(--s-sage); }

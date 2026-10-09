@@ -10,9 +10,9 @@
     <link rel="preload" href="/fonts/inter-latin.woff2" as="font" type="font/woff2" crossorigin />
     <link rel="preload" href="/fonts/jetbrains-mono-latin.woff2" as="font" type="font/woff2" crossorigin />
     <script>
-      // Every page but the editor is dark. Set before the first paint, so a
-      // dark page doesn't flash light while the app loads.
-      if (!/^#\/editor/.test(location.hash)) document.documentElement.dataset.surface = 'dark'
+      // Every page is dark. Set before the first paint, so a page doesn't
+      // flash light while the app loads.
+      document.documentElement.dataset.surface = 'dark'
     </script>
   </head>
   <body>

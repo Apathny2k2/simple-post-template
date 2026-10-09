@@ -22,7 +22,7 @@ import {
   translateNodes,
 } from '../lib/transform'
 import { addHitRegion, hitReport, isRegionBone, modeLine } from '../lib/hitregions'
-import { Icon, VellumMark } from '../lib/icons'
+import { Icon } from '../lib/icons'
 import { arrowNav } from '../lib/a11y'
 import type { IconName } from '../lib/icons'
 import {
@@ -128,6 +128,7 @@ import { blockNavigation, navigate, useTitle } from '../lib/router'
 import { scenes } from '../lib/data'
 import { saveDataUrl, saveFile } from '../lib/download'
 import './Editor.css'
+import './EditorStudio.css'
 
 type Mode = 'edit' | 'paint' | 'animate' | 'display' | 'behaviour' | 'config'
 
@@ -283,64 +284,6 @@ function buildMenus(
   ]
 }
 
-function MenuBar({
-  fileName,
-  kind,
-  actions,
-  undoLabel,
-  redoLabel,
-  hasClip,
-  dirty,
-}: {
-  fileName: string
-  kind: ProjectKind
-  actions: Actions
-  undoLabel: string | null
-  redoLabel: string | null
-  hasClip: boolean
-  dirty: boolean
-}) {
-  const menus = useMemo(
-    () => buildMenus(actions, { undoLabel, redoLabel, hasClip }),
-    [actions, undoLabel, redoLabel, hasClip],
-  )
-  return (
-    <div className="editor-menubar">
-      <button
-        className="editor-menubar__back"
-        onClick={() => navigate(`/projects/${scenes[0].id}/${kind === 'mobs' ? 'mobs' : 'items'}`)}
-        title="Back to the library"
-        aria-label="Back to the library"
-      >
-        <Icon name="chevronLeft" size={14} />
-      </button>
-      <span className="editor-menubar__mark">
-        <VellumMark size={15} />
-      </span>
-      {menus.map((m) => (
-        <Menu
-          key={m.label}
-          align="start"
-          entries={m.entries}
-          trigger={({ props }) => (
-            <button className="editor-menubar__button" {...props}>
-              {m.label}
-            </button>
-          )}
-        />
-      ))}
-      <div className="editor-menubar__title" title={dirty ? 'Unsaved changes' : 'Saved'}>
-        {dirty ? (
-          <span className="editor-menubar__dirty" aria-label="Unsaved changes">
-            ●
-          </span>
-        ) : null}
-        {fileName}
-      </div>
-    </div>
-  )
-}
-
 /* ================= toolbar ================= */
 
 const toolsets: Record<Mode, Array<{ id: string; icon: IconName; label: string; key?: string }>> = {
@@ -391,223 +334,190 @@ const modesFor = (kind: ProjectKind) =>
     .filter((m) => (m.id === 'behaviour' ? kind !== 'mobs' : m.id === 'config' ? hasConfig(kind) : true))
     .map((m) => (m.id === 'display' && kind === 'mobs' ? { ...m, label: 'Scene' } : m))
 
-function Toolbar({
+/* ================= the Studio editor bar ================= */
+
+/**
+ * The bar along the top of the editor, as the Studio design draws it: the
+ * model's name and file on the left, the modes in a pill in the middle, and
+ * undo, redo, problems, the File menu and Save on the right. Every menu the
+ * editor has lives under File, grouped by heading.
+ */
+function EditorBar({
+  title,
+  subtitle,
+  dirty,
   kind,
   mode,
   onMode,
-  tool,
-  onTool,
-  grid,
-  onGrid,
-  quad,
-  onQuad,
-  onAddCube,
-  onAddBone,
-  onAddNull,
-  brush,
-  onBrush,
-  shape,
-  onShape,
-  shapeFilled,
-  onShapeFilled,
-  snap,
-  onSnap,
-  space,
-  onSpace,
-  increment,
-  onIncrement,
-  onExportTexture,
+  menus,
   canUndo,
   canRedo,
   onUndo,
   onRedo,
   undoLabel,
   redoLabel,
+  problems,
+  onProblems,
+  onSave,
 }: {
+  title: string
+  subtitle: string
+  dirty: boolean
   kind: ProjectKind
   mode: Mode
   onMode: (m: Mode) => void
-  tool: string
-  onTool: (t: string) => void
-  grid: boolean
-  onGrid: () => void
-  quad: boolean
-  onQuad: () => void
-  onAddCube: () => void
-  onAddBone: () => void
-  onAddNull: () => void
-  brush: number
-  onBrush: (n: number) => void
-  shape: ShapeKind
-  onShape: (k: ShapeKind) => void
-  shapeFilled: boolean
-  onShapeFilled: (v: boolean) => void
-  snap: boolean
-  onSnap: () => void
-  space: 'global' | 'local'
-  onSpace: () => void
-  increment: number
-  onIncrement: (n: number) => void
-  onExportTexture: () => void
+  menus: Array<{ label: string; entries: MenuEntry[] }>
   canUndo: boolean
   canRedo: boolean
   onUndo: () => void
   onRedo: () => void
   undoLabel: string | null
   redoLabel: string | null
+  problems: number
+  onProblems: () => void
+  onSave: () => void
+}) {
+  const fileEntries = useMemo<MenuEntry[]>(
+    () =>
+      menus.flatMap((m, i) => [
+        ...(i ? [{ kind: 'separator' } as MenuEntry] : []),
+        { kind: 'label', label: m.label } as MenuEntry,
+        ...m.entries.filter((e) => !('kind' in e && e.kind === 'label' && m.label !== 'File')),
+      ]),
+    [menus],
+  )
+  return (
+    <header className="sbar">
+      <button
+        className="sbar__icon"
+        onClick={() => navigate(`/projects/${scenes[0].id}/${kind === 'mobs' ? 'mobs' : 'items'}`)}
+        title="Back to the library"
+        aria-label="Back to the library"
+      >
+        <Icon name="chevronLeft" size={16} />
+      </button>
+      <div className="sbar__title">
+        <div className="sbar__name">
+          {title}
+          {dirty ? <span className="sbar__dirty" title="Unsaved changes" aria-label="Unsaved changes" /> : null}
+        </div>
+        <div className="sbar__sub">{subtitle}</div>
+      </div>
+
+      <nav className="sbar__modes" aria-label="Editor mode">
+        {modesFor(kind).map((m) => (
+          <button key={m.id} className="sbar__mode" aria-pressed={m.id === mode} onClick={() => onMode(m.id)}>
+            {m.id === 'edit' ? 'Model' : m.label}
+          </button>
+        ))}
+      </nav>
+
+      <div className="sbar__right">
+        <button className="sbar__icon" title={undoLabel ? `Undo ${undoLabel} (Ctrl Z)` : 'Nothing to undo'} aria-label="Undo" disabled={!canUndo} onClick={onUndo}>
+          <Icon name="undo" size={16} />
+        </button>
+        <button className="sbar__icon" title={redoLabel ? `Redo ${redoLabel} (Ctrl Shift Z)` : 'Nothing to redo'} aria-label="Redo" disabled={!canRedo} onClick={onRedo}>
+          <Icon name="redo" size={16} />
+        </button>
+        {problems ? (
+          <button className="sbar__pill sbar__pill--warn" onClick={onProblems} title="Show what Validation found">
+            <Icon name="warning" size={13} /> {problems} problem{problems === 1 ? '' : 's'}
+          </button>
+        ) : null}
+        <Menu
+          align="end"
+          entries={fileEntries}
+          trigger={({ props }) => (
+            <button className="sbar__pill" {...props}>
+              File <Icon name="chevronDown" size={12} />
+            </button>
+          )}
+        />
+        <button className="sbar__save" onClick={onSave} title="Save the .vellum (Ctrl S)">
+          Save
+        </button>
+      </div>
+    </header>
+  )
+}
+
+/** The tool pill at the bottom of the viewport: each tool with its name and key. */
+function ToolDock({
+  tools,
+  tool,
+  onTool,
+}: {
+  tools: Array<{ id: string; icon: IconName; label: string; key?: string }>
+  tool: string
+  onTool: (id: string) => void
+}) {
+  if (!tools.length) return null
+  return (
+    <div className="dock" role="toolbar" aria-label="Tools" onPointerDown={(e) => e.stopPropagation()}>
+      {tools.map((t) => (
+        <button key={t.id} className="dock__tool" aria-pressed={t.id === tool} title={t.key ? `${t.label} (${t.key})` : t.label} onClick={() => onTool(t.id)}>
+          <Icon name={t.icon} size={14} />
+          <span>{t.label.replace(/ tool$/, '')}</span>
+          {t.key ? <kbd>{t.key}</kbd> : null}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+/** Paint mode's left column: the tools with their keys, then the brush. */
+function PaintTools({
+  tool,
+  onTool,
+  brush,
+  onBrush,
+  shape,
+  onShape,
+  shapeFilled,
+  onShapeFilled,
+}: {
+  tool: string
+  onTool: (id: string) => void
+  brush: number
+  onBrush: (n: number) => void
+  shape: ShapeKind
+  onShape: (k: ShapeKind) => void
+  shapeFilled: boolean
+  onShapeFilled: (v: boolean) => void
 }) {
   return (
-    <div className="editor-toolbar">
-      <div className="editor-modes" role="group" aria-label="Editor mode">
-        {modesFor(kind).map((m) => (
-          <button key={m.id} className="editor-mode" aria-pressed={m.id === mode} onClick={() => onMode(m.id)}>
-            {m.label}
+    <>
+      <div className="ptools">
+        {toolsets.paint.map((t) => (
+          <button key={t.id} className="ptools__row" aria-pressed={t.id === tool} onClick={() => onTool(t.id)}>
+            <Icon name={t.icon} size={14} />
+            <span>{t.label}</span>
+            {t.key ? <kbd>{t.key}</kbd> : null}
           </button>
         ))}
       </div>
-
-      <span className="editor-separator" />
-
-      <div className="editor-tools" role="group" aria-label="History">
-        <button
-          className="editor-tool"
-          title={undoLabel ? `Undo ${undoLabel} (Ctrl Z)` : 'Nothing to undo'}
-          aria-label="Undo"
-          disabled={!canUndo}
-          onClick={onUndo}
-        >
-          <Icon name="undo" size={15} />
-        </button>
-        <button
-          className="editor-tool"
-          title={redoLabel ? `Redo ${redoLabel} (Ctrl ⇧ Z)` : 'Nothing to redo'}
-          aria-label="Redo"
-          disabled={!canRedo}
-          onClick={onRedo}
-        >
-          <Icon name="redo" size={15} />
-        </button>
-      </div>
-
-      <span className="editor-separator" />
-
-      <div className="editor-tools" role="group" aria-label="Tools">
-        {toolsets[mode].map((t) => (
-          <button
-            key={t.id}
-            className="editor-tool"
-            title={t.key ? `${t.label} (${t.key})` : t.label}
-            aria-label={t.label}
-            aria-pressed={t.id === tool}
-            onClick={() => onTool(t.id)}
-          >
-            <Icon name={t.icon} size={15} />
+      <div className="studio-label">Brush</div>
+      <div className="studio-seg" role="group" aria-label="Brush size">
+        {[1, 2, 3, 4, 6, 8].map((n) => (
+          <button key={n} aria-pressed={brush === n} onClick={() => onBrush(n)}>
+            {n} px
           </button>
         ))}
       </div>
-
-      <span className="editor-separator" />
-
-      <div className="editor-tools">
-        <button className="editor-tool" title="Add cube" aria-label="Add cube" onClick={onAddCube}>
-          <Icon name="cube" size={15} />
-        </button>
-        <button className="editor-tool" title="Add bone" aria-label="Add bone" onClick={onAddBone}>
-          <Icon name="folder" size={15} />
-        </button>
-        <button className="editor-tool" title="Add null object (locator or IK target)" aria-label="Add null object" onClick={onAddNull}>
-          <Icon name="pivot" size={15} />
-        </button>
-      </div>
-
-      <span className="editor-separator" />
-
-      {(mode === 'edit' || mode === 'animate') && tool !== 'vertex' ? (
-        <div className="editor-tools editor-transform" role="group" aria-label="Transform settings">
-          <button
-            className="editor-chip"
-            onClick={onSpace}
-            title="Transform space: Global moves along the world axes, Local along the selection's own (T)"
-            aria-label={`Transform space: ${space}`}
-          >
-            {space === 'global' ? 'Global' : 'Local'}
+      {tool === 'shape' ? (
+        <div className="studio-seg" role="group" aria-label="Shape" style={{ marginTop: 8 }}>
+          <button aria-pressed={shape === 'rect'} onClick={() => onShape('rect')}>
+            Rectangle
           </button>
-          <label className="editor-chip editor-chip--select" title="Grid snap. Hold Shift for a quarter of it, Ctrl to move freely.">
-            <Icon name="magnet" size={13} />
-            <select value={increment} onChange={(e) => onIncrement(Number(e.target.value))} aria-label="Snap increment">
-              {[1, 0.5, 0.25, 0.125, 0.0625].map((n) => (
-                <option key={n} value={n}>
-                  {n === 1 ? '1 unit' : n === 0.0625 ? '1/16' : n === 0.125 ? '1/8' : String(n)}
-                </option>
-              ))}
-            </select>
-          </label>
+          <button aria-pressed={shape === 'ellipse'} onClick={() => onShape('ellipse')}>
+            Ellipse
+          </button>
+          <button aria-pressed={shapeFilled} onClick={() => onShapeFilled(!shapeFilled)}>
+            Filled
+          </button>
         </div>
       ) : null}
-
-      {mode === 'paint' ? (
-        <>
-          <label className="editor-brush">
-            <span>Brush</span>
-            <input
-              type="range"
-              min={1}
-              max={8}
-              value={brush}
-              onChange={(e) => onBrush(Number(e.target.value))}
-              aria-label="Brush size"
-            />
-            <span className="mono">{brush}px</span>
-          </label>
-          {tool === 'shape' ? (
-            <div className="editor-tools" role="group" aria-label="Shape">
-              {(['rect', 'ellipse'] as const).map((k) => (
-                <button
-                  key={k}
-                  className="editor-tool"
-                  title={k === 'rect' ? 'Rectangle' : 'Ellipse'}
-                  aria-label={k === 'rect' ? 'Rectangle' : 'Ellipse'}
-                  aria-pressed={shape === k}
-                  onClick={() => onShape(k)}
-                >
-                  <Icon name={k === 'rect' ? 'shape' : 'globe'} size={15} />
-                </button>
-              ))}
-              <button
-                className="editor-tool"
-                title="Fill the shape"
-                aria-label="Fill the shape"
-                aria-pressed={shapeFilled}
-                onClick={() => onShapeFilled(!shapeFilled)}
-              >
-                <Icon name="bucket" size={15} />
-              </button>
-            </div>
-          ) : null}
-        </>
-      ) : null}
-
-      <div className="editor-toolbar__right">
-        <button className="editor-tool" title="Toggle grid (G)" aria-pressed={grid} onClick={onGrid}>
-          <Icon name="grid" size={15} />
-        </button>
-        <button className="editor-tool" title="Quad view (Ctrl 4)" aria-pressed={quad} onClick={onQuad}>
-          <Icon name="layers" size={15} />
-        </button>
-        <button
-          className="editor-tool"
-          title={snap ? 'Snapping to whole units' : 'Snap to whole units'}
-          aria-label="Snap to whole units"
-          aria-pressed={snap}
-          onClick={onSnap}
-        >
-          <Icon name="magnet" size={15} />
-        </button>
-        <button className="editor-tool" title="Export the texture as a PNG" aria-label="Export texture" onClick={onExportTexture}>
-          <Icon name="image" size={15} />
-        </button>
-      </div>
-    </div>
+    </>
   )
 }
 
@@ -620,9 +530,12 @@ function Panel({
   grow,
   defaultOpen = true,
   forceOpen,
+  actions,
 }: {
   title: string
   count?: ReactNode
+  /** buttons beside the title, outside the toggle so they do not nest in it */
+  actions?: ReactNode
   children: ReactNode
   grow?: boolean
   defaultOpen?: boolean
@@ -636,11 +549,14 @@ function Panel({
   }, [forceOpen])
   return (
     <section className={`panel${grow && open ? ' panel--grow' : ''}`} data-open={open}>
-      <button className="panel__head" onClick={() => setOpen((o) => !o)} aria-expanded={open}>
-        <Icon name="chevronDown" size={12} className="panel__chevron" />
-        <span className="panel__title">{title}</span>
-        {count !== undefined ? <span className="panel__count">{count}</span> : null}
-      </button>
+      <div className="panel__bar">
+        <button className="panel__head" onClick={() => setOpen((o) => !o)} aria-expanded={open}>
+          <Icon name="chevronDown" size={12} className="panel__chevron" />
+          <span className="panel__title">{title}</span>
+          {count !== undefined ? <span className="panel__count">{count}</span> : null}
+        </button>
+        {actions ? <span className="panel__actions">{actions}</span> : null}
+      </div>
       {open ? <div className="panel__body">{children}</div> : null}
     </section>
   )
@@ -750,7 +666,7 @@ function NumRow({
 }) {
   const axes: Array<'x' | 'y' | 'z'> = ['x', 'y', 'z']
   return (
-    <div className="num-field-row">
+    <div className="num-field-row num-field-row--vec">
       <span className="num-field-row__label">{label}</span>
       {axes.map((a, i) => (
         <NumField
@@ -1663,6 +1579,15 @@ function NullList({
 
 /* ================= viewport ================= */
 
+type ViewPreset = 'Perspective' | 'Front' | 'Side' | 'Top'
+const VIEW_PRESETS: ViewPreset[] = ['Perspective', 'Front', 'Side', 'Top']
+const VIEW_KEYS: Record<ViewPreset, string> = {
+  Perspective: 'Perspective view (Numpad 5)',
+  Front: 'Front, orthographic (Numpad 1)',
+  Side: 'Side, orthographic (Numpad 3)',
+  Top: 'Top, orthographic (Numpad 7)',
+}
+
 const quadViews = [
   { tag: 'Perspective', yaw: -34, pitch: -22, ortho: false },
   { tag: 'Front', yaw: 0, pitch: 0, ortho: true },
@@ -1707,6 +1632,10 @@ function Viewport({
   ghosts,
   showNulls,
   flash,
+  dock,
+  controls,
+  view,
+  onViewPreset,
 }: {
   model: Model
   label: string
@@ -1733,6 +1662,13 @@ function Viewport({
   showNulls: boolean
   /** an effect that just played, shown for a moment */
   flash: string | null
+  /** the tool pill drawn at the bottom of the viewport */
+  dock?: ReactNode
+  /** extra controls at the top right, beside Solid and Wire */
+  controls?: ReactNode
+  /** which view tab is lit */
+  view: ViewPreset
+  onViewPreset: (v: ViewPreset) => void
   onPaint?: (cubeId: string, face: FaceKey, u: number, v: number, phase: 'down' | 'move') => void
   display?: { rotation: Vec3; translation: Vec3; scale: Vec3 } | null
 }) {
@@ -1812,8 +1748,12 @@ function Viewport({
           />
         )}
 
-        <div className="editor-view__corner editor-view__corner--top-left">
-          <Icon name="cube" size={11} /> {label}
+        <div className="editor-view__corner editor-view__corner--top-left studio-seg" role="group" aria-label={`View of the ${label} model`}>
+          {VIEW_PRESETS.map((v) => (
+            <button key={v} aria-pressed={view === v} onClick={() => onViewPreset(v)} title={VIEW_KEYS[v]}>
+              {v}
+            </button>
+          ))}
         </div>
         {flash ? (
           <div className="editor-view__flash" role="status" key={flash}>
@@ -1822,18 +1762,24 @@ function Viewport({
         ) : null}
 
         <div className="editor-view__corner editor-view__corner--top-right">
-          {(['solid', 'wire'] as const).map((s) => (
-            <button key={s} className="editor-view__shading" aria-pressed={shading === s} onClick={() => setShading(s)}>
-              {s === 'solid' ? 'Solid' : 'Wire'}
-            </button>
-          ))}
+          <div className="studio-seg" role="group" aria-label="Shading">
+            {(['solid', 'wire'] as const).map((s) => (
+              <button key={s} aria-pressed={shading === s} onClick={() => setShading(s)}>
+                {s === 'solid' ? 'Solid' : 'Wire'}
+              </button>
+            ))}
+          </div>
+          {controls}
         </div>
+        {dock ? <div className="editor-view__dock">{dock}</div> : null}
 
         <div className="editor-view__corner editor-view__corner--bottom-left">
           {hint ? <span className="editor-view__hint">{hint}</span> : null}
+          <span>
           {onPaint
             ? 'drag a face to paint · right-drag orbit · shift-drag pan · scroll zoom'
             : 'drag orbit · shift-drag pan · scroll zoom · Ctrl-drag select'}
+          </span>
         </div>
       </div>
     </div>
@@ -2322,7 +2268,7 @@ function Timeline({
   const [pxPerS, setPxPerS] = useState(PX_DEFAULT)
   const [view, setView] = useState<'dope' | 'graph'>('dope')
   // the panel's height, dragged from its top edge as in Blockbench
-  const [height, setHeight] = useState(216)
+  const [height, setHeight] = useState(260)
   const resize = useRef<{ y: number; h: number } | null>(null)
   const main = useRef<HTMLDivElement>(null)
   const grid = useRef<HTMLDivElement>(null)
@@ -2338,6 +2284,13 @@ function Timeline({
     if (!width || !clip) return
     setPxPerS(clampPx((width - 178 - 24) / Math.max(clip.length, 0.05)))
   }, [clip])
+
+  // a clip opens fitted to the panel, as in the design; zoom stays the user's after that
+  const clipName = clip?.name
+  useLayoutEffect(() => {
+    fit()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clipName])
 
   /* Ctrl or Shift + wheel zooms. Attached by hand because React's wheel
      listener is passive and cannot call preventDefault. */
@@ -3094,11 +3047,26 @@ export function Editor({ segments }: { segments: string[] }) {
   const setSelected = useCallback((id: string | null) => setSelection(id ? [id] : []), [])
   const [space, setSpace] = useState<'global' | 'local'>('global')
   const [increment, setIncrement] = useState(1)
+  // number fields round to whole units while the grid snap is a whole unit or more
+  const snap = increment >= 1
   const [ortho, setOrtho] = useState(false)
   const [renameRequest, setRenameRequest] = useState<{ id: string; n: number } | null>(null)
   /** vertex snap: the corner of the selection picked first */
   const [vertexFrom, setVertexFrom] = useState<number | null>(null)
   const viewApi = useRef<ViewApi>(null)
+  const [viewPreset, setViewPreset] = useState<ViewPreset>('Perspective')
+  /** bumped by the problems pill, which opens Validation */
+  const [showProblems, setShowProblems] = useState(0)
+
+  // the Studio design's typeface; without it the app's own sans-serif stands in
+  useEffect(() => {
+    if (document.getElementById('font-archivo')) return
+    const link = document.createElement('link')
+    link.id = 'font-archivo'
+    link.rel = 'stylesheet'
+    link.href = 'https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&display=swap'
+    document.head.appendChild(link)
+  }, [])
   const [face, setFace] = useState<FaceKey>('north')
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
   const [leftW, setLeftW] = useState(300)
@@ -3122,7 +3090,6 @@ export function Editor({ segments }: { segments: string[] }) {
   const [brush, setBrush] = useState(1)
   const [shape, setShape] = useState<ShapeKind>('rect')
   const [shapeFilled, setShapeFilled] = useState(false)
-  const [snap, setSnap] = useState(true)
   const [textureIndex, setTextureIndex] = useState(0)
   const shapeFrom = useRef<[number, number] | null>(null)
   const shapeUndo = useRef<ImageData | null>(null)
@@ -4276,6 +4243,11 @@ export function Editor({ segments }: { segments: string[] }) {
     [model, fileName, kind, textureIndex, loadModel, runSave, selected, selection, bones, history, anim, animBone, guarded, rescale, refuseLocked, setSelected, focusOn, removeNull],
   )
 
+  const menus = useMemo(
+    () => buildMenus(actions, { undoLabel: history.undoLabel, redoLabel: history.redoLabel, hasClip: !!clip }),
+    [actions, history.undoLabel, history.redoLabel, clip],
+  )
+
   // keyboard shortcuts; all but Ctrl+S are ignored while a field has focus
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -4502,52 +4474,32 @@ export function Editor({ segments }: { segments: string[] }) {
 
   return (
     <div
-      className="editor-root"
+      className="editor-root editor-root--studio"
+      data-swap={mode === 'edit' || mode === 'paint' || mode === 'animate' || undefined}
       style={{ ['--left-w' as string]: `${leftW}px`, ['--right-w' as string]: `${rightW}px` }}
     >
       <input ref={fileInput} type="file" accept=".vellum,application/json" hidden onChange={onFile} />
 
-      <MenuBar
-        fileName={fileName}
-        kind={kind}
-        actions={actions}
-        undoLabel={history.undoLabel}
-        redoLabel={history.redoLabel}
-        hasClip={!!clip}
+      <EditorBar
+        title={model.name.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())}
+        subtitle={[kind === 'mobs' ? 'Mob' : kind === 'blocks' ? 'Block' : 'Item', subtype ? subtype[0].toUpperCase() + subtype.slice(1) : null, fileName].filter(Boolean).join(' \u00b7 ')}
         dirty={dirty}
-      />
-      <Toolbar
         kind={kind}
         mode={mode}
         onMode={setMode}
-        tool={tool}
-        onTool={setTool}
-        grid={grid}
-        onGrid={() => setGrid((g) => !g)}
-        quad={quad}
-        onQuad={() => setQuad((q) => !q)}
-        onAddCube={actions.onAddCube}
-        onAddBone={actions.onAddBone}
-        onAddNull={actions.onAddNull}
-        brush={brush}
-        onBrush={setBrush}
-        shape={shape}
-        onShape={setShape}
-        shapeFilled={shapeFilled}
-        onShapeFilled={setShapeFilled}
-        snap={snap}
-        onSnap={() => setSnap((v) => !v)}
-        space={space}
-        onSpace={() => setSpace((v) => (v === 'global' ? 'local' : 'global'))}
-        increment={increment}
-        onIncrement={setIncrement}
-        onExportTexture={actions.onExportTexture}
+        menus={menus}
         canUndo={history.canUndo}
         canRedo={history.canRedo}
         onUndo={history.undo}
         onRedo={history.redo}
         undoLabel={history.undoLabel}
         redoLabel={history.redoLabel}
+        problems={errors + warnings}
+        onProblems={() => {
+          setShowProblems((n) => n + 1)
+          window.setTimeout(() => document.getElementById('validation')?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }), 50)
+        }}
+        onSave={actions.onSave}
       />
 
       {/* the h1 is visually hidden (.vh) and names the page for screen readers */}
@@ -4584,6 +4536,43 @@ export function Editor({ segments }: { segments: string[] }) {
           ghosts={ghosts}
           showNulls={mode === 'edit' || mode === 'animate'}
           flash={flash}
+          view={viewPreset}
+          onViewPreset={(v) => {
+            setViewPreset(v)
+            const at = { Perspective: [-32, -18], Front: [0, 0], Side: [-90, 0], Top: [0, -90] }[v]
+            setOrtho(v !== 'Perspective')
+            viewApi.current?.setView(at[0], at[1])
+          }}
+          dock={
+            mode === 'edit' || mode === 'animate' ? <ToolDock tools={toolsets[mode]} tool={tool} onTool={(id) => { setTool(id); setVertexFrom(null) }} /> : null
+          }
+          controls={
+            <>
+              {mode === 'edit' || mode === 'animate' ? (
+                <>
+                  <button className="studio-chip" onClick={() => setSpace((v) => (v === 'global' ? 'local' : 'global'))} title="Transform space: Global moves along the world axes, Local along the selection's own (T)">
+                    {space === 'global' ? 'Global' : 'Local'}
+                  </button>
+                  <label className="studio-chip" title="Grid snap. Hold Shift for a quarter of it, Ctrl to move freely.">
+                    <Icon name="magnet" size={12} /> Snap
+                    <select value={increment} onChange={(e) => setIncrement(Number(e.target.value))} aria-label="Snap increment">
+                      {[1, 0.5, 0.25, 0.125, 0.0625].map((n) => (
+                        <option key={n} value={n}>
+                          {n === 0.0625 ? '1/16' : n === 0.125 ? '1/8' : String(n)}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </>
+              ) : null}
+              <button className="studio-chip studio-chip--icon" aria-pressed={grid} onClick={() => setGrid((g) => !g)} title="Grid (G)" aria-label="Grid">
+                <Icon name="grid" size={13} />
+              </button>
+              <button className="studio-chip studio-chip--icon" aria-pressed={quad} onClick={() => setQuad((q) => !q)} title="Four views (Ctrl 4)" aria-label="Four views">
+                <Icon name="layers" size={13} />
+              </button>
+            </>
+          }
         />
 
         <div className="editor-rails">
@@ -4659,9 +4648,6 @@ export function Editor({ segments }: { segments: string[] }) {
               </Panel>
             ) : mode === 'animate' ? (
               <>
-                <Panel title="Animation" count={clip ? clipLabel(clip.name) : 'none'}>
-                  <AnimationPanel anim={anim} />
-                </Panel>
                 {selectedEvent ? (
                   <Panel title="Effect" count={anim.events.find((e) => e.id === selectedEvent)?.kind}>
                     <EventPanel anim={anim} />
@@ -4755,12 +4741,14 @@ export function Editor({ segments }: { segments: string[] }) {
               />
             </Panel>
 
+            <div id="validation" />
             <Panel
               title="Validation"
               count={errors ? `${errors} error${errors === 1 ? '' : 's'}` : warnings ? `${warnings} warning${warnings === 1 ? '' : 's'}` : 'clean'}
               defaultOpen={errors > 0 || warnings > 0 || !!openError}
               // defaultOpen is read only at mount, and a refused file comes later
-              forceOpen={!!openError}
+              forceOpen={!!openError || showProblems > 0}
+              key={`validation${showProblems}`}
             >
               {openError ? (
                 <p className="editor-hint editor-hint--warn" style={{ marginBottom: 10 }}>
@@ -4824,11 +4812,46 @@ export function Editor({ segments }: { segments: string[] }) {
           <Splitter onDrag={onRight} />
 
           <div className="editor-column editor-column--right">
-            <Panel title="Colour" count={mode === 'paint' ? tool : undefined}>
-              <ColorPanel colour={colour} onColour={setColour} />
-            </Panel>
+            {mode === 'paint' ? (
+              <>
+                <Panel title="Tools" count={toolsets.paint.find((t) => t.id === tool)?.label}>
+                  <PaintTools
+                    tool={tool}
+                    onTool={setTool}
+                    brush={brush}
+                    onBrush={setBrush}
+                    shape={shape}
+                    onShape={setShape}
+                    shapeFilled={shapeFilled}
+                    onShapeFilled={setShapeFilled}
+                  />
+                </Panel>
+                <Panel title="Colour">
+                  <ColorPanel colour={colour} onColour={setColour} />
+                </Panel>
+              </>
+            ) : null}
+            {mode === 'animate' ? (
+              <Panel title="Clips" count={clip ? clipLabel(clip.name) : 'none'}>
+                <AnimationPanel anim={anim} />
+              </Panel>
+            ) : null}
 
-            <Panel title="Outliner" count={`${model.cubes.length} cubes`} grow>
+            {mode === 'paint' ? null : (
+            <Panel
+              title="Outliner"
+              actions={
+                mode === 'edit' ? (
+                  <span className="outliner-add">
+                    <button onClick={actions.onAddCube} title="Add a cube to the selected bone">+ Cube</button>
+                    <button onClick={actions.onAddBone} title="Add a bone">+ Bone</button>
+                    <button onClick={actions.onAddNull} title="Add a null object (locator or IK target)">+ Null</button>
+                  </span>
+                ) : null
+              }
+              count={mode === 'edit' ? undefined : `${model.cubes.length} cubes`}
+              grow
+            >
               <Outliner
                 model={model}
                 selection={selection}
@@ -4858,7 +4881,11 @@ export function Editor({ segments }: { segments: string[] }) {
                 onMove={move}
               />
               <NullList nulls={model.nulls ?? []} selection={selection} onSelect={selectNode} />
+              {mode === 'edit' ? (
+                <p className="outliner-foot">Drag a row onto a bone to move it there. Del removes the selection and F2 renames it.</p>
+              ) : null}
             </Panel>
+            )}
 
             <Panel title="Textures" count={model.textures.length}>
               {model.textures.map((t, i) => (
@@ -4923,26 +4950,33 @@ export function Editor({ segments }: { segments: string[] }) {
       ) : null}
 
       <div className="editor-status">
-        <span>{fileName}</span>
-        <span>{subtype ? `${kind} \u00b7 ${subtype}` : kind}</span>
-        <span>{model.cubes.length} cubes</span>
         <span>
-          {model.resolution.width} x {model.resolution.height}
+          {model.cubes.length} cubes {'\u00b7'} {bones.length} bones {'\u00b7'} texture {model.resolution.width} {'\u00d7'} {model.resolution.height}
         </span>
         <span className="editor-status__selection">
-          {saveNote ?? openError ?? `selected: ${selection.length > 1 ? `${selection.length} nodes` : (cube?.name ?? selectedBone?.name ?? selectedNull?.name ?? 'none')} · ${tool}`}
+          {saveNote ??
+            openError ??
+            (cube && selection.length === 1
+              ? `${cube.name} \u00b7 position ${cube.from.join(', ')} \u00b7 size ${cubeSize(cube).join(' \u00d7 ')}`
+              : selection.length > 1
+                ? `${selection.length} selected`
+                : selectedBone
+                  ? `${selectedBone.name} \u00b7 pivot ${selectedBone.origin.join(', ')}`
+                  : selectedNull
+                    ? `${selectedNull.name} \u00b7 at ${selectedNull.position.join(', ')}`
+                    : mode === 'animate' && clip
+                      ? `${clipLabel(clip.name)} \u00b7 ${time.toFixed(2)} / ${clip.length.toFixed(2)} s`
+                      : 'Nothing selected')}
         </span>
-        <div className="editor-status__right">
-          <span className={errors || warnings ? 'editor-status__problems' : undefined}>
-            {errors
-              ? `${errors} error${errors === 1 ? '' : 's'}`
-              : warnings
-                ? `${warnings} warning${warnings === 1 ? '' : 's'}`
-                : 'valid'}
-          </span>
-          <span>{mode}</span>
-          <span>vellum 0.6.0</span>
-        </div>
+        <span className="editor-status__right">
+          {dirty ? (
+            <>
+              <span className="editor-status__dot" aria-hidden="true" /> Changes not saved
+            </>
+          ) : (
+            'Saved'
+          )}
+        </span>
       </div>
     </div>
   )
