@@ -3,6 +3,23 @@ import type { ReactNode } from 'react'
 import { Menu } from '../components/Menu'
 import type { MenuEntry } from '../components/Menu'
 import { ModelView } from '../components/ModelView'
+import type { PickMods, VertexLayer, ViewApi } from '../components/ModelView'
+import type { GizmoEvent, GizmoSpec } from '../components/Gizmo'
+import { add, apply, applyDir, buildRig, cubeCorners, cubeFrame, eulerAxes, norm, parentFrame, sub, toParentDir } from '../lib/kinematics'
+import {
+  copyNodes,
+  findBone,
+  flipNodes,
+  groupNodes,
+  movePivots,
+  pasteNodes,
+  readClipboard,
+  reorderNode,
+  resizeCube,
+  setRotations,
+  topLevel,
+  translateNodes,
+} from '../lib/transform'
 import { addHitRegion, hitReport, isRegionBone, modeLine } from '../lib/hitregions'
 import { Icon, VellumMark } from '../lib/icons'
 import { arrowNav } from '../lib/a11y'
@@ -119,6 +136,18 @@ type Actions = {
   onQuad: () => void
   onGrid: () => void
   onExportTexture: () => void
+  onSelectAll: () => void
+  onCopy: () => void
+  onCut: () => void
+  onPaste: () => void
+  onGroup: () => void
+  onFlip: (axis: 0 | 1 | 2, centreLine?: boolean) => void
+  onView: (yaw: number, pitch: number) => void
+  onOrtho: () => void
+  onFocus: () => void
+  onFrameAll: () => void
+  onHide: () => void
+  onShowAll: () => void
 }
 
 function buildMenus(
@@ -158,11 +187,30 @@ function buildMenus(
           onSelect: actions.onRedo,
         },
         { kind: 'separator' },
-        { label: 'Add cube', icon: 'cube', onSelect: actions.onAddCube },
-        { label: 'Add bone', icon: 'folder', onSelect: actions.onAddBone },
-        { kind: 'separator' },
+        { label: 'Cut', icon: 'copy', shortcut: 'Ctrl X', onSelect: actions.onCut },
+        { label: 'Copy', icon: 'copy', shortcut: 'Ctrl C', onSelect: actions.onCopy },
+        { label: 'Paste', icon: 'copy', shortcut: 'Ctrl V', onSelect: actions.onPaste },
         { label: 'Duplicate', icon: 'copy', shortcut: 'Ctrl D', onSelect: actions.onDuplicate },
         { label: 'Delete', icon: 'trash', shortcut: 'Del', danger: true, onSelect: actions.onDelete },
+        { kind: 'separator' },
+        { label: 'Select all', icon: 'layers', shortcut: 'Ctrl A', onSelect: actions.onSelectAll },
+        { label: 'Hide selected', icon: 'eyeOff', shortcut: 'H', onSelect: actions.onHide },
+        { label: 'Show all', icon: 'eye', shortcut: 'Alt H', onSelect: actions.onShowAll },
+        { kind: 'separator' },
+        { label: 'Add cube', icon: 'cube', onSelect: actions.onAddCube },
+        { label: 'Add bone', icon: 'folder', onSelect: actions.onAddBone },
+        { label: 'Group selection', icon: 'folder', shortcut: 'Ctrl G', onSelect: actions.onGroup },
+      ],
+    },
+    {
+      label: 'Transform',
+      entries: [
+        { label: 'Flip X', icon: 'move', onSelect: () => actions.onFlip(0) },
+        { label: 'Flip Y', icon: 'move', onSelect: () => actions.onFlip(1) },
+        { label: 'Flip Z', icon: 'move', onSelect: () => actions.onFlip(2) },
+        { kind: 'separator' },
+        { label: 'Mirror across the centre line (X)', icon: 'move', onSelect: () => actions.onFlip(0, true) },
+        { label: 'Mirror across the centre line (Z)', icon: 'move', onSelect: () => actions.onFlip(2, true) },
       ],
     },
     {
@@ -190,6 +238,17 @@ function buildMenus(
     {
       label: 'View',
       entries: [
+        { label: 'Front', icon: 'cube', shortcut: 'Num 1', onSelect: () => actions.onView(0, 0) },
+        { label: 'Back', icon: 'cube', shortcut: 'Ctrl Num 1', onSelect: () => actions.onView(180, 0) },
+        { label: 'Right', icon: 'cube', shortcut: 'Num 3', onSelect: () => actions.onView(-90, 0) },
+        { label: 'Left', icon: 'cube', shortcut: 'Ctrl Num 3', onSelect: () => actions.onView(90, 0) },
+        { label: 'Top', icon: 'cube', shortcut: 'Num 7', onSelect: () => actions.onView(0, -90) },
+        { label: 'Bottom', icon: 'cube', shortcut: 'Ctrl Num 7', onSelect: () => actions.onView(0, 90) },
+        { label: 'Perspective / orthographic', icon: 'cube', shortcut: 'Num 5', onSelect: actions.onOrtho },
+        { kind: 'separator' },
+        { label: 'Focus on selection', icon: 'search', shortcut: 'F', onSelect: actions.onFocus },
+        { label: 'Frame whole model', icon: 'search', shortcut: 'Home', onSelect: actions.onFrameAll },
+        { kind: 'separator' },
         { label: 'Quad view', icon: 'layers', shortcut: 'Ctrl 4', onSelect: actions.onQuad },
         { label: 'Toggle grid', icon: 'grid', shortcut: 'G', onSelect: actions.onGrid },
         { kind: 'separator' },
@@ -266,30 +325,28 @@ function MenuBar({
 
 /* ================= toolbar ================= */
 
-const toolsets: Record<Mode, Array<{ id: string; icon: IconName; label: string }>> = {
+const toolsets: Record<Mode, Array<{ id: string; icon: IconName; label: string; key?: string }>> = {
   // these modes have no canvas, so no tools
   behaviour: [],
   config: [],
   edit: [
-    { id: 'move', icon: 'move', label: 'Move' },
-    { id: 'resize', icon: 'resize', label: 'Resize' },
-    { id: 'rotate', icon: 'rotate', label: 'Rotate' },
-    { id: 'pivot', icon: 'pivot', label: 'Pivot tool' },
-    { id: 'vertex', icon: 'vertex', label: 'Vertex snap' },
-    { id: 'knife', icon: 'knife', label: 'Knife' },
+    { id: 'move', icon: 'move', label: 'Move tool', key: 'V' },
+    { id: 'resize', icon: 'resize', label: 'Resize tool', key: 'S' },
+    { id: 'rotate', icon: 'rotate', label: 'Rotate tool', key: 'R' },
+    { id: 'pivot', icon: 'pivot', label: 'Pivot tool', key: 'P' },
+    { id: 'vertex', icon: 'vertex', label: 'Vertex snap tool', key: 'X' },
   ],
   paint: [
-    { id: 'brush', icon: 'brush', label: 'Brush' },
-    { id: 'eraser', icon: 'eraser', label: 'Eraser' },
-    { id: 'bucket', icon: 'bucket', label: 'Paint bucket' },
-    { id: 'pipette', icon: 'pipette', label: 'Colour picker' },
-    { id: 'shape', icon: 'shape', label: 'Draw shape' },
+    { id: 'brush', icon: 'brush', label: 'Brush', key: 'B' },
+    { id: 'eraser', icon: 'eraser', label: 'Eraser', key: 'E' },
+    { id: 'bucket', icon: 'bucket', label: 'Fill tool', key: 'F' },
+    { id: 'pipette', icon: 'pipette', label: 'Color picker', key: 'C' },
+    { id: 'shape', icon: 'shape', label: 'Draw shape', key: 'U' },
   ],
   animate: [
-    { id: 'move', icon: 'move', label: 'Move' },
-    { id: 'resize', icon: 'resize', label: 'Resize' },
-    { id: 'rotate', icon: 'rotate', label: 'Rotate' },
-    { id: 'pivot', icon: 'pivot', label: 'Pivot tool' },
+    { id: 'move', icon: 'move', label: 'Move tool', key: 'V' },
+    { id: 'rotate', icon: 'rotate', label: 'Rotate tool', key: 'R' },
+    { id: 'scale', icon: 'resize', label: 'Scale tool', key: 'S' },
   ],
   display: [
     { id: 'move', icon: 'move', label: 'Move' },
@@ -336,6 +393,10 @@ function Toolbar({
   onShapeFilled,
   snap,
   onSnap,
+  space,
+  onSpace,
+  increment,
+  onIncrement,
   onExportTexture,
   canUndo,
   canRedo,
@@ -363,6 +424,10 @@ function Toolbar({
   onShapeFilled: (v: boolean) => void
   snap: boolean
   onSnap: () => void
+  space: 'global' | 'local'
+  onSpace: () => void
+  increment: number
+  onIncrement: (n: number) => void
   onExportTexture: () => void
   canUndo: boolean
   canRedo: boolean
@@ -411,7 +476,7 @@ function Toolbar({
           <button
             key={t.id}
             className="editor-tool"
-            title={t.label}
+            title={t.key ? `${t.label} (${t.key})` : t.label}
             aria-label={t.label}
             aria-pressed={t.id === tool}
             onClick={() => onTool(t.id)}
@@ -433,6 +498,29 @@ function Toolbar({
       </div>
 
       <span className="editor-separator" />
+
+      {(mode === 'edit' || mode === 'animate') && tool !== 'vertex' ? (
+        <div className="editor-tools editor-transform" role="group" aria-label="Transform settings">
+          <button
+            className="editor-chip"
+            onClick={onSpace}
+            title="Transform space: Global moves along the world axes, Local along the selection's own (T)"
+            aria-label={`Transform space: ${space}`}
+          >
+            {space === 'global' ? 'Global' : 'Local'}
+          </button>
+          <label className="editor-chip editor-chip--select" title="Grid snap. Hold Shift for a quarter of it, Ctrl to move freely.">
+            <Icon name="magnet" size={13} />
+            <select value={increment} onChange={(e) => onIncrement(Number(e.target.value))} aria-label="Snap increment">
+              {[1, 0.5, 0.25, 0.125, 0.0625].map((n) => (
+                <option key={n} value={n}>
+                  {n === 1 ? '1 unit' : n === 0.0625 ? '1/16' : n === 0.125 ? '1/8' : String(n)}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+      ) : null}
 
       {mode === 'paint' ? (
         <>
@@ -1108,30 +1196,59 @@ function ColorPanel({ colour, onColour }: { colour: string; onColour: (hex: stri
 
 /* ================= outliner ================= */
 
+type Drop = { id: string; where: 'before' | 'after' | 'into' }
+
 function Outliner({
   model,
-  selected,
+  selection,
   collapsed,
   onSelect,
   onToggleBone,
   onModel,
   onRename,
   onMove,
+  onPlace,
+  renameRequest,
 }: {
   model: Model
-  selected: string | null
+  selection: readonly string[]
   collapsed: Set<string>
-  onSelect: (id: string) => void
+  /** `range` is the ids from the last pick to this one, for Shift-click */
+  onSelect: (id: string, mods: PickMods, range: string[]) => void
   onToggleBone: (id: string) => void
   onModel: (label: string, fn: (m: Model) => Model) => void
   onRename: (id: string, name: string) => void
   /** null parent means "make it a root" */
   onMove: (id: string, parentId: string | null) => void
+  /** put a node just before or after another one, among that one's siblings */
+  onPlace: (id: string, beside: string, after: boolean) => void
+  /** F2: the id to start renaming, with a counter so the same id can be asked twice */
+  renameRequest: { id: string; n: number } | null
 }) {
   const rows = useMemo(() => flattenBones(model, collapsed), [model, collapsed])
   const [editing, setEditing] = useState<string | null>(null)
   const [dragId, setDragId] = useState<string | null>(null)
-  const [over, setOver] = useState<string | null>(null)
+  const [over, setOver] = useState<Drop | null>(null)
+  const picked = useMemo(() => new Set(selection), [selection])
+  const primary = selection[selection.length - 1] ?? null
+
+  useEffect(() => {
+    if (renameRequest) setEditing(renameRequest.id)
+  }, [renameRequest])
+
+  /* The top and bottom quarter of a row put the dragged node beside it;
+     the middle of a bone puts it inside. */
+  const dropAt = (x: number, y: number): Drop | null => {
+    const el = document.elementFromPoint(x, y)?.closest('[data-node]') as HTMLElement | null
+    const id = el?.dataset.node
+    if (!el || !id) return null
+    const r = el.getBoundingClientRect()
+    const k = (y - r.top) / r.height
+    const bone = bonesById.has(id)
+    if (k < (bone ? 0.28 : 0.5)) return { id, where: 'before' }
+    if (k > (bone ? 0.72 : 0.5)) return { id, where: 'after' }
+    return { id, where: 'into' }
+  }
 
   /* Pointer events, because HTML5 drag-and-drop does not work on touch.
      A 5px threshold keeps a click from starting a drag. */
@@ -1139,11 +1256,6 @@ function Outliner({
   /* pointerup clears the drag before click fires, so this flag stops the
      click from selecting and collapsing the row that was just dropped */
   const swallowClick = useRef(false)
-
-  const rowUnder = (x: number, y: number) => {
-    const el = document.elementFromPoint(x, y)?.closest('[data-node]') as HTMLElement | null
-    return el?.dataset.node ?? null
-  }
 
   const onRowMove = (e: React.PointerEvent) => {
     const held = press.current
@@ -1157,8 +1269,8 @@ function Outliner({
          selection and double-click rename. */
       e.currentTarget.setPointerCapture(held.pointerId)
     }
-    const target = rowUnder(e.clientX, e.clientY)
-    setOver(target && target !== held.id && bonesById.has(target) ? target : null)
+    const target = dropAt(e.clientX, e.clientY)
+    setOver(target && target.id !== held.id ? target : null)
   }
 
   const onRowUp = (e: React.PointerEvent) => {
@@ -1173,9 +1285,12 @@ function Outliner({
       return
     }
     swallowClick.current = true
-    const target = rowUnder(e.clientX, e.clientY)
-    // dropping anywhere but on another bone makes it a root
-    if (target !== held.id) onMove(held.id, target && bonesById.has(target) ? target : null)
+    const target = dropAt(e.clientX, e.clientY)
+    if (!target) onMove(held.id, null)
+    else if (target.id !== held.id) {
+      if (target.where === 'into') onMove(held.id, target.id)
+      else onPlace(held.id, target.id, target.where === 'after')
+    }
     setDragId(null)
     setOver(null)
   }
@@ -1227,10 +1342,11 @@ function Outliner({
           <div
             key={node.id}
             role="treeitem"
-            aria-selected={node.id === selected}
+            aria-selected={picked.has(node.id)}
+            data-primary={node.id === primary || undefined}
             data-hidden={!visible || undefined}
             data-region={region || undefined}
-            data-drop={over === node.id || undefined}
+            data-drop={over?.id === node.id ? over.where : undefined}
             data-dragged={dragId === node.id || undefined}
             data-node={node.id}
             className="tree__row"
@@ -1241,14 +1357,20 @@ function Outliner({
               swallowClick.current = false
               press.current = { id: node.id, x: e.clientX, y: e.clientY, pointerId: e.pointerId, moved: false }
             }}
-            onClick={() => {
+            onClick={(e) => {
               // ignore the click that ends a drag
               if (dragId || swallowClick.current) {
                 swallowClick.current = false
                 return
               }
-              onSelect(node.id)
-              if (isBone && editing !== node.id) onToggleBone(node.id)
+              const mods = { shift: e.shiftKey, ctrl: e.ctrlKey || e.metaKey }
+              const ids = rows.map((r) => (r.kind === 'bone' ? r.bone.id : r.cube.id))
+              const a = primary ? ids.indexOf(primary) : -1
+              const b = ids.indexOf(node.id)
+              const range = a >= 0 && b >= 0 ? ids.slice(Math.min(a, b), Math.max(a, b) + 1) : [node.id]
+              onSelect(node.id, mods, range)
+              // the chevron area collapses; a plain click on a selected bone does too, as before
+              if (isBone && editing !== node.id && !mods.shift && !mods.ctrl) onToggleBone(node.id)
             }}
             onDoubleClick={(e) => {
               e.stopPropagation()
@@ -1282,7 +1404,7 @@ function Outliner({
                 }}
               />
             ) : (
-              <span className="tree__name" title="Double-click to rename, drag onto a bone to reparent">
+              <span className="tree__name" title="Double-click or F2 to rename. Drag onto a bone to put it inside, or above or below a row to reorder.">
                 {node.name}
               </span>
             )}
@@ -1403,11 +1525,21 @@ function BonePanel({
 /* ================= viewport ================= */
 
 const quadViews = [
-  { tag: 'Perspective', yaw: -34, pitch: -22 },
-  { tag: 'Front', yaw: 0, pitch: 0 },
-  { tag: 'Top', yaw: 0, pitch: -89 },
-  { tag: 'Right', yaw: -90, pitch: 0 },
+  { tag: 'Perspective', yaw: -34, pitch: -22, ortho: false },
+  { tag: 'Front', yaw: 0, pitch: 0, ortho: true },
+  { tag: 'Top', yaw: 0, pitch: -90, ortho: true },
+  { tag: 'Right', yaw: -90, pitch: 0, ortho: true },
 ]
+
+/** What the bottom-left hint says for each tool. */
+const TOOL_HINTS: Record<string, string> = {
+  move: 'Move: drag an arrow, a square or the centre. Shift finer, Ctrl free.',
+  resize: 'Resize: drag a handle to grow that side. Shift finer, Ctrl free.',
+  rotate: 'Rotate: drag a ring. Ctrl turns freely.',
+  pivot: 'Pivot: drag to move the point it turns about.',
+  vertex: 'Vertex snap: click a yellow corner, then the corner it should meet.',
+  scale: 'Scale: drag a handle, or the centre for all three.',
+}
 
 function Viewport({
   model,
@@ -1422,6 +1554,16 @@ function Viewport({
   onDeselect,
   onPaint,
   display,
+  selection,
+  gizmo,
+  onGizmo,
+  snapStep,
+  ortho,
+  onOrtho,
+  viewRef,
+  onBoxSelect,
+  vertices,
+  hint,
 }: {
   model: Model
   label: string
@@ -1432,8 +1574,18 @@ function Viewport({
   clip: Clip | null
   time: number
   selected: string | null
-  onSelect: (id: string) => void
+  selection: readonly string[]
+  onSelect: (id: string, mods: PickMods) => void
   onDeselect: () => void
+  gizmo: GizmoSpec | null
+  onGizmo: (e: GizmoEvent) => void
+  snapStep: number
+  ortho: boolean
+  onOrtho: (v: boolean) => void
+  viewRef: React.Ref<ViewApi>
+  onBoxSelect: (ids: string[], add: boolean) => void
+  vertices: VertexLayer | null
+  hint: string | null
   onPaint?: (cubeId: string, face: FaceKey, u: number, v: number, phase: 'down' | 'move') => void
   display?: { rotation: Vec3; translation: Vec3; scale: Vec3 } | null
 }) {
@@ -1470,12 +1622,17 @@ function Viewport({
                   orbit
                   initialYaw={v.yaw}
                   initialPitch={v.pitch}
+                  ortho={v.ortho}
                   clip={clip}
                   time={time}
                   selected={selected}
+                  selection={selection}
                   onSelect={onSelect}
                   onPaint={onPaint}
                   display={display}
+                  gizmo={gizmo}
+                  onGizmo={onGizmo}
+                  snapStep={snapStep}
                 />
               </div>
             ))}
@@ -1489,10 +1646,20 @@ function Viewport({
             clip={clip}
             time={time}
             selected={selected}
+            selection={selection}
             onSelect={onSelect}
             onDeselect={onDeselect}
             onPaint={onPaint}
             display={display}
+            gizmo={gizmo}
+            onGizmo={onGizmo}
+            snapStep={snapStep}
+            ortho={ortho}
+            onOrtho={onOrtho}
+            nav
+            viewRef={viewRef}
+            onBoxSelect={onBoxSelect}
+            vertices={vertices}
           />
         )}
 
@@ -1509,23 +1676,11 @@ function Viewport({
         </div>
 
         <div className="editor-view__corner editor-view__corner--bottom-left">
+          {hint ? <span className="editor-view__hint">{hint}</span> : null}
           {onPaint
             ? 'drag a face to paint · right-drag orbit · shift-drag pan · scroll zoom'
-            : 'drag orbit · shift-drag pan · scroll zoom'}
+            : 'drag orbit · shift-drag pan · scroll zoom · Ctrl-drag select'}
         </div>
-
-        <svg className="editor-axis-gizmo" viewBox="0 0 60 60" aria-hidden="true">
-          <g strokeWidth="1.8" strokeLinecap="round">
-            <line x1="30" y1="30" x2="52" y2="38" style={{ stroke: 'var(--axis-x)' }} />
-            <line x1="30" y1="30" x2="30" y2="8" style={{ stroke: 'var(--axis-y)' }} />
-            <line x1="30" y1="30" x2="9" y2="39" style={{ stroke: 'var(--axis-z)' }} />
-          </g>
-          <g fontSize="8" fill="currentColor" opacity="0.8">
-            <text x="53" y="41">X</text>
-            <text x="27" y="7">Y</text>
-            <text x="2" y="42">Z</text>
-          </g>
-        </svg>
       </div>
     </div>
   )
@@ -2257,7 +2412,18 @@ export function Editor({ segments }: { segments: string[] }) {
   const [tool, setTool] = useState('move')
   const [grid, setGrid] = useState(true)
   const [quad, setQuad] = useState(false)
-  const [selected, setSelected] = useState<string | null>(initial.model.cubes[0]?.id ?? null)
+  /* The selection, in pick order; the last id is the primary one that the
+     panels and the gizmo follow, as in Blockbench. */
+  const [selection, setSelection] = useState<string[]>(initial.model.cubes[0] ? [initial.model.cubes[0].id] : [])
+  const selected = selection[selection.length - 1] ?? null
+  const setSelected = useCallback((id: string | null) => setSelection(id ? [id] : []), [])
+  const [space, setSpace] = useState<'global' | 'local'>('global')
+  const [increment, setIncrement] = useState(1)
+  const [ortho, setOrtho] = useState(false)
+  const [renameRequest, setRenameRequest] = useState<{ id: string; n: number } | null>(null)
+  /** vertex snap: the corner of the selection picked first */
+  const [vertexFrom, setVertexFrom] = useState<number | null>(null)
+  const viewApi = useRef<ViewApi>(null)
   const [face, setFace] = useState<FaceKey>('north')
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
   const [leftW, setLeftW] = useState(300)
@@ -2316,7 +2482,7 @@ export function Editor({ segments }: { segments: string[] }) {
 
   /* The selection for each model in the history, so undo and redo can
      restore it. A WeakMap lets discarded models be collected. */
-  const selectionAt = useRef(new WeakMap<Model, string | null>())
+  const selectionAt = useRef(new WeakMap<Model, string[]>())
 
   const loadModel = useCallback(
     (next: Model, name: string, nextKind: ProjectKind = 'items') => {
@@ -2338,7 +2504,7 @@ export function Editor({ segments }: { segments: string[] }) {
       setDisplayState(DEFAULT_DISPLAY)
       setSlot('thirdperson_righthand')
     },
-    [history],
+    [history, setSelected],
   )
 
   /* Order matters. The recording effect runs first, so on the render after
@@ -2348,14 +2514,14 @@ export function Editor({ segments }: { segments: string[] }) {
 
   useEffect(() => {
     if (history.travel !== lastTravel.current) return
-    selectionAt.current.set(model, selected)
-  }, [model, selected, history.travel])
+    selectionAt.current.set(model, selection)
+  }, [model, selection, history.travel])
 
   useEffect(() => {
     if (history.travel === lastTravel.current) return
     lastTravel.current = history.travel
     const was = selectionAt.current.get(history.present)
-    if (was !== undefined) setSelected(was)
+    if (was !== undefined) setSelection(was)
   }, [history.travel, history.present])
 
   /* Keep the active tool valid for the mode. Modes with no tools
@@ -2525,13 +2691,182 @@ export function Editor({ segments }: { segments: string[] }) {
   const cube = model.cubes.find((c) => c.id === selected) ?? null
   const selectedBone = selected ? boneById(model, selected) : null
 
-  // selecting a bone in the outliner also picks it for Animate mode
+  /* Picking follows Blockbench: a click selects one node, Ctrl-click
+     toggles one, Shift-click adds (a range, in the outliner). Selecting a
+     bone also picks it for Animate mode. */
   const selectNode = useCallback(
-    (id: string) => {
-      setSelected(id)
+    (id: string, mods: PickMods = { shift: false, ctrl: false }, range?: string[]) => {
+      setSelection((cur) => {
+        if (mods.ctrl) return cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]
+        if (mods.shift) {
+          const extra = range ?? [id]
+          return [...cur.filter((x) => !extra.includes(x)), ...extra.filter((x) => x !== id), id]
+        }
+        return [id]
+      })
       if (bones.some((b) => b.id === id)) setPickedBone(id)
+      setVertexFrom(null)
     },
     [bones],
+  )
+
+  /* ---------------- gizmo ---------------- */
+
+  const rig = useMemo(() => buildRig(model), [model])
+
+  /** Where the gizmo sits and which way its handles point, for the primary selection. */
+  const gizmo = useMemo<GizmoSpec | null>(() => {
+    if (mode !== 'edit' || !selected) return null
+    if (!['move', 'resize', 'rotate', 'pivot'].includes(tool)) return null
+    const t = tool as GizmoSpec['tool']
+    const world: [Vec3, Vec3, Vec3] = [[1, 0, 0], [0, 1, 0], [0, 0, 1]]
+    const c = model.cubes.find((x) => x.id === selected)
+    if (c) {
+      if (!c.visible || c.locked) return null
+      const f = cubeFrame(rig, c)
+      const own = [0, 1, 2].map((i) => norm(applyDir(f, world[i]))) as [Vec3, Vec3, Vec3]
+      const centre: Vec3 = [(c.from[0] + c.to[0]) / 2, (c.from[1] + c.to[1]) / 2, (c.from[2] + c.to[2]) / 2]
+      const anchor = t === 'move' || t === 'resize' ? apply(f, sub(centre, c.origin)) : apply(f, [0, 0, 0])
+      const rings = eulerAxes(parentFrame(rig, c.id).matrix, c.rotation).map((r) => r.axis) as [Vec3, Vec3, Vec3]
+      return { tool: t, anchor, axes: t === 'resize' || space === 'local' ? own : world, rings }
+    }
+    const b = findBone(model.bones, selected)
+    if (!b || b.locked || !b.visible || t === 'resize') return null
+    const f = rig.bone.get(b.id)
+    if (!f) return null
+    const own = [0, 1, 2].map((i) => norm(applyDir(f, world[i]))) as [Vec3, Vec3, Vec3]
+    const rings = eulerAxes(parentFrame(rig, b.id).matrix, b.rotation).map((r) => r.axis) as [Vec3, Vec3, Vec3]
+    return { tool: t, anchor: apply(f, [0, 0, 0]), axes: space === 'local' ? own : world, rings }
+  }, [mode, tool, selected, model, rig, space])
+
+  /** The model and rig when a drag began; every move is applied to these, never on top of the last move. */
+  const dragFrom = useRef<{ model: Model; rig: ReturnType<typeof buildRig>; ids: string[] } | null>(null)
+
+  const onGizmo = useCallback(
+    (e: GizmoEvent) => {
+      if (e.phase === 'start') {
+        const label = { move: 'move', resize: 'resize', rotate: 'rotate', pivot: 'move pivot', scale: 'scale' }[e.tool]
+        history.begin(label)
+        dragFrom.current = { model, rig, ids: topLevel(model, selection) }
+      }
+      const from = dragFrom.current
+      if (!from) return
+      const { model: m0, rig: r0, ids } = from
+      let next = m0
+
+      if ((e.tool === 'move' || e.tool === 'pivot') && e.delta) {
+        const deltas = new Map(ids.map((id) => [id, toParentDir(r0, id, e.delta!)] as const))
+        next = e.tool === 'move' ? translateNodes(m0, deltas) : movePivots(m0, deltas)
+      } else if (e.tool === 'resize' && e.amount !== undefined) {
+        const axis = 'xyz'.indexOf(e.handle) as 0 | 1 | 2
+        const cubes = new Set(ids)
+        next = { ...m0, cubes: m0.cubes.map((c) => (cubes.has(c.id) ? resizeCube(c, axis, e.side ?? 1, e.amount!) : c)) }
+      } else if (e.tool === 'rotate' && e.angle !== undefined) {
+        const axis = 'xyz'.indexOf(e.handle)
+        // Java block and item models only take 22.5° steps
+        const step = e.ctrl ? 0 : kind === 'blocks' ? 22.5 : e.shift ? 0.5 : 2.5
+        const rotations = new Map<string, Vec3>()
+        for (const id of ids) {
+          const node = m0.cubes.find((c) => c.id === id) ?? findBone(m0.bones, id)
+          if (!node) continue
+          const rate = eulerAxes(parentFrame(r0, id).matrix, node.rotation)[axis].rate || Math.PI / 180
+          const r: Vec3 = [...node.rotation]
+          let v = r[axis] + (e.angle * Math.PI) / 180 / rate
+          if (step) v = Math.round(v / step) * step
+          // keep it in -180..180 so fields stay readable
+          v = ((((v + 180) % 360) + 360) % 360) - 180
+          r[axis] = Math.round(v * 1000) / 1000
+          rotations.set(id, r)
+        }
+        next = setRotations(m0, rotations)
+      }
+
+      history.amend(next)
+      if (e.phase === 'end') {
+        history.end()
+        dragFrom.current = null
+      }
+    },
+    [history, model, rig, selection, kind],
+  )
+
+  /* ---------------- vertex snap ---------------- */
+
+  const vertexData = useMemo(() => {
+    if (mode !== 'edit' || tool !== 'vertex') return null
+    const picked = new Set<string>()
+    for (const id of selection) {
+      const b = findBone(model.bones, id)
+      if (!b) picked.add(id)
+    }
+    const points: Vec3[] = []
+    const own: boolean[] = []
+    for (const c of model.cubes) {
+      if (!c.visible) continue
+      for (const p of cubeCorners(rig, c)) {
+        points.push(p)
+        own.push(picked.has(c.id))
+      }
+    }
+    return { points, own }
+  }, [mode, tool, model, rig, selection])
+
+  const snapVertex = useCallback(
+    (index: number) => {
+      if (!vertexData) return
+      if (vertexFrom === null) {
+        if (!vertexData.own[index]) {
+          setSaveNote('Pick a corner of the selected cube first (the yellow ones), then the corner it should meet.')
+          window.setTimeout(() => setSaveNote(null), 3500)
+          return
+        }
+        setVertexFrom(index)
+        return
+      }
+      const delta = sub(vertexData.points[index], vertexData.points[vertexFrom])
+      setVertexFrom(null)
+      const ids = topLevel(model, selection)
+      if (!ids.length) return
+      history.commit('vertex snap', (m) => translateNodes(m, new Map(ids.map((id) => [id, toParentDir(rig, id, delta)] as const))))
+    },
+    [vertexData, vertexFrom, model, selection, rig, history],
+  )
+
+  const vertices = useMemo<VertexLayer | null>(
+    () =>
+      vertexData
+        ? {
+            points: vertexData.points,
+            own: vertexFrom === null ? vertexData.own : vertexData.own.map((_, i) => i === vertexFrom),
+            onPick: snapVertex,
+          }
+        : null,
+    [vertexData, vertexFrom, snapVertex],
+  )
+
+  /* ---------------- view ---------------- */
+
+  /** Centres the view on the selection, or on the whole model with nothing selected. */
+  const focusOn = useCallback(
+    (ids: readonly string[]) => {
+      const pts: Vec3[] = []
+      const cubeIds = new Set<string>()
+      for (const id of ids) {
+        const b = findBone(model.bones, id)
+        if (b) {
+          const f = rig.bone.get(b.id)
+          if (f) pts.push(apply(f, [0, 0, 0]))
+          for (const c of model.cubes) if (rig.cubeOwner.get(c.id) === b.id) cubeIds.add(c.id)
+        } else cubeIds.add(id)
+      }
+      for (const c of model.cubes) if (cubeIds.has(c.id) || !ids.length) pts.push(...cubeCorners(rig, c))
+      if (!pts.length) return
+      const lo = [0, 1, 2].map((i) => Math.min(...pts.map((p) => p[i])))
+      const hi = [0, 1, 2].map((i) => Math.max(...pts.map((p) => p[i])))
+      const centre = add(lo as Vec3, sub(hi as Vec3, lo as Vec3).map((v) => v / 2) as Vec3)
+      viewApi.current?.focus(centre, Math.max(hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2], 2))
+    },
+    [model, rig],
   )
 
   const rename = useCallback(
@@ -2748,7 +3083,7 @@ export function Editor({ segments }: { segments: string[] }) {
       if (!texel) return
       applyTool(f.texture, texel[0], texel[1], faceBounds(f.uv), phase, faceBounds(f.uv))
     },
-    [model.cubes, applyTool, history, tool, refuseLocked],
+    [model.cubes, applyTool, history, tool, refuseLocked, setSelected],
   )
 
   /* On the sheet, a fill stays inside the UV island under the click, which
@@ -2891,16 +3226,32 @@ export function Editor({ segments }: { segments: string[] }) {
         setPickedBone(next.id)
       },
       onDuplicate: () => {
-        if (!selected) return
-        // a bone is duplicated with its whole subtree
-        const next = bones.some((b) => b.id === selected)
-          ? duplicateBone(model, selected)
-          : duplicateCube(model, selected)
-        if (!next) return
-        history.commit(bones.some((b) => b.id === selected) ? 'duplicate bone' : 'duplicate cube', next.model)
-        setSelected(next.id)
+        // every selected node, a bone with its whole subtree
+        let m = model
+        const made: string[] = []
+        for (const id of topLevel(model, selection)) {
+          const next = bones.some((b) => b.id === id) ? duplicateBone(m, id) : duplicateCube(m, id)
+          if (!next) continue
+          m = next.model
+          made.push(next.id)
+        }
+        if (!made.length) return
+        history.commit(made.length > 1 ? 'duplicate' : bones.some((b) => b.id === selected) ? 'duplicate bone' : 'duplicate cube', m)
+        setSelection(made)
       },
       onDelete: () => {
+        if (selection.length > 1) {
+          const ids = topLevel(model, selection)
+          if (!ids.length) {
+            refuseLocked('The selection')
+            return
+          }
+          let m = model
+          for (const id of ids) m = bones.some((b) => b.id === id) ? deleteBone(m, id) : deleteCube(m, id)
+          history.commit('delete', m)
+          setSelection([])
+          return
+        }
         if (!selected) return
         const isBone = bones.some((b) => b.id === selected)
         /* After an undo the selection can name a node the model doesn't
@@ -2925,6 +3276,68 @@ export function Editor({ segments }: { segments: string[] }) {
       },
       onQuad: () => setQuad((q) => !q),
       onGrid: () => setGrid((g) => !g),
+      onSelectAll: () => setSelection(model.cubes.filter((c) => c.visible).map((c) => c.id)),
+      onCopy: () => {
+        const got = copyNodes(model, selection)
+        setSaveNote(got ? `Copied ${got.roots.length} ${got.roots.length === 1 ? 'node' : 'nodes'}` : 'Nothing selected to copy.')
+        window.setTimeout(() => setSaveNote(null), 1800)
+      },
+      onCut: () => {
+        const ids = topLevel(model, selection)
+        if (!copyNodes(model, ids)) return
+        let m = model
+        for (const id of ids) m = bones.some((b) => b.id === id) ? deleteBone(m, id) : deleteCube(m, id)
+        history.commit('cut', m)
+        setSelection([])
+      },
+      onPaste: () => {
+        const clip = readClipboard()
+        if (!clip) {
+          setSaveNote('Copy something first (Ctrl C).')
+          window.setTimeout(() => setSaveNote(null), 1800)
+          return
+        }
+        const parent = bones.some((b) => b.id === selected) ? selected : ownerBone(model.bones, selected)
+        const next = pasteNodes(model, clip, parent)
+        history.commit('paste', next.model)
+        setSelection(next.ids)
+      },
+      onGroup: () => {
+        const next = groupNodes(model, selection)
+        if (!next) return
+        history.commit('group', next.model)
+        setSelection([next.id])
+        setPickedBone(next.id)
+      },
+      onFlip: (axis, centreLine) => {
+        // a block or an item is centred on 8, a mob on 0
+        const about = centreLine ? (kind === 'mobs' ? 0 : 8) : undefined
+        const next = flipNodes(model, selection, axis, about)
+        if (next !== model) history.commit(centreLine ? `mirror ${'XYZ'[axis]}` : `flip ${'XYZ'[axis]}`, next)
+      },
+      onView: (yaw, pitch) => viewApi.current?.setView(yaw, pitch),
+      onOrtho: () => setOrtho((o) => !o),
+      onFocus: () => focusOn(selection),
+      onFrameAll: () => focusOn([]),
+      onHide: () => {
+        const ids = new Set(selection)
+        if (!ids.size) return
+        history.commit('hide', (m) => ({
+          ...m,
+          cubes: m.cubes.map((c) => (ids.has(c.id) ? { ...c, visible: false } : c)),
+          bones: m.bones.map(function show(b): Bone {
+            return { ...(ids.has(b.id) ? { ...b, visible: false } : b), children: b.children.map((c) => (c.kind === 'bone' ? { kind: 'bone' as const, bone: show(c.bone) } : c)) }
+          }),
+        }))
+      },
+      onShowAll: () =>
+        history.commit('show all', (m) => ({
+          ...m,
+          cubes: m.cubes.map((c) => (c.visible ? c : { ...c, visible: true })),
+          bones: m.bones.map(function show(b): Bone {
+            return { ...b, visible: true, children: b.children.map((c) => (c.kind === 'bone' ? { kind: 'bone' as const, bone: show(c.bone) } : c)) }
+          }),
+        })),
       onExportTexture: () => {
         const texture = model.textures[textureIndex] ?? model.textures[0]
         if (!texture) {
@@ -2946,7 +3359,7 @@ export function Editor({ segments }: { segments: string[] }) {
       onAddKey: () => animBone && anim.addKey(animBone, 'rotation'),
       onCloseLoop: () => anim.closeLoop(),
     }),
-    [model, fileName, kind, textureIndex, loadModel, runSave, selected, bones, history, anim, animBone, guarded, rescale, refuseLocked],
+    [model, fileName, kind, textureIndex, loadModel, runSave, selected, selection, bones, history, anim, animBone, guarded, rescale, refuseLocked, setSelected, focusOn],
   )
 
   // keyboard shortcuts; all but Ctrl+S are ignored while a field has focus
@@ -2997,7 +3410,100 @@ export function Editor({ segments }: { segments: string[] }) {
         setQuad((q) => !q)
         return
       }
+
+      /* Numpad views, as in Blender and Blockbench. Ctrl looks from the opposite side. */
+      const views: Record<string, [number, number, number, number]> = {
+        Numpad1: [0, 0, 180, 0],
+        Numpad3: [-90, 0, 90, 0],
+        Numpad7: [0, -90, 0, 90],
+      }
+      if (views[e.code]) {
+        e.preventDefault()
+        const [y, p, y2, p2] = views[e.code]
+        if (mod) actions.onView(y2, p2)
+        else actions.onView(y, p)
+        return
+      }
+      if (e.code === 'Numpad5') {
+        e.preventDefault()
+        actions.onOrtho()
+        return
+      }
+      if (e.code === 'NumpadDecimal') {
+        e.preventDefault()
+        actions.onFocus()
+        return
+      }
+
+      const editing = mode === 'edit'
+      if (mod && editing) {
+        const k = e.key.toLowerCase()
+        const run: Record<string, () => void> = {
+          a: actions.onSelectAll,
+          c: actions.onCopy,
+          x: actions.onCut,
+          v: actions.onPaste,
+          g: actions.onGroup,
+        }
+        if (run[k]) {
+          e.preventDefault()
+          run[k]()
+          return
+        }
+      }
       if (mod) return
+
+      if (e.key === 'F2' && selected) {
+        e.preventDefault()
+        setRenameRequest((r) => ({ id: selected, n: (r?.n ?? 0) + 1 }))
+        return
+      }
+      if (e.key === 'Home') {
+        e.preventDefault()
+        actions.onFrameAll()
+        return
+      }
+      if (e.key === 'Escape' && (mode === 'edit' || mode === 'animate')) {
+        if (vertexFrom !== null) setVertexFrom(null)
+        else setSelection([])
+        return
+      }
+
+      /* tool keys, Blockbench's: V move, S resize (scale when posing), R rotate, P pivot, X vertex snap;
+         in Paint B brush, E eraser, F fill, C colour picker, U shape */
+      const toolKey = toolsets[mode].find((t) => t.key && t.key.toLowerCase() === e.key.toLowerCase() && !e.altKey)
+      if (toolKey) {
+        e.preventDefault()
+        setTool(toolKey.id)
+        setVertexFrom(null)
+        return
+      }
+      if ((mode === 'edit' || mode === 'animate') && !e.altKey) {
+        const k = e.key.toLowerCase()
+        if (k === 'f') {
+          e.preventDefault()
+          actions.onFocus()
+          return
+        }
+        if (k === 'b') {
+          e.preventDefault()
+          viewApi.current?.armBox()
+          setSaveNote('Drag a box to select (Shift adds)')
+          window.setTimeout(() => setSaveNote(null), 1800)
+          return
+        }
+        if (k === 't') {
+          e.preventDefault()
+          setSpace((v) => (v === 'global' ? 'local' : 'global'))
+          return
+        }
+      }
+      if (editing && e.key.toLowerCase() === 'h') {
+        e.preventDefault()
+        if (e.altKey) actions.onShowAll()
+        else actions.onHide()
+        return
+      }
 
       /* Delete acts on what the mode edits: the selected keyframe in
          Animate, the selected node in Edit, nothing in other modes. */
@@ -3023,7 +3529,7 @@ export function Editor({ segments }: { segments: string[] }) {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [history, actions, anim, mode, selectedKey, animBone])
+  }, [history, actions, anim, mode, selectedKey, animBone, selected, vertexFrom])
 
   // only .vellum files open here; anything else is refused before parsing
   const onFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -3095,6 +3601,10 @@ export function Editor({ segments }: { segments: string[] }) {
         onShapeFilled={setShapeFilled}
         snap={snap}
         onSnap={() => setSnap((v) => !v)}
+        space={space}
+        onSpace={() => setSpace((v) => (v === 'global' ? 'local' : 'global'))}
+        increment={increment}
+        onIncrement={setIncrement}
         onExportTexture={actions.onExportTexture}
         canUndo={history.canUndo}
         canRedo={history.canRedo}
@@ -3118,10 +3628,23 @@ export function Editor({ segments }: { segments: string[] }) {
           clip={mode === 'animate' ? clip : mode === 'behaviour' ? bhvClip : null}
           time={mode === 'behaviour' ? bhvClipTime : time}
           selected={selected}
+          selection={selection}
           onSelect={selectNode}
-          onDeselect={() => setSelected(null)}
+          onDeselect={() => {
+            setSelected(null)
+            setVertexFrom(null)
+          }}
           onPaint={mode === 'paint' ? paintOnModel : undefined}
           display={mode === 'display' && kind !== 'mobs' ? displayState[slot] : null}
+          gizmo={gizmo}
+          onGizmo={onGizmo}
+          snapStep={increment}
+          ortho={ortho}
+          onOrtho={setOrtho}
+          viewRef={viewApi}
+          onBoxSelect={(ids, addTo) => setSelection((cur) => (addTo ? [...cur.filter((x) => !ids.includes(x)), ...ids] : ids))}
+          vertices={vertices}
+          hint={mode === 'edit' || mode === 'animate' ? TOOL_HINTS[tool] ?? null : null}
         />
 
         <div className="editor-rails">
@@ -3354,9 +3877,20 @@ export function Editor({ segments }: { segments: string[] }) {
             <Panel title="Outliner" count={`${model.cubes.length} cubes`} grow>
               <Outliner
                 model={model}
-                selected={selected}
+                selection={selection}
                 collapsed={collapsed}
                 onSelect={selectNode}
+                renameRequest={renameRequest}
+                onPlace={(id, beside, after) =>
+                  history.commit('reorder', (m) => {
+                    // a node dropped beside one in another bone moves into that bone first
+                    const r = buildRig(m)
+                    const parent = r.cubeOwner.get(beside) ?? r.boneParent.get(beside) ?? null
+                    const here = r.cubeOwner.get(id) ?? r.boneParent.get(id) ?? null
+                    const moved = parent !== here ? reparent(m, id, parent) : m
+                    return reorderNode(moved, id, beside, after)
+                  })
+                }
                 onToggleBone={(id) =>
                   setCollapsed((s) => {
                     const next = new Set(s)

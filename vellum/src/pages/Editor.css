@@ -516,17 +516,6 @@
   left: calc(var(--left-w) + var(--rail-pad) + 14px);
 }
 
-.editor-axis-gizmo {
-  position: absolute;
-  right: calc(var(--right-w) + var(--rail-pad) + 18px);
-  bottom: 18px;
-  width: 56px;
-  height: 56px;
-  opacity: 0.9;
-  pointer-events: none;
-  z-index: 5;
-}
-
 /* ---------------- colour panel ---------------- */
 
 .color-sv {
@@ -975,7 +964,6 @@
   .editor-view__corner--top-left,
   .editor-view__corner--bottom-left { left: 14px; }
   .editor-view__corner--top-right { right: 14px; }
-  .editor-axis-gizmo { right: 14px; }
   .editor-quad__cell:nth-child(odd) .editor-quad__tag { left: 14px; }
 
   .editor-rails {
@@ -1246,10 +1234,15 @@
 .tree__row[data-dragged] { opacity: 0.45; }
 
 /* the bone a dragged node would land in */
-.tree__row[data-drop] {
+.tree__row[data-drop='into'] {
   background: color-mix(in srgb, var(--accent) 22%, transparent);
   box-shadow: inset 0 0 0 1px var(--accent-mark);
 }
+/* a line above or below the row it would sit beside */
+.tree__row[data-drop='before'] { box-shadow: inset 0 2px 0 var(--accent-mark); }
+.tree__row[data-drop='after'] { box-shadow: inset 0 -2px 0 var(--accent-mark); }
+/* the last-picked row of a multi-selection, as Blockbench marks it */
+.tree__row[aria-selected='true'][data-primary] { box-shadow: inset 2px 0 0 var(--accent-mark); }
 
 .tree__root-drop {
   min-height: 22px;
@@ -1822,3 +1815,46 @@
 /* hit-region bones draw nothing, so the outliner marks them */
 .tree__row[data-region] .tree__name { color: var(--warn); }
 .tree__toggle[data-region] { color: var(--warn); }
+
+/* ---- transform settings: space and snap ---- */
+
+.editor-transform { gap: 4px; }
+.editor-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 26px;
+  padding: 0 9px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--sunken);
+  color: var(--ink-muted);
+  font-size: var(--fs-2xs);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+}
+.editor-chip:hover { color: var(--ink); border-color: var(--border-accent); }
+.editor-chip--select select {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.editor-chip--select select option { background: var(--surface, #1b1d21); color: var(--ink); }
+
+.editor-view__hint {
+  display: block;
+  margin-bottom: 3px;
+  color: var(--ink);
+}
+
+/* the navigation gizmo and projection switch sit under Solid/Wire, clear of the right rail */
+.editor-view .scene3d__nav { top: 62px; right: calc(var(--right-w) + var(--rail-pad) + 14px); }
+.editor-view .scene3d__projection { top: 150px; right: calc(var(--right-w) + var(--rail-pad) + 14px); }
+.editor-view__corner--bottom-left { flex-direction: column; align-items: flex-start; gap: 2px; }
+@media (max-width: 900px) {
+  .editor-view .scene3d__nav,
+  .editor-view .scene3d__projection { right: 14px; }
+}

@@ -1,8 +1,46 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import type { Ref } from 'react'
 import { FACES, samplePose, textureById } from '../lib/model'
 import type { Bone, Clip, Cube, Face as ModelFace, FaceKey, Model, Pose, Vec3 } from '../lib/model'
+import { Gizmo } from './Gizmo'
+import type { Basis, GizmoEvent, GizmoSpec } from './Gizmo'
 import './Model3D.css'
 import './ModelView.css'
+
+/** Modifier keys held on a click, for adding to or toggling a selection. */
+export type PickMods = { shift: boolean; ctrl: boolean }
+
+/** Camera control from outside: view presets, focus, box select. */
+export type ViewApi = {
+  setView: (yaw: number, pitch: number) => void
+  /** centres the view on a world point and zooms so `size` units fill about half of it */
+  focus: (centre: Vec3, size: number) => void
+  /** the next left-drag on the viewport draws a selection box (Blender's B) */
+  armBox: () => void
+  view: () => { yaw: number; pitch: number }
+}
+
+/** Where the corners of cubes are, for the vertex snap tool. */
+export type VertexLayer = {
+  points: Vec3[]
+  /** marks the corners of the cube being moved */
+  own: boolean[]
+  onPick: (index: number) => void
+}
+
+/** Probe length in model units: long enough to measure, short enough to stay near the anchor. */
+const PROBE = 4
+
+/* The six ends of the navigation gizmo and the view each one looks from. */
+const NAV_ENDS: Array<{ axis: 0 | 1 | 2; sign: 1 | -1; label: string; yaw: number; pitch: number }> = [
+  { axis: 0, sign: 1, label: 'X', yaw: -90, pitch: 0 },
+  { axis: 0, sign: -1, label: '', yaw: 90, pitch: 0 },
+  { axis: 1, sign: 1, label: 'Y', yaw: 0, pitch: -90 },
+  { axis: 1, sign: -1, label: '', yaw: 0, pitch: 90 },
+  { axis: 2, sign: 1, label: 'Z', yaw: 0, pitch: 0 },
+  { axis: 2, sign: -1, label: '', yaw: 180, pitch: 0 },
+]
+const NAV_COLOURS = ['#ff3b4e', '#7ad21c', '#2f8dff']
 
 /* Each face's plane size and the transform that places it on the box. South is +z. */
 const FACE_PLACEMENT: Record<
@@ -152,7 +190,7 @@ function CubeBox({
   model: Model
   scale: number
   selected: boolean
-  onSelect?: (id: string) => void
+  onSelect?: (id: string, mods: PickMods) => void
   onPaint?: (cubeId: string, face: FaceKey, u: number, v: number, phase: 'down' | 'move') => void
 }) {
   if (!cube.visible) return null
@@ -185,8 +223,13 @@ function CubeBox({
     <div className="model-pivot" style={{ transform: transformOf(pivotAt, cube.rotation, scale) }}>
       <div
         className={`model-cube${selected ? ' model-cube--selected' : ''}`}
+        data-cube={cube.id}
         style={{ transform: transformOf(boxAt, [0, 0, 0], scale) }}
-        onPointerDown={onSelect ? (e) => e.button === 0 && onSelect(cube.id) : undefined}
+        onPointerDown={
+          onSelect
+            ? (e) => e.button === 0 && !e.altKey && onSelect(cube.id, { shift: e.shiftKey, ctrl: e.ctrlKey || e.metaKey })
+            : undefined
+        }
       >
         {FACES.map((name) => {
           const place = FACE_PLACEMENT[name](w * scale, h * scale, d * scale)
@@ -224,8 +267,8 @@ function BoneNode({
   model: Model
   scale: number
   pose: Pose
-  selected: string | null
-  onSelect?: (id: string) => void
+  selected: ReadonlySet<string>
+  onSelect?: (id: string, mods: PickMods) => void
   onPaint?: (cubeId: string, face: FaceKey, u: number, v: number, phase: 'down' | 'move') => void
 }) {
   if (!bone.visible) return null
@@ -272,7 +315,7 @@ function BoneNode({
                 parentOrigin={bone.origin}
                 model={model}
                 scale={scale}
-                selected={selected === cube.id}
+                selected={selected.has(cube.id)}
                 onSelect={onSelect}
                 onPaint={onPaint}
               />
@@ -301,8 +344,26 @@ type Props = {
   zoomable?: boolean
   clip?: Clip | null
   time?: number
+  /** highlighted nodes; `selected` is kept for single-selection callers */
   selected?: string | null
-  onSelect?: (id: string) => void
+  selection?: readonly string[]
+  onSelect?: (id: string, mods: PickMods) => void
+  /** the transform gizmo to draw, in world space */
+  gizmo?: GizmoSpec | null
+  onGizmo?: (e: GizmoEvent) => void
+  /** gizmo snap increment in model units */
+  snapStep?: number
+  /** orthographic projection instead of perspective */
+  ortho?: boolean
+  onOrtho?: (ortho: boolean) => void
+  /** the clickable axis gizmo, top right */
+  nav?: boolean
+  viewRef?: Ref<ViewApi>
+  /** a finished box select: the cubes inside, and whether to add to the selection */
+  onBoxSelect?: (ids: string[], add: boolean) => void
+  vertices?: VertexLayer | null
+  /** called when the camera turns, with the yaw and pitch */
+  onView?: (yaw: number, pitch: number) => void
   /** a click on empty space */
   onDeselect?: () => void
   /** When set, a left-button drag on a face paints. Other drags orbit or pan as usual. */
@@ -331,7 +392,18 @@ export function ModelView({
   clip = null,
   time = 0,
   selected = null,
+  selection,
   onSelect,
+  gizmo = null,
+  onGizmo,
+  snapStep = 1,
+  ortho = false,
+  onOrtho,
+  nav = false,
+  viewRef,
+  onBoxSelect,
+  vertices = null,
+  onView,
   onDeselect,
   onPaint,
   display = null,
@@ -354,6 +426,19 @@ export function ModelView({
   const pinchStart = useRef<{ span: number; factor: number } | null>(null)
 
   const pose = useMemo(() => samplePose(clip, time), [clip, time])
+  const picked = useMemo(
+    () => new Set<string>(selection ?? (selected ? [selected] : [])),
+    [selection, selected],
+  )
+  /** a world point the view is centred on, set by focus; it overrides the anchor */
+  const [focusAt, setFocusAt] = useState<Vec3 | null>(null)
+  const boxArmed = useRef(false)
+  const marquee = useRef<{ x: number; y: number; add: boolean } | null>(null)
+  const [box, setBox] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null)
+
+  useEffect(() => {
+    onView?.(yaw, pitch)
+  }, [yaw, pitch, onView])
 
   const clampZoom = (f: number) => Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, f))
   const clampPan = (v: number) => Math.max(-PAN_LIMIT, Math.min(PAN_LIMIT, v))
@@ -400,6 +485,18 @@ export function ModelView({
     (e: React.PointerEvent) => {
       if (!orbit) return
 
+      /* Ctrl+drag on empty space, or a drag after B, draws a selection box.
+         Shift adds to the selection. */
+      if (onBoxSelect && e.button === 0 && (boxArmed.current || ((e.ctrlKey || e.metaKey) && e.target === e.currentTarget))) {
+        boxArmed.current = false
+        const r = (e.currentTarget as HTMLElement).getBoundingClientRect()
+        marquee.current = { x: e.clientX - r.left, y: e.clientY - r.top, add: e.shiftKey }
+        setBox({ x0: marquee.current.x, y0: marquee.current.y, x1: marquee.current.x, y1: marquee.current.y })
+        ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
+        e.preventDefault()
+        return
+      }
+
       // middle button or shift-drag pans; left and right drags orbit
       if (e.button === 1 || e.shiftKey) {
         e.preventDefault()
@@ -418,7 +515,7 @@ export function ModelView({
       drag.current = { x: e.clientX, y: e.clientY, yaw, pitch }
       ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
     },
-    [orbit, yaw, pitch, factor, pan],
+    [orbit, yaw, pitch, factor, pan, onBoxSelect],
   )
 
   /* the pinch handler needs the live factor without re-subscribing on every step */
@@ -426,6 +523,12 @@ export function ModelView({
   factorRef.current = factor
 
   const onPointerMove = useCallback((e: React.PointerEvent) => {
+    if (marquee.current) {
+      const r = (e.currentTarget as HTMLElement).getBoundingClientRect()
+      const m = marquee.current
+      setBox({ x0: m.x, y0: m.y, x1: e.clientX - r.left, y1: e.clientY - r.top })
+      return
+    }
     const drift = panning.current
     if (drift) {
       setPan({
@@ -457,11 +560,31 @@ export function ModelView({
   }, [zoomAt])
 
   const endDrag = useCallback((e: React.PointerEvent) => {
+    const m = marquee.current
+    if (m && onBoxSelect && root.current) {
+      marquee.current = null
+      const r = root.current.getBoundingClientRect()
+      const x1 = e.clientX - r.left
+      const y1 = e.clientY - r.top
+      const [lx, hx] = [Math.min(m.x, x1), Math.max(m.x, x1)]
+      const [ly, hy] = [Math.min(m.y, y1), Math.max(m.y, y1)]
+      const ids: string[] = []
+      // a cube is in when the middle of its drawn box is inside the marquee
+      root.current.querySelectorAll<HTMLElement>('.model-cube[data-cube]').forEach((el) => {
+        const b = el.getBoundingClientRect()
+        const cx = b.left + b.width / 2 - r.left
+        const cy = b.top + b.height / 2 - r.top
+        if (cx >= lx && cx <= hx && cy >= ly && cy <= hy) ids.push(el.dataset.cube!)
+      })
+      setBox(null)
+      onBoxSelect(ids, m.add)
+      return
+    }
     panning.current = null
     pinch.current.delete(e.pointerId)
     if (pinch.current.size < 2) pinchStart.current = null
     drag.current = null
-  }, [])
+  }, [onBoxSelect])
 
   /* A native non-passive listener: React registers onWheel as passive, so
      preventDefault there is ignored and the page scrolls. */
@@ -493,13 +616,92 @@ export function ModelView({
         hi[i] = Math.max(hi[i], c.to[i])
       }
     }
+    if (focusAt) return focusAt
     if (anchorOn) return anchorOn
     return [
       (lo[0] + hi[0]) / 2,
       anchorAt === 'centre' ? (lo[1] + hi[1]) / 2 : lo[1],
       (lo[2] + hi[2]) / 2,
     ] as Vec3
-  }, [model, anchorAt, anchorOn])
+  }, [model, anchorAt, anchorOn, focusAt])
+
+  useImperativeHandle(
+    viewRef,
+    () => ({
+      setView: (y, p) => {
+        setYaw(y)
+        setPitch(Math.max(-90, Math.min(90, p)))
+      },
+      focus: (centre, size) => {
+        const el = root.current
+        const span = el ? Math.min(el.clientWidth, el.clientHeight) : 600
+        setFocusAt(centre)
+        setPan({ x: 0, y: 0 })
+        setFactor(clampZoom((span * 0.5) / Math.max(size * scale, 1)))
+      },
+      armBox: () => {
+        boxArmed.current = true
+      },
+      view: () => ({ yaw, pitch }),
+    }),
+    [scale, yaw, pitch],
+  )
+
+  /* Gizmo probes: the anchor and one unit along each world axis, placed in
+     the model root so the browser projects them exactly as it draws the
+     model. `measure` turns them into screen vectors. */
+  const probes = useRef<Array<HTMLDivElement | null>>([])
+  const measure = useCallback((): Basis | null => {
+    const el = root.current
+    const ps = probes.current
+    if (!el || ps.length < 4 || ps.some((p) => !p)) return null
+    const r = el.getBoundingClientRect()
+    const at = ps.map((p) => {
+      const b = p!.getBoundingClientRect()
+      return [b.left - r.left, b.top - r.top] as [number, number]
+    })
+    const [c, x, y, z] = at
+    const per = (p: [number, number]): [number, number] => [(p[0] - c[0]) / PROBE, (p[1] - c[1]) / PROBE]
+    return { c, s: [per(x), per(y), per(z)] }
+  }, [])
+
+  /* the corners for vertex snap, measured the same way */
+  const vertexEls = useRef<Array<HTMLDivElement | null>>([])
+  const [vertexAt, setVertexAt] = useState<Array<[number, number]>>([])
+  useEffect(() => {
+    if (!vertices) return
+    let raf = 0
+    let last = ''
+    const tick = () => {
+      const el = root.current
+      if (el) {
+        const r = el.getBoundingClientRect()
+        const pts = vertexEls.current.slice(0, vertices.points.length).map((p) => {
+          const b = p?.getBoundingClientRect()
+          return (b ? [b.left - r.left, b.top - r.top] : [-99, -99]) as [number, number]
+        })
+        const key = pts.map((p) => p.map((n) => n.toFixed(0)).join(',')).join(';')
+        if (key !== last) {
+          last = key
+          setVertexAt(pts)
+        }
+      }
+      raf = requestAnimationFrame(tick)
+    }
+    raf = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(raf)
+  }, [vertices])
+
+  const navEnds = useMemo(() => {
+    const m = new DOMMatrix(`rotateX(${pitch}deg) rotateY(${yaw}deg)`)
+    return NAV_ENDS.map((end) => {
+      const v: [number, number, number] = [0, 0, 0]
+      v[end.axis] = end.sign
+      const p = m.transformPoint(new DOMPoint(v[0], -v[1], v[2], 0))
+      return { ...end, x: p.x, y: p.y, z: p.z }
+    }).sort((a, b) => a.z - b.z)
+  }, [yaw, pitch])
+  const worldPos = (p: Vec3) => `translate3d(${p[0] * scale}px, ${-p[1] * scale}px, ${p[2] * scale}px)`
 
   /* The zoom factor scales the stage. Zooming with translateZ distorts, and
      past the perspective distance it turns the model inside out. */
@@ -511,7 +713,7 @@ export function ModelView({
   return (
     <div
       ref={root}
-      className={`scene3d${spin ? ' scene3d--spin' : ''} ${className}`}
+      className={`scene3d${spin ? ' scene3d--spin' : ''}${ortho ? ' scene3d--ortho' : ''} ${className}`}
       style={
         {
           '--pitch': `${pitch}deg`,
@@ -579,14 +781,122 @@ export function ModelView({
                 model={model}
                 scale={scale}
                 pose={pose}
-                selected={selected}
+                selected={picked}
                 onSelect={onSelect}
                 onPaint={onPaint}
               />
             ))}
+            {gizmo
+              ? [gizmo.anchor, ...([0, 1, 2] as const).map((i) => {
+                  const p: Vec3 = [...gizmo.anchor]
+                  p[i] += PROBE
+                  return p
+                })].map((p, i) => (
+                  <div
+                    key={`probe${i}`}
+                    className="scene3d__gizmo-probe"
+                    ref={(el) => {
+                      probes.current[i] = el
+                    }}
+                    style={{ transform: worldPos(p) }}
+                  />
+                ))
+              : null}
+            {vertices
+              ? vertices.points.map((p, i) => (
+                  <div
+                    key={`v${i}`}
+                    className="scene3d__gizmo-probe"
+                    ref={(el) => {
+                      vertexEls.current[i] = el
+                    }}
+                    style={{ transform: worldPos(p) }}
+                  />
+                ))
+              : null}
           </div>
         </div>
       </div>
+
+      {gizmo && onGizmo ? <Gizmo spec={gizmo} measure={measure} step={snapStep} onGizmo={onGizmo} /> : null}
+
+      {vertices
+        ? vertexAt.map((p, i) => (
+            <button
+              key={i}
+              type="button"
+              className={`scene3d__vertex${vertices.own[i] ? ' scene3d__vertex--own' : ''}`}
+              style={{ left: p[0], top: p[1] }}
+              aria-label={vertices.own[i] ? 'Corner of the selection' : 'Corner to snap to'}
+              onPointerDown={(e) => {
+                e.stopPropagation()
+                vertices.onPick(i)
+              }}
+            />
+          ))
+        : null}
+
+      {box ? (
+        <div
+          className="scene3d__marquee"
+          style={{
+            left: Math.min(box.x0, box.x1),
+            top: Math.min(box.y0, box.y1),
+            width: Math.abs(box.x1 - box.x0),
+            height: Math.abs(box.y1 - box.y0),
+          }}
+        />
+      ) : null}
+
+      {nav ? (
+        <>
+          <div className="scene3d__nav" title="Click an axis to look along it, drag to orbit">
+            <svg viewBox="-42 -42 84 84" aria-hidden="false" role="group" aria-label="View axes">
+              {navEnds.map((end) => (
+                <line
+                  key={`l${end.axis}${end.sign}`}
+                  x1={0}
+                  y1={0}
+                  x2={end.x * 30}
+                  y2={end.y * 30}
+                  style={{ stroke: NAV_COLOURS[end.axis], opacity: end.sign > 0 ? 1 : 0.4 }}
+                />
+              ))}
+              {navEnds.map((end) => (
+                <g
+                  key={`b${end.axis}${end.sign}`}
+                  className={`scene3d__nav-ball${end.sign < 0 ? ' scene3d__nav-ball--neg' : ''}`}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={() => {
+                    setYaw(end.yaw)
+                    setPitch(end.pitch)
+                  }}
+                  role="button"
+                  aria-label={`Look along ${end.sign > 0 ? '+' : '-'}${'XYZ'[end.axis]}`}
+                >
+                  <circle cx={end.x * 30} cy={end.y * 30} r={end.sign > 0 ? 8 : 6} style={{ fill: NAV_COLOURS[end.axis] }} />
+                  {end.label ? (
+                    <text x={end.x * 30} y={end.y * 30 + 3} textAnchor="middle">
+                      {end.label}
+                    </text>
+                  ) : null}
+                </g>
+              ))}
+            </svg>
+          </div>
+          {onOrtho ? (
+            <button
+              type="button"
+              className="scene3d__projection"
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={() => onOrtho(!ortho)}
+              title="Switch perspective and orthographic (Numpad 5)"
+            >
+              {ortho ? 'Orthographic' : 'Perspective'}
+            </button>
+          ) : null}
+        </>
+      ) : null}
 
       {orbit && zoomable ? (
         <div className="scene3d__zoom" onPointerDown={(e) => e.stopPropagation()}>
@@ -600,6 +910,7 @@ export function ModelView({
             aria-label="Reset zoom"
             onClick={() => {
               setFactor(1)
+              setFocusAt(null)
               setPan({ x: 0, y: 0 })
               setYaw(initialYaw)
               setPitch(initialPitch)

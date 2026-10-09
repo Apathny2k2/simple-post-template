@@ -761,6 +761,69 @@ matches what the panel said. They are relative, because where they land on a
 server is the plugin's convention to set. A model with nothing configured is
 left out.
 
+## The viewport tools
+
+The editor is meant to feel familiar to anyone who has used Blockbench or
+Blender. The tools, their keys and the gizmo colours follow Blockbench, and the
+camera keys follow Blender, which Blockbench copies.
+
+| Tool | Key | What the gizmo does |
+| --- | --- | --- |
+| Move | V | Arrows move along one axis, squares along two, the centre in the view plane |
+| Resize | S | A handle at each end of each axis grows or shrinks that side of the cube |
+| Rotate | R | Rings turn about the axes the cube's own X, Y and Z angles turn it about |
+| Pivot | P | Moves the point a cube or bone turns about, without moving it |
+| Vertex snap | X | Click a corner of the selection, then the corner it should meet |
+
+Grid snap is in the toolbar (1 unit down to 1/16). Shift snaps to a quarter of
+it and Ctrl turns snapping off. Rotation snaps to 2.5° (Shift 0.5°), and to
+22.5° for blocks, since Minecraft accepts no other angle on a block. **Global** and **Local**
+(T) switch the move and pivot arrows between the world axes and the selection's
+own.
+
+Selection works as in Blockbench. A click selects one node, Ctrl-click toggles
+one and Shift-click adds. In the outliner Shift-click selects a range, and
+Ctrl-drag or B then drag in the viewport draws a selection box. The last
+node picked is the primary one, which the panels and the gizmo follow.
+
+| Key | Action |
+| --- | --- |
+| Ctrl C, Ctrl X, Ctrl V | Copy, cut, paste. Bones come with everything under them |
+| Ctrl D | Duplicate the selection |
+| Ctrl G | Group the selection into a new bone |
+| Ctrl A | Select every cube |
+| F2 | Rename |
+| H, Alt H | Hide the selection, show everything |
+| Numpad 1, 3, 7 | Front, right, top. With Ctrl: back, left, bottom |
+| Numpad 5 | Perspective or orthographic |
+| F, Numpad . | Focus on the selection |
+| Home | Frame the whole model |
+| Esc | Clear the selection |
+
+**Transform** has Flip X, Y and Z, which mirror the selection about its own
+middle, and Mirror across the centre line, which mirrors it across x = 8 for
+blocks and items and x = 0 for mobs. The axis widget at the top right of the
+viewport looks along an axis when clicked.
+
+### How the gizmo finds the screen
+
+The viewport is CSS 3D (see The material), so there is no camera matrix to
+project with. `ModelView` places four invisible probes in the scene, at the
+gizmo and one unit along each world axis, and reads where the browser drew
+them. That gives a 2×3 matrix from world units to screen pixels near the
+gizmo, and every drag is solved back through it. The probes go through the
+same transforms as the model, so the gizmo stays on the model under any
+camera, zoom, pose or orthographic view.
+
+`lib/kinematics.ts` builds each bone's and cube's world matrix from the same
+transform strings `ModelView` renders, so the two cannot drift apart. A drag
+gives a world-space amount; kinematics turns it into the parent frame the
+`.vellum` coordinates are stored in. The file format does not change: a moved
+cube is still absolute `from`, `to` and `origin`, and a moved bone carries
+everything under it. Each rotation ring is measured:
+it is the world axis that one Euler component turns the node about, found by a small
+step through the real transform.
+
 ## What works, and what does not
 
 In the editor, geometry, textures, rigs, clips, behaviours, configs and the
