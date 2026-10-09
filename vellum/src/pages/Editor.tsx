@@ -1019,7 +1019,12 @@ function UVPanel({
   onDrag,
   fallbackTexture,
   onReunwrap,
+  carry,
+  onCarry,
 }: {
+  /** moving a face takes its pixels with it */
+  carry: boolean
+  onCarry: (v: boolean) => void
   model: Model
   cube: Cube | null
   face: FaceKey
@@ -1247,6 +1252,15 @@ function UVPanel({
       </div>
       </div>
       {clash ? <p className="editor-hint editor-hint--warn">Overlaps {clash.name} on the sheet, so painting one paints both.</p> : null}
+      <button
+        className="uv-switch uv-carry"
+        role="switch"
+        aria-checked={carry}
+        title="When a face is dragged to a new place on the sheet, its pixels go with it"
+        onClick={() => onCarry(!carry)}
+      >
+        <span>Move pixels with the face</span> <span className="uv-switch__track" />
+      </button>
 
       <div className="uv-faces">
         {FACES.map((key) => (
@@ -4428,14 +4442,59 @@ export function Editor({ segments }: { segments: string[] }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode, paintTexture?.id, paintTexture?.source])
 
-  /** A UV drag on the sheet is one undo step; each move replaces the cube. */
+  /** Whether moving a face on the UV sheet carries its pixels along, as Blockbench's option does. */
+  const [carryPixels, setCarryPixels] = useState(false)
+  const uvStart = useRef<Cube | null>(null)
+  const uvLast = useRef<Cube | null>(null)
+
+  /* A UV drag on the sheet is one undo step; each move replaces the cube.
+     With carry on, a face that moved (and kept its size) takes its pixels
+     with it when the drag ends, in the same undo step. */
   const uvDrag = useMemo(
     () => ({
-      begin: () => history.begin('move UV'),
-      set: (c: Cube) => history.amend((m) => ({ ...m, cubes: m.cubes.map((x) => (x.id === c.id ? c : x)) })),
-      end: () => history.end(),
+      begin: () => {
+        history.begin('move UV')
+        uvStart.current = model.cubes.find((c) => c.id === selected) ?? null
+        uvLast.current = null
+      },
+      set: (c: Cube) => {
+        uvLast.current = c
+        history.amend((m) => ({ ...m, cubes: m.cubes.map((x) => (x.id === c.id ? c : x)) }))
+      },
+      end: () => {
+        const from = uvStart.current
+        const to = uvLast.current
+        if (carryPixels && from && to) {
+          const moves = new Map<string, Array<{ a: UVRect; b: UVRect }>>()
+          for (const k of FACES) {
+            const tex = from.faces[k].texture
+            const a = faceBounds(from.faces[k].uv)
+            const b = faceBounds(to.faces[k].uv)
+            const same = a[2] - a[0] === b[2] - b[0] && a[3] - a[1] === b[3] - b[1]
+            if (!tex || !same || (a[0] === b[0] && a[1] === b[1]) || a[2] <= a[0] || a[3] <= a[1]) continue
+            moves.set(tex, [...(moves.get(tex) ?? []), { a, b }])
+          }
+          for (const [texId, list] of moves) {
+            const surface = surfaces.current.get(texId)
+            const tex = model.textures.find((t) => t.id === texId)
+            if (!surface || !tex) continue
+            const [sx, sy] = pixelScale(model, tex)
+            const px = (r: UVRect) => [Math.round(r[0] * sx), Math.round(r[1] * sy), Math.round((r[2] - r[0]) * sx), Math.round((r[3] - r[1]) * sy)] as const
+            // lift every face first, then clear and set down, so faces that swap places both survive
+            const lifted = list.map(({ a, b }) => ({ img: surface.ctx.getImageData(...px(a)), a, b }))
+            for (const { a } of lifted) surface.ctx.clearRect(...px(a))
+            for (const { img, b } of lifted) surface.ctx.putImageData(img, px(b)[0], px(b)[1])
+            const source = toDataUrl(surface)
+            encoded.current.set(texId, source)
+            history.amend((m) => ({ ...m, textures: m.textures.map((t) => (t.id === texId ? { ...t, source } : t)) }))
+          }
+        }
+        uvStart.current = null
+        uvLast.current = null
+        history.end()
+      },
     }),
-    [history],
+    [history, model, selected, carryPixels],
   )
 
   const onReunwrap = useCallback(() => {
@@ -5547,6 +5606,8 @@ export function Editor({ segments }: { segments: string[] }) {
                 onDrag={uvDrag}
                 fallbackTexture={sheetTexture}
                 onReunwrap={onReunwrap}
+                carry={carryPixels}
+                onCarry={setCarryPixels}
               />
             </Panel>
             )}

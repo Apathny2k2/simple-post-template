@@ -690,3 +690,4 @@
 .ptools__strength { display: grid; grid-template-columns: auto 1fr 40px; align-items: center; gap: 10px; margin-top: 14px; color: var(--s-ink); font-size: 13.5px; }
 .ptools__strength input { accent-color: var(--s-sage); min-width: 0; }
 .ptools__pct { color: var(--s-ink-3); font-size: 12.5px; text-align: right; font-variant-numeric: tabular-nums; }
+.uv-carry { display: flex; width: 100%; justify-content: space-between; margin-top: 10px; color: var(--s-ink-2); }

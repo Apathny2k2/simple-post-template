@@ -167,3 +167,38 @@ test('Re-unwrap moves a grown cube to free room and says so', async () => {
   assert.equal(uv[2] - uv[0], 14, 'the north face is as wide as the cube again')
   await page.close()
 })
+
+test('with "Move pixels with the face" on, a moved face takes its pixels along', async () => {
+  const { page } = await openEditor()
+  await page.click('.uv-faces .chip:has-text("north")')
+  await page.click('.uv-carry')
+  const start = await uvFields(page)
+  const read = (pts) =>
+    page.evaluate(async (p) => {
+      const img = new Image()
+      img.src = document.querySelector('.texture-thumb').style.backgroundImage.slice(5, -2)
+      await img.decode()
+      const c = document.createElement('canvas')
+      c.width = img.width
+      c.height = img.height
+      const x = c.getContext('2d')
+      x.drawImage(img, 0, 0)
+      return p.map(([a, b]) => [...x.getImageData(a, b, 1, 1).data].join(','))
+    }, pts)
+  const [x1, y1] = [Math.min(start[0], start[2]), Math.min(start[1], start[3])]
+  const before = await read([[x1, y1], [x1 + 1, y1 + 1]])
+  await page.locator('.uv').first().scrollIntoViewIfNeeded()
+  const k = await texel(page)
+  const [fx, fy] = await centre(page.locator('.uv__face[data-face="north"]'))
+  await drag(page, [fx, fy], [fx + 3 * k, fy], 6)
+  await page.waitForFunction((old) => document.querySelector('.texture-thumb').style.backgroundImage.length !== old, (await page.$eval('.texture-thumb', (e) => e.style.backgroundImage.length)) - 1).catch(() => {})
+  await page.waitForTimeout(200)
+  const after = await read([[x1 + 3, y1], [x1 + 4, y1 + 1], [x1, y1]])
+  assert.equal(after[0], before[0], 'the face’s top-left texel moved with it')
+  assert.equal(after[1], before[1])
+  assert.equal(after[2].split(',')[3], '0', 'its old place is cleared')
+  await page.keyboard.press('Control+z')
+  assert.deepEqual(await uvFields(page), start, 'one undo puts the face back')
+  assert.deepEqual(await read([[x1, y1]]), [before[0]], 'and its pixels')
+  await page.close()
+})
