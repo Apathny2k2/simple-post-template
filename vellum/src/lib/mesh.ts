@@ -704,62 +704,117 @@ function insertOnEdges(mesh: Mesh, faces: Record<string, MeshFace>, inserts: Rea
   }
 }
 
-/** A point on an edge for the knife: `t` runs from the edge's first end (`edgeEnds(edge)[0]`) to its second. */
-export type KnifePoint = { edge: string; t: number }
+/**
+ * A point the knife was clicked at: on an edge, `t` of the way from its
+ * first end (`edgeEnds(edge)[0]`) to its second; or inside a face, at a
+ * point in the mesh's own frame.
+ */
+export type KnifePoint = { edge: string; t: number } | { face: string; at: Vec3 }
+
+/** A point inside a face, back to UV units through the inverse of the face's UV map. */
+function uvInside(mesh: Mesh, face: MeshFace, at: Vec3): UV {
+  const { keys, origin, e1, e2, flat } = faceBasis(mesh, face)
+  const map = uvToFlat(keys.map((k) => face.uv[k] ?? [0, 0]), flat)
+  if (!map) return face.uv[keys[0]] ?? [0, 0]
+  const d = sub(at, origin)
+  const x = dot(d, e1) - map.tx
+  const y = dot(d, e2) - map.ty
+  const det = map.a * map.d - map.c * map.b
+  if (Math.abs(det) < 1e-9) return face.uv[keys[0]] ?? [0, 0]
+  return [round((map.d * x - map.c * y) / det), round((map.a * y - map.b * x) / det)]
+}
 
 /**
- * Blender's knife, through edges: each point becomes a vertex on its edge
- * (or the corner it sits on), and each pair of points in a row that share
- * a face splits that face between them. Faces next to a cut edge take the
- * new vertex too. Returns the new edges.
+ * Blender's knife. A point on an edge becomes a vertex there (or the corner
+ * it sits on), and faces beside that edge take it too. A point inside a
+ * face becomes a vertex in it. Each run of points that starts and ends on
+ * the outline of one face, with any number of inside points between,
+ * splits that face along the run. A run that stops inside a face can't be
+ * said by a face's outline, so it cuts nothing. Returns the new edges.
  */
 export function knifeCut(mesh: Mesh, points: readonly KnifePoint[]): { mesh: Mesh; edges: string[] } {
   const vertices = { ...mesh.vertices }
   const inserts = new Map<string, Array<{ v: string; from: string; t: number }>>()
-  const at: string[] = []
+  // each point as a vertex key; inside points also name their face and their UV in it
+  const at: Array<{ v: string; inside?: { face: string; uv: UV } }> = []
   for (const p of points) {
-    const [a, b] = edgeEnds(p.edge)
-    if (!mesh.vertices[a] || !mesh.vertices[b]) continue
     let v: string
-    if (p.t <= 0.02) v = a
-    else if (p.t >= 0.98) v = b
-    else {
-      const list = inserts.get(p.edge) ?? []
-      // the same spot on one edge twice is one vertex
-      const same = list.find((x) => Math.abs(x.t - p.t) < 0.02)
-      if (same) v = same.v
+    let inside: { face: string; uv: UV } | undefined
+    if ('face' in p) {
+      const f = mesh.faces[p.face]
+      if (!f) continue
+      v = key8()
+      vertices[v] = p.at.map(round) as Vec3
+      inside = { face: p.face, uv: uvInside(mesh, f, p.at) }
+    } else {
+      const [a, b] = edgeEnds(p.edge)
+      if (!mesh.vertices[a] || !mesh.vertices[b]) continue
+      if (p.t <= 0.02) v = a
+      else if (p.t >= 0.98) v = b
       else {
-        v = key8()
-        vertices[v] = lerp3(mesh.vertices[a], mesh.vertices[b], p.t)
-        list.push({ v, from: a, t: p.t })
-        inserts.set(p.edge, list)
+        const list = inserts.get(p.edge) ?? []
+        // the same spot on one edge twice is one vertex
+        const same = list.find((x) => Math.abs(x.t - p.t) < 0.02)
+        if (same) v = same.v
+        else {
+          v = key8()
+          vertices[v] = lerp3(mesh.vertices[a], mesh.vertices[b], p.t)
+          list.push({ v, from: a, t: p.t })
+          inserts.set(p.edge, list)
+        }
       }
     }
-    if (at[at.length - 1] !== v) at.push(v)
+    if (at[at.length - 1]?.v !== v) at.push({ v, inside })
   }
   const cut: Mesh = { ...mesh, vertices }
   const faces = { ...mesh.faces }
   insertOnEdges(cut, faces, inserts, new Set())
   const made: string[] = []
-  for (let i = 0; i + 1 < at.length; i++) {
-    const p = at[i]
-    const q = at[i + 1]
-    for (const [fk, f] of Object.entries(faces)) {
+  const used = new Set<string>()
+  let i = 0
+  while (i < at.length) {
+    if (at[i].inside) {
+      i++
+      continue
+    }
+    // from an outline point, through inside points, to the next outline point
+    let j = i + 1
+    while (j < at.length && at[j].inside) j++
+    if (j >= at.length) break
+    const p = at[i].v
+    const q = at[j].v
+    const run = at.slice(i + 1, j)
+    const home = run[0]?.inside?.face
+    // the faces holding both ends; a run with inside points splits the face they were clicked in, if it still holds them
+    const candidates = Object.keys(faces).filter((fk) => {
+      const o = faceOrder(cut, faces[fk])
+      const ip = o.indexOf(p)
+      const iq = o.indexOf(q)
+      if (ip < 0 || iq < 0) return false
+      const gap = (iq - ip + o.length) % o.length
+      return run.length > 0 || (gap !== 1 && gap !== o.length - 1)
+    })
+    const fk = candidates.find((k) => k === home) ?? candidates[0]
+    if (fk && !run.some((r) => used.has(r.v))) {
+      const f = faces[fk]
       const o = faceOrder(cut, f)
       const ip = o.indexOf(p)
       const iq = o.indexOf(q)
-      if (ip < 0 || iq < 0) continue
       const gap = (iq - ip + o.length) % o.length
-      if (gap === 1 || gap === o.length - 1) continue
-      const one = Array.from({ length: gap + 1 }, (_, j) => o[(ip + j) % o.length])
-      const two = Array.from({ length: o.length - gap + 1 }, (_, j) => o[(iq + j) % o.length])
-      faces[fk] = { ...f, vertices: one, uv: pickUv(f, one) }
-      faces[key8()] = { ...f, vertices: two, uv: pickUv(f, two) }
-      made.push(edgeKey(p, q))
-      break
+      const inner = run.map((r) => r.v)
+      const one = [...Array.from({ length: gap + 1 }, (_, k) => o[(ip + k) % o.length]), ...[...inner].reverse()]
+      const two = [...Array.from({ length: o.length - gap + 1 }, (_, k) => o[(iq + k) % o.length]), ...inner]
+      const uv = { ...f.uv, ...Object.fromEntries(run.map((r) => [r.v, r.inside!.uv])) }
+      faces[fk] = { ...f, vertices: one, uv: pickUv({ ...f, uv }, one) }
+      faces[key8()] = { ...f, vertices: two, uv: pickUv({ ...f, uv }, two) }
+      const path = [p, ...inner, q]
+      path.slice(1).forEach((v, k) => made.push(edgeKey(path[k], v)))
+      inner.forEach((v) => used.add(v))
     }
+    i = j
   }
-  return { mesh: { ...cut, faces }, edges: made }
+  // inside points that no run used are dropped with the faces' other loose vertices
+  return { mesh: dropLoose({ ...cut, faces }), edges: made }
 }
 
 /**

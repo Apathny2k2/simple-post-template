@@ -4818,17 +4818,22 @@ export function Editor({ segments }: { segments: string[] }) {
     const index = new Map(keys.map((k, i) => [k, i]))
     const edges = meshEdgeList.map((e) => edgeEnds(e).map((v) => index.get(v) ?? 0) as [number, number])
     if (knife !== null) {
-      // the knife: each click on an edge adds a point there; Enter cuts
+      // the knife: each click on an edge or inside a face adds a point there; Enter cuts
       const at = new Map(meshEdgeList.map((e, i) => [e, i]))
+      // points inside faces are measured with the corners, after them
+      const inside = knife.flatMap((p) => ('face' in p ? [apply(f, p.at)] : []))
+      let n = 0
       return {
-        points,
-        own: keys.map(() => false),
+        points: [...points, ...inside],
+        own: [...keys.map(() => false), ...inside.map(() => false)],
         onPick: () => {},
         hideDots: true,
         edges,
         edgeOwn: meshEdgeList.map(() => false),
         onPickEdge: (i, _mods, t) => setKnife((cur) => [...(cur ?? []), { edge: meshEdgeList[i], t }]),
-        marks: knife.flatMap((p) => (at.has(p.edge) ? [{ edge: at.get(p.edge)!, t: p.t }] : [])),
+        marks: knife.flatMap((p): Array<{ point: number } | { edge: number; t: number }> =>
+          'face' in p ? [{ point: keys.length + n++ }] : at.has(p.edge) ? [{ edge: at.get(p.edge)!, t: p.t }] : [],
+        ),
       }
     }
     if (meshMode === 'vertex') {
@@ -6534,7 +6539,16 @@ export function Editor({ segments }: { segments: string[] }) {
         </h1>
         <Viewport
           onPaintMesh={mode === 'paint' && paintView === 'model' ? paintOnMesh : undefined}
-          meshPick={mode === 'edit' && selectedMesh ? { mesh: selectedMesh.id, faces: new Set(meshMode === 'face' ? meshFaces : []), onFace: meshMode === 'face' ? pickFace : undefined } : null}
+          meshPick={
+            mode === 'edit' && selectedMesh
+              ? {
+                  mesh: selectedMesh.id,
+                  faces: new Set(meshMode === 'face' ? meshFaces : []),
+                  onFace: meshMode === 'face' ? pickFace : undefined,
+                  onFacePoint: knife !== null ? (face: string, at: Vec3) => setKnife((cur) => [...(cur ?? []), { face, at }]) : undefined,
+                }
+              : null
+          }
           model={model}
           label={kind}
           grid={grid}

@@ -274,10 +274,10 @@ test('edge mode: pick an edge, loop cut, box-pick vertices, move UVs on the shee
   assert.equal(await page.locator('.scene3d__edge-hit').count(), 12)
   assert.equal(await page.locator('.scene3d__vertex').count(), 0, 'edge mode draws no dots')
   await page.locator('.scene3d__edge-hit').first().click()
-  assert.equal(await page.locator('.scene3d__edge--own').count(), 1)
+  await page.waitForFunction((n) => document.querySelectorAll('.scene3d__edge--own').length === n, 1, { timeout: 3000 })
   await page.click('.chip:has-text("Loop cut")')
   assert.equal(await page.locator('.model-mface').count(), 10)
-  assert.equal(await page.locator('.scene3d__edge--own').count(), 4, 'the new ring stays picked')
+  await page.waitForFunction((n) => document.querySelectorAll('.scene3d__edge--own').length === n, 4, { timeout: 3000 })
   await page.keyboard.press('Control+z')
   assert.equal(await page.locator('.model-mface').count(), 6, 'one undo for the cut')
 

@@ -38,8 +38,8 @@ export type VertexLayer = {
   edgeOwn?: boolean[]
   /** a click on an edge: `t` is how far along it, from its first point to its second */
   onPickEdge?: (index: number, mods: PickMods, t: number) => void
-  /** points on edges, by edge index and how far along, joined in order (the knife's cut) */
-  marks?: Array<{ edge: number; t: number }>
+  /** the knife's cut: points on edges (by edge index and how far along) or at one of `points`, joined in order */
+  marks?: Array<{ edge: number; t: number } | { point: number }>
   /** draws no dots, only the edges */
   hideDots?: boolean
 }
@@ -276,6 +276,8 @@ export type MeshPick = {
   faces: ReadonlySet<string>
   /** set while picking faces; a click on a face of `mesh` calls it instead of selecting the mesh */
   onFace?: (face: string, mods: PickMods) => void
+  /** set while the knife cuts; a click inside a face gives the point under it, in the mesh's own frame */
+  onFacePoint?: (face: string, at: Vec3) => void
 }
 
 /* The brightness a cube's face gets in each direction, blended by a mesh
@@ -369,6 +371,14 @@ function MeshBody({
                     e.stopPropagation()
                     ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
                     paintAt(e, 'down')
+                    return
+                  }
+                  if (picking?.onFacePoint) {
+                    // where on the face the click is, back through the piece's own basis
+                    e.stopPropagation()
+                    const x = minx + e.nativeEvent.offsetX / scale
+                    const y = maxy - e.nativeEvent.offsetY / scale
+                    picking.onFacePoint(key, [0, 1, 2].map((i) => origin[i] + e1[i] * x + e2[i] * y) as Vec3)
                     return
                   }
                   if (picking?.onFace) {
@@ -1147,6 +1157,7 @@ export function ModelView({
           {vertices.marks?.length
             ? (() => {
                 const at = vertices.marks.flatMap((m) => {
+                  if ('point' in m) return vertexAt[m.point] ? [vertexAt[m.point]] : []
                   const [a, b] = vertices.edges![m.edge] ?? []
                   const p = vertexAt[a]
                   const q = vertexAt[b]

@@ -962,8 +962,9 @@ toolbar does:
 In Face, Vertex and Edge mode the gizmo works on the pick: V moves it, R
 turns it about its middle (15° steps, Shift for 1°, Ctrl free) and S scales
 it along the mesh's own axes. Ctrl A picks every face, vertex or edge, and
-Esc picks none. K starts the **knife** in any mode: click points on edges,
-in order across the faces to cut, and Enter cuts (Esc stops). Bevel and inset
+Esc picks none. K starts the **knife** in any mode: click points on edges
+and inside faces, in order across the faces to cut, and Enter cuts (Esc
+stops). Bevel and inset
 go as far as the width field in the Mesh panel says.
 
 **Loop cut** works as Blender's and Blockbench's: from the picked edge it walks
@@ -979,9 +980,13 @@ UVs are the averages of the old ones, so the texture stays where it was.
 The other edits follow the same rules: none leaves a hole, and new corners
 take UVs the same way along the face's own UVs, so the texture stays put.
 
-- **Knife** (`knifeCut`): each point becomes a vertex on its edge (or the
-  corner it sits on), and consecutive points that share a face split it.
-  Every point sits on an edge; a click in the middle of a face adds none.
+- **Knife** (`knifeCut`): a click on an edge becomes a vertex on it (or the
+  corner it sits on), and the faces beside that edge take it too. A click
+  inside a face becomes a vertex in it, its UV read back through the face's
+  own UV map. Each run of clicks that starts and ends on one face's outline,
+  with any number of inside clicks between, splits that face along the run.
+  A run that stops inside a face cuts nothing, since a face's outline can't
+  hold a loose line.
 - **Bevel** (Ctrl B, in Edge or Vertex mode; `bevel`): all picked edges at
   once. Each face corner at a bevelled vertex moves in: between two
   bevelled edges to where the two edges, each moved the bevel width into

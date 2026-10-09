@@ -143,7 +143,7 @@ test('in the editor: knife a plane, bevel and inset a cube, turn and scale a pic
   assert.equal(await page.locator('.scene3d__knife circle').count(), 2)
   await page.keyboard.press('Enter')
   assert.equal(await page.locator('.model-mface').count(), 2, 'the plane is cut in two')
-  assert.equal(await page.locator('.scene3d__edge--own').count(), 1, 'the cut is picked')
+  await page.waitForFunction((n) => document.querySelectorAll('.scene3d__edge--own').length === n, 1, { timeout: 3000 })
   assert.equal(await page.locator('.scene3d__knife').count(), 0)
   await page.click('button[aria-label="Delete plane"]')
 
@@ -153,7 +153,7 @@ test('in the editor: knife a plane, bevel and inset a cube, turn and scale a pic
   await page.locator('.scene3d__edge-hit').first().click()
   await page.keyboard.press('Control+b')
   assert.equal(await page.locator('.model-mface').count(), 7, 'a strip, and the end faces lose a corner each')
-  assert.equal(await page.locator('.scene3d__edge--own').count(), 2)
+  await page.waitForFunction((n) => document.querySelectorAll('.scene3d__edge--own').length === n, 2, { timeout: 3000 })
   await page.keyboard.press('Control+z')
   assert.equal(await page.locator('.model-mface').count(), 6)
 
@@ -312,18 +312,20 @@ test('in the editor: convert a cube, separate faces, join them back, merge by di
   const face = page.locator('.editor-view .model-mface').first()
   const b = await face.boundingBox()
   await page.mouse.click(b.x + b.width / 2, b.y + b.height / 2)
+  await page.waitForSelector('.model-mface--picked')
   await page.keyboard.press('p')
-  assert.equal(await page.inputValue('.insp-head__name'), 'yoke_1', 'the new mesh is picked')
+  await page.waitForFunction(() => document.querySelector('.insp-head__name')?.value === 'yoke_1', null, { timeout: 3000 })
 
   // pick both meshes and join them
   await page.click('.tree__row:has(.tree__name:text-is("yoke"))', { modifiers: ['Control'] })
   assert.equal((await page.$$('.tree__row[aria-selected="true"]')).length, 2)
   await page.keyboard.press('Control+j')
+  await page.waitForFunction(() => /12 vertices( ·|,) 6 faces/.test(document.body.textContent), null, { timeout: 3000 })
   assert.equal(await page.locator('.tree__row:has(.tree__name:text-is("yoke_1"))').count() + (await page.locator('.tree__row:has(.tree__name:text-is("yoke"))').count()), 1, 'one mesh is left')
   assert.match(await page.textContent('body'), /12 vertices( ·|,) 6 faces/)
   await page.keyboard.press('1')
   await page.click('.chip:has-text("Merge by distance")')
-  assert.match(await page.textContent('body'), /8 vertices( ·|,) 6 faces/)
+  await page.waitForFunction(() => /8 vertices( ·|,) 6 faces/.test(document.body.textContent), null, { timeout: 3000 })
   assert.deepEqual(errors, [])
   await page.close()
 })
@@ -371,5 +373,64 @@ test('bevel: mitred corners, the whole cube, rounded segments and a vertex', asy
   assert.equal(r.round.faces, 9, 'three faces across the strip')
   assert.ok(r.round.outward)
   assert.deepEqual(r.corner, { faces: 7, vertices: 10, open: 0, outward: true }, 'a bevelled corner is cut off by a triangle')
+  await page.close()
+})
+
+test('the knife cuts through the inside of a face', async () => {
+  const { page } = await open()
+  const r = await inApp(page, async () => {
+    const M = await import('/src/lib/mesh.ts')
+    const cube = M.makeMesh('cube', { parent: null, origin: [0, 0, 0], texture: null, place: () => [0, 0] })
+    const top = Object.keys(cube.faces).find((k) => M.faceNormal(cube, cube.faces[k])[1] > 0.9)
+    const o = M.faceOrder(cube, cube.faces[top])
+    const ring = o.map((a, i) => M.edgeKey(a, o[(i + 1) % 4]))
+    const shape = (m) => {
+      const n = new Map()
+      for (const f of Object.values(m.faces)) {
+        const fo = M.faceOrder(m, f)
+        fo.forEach((a, i) => n.set(M.edgeKey(a, fo[(i + 1) % fo.length]), (n.get(M.edgeKey(a, fo[(i + 1) % fo.length])) ?? 0) + 1))
+      }
+      return { faces: Object.keys(m.faces).length, vertices: Object.keys(m.vertices).length, open: [...n.values()].filter((c) => c !== 2).length }
+    }
+    // in at one edge, a bend inside the top face, out at the opposite edge
+    const bent = M.knifeCut(cube, [{ edge: ring[0], t: 0.5 }, { face: top, at: [1, 8, 1] }, { edge: ring[2], t: 0.5 }])
+    // a run that stops inside the face cuts nothing; its edge point still joins the outline
+    const dangling = M.knifeCut(cube, [{ edge: ring[0], t: 0.5 }, { face: top, at: [1, 8, 1] }])
+    // the inside point's UV is where it sits on the face's own UVs
+    const f = cube.faces[top]
+    const us = o.map((k) => f.uv[k][0])
+    const vs = o.map((k) => f.uv[k][1])
+    const inner = Object.keys(bent.mesh.vertices).find((k) => !cube.vertices[k] && Math.abs(bent.mesh.vertices[k][0] - 1) < 1e-6 && Math.abs(bent.mesh.vertices[k][2] - 1) < 1e-6)
+    const uvs = Object.values(bent.mesh.faces).filter((x) => x.vertices.includes(inner)).map((x) => x.uv[inner])
+    return {
+      bent: { ...shape(bent.mesh), made: bent.edges.length },
+      dangling: shape(dangling.mesh),
+      inner: uvs.length === 2 && JSON.stringify(uvs[0]) === JSON.stringify(uvs[1]),
+      inside: uvs[0] && uvs[0][0] > Math.min(...us) && uvs[0][0] < Math.max(...us) && uvs[0][1] > Math.min(...vs) && uvs[0][1] < Math.max(...vs),
+    }
+  })
+  assert.deepEqual(r.bent, { faces: 7, vertices: 11, open: 0, made: 2 }, 'the top splits along a bent line, the sides take the new edge points')
+  assert.deepEqual(r.dangling, { faces: 6, vertices: 9, open: 0 })
+  assert.ok(r.inner, 'both halves give the inside point the same UV')
+  assert.ok(r.inside, 'and it lies inside the face on the sheet')
+  await page.close()
+})
+
+test('in the editor: the knife takes a click inside a face', async () => {
+  const { page, errors } = await openEditor('runic_blade')
+  await page.click('.mesh-add > button')
+  await page.click('.mesh-add__menu button:has-text("Plane")')
+  await page.waitForSelector('.model-mface')
+  await page.keyboard.press('k')
+  await page.waitForSelector('.scene3d__edge-hit')
+  await page.locator('.scene3d__edge-hit').nth(0).click()
+  const face = await page.locator('.editor-view .model-mface').first().boundingBox()
+  await page.mouse.click(face.x + face.width * 0.45, face.y + face.height * 0.55)
+  await page.locator('.scene3d__edge-hit').nth(2).click()
+  assert.equal(await page.locator('.scene3d__knife circle').count(), 3)
+  await page.keyboard.press('Enter')
+  assert.equal(await page.locator('.editor-view .model-mface:not(.model-mface--tri)').count() + (await page.$$eval('.editor-view .model-mface--tri', (els) => new Set(els.map((e) => e.dataset.mface)).size)), 2, 'two faces')
+  await page.waitForFunction((n) => document.querySelectorAll('.scene3d__edge--own').length === n, 2, { timeout: 3000 })
+  assert.deepEqual(errors, [])
   await page.close()
 })
