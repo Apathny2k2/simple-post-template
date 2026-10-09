@@ -31,7 +31,11 @@ export type CameraState = {
   anchor: Vec3
   /** a display-slot transform applied to the whole model */
   display?: { rotation: Vec3; translation: Vec3; scale: Vec3 } | null
+  /** a general placement of the model, used instead of `display` (Display mode's previews) */
+  place?: DOMMatrix | null
   ortho: boolean
+  /** a vertical field of view in degrees for a 16:9 window, from an eye at the middle of the box, instead of the 900px perspective */
+  fov?: number
 }
 
 export type Camera = {
@@ -54,6 +58,7 @@ function stageMatrix(s: CameraState, withDisplay = true): DOMMatrix {
     .scale(f, f, f)
   const toCss = new DOMMatrix().scale(s.scale, -s.scale, s.scale)
   let m = stage.multiply(toCss).translate(-s.anchor[0], -s.anchor[1], -s.anchor[2])
+  if (withDisplay && s.place) return m.multiply(s.place)
   const d = withDisplay ? s.display : null
   if (d) {
     m = m
@@ -68,10 +73,20 @@ function stageMatrix(s: CameraState, withDisplay = true): DOMMatrix {
 function perspectiveMatrix(s: CameraState): DOMMatrix {
   if (s.ortho) return new DOMMatrix()
   const ox = s.width / 2
-  const oy = s.height * EYE_HEIGHT
+  const oy = s.height * (s.fov ? 0.5 : EYE_HEIGHT)
   const p = new DOMMatrix()
-  p.m34 = -1 / PERSPECTIVE
+  p.m34 = -1 / perspectiveOf(s)
   return new DOMMatrix().translate(ox, oy, 0).multiply(p).translate(-ox, -oy, 0)
+}
+
+/**
+ * The perspective distance in pixels: 900, or, with a field of view, the
+ * distance at which the box's width spans what a 16:9 game window shows
+ * across at that (vertical) field of view, so first person frames the
+ * hand as the game does whatever the box's shape.
+ */
+export function perspectiveOf(s: Pick<CameraState, 'fov' | 'width'>): number {
+  return s.fov ? s.width / 2 / (Math.tan((s.fov * Math.PI) / 360) * (16 / 9)) : PERSPECTIVE
 }
 
 export function makeCamera(s: CameraState): Camera {

@@ -3,7 +3,7 @@ import type { Ref } from 'react'
 import { samplePose } from '../lib/model'
 import { buildRig, nullWorld, solveIK } from '../lib/kinematics'
 import type { Bone, Clip, FaceKey, Model, Vec3 } from '../lib/model'
-import { makeCamera, stagePoint } from '../lib/gl/camera'
+import { makeCamera, perspectiveOf, stagePoint } from '../lib/gl/camera'
 import type { CameraState } from '../lib/gl/camera'
 import { buildScene } from '../lib/gl/scene'
 import type { BuiltScene } from '../lib/gl/scene'
@@ -144,6 +144,12 @@ type Props = {
   anchorAt?: 'floor' | 'centre'
   /** an explicit stage origin, in model units, overriding `anchorAt` */
   anchorOn?: Vec3 | null
+  /** places the model by a general matrix instead of `display` (Display mode's previews) */
+  place?: DOMMatrix | null
+  /** other models drawn in world space with it, never picked: the player, an item frame */
+  companions?: Model[]
+  /** a field of view from an eye at this point, instead of the usual orbit perspective (first person); yaw and pitch turn the view about the eye */
+  eye?: { at: Vec3; fov: number } | null
   /** holds animated textures on these frames (by texture id) instead of playing them; Paint holds the frame being painted */
   textureFrame?: ReadonlyMap<string, number> | null
   /** 'wire' draws every edge and no faces */
@@ -229,6 +235,9 @@ export function ModelView({
   anchorAt = 'floor',
   anchorOn = null,
   shading = 'solid',
+  place = null,
+  companions,
+  eye = null,
   textureFrame = null,
   className = '',
 }: Props) {
@@ -324,10 +333,15 @@ export function ModelView({
     ] as Vec3
   }, [model, anchorAt, anchorOn, focusAt])
 
-  const camState: CameraState = useMemo(
-    () => ({ width: size.w || 1, height: size.h || 1, scale, yaw, pitch, factor, pan, zoom, anchor, display, ortho }),
-    [size.w, size.h, scale, yaw, pitch, factor, pan, zoom, anchor, display, ortho],
-  )
+  const camState: CameraState = useMemo(() => {
+    const base = { width: size.w || 1, height: size.h || 1, scale, yaw, pitch, factor, pan, zoom, anchor, display, place, ortho, fov: eye?.fov }
+    if (!eye) return base
+    // the stage's middle sits the perspective distance in front of the eye, along the way the view looks
+    const back = perspectiveOf(base) / (scale * factor)
+    const [p, y] = [(pitch * Math.PI) / 180, (yaw * Math.PI) / 180]
+    const look: Vec3 = [Math.cos(p) * Math.sin(y), Math.sin(p), -Math.cos(p) * Math.cos(y)]
+    return { ...base, anchor: [eye.at[0] + look[0] * back, eye.at[1] + look[1] * back, eye.at[2] + look[2] * back] as Vec3 }
+  }, [size.w, size.h, scale, yaw, pitch, factor, pan, zoom, anchor, display, place, ortho, eye])
   const camera = useMemo(() => makeCamera(camState), [camState])
   const cameraRef = useRef(camera)
   cameraRef.current = camera
@@ -354,6 +368,10 @@ export function ModelView({
         }),
       ),
     [ghostPoses, model, colours],
+  )
+  const companionScenes = useMemo(
+    () => (companions ?? []).map((c) => buildScene(c, { pose: {}, selected: EMPTY, accent: colours.accent })),
+    [companions, colours],
   )
   const sceneRef = useRef(scene)
   sceneRef.current = scene
@@ -414,10 +432,11 @@ export function ModelView({
       camera,
       scene,
       ghosts: ghostScenes,
+      companions: companionScenes,
       grid: grid ? { size: 16 * 2.6, cell: 4, at: anchor, line: colours.grid, border: colours.border } : null,
       frames: animated ? textureFrames(model, performance.now() / 1000, textureFrame) : undefined,
     })
-  }, [camera, scene, ghostScenes, grid, anchor, colours, size, animated, model, textureFrame])
+  }, [camera, scene, ghostScenes, companionScenes, grid, anchor, colours, size, animated, model, textureFrame])
   const drawRef = useRef(draw)
   drawRef.current = draw
   useLayoutEffect(() => draw(), [draw])

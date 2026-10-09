@@ -228,6 +228,8 @@ export type DrawInput = {
   scene: BuiltScene
   /** onion-skin poses, drawn faintly over the model */
   ghosts?: BuiltScene[]
+  /** other models drawn with this one in world space, outside its placement (Display mode's player) */
+  companions?: BuiltScene[]
   grid?: Grid | null
   /** which frame of each animated texture to show, by texture id (see `textureFrames`) */
   frames?: ReadonlyMap<string, Frame>
@@ -269,10 +271,14 @@ export function drawView(target: HTMLCanvasElement, input: DrawInput): boolean {
   gl.enable(gl.POLYGON_OFFSET_FILL)
   gl.polygonOffset(1, 1)
   const plain = scene.batches.filter((b) => !b.overlay)
+  const others = input.companions ?? []
   tris(g, plain, camera.clip, 0, true, input.frames)
+  for (const c of others) tris(g, c.batches, camera.stageClip, 0, true)
   gl.disable(gl.POLYGON_OFFSET_FILL)
   lines(g, scene.lines, camera.clip, true, false)
+  for (const c of others) lines(g, c.lines, camera.stageClip, true, false)
   tris(g, plain, camera.clip, 1, false, input.frames)
+  for (const c of others) tris(g, c.batches, camera.stageClip, 1, false)
   // picked-face tints, then onion skins
   gl.enable(gl.POLYGON_OFFSET_FILL)
   gl.polygonOffset(-1, -1)

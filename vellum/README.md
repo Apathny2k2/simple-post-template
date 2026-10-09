@@ -820,6 +820,33 @@ renders at raw model scale, which makes a 16-unit item a speck in the hand and a
 speck in the inventory. So the export writes Minecraft's own defaults, and the
 dialog says it does.
 
+**Seeing a slot as the game draws it.** The Display tab shows the item
+where Java puts it (`lib/display-scene.ts`): in a player's right or left
+hand, on the head, in first person, in an inventory slot, dropped on the
+ground and in an item frame. Each is a matrix from the item model's pixels
+to the preview's world, made from the steps Java's renderers take, ending
+in the slot's own transform (move, turn X then Y then Z, scale, about the
+middle of the 16-pixel block; a left hand mirrors it):
+
+- third person: the entity's flip and lift, to the arm's pivot (5 pixels
+  out, 2 down), the arm raised 18° as a held item raises it, then
+  `Rx(-90)·Ry(180)` and `(±1/16, 2/16, -10/16)` to the hand;
+- first person: `(±0.56, -0.52, -0.72)` blocks from the eye, at a 70° field
+  of view as a 16:9 window has it across the box's width, the view turned
+  from the eye toward the hand;
+- head: the head's pivot, `(0, -0.25, 0)`, a half turn, and five eighths
+  scale with Y and Z flipped;
+- inventory: centred in an 18-pixel slot, seen flat;
+- dropped: lifted 0.1 blocks for its bob and a quarter of its own height;
+- item frame: a half turn, 7/16 out from the frame's middle, half size.
+
+These numbers are recalled from Java's renderers and are still to be
+checked against the game. The player is Steve's shape and size in flat colours, a ruler
+for the item and nothing more, and is drawn with the item but never picked.
+An item built around x = 0, as the samples are, sits off the middle of its
+block in a slot and a frame, as it would in the game; the Java export writes
+positions as they are.
+
 **Configs go in a second zip.** A config is how a mob becomes a thing in the
 game. Minecraft never reads it. The Vellum plugin does. The pack goes in
 `resourcepacks/` and the configs go in the plugin's folder, so one archive
@@ -1379,7 +1406,7 @@ code the editor runs.
 | `layers.test.mjs` | Layers flattened bottom first at their opacity, hidden ones left out, and merged down as they looked; kept through the `.vellum` and the `.bbmodel`; adding a layer, painting on it alone, hiding it and flattening in Paint |
 | `texture-anim.test.mjs` | Frames counted from the image and played in the order and at the speed set; the `.mcmeta`; timing kept through the `.vellum` and the `.bbmodel`; glTF showing frame one; adding a frame in Paint, painting on it alone, and the viewport playing the frames |
 | `texture-mesh.test.mjs` | A texture mesh's faces from its pixels (front, back, a strip per bordering edge), scaled and moved by its pivot; a `.bbmodel` `texture_mesh` opening, built, and saving back as one through the `.vellum`; adding, scaling and converting one in the editor |
-| `modes.test.mjs` | A display slot takes and resets a transform; the real-world view opens and closes; a behaviour cycle runs and takes a stage |
+| `modes.test.mjs` | A display slot takes and resets a transform; each slot places the item where the game draws it (hand, head, slot, ground, frame, first person) with the player or props it needs, never picked; the real-world view opens and closes; a behaviour cycle runs and takes a stage |
 | `bundle.test.mjs` | `dist/vellum.html` opens and keeps its unprefixed `backdrop-filter`; skipped until `pnpm build:single` has run |
 
 Chromium is taken from `/opt/pw-browsers/chromium` when it is there,

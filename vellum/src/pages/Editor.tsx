@@ -139,6 +139,8 @@ import type { Primitive } from '../lib/mesh'
 import { boxSize, findSpot } from '../lib/uv-pack'
 import { DEFAULT_DISPLAY, DisplayPanel } from './editor/DisplayPanel'
 import type { DisplayState, SlotId } from './editor/DisplayPanel'
+import { displayScene } from '../lib/display-scene'
+import type { DisplayScene } from '../lib/display-scene'
 import { ScenePanel } from './editor/ScenePanel'
 import { BehaviourPanel } from './editor/BehaviourPanel'
 import { ConfigPanel } from './editor/ConfigPanel'
@@ -2469,6 +2471,7 @@ function Viewport({
   onPaint,
   display,
   textureFrame,
+  stage,
   selection,
   gizmo,
   onGizmo,
@@ -2527,6 +2530,8 @@ function Viewport({
   view: ViewPreset
   onViewPreset: (v: ViewPreset) => void
   onPaint?: (cubeId: string, face: FaceKey, u: number, v: number, phase: 'down' | 'move') => void
+  /** Display mode's preview of a slot: where the item goes, what stands with it, and the view */
+  stage?: { key: string; scene: DisplayScene } | null
   /** animated textures held on these frames, by texture id */
   textureFrame?: ReadonlyMap<string, number> | null
   display?: { rotation: Vec3; translation: Vec3; scale: Vec3 } | null
@@ -2547,7 +2552,9 @@ function Viewport({
   }, [])
   /* The model stands on the grid at the middle of the scene, so its
      height has to fit in the top half of the box (0.44 of it). */
-  const scale = Math.max(1.5, Math.min(16, Math.min(box.w * 0.6, box.h * 0.44) / extent))
+  const scale = stage
+    ? Math.max(1, Math.min(40, (Math.min(box.w, box.h) * 0.7) / stage.scene.size))
+    : Math.max(1.5, Math.min(16, Math.min(box.w * 0.6, box.h * 0.44) / extent))
 
   return (
     <div className="editor-view" data-quad={quad || undefined} data-shading={shading}>
@@ -2585,9 +2592,16 @@ function Viewport({
           </div>
         ) : (
           <ModelView
+            key={stage?.key ?? 'model'}
             model={model}
-            grid={grid}
+            grid={stage ? grid && !stage.scene.ortho && !stage.scene.eye && stage.key !== 'fixed' : grid}
             scale={scale}
+            initialYaw={stage?.scene.yaw}
+            initialPitch={stage?.scene.pitch}
+            place={stage?.scene.place ?? null}
+            companions={stage?.scene.companions}
+            eye={stage?.scene.eye ? { at: [0, 0, 0], fov: stage.scene.eye.fov } : null}
+            anchorOn={stage?.scene.focus ?? null}
             orbit
             clip={clip}
             time={time}
@@ -2600,11 +2614,11 @@ function Viewport({
                   onPaintMesh={onPaintMesh}
             shading={shading}
             textureFrame={textureFrame}
-            display={display}
+            display={stage ? null : display}
             gizmo={gizmo}
             onGizmo={onGizmo}
             snapStep={snapStep}
-            ortho={ortho}
+            ortho={stage?.scene.ortho ?? ortho}
             onOrtho={onOrtho}
             nav
             viewRef={viewRef}
@@ -4125,6 +4139,11 @@ export function Editor({ segments }: { segments: string[] }) {
   // display
   const [slot, setSlot] = useState<SlotId>('thirdperson_righthand')
   const [displayState, setDisplayState] = useState<DisplayState>(DEFAULT_DISPLAY)
+  /** Display mode shows an item where the game puts it: in a hand, on a head, in a slot, a frame or on the ground */
+  const displayStage = useMemo(
+    () => (mode === 'display' && kind !== 'mobs' ? { key: slot, scene: displayScene(slot, displayState[slot]) } : null),
+    [mode, kind, slot, displayState],
+  )
 
   const [openError, setOpenError] = useState<string | null>(null)
   const [saveNote, setSaveNote] = useState<string | null>(null)
@@ -6875,6 +6894,7 @@ export function Editor({ segments }: { segments: string[] }) {
           onPaint={mode === 'paint' ? paintOnModel : undefined}
           textureFrame={mode === 'paint' ? heldFrames : null}
           display={mode === 'display' && kind !== 'mobs' ? displayState[slot] : null}
+          stage={displayStage}
           gizmo={gizmo}
           onGizmo={onGizmo}
           snapStep={increment}
