@@ -174,6 +174,18 @@ keys are written sorted, so a mesh always writes the same bytes. A face that
 names a vertex the mesh lacks drops it, and a face left with fewer than three
 is dropped.
 
+### Version 10: what a Blockbench project holds besides
+
+v10 adds **`blockbench`**, after `config`: the keys of an imported
+Blockbench project that Vellum has no field for, so saving back to a
+`.bbmodel` loses nothing. It holds `meta` and `project` (the project's own
+keys, such as `display`), then `elements`, `groups`, `textures` and
+`animations`, each a map from id to that object's other keys, and
+`other_elements`, whole elements Vellum can't show. Entries for things the
+model no longer has are dropped on save. It is optional, so a v9 file reads
+as a v10 file with none, and a model that never came from Blockbench writes
+no `blockbench` key.
+
 ### Box UV
 
 Every cube writes all six face rects in full, so UV *positions* survive a round
@@ -1095,24 +1107,44 @@ step through the real transform.
 ## Importing and exporting
 
 File ▸ Open takes a `.vellum`, a Blockbench project or a Java model.
-`src/lib/importers.ts` turns a Blockbench or Java file into an ordinary
-model, which then saves as a `.vellum`.
+`src/lib/importers.ts` turns a Java file into an ordinary model;
+`src/lib/bbmodel.ts` reads and writes Blockbench projects.
 
-- **Blockbench `.bbmodel`.** Groups become bones and cubes keep their UVs,
-  turns, inflate and box UV. Embedded textures come along. Animations keep
-  their keys, easing and bezier handles. Sound, particle and timeline keys
-  become clip events, and null objects keep their IK target. Blockbench's
-  own ids are kept, so tracks still point at their bones. Some things have
-  nowhere to go. Mesh elements are left out, because Vellum models are
-  cubes. Molang in a key reads as the rest value. A cube outside every group
-  goes under a new `root` bone. The status bar lists each of these.
+- **Blockbench `.bbmodel`**, both ways. Groups become bones (from the
+  Blockbench 4 outliner, where they nest, or Blockbench 5's, which lists
+  them apart by uuid). Cubes keep their UVs, turns, inflate and box UV;
+  meshes and null objects come in as Vellum's own, a null's IK source
+  becoming its chain length. Embedded textures come along. Animations keep
+  their keys, easing and bezier handles; an older file's animator, named by
+  its group's name, still finds its bone. Sound, particle and timeline keys
+  become clip events. Blockbench's own ids are kept.
+
+  Nothing is dropped. What Vellum has no field for (display settings, a
+  face's cullface and tint, element and group colours, a texture's render
+  mode, an animation's blend weight, the project's other keys, and whole
+  elements Vellum can't show, such as texture meshes) is kept in
+  `model.blockbench` by id, saved in the `.vellum` (v10), and written back
+  into a `.bbmodel`. A key holding the value the exporter writes anyway is
+  not kept, so a model made in Vellum carries none. Molang in a key reads as
+  the rest value, and a cube outside every group goes under a new `root`
+  bone; the status bar says so.
+
+  **Save** writes either format: the arrow beside it chooses `.vellum` or
+  `.bbmodel`, and the choice sticks for Save and Ctrl S. A `.bbmodel` that
+  was opened saves back as one. The export is a Blockbench 4.10 project,
+  which Blockbench 4 and 5 open. What only Vellum says (the model's kind,
+  subtype, behaviour and config, a ping-pong loop, the order of a clip's
+  tracks) goes under a `vellum` key, and an id that isn't a uuid goes out as
+  one made from it, with a map back. So the two files of one model open as
+  the same model: `bbmodel.test.mjs` saves every sample as a `.bbmodel`,
+  opens it, and checks the `.vellum` it writes is byte for byte the same.
 - **Java block or item JSON.** Elements become cubes under one `root` bone.
   The sheet is 16 by 16, as Java UVs are. A model names its textures by path
   and carries no images, so they open blank and named after the path. Importing a PNG of
   the same name on the Textures panel fills one in. A model that only names
   a parent is refused, since it has no elements of its own.
 
-File ▸ Export writes three formats (`src/lib/exporters.ts`). All of them use
+File ▸ Export writes three more formats (`src/lib/exporters.ts`). All of them use
 the rig maths the viewport and gizmos use.
 
 - **glTF**, one self-contained `.gltf`. There is a node per bone and the
@@ -1150,6 +1182,7 @@ code the editor runs.
 | `paint.test.mjs` | The paint sheet, face picking, keeping strokes inside a face, painting on the model, the palette |
 | `mesh.test.mjs` | Every primitive faces outward; extrude, merge, flip and delete keep a mesh whole; the v9 round trip; adding, picking, extruding, moving and merging in the editor; a Blockbench mesh imported and exported to glTF facing outward; painting a mesh face; loop cut and subdivide leave the surface closed; Edge mode, box-picking vertices and dragging mesh UVs on the sheet |
 | `mesh-tools.test.mjs` | Knife, bevel, edge slide, loop select, fill, dissolve, inset, turning and scaling keep a cube closed and facing out; faces a flat map can't fit split into triangles; the knife, bevel, inset, gizmo turn and scale, and slide in the editor; a dragged UV corner drawn as two triangles |
+| `bbmodel.test.mjs` | Every sample saved as a `.bbmodel` opens as the same model; a Blockbench project (4 and 5 outliners) keeps its display, cullfaces, colours, render modes, blend weights and unknown elements through a `.vellum` and back; ids that aren't uuids and ping-pong clips survive; Save's format menu, and a `.bbmodel` saving back as one |
 | `modes.test.mjs` | A display slot takes and resets a transform; the real-world view opens and closes; a behaviour cycle runs and takes a stage |
 | `bundle.test.mjs` | `dist/vellum.html` opens and keeps its unprefixed `backdrop-filter`; skipped until `pnpm build:single` has run |
 

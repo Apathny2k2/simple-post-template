@@ -49,7 +49,7 @@ test('the top bar, columns and status bar follow the design', async () => {
   const { page } = await openEditor()
   const bar = await page.locator('.sbar').boundingBox()
   const pill = await page.locator('.sbar__mode').first().boundingBox()
-  const save = await page.locator('.sbar button:has-text("Save")').boundingBox()
+  const save = await page.locator('.sbar__savegroup').boundingBox()
   assert.equal(Math.round(bar.y), 0, 'the bar is at the top')
   assert.ok(pill.x > bar.width * 0.25 && pill.x < bar.width * 0.6, 'the modes sit in the middle')
   assert.ok(save.x + save.width > bar.width - 40, 'Save is at the right')

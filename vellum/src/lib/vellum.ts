@@ -41,7 +41,7 @@ import type {
 } from './model'
 
 export const FORMAT = 'model'
-export const CURRENT_VERSION = 9
+export const CURRENT_VERSION = 10
 
 /** A well-formed `.vellum` begins with exactly these bytes. */
 export const HEADER_PREFIX = `{"vellum":{"format":"${FORMAT}","version":${CURRENT_VERSION}},`
@@ -203,6 +203,8 @@ export type VellumDocument = {
   behaviour?: VellumBehaviour
   /** Added in v5. The body from `bodyOf`: nested by field path, set fields only. */
   config?: Record<string, unknown>
+  /** Added in v10. What a Blockbench project held that Vellum has no field for, kept for the trip back. */
+  blockbench?: Record<string, unknown>
 }
 
 /* ---------------- errors ---------------- */
@@ -410,6 +412,59 @@ export function toVellumDocument(model: Model): VellumDocument {
     meshes,
     behaviour,
     config,
+    blockbench: blockbenchOf(model),
+  })
+}
+
+/**
+ * The Blockbench extras, less any kept for an element, group, texture or
+ * clip the model no longer has. Absent when nothing is left.
+ */
+function blockbenchOf(model: Model): Record<string, unknown> | undefined {
+  const bag = model.blockbench
+  if (!bag || typeof bag !== 'object') return undefined
+  const ids = {
+    elements: new Set([...model.cubes.map((c) => c.id), ...(model.meshes ?? []).map((m) => m.id), ...(model.nulls ?? []).map((n) => n.id)]),
+    groups: new Set<string>(),
+    textures: new Set(model.textures.map((t) => t.id)),
+    animations: new Set(model.clips.map((c) => c.id)),
+  }
+  const walk = (list: Bone[]) =>
+    list.forEach((b) => {
+      ids.groups.add(b.id)
+      walk(b.children.filter((c) => c.kind === 'bone').map((c) => (c as { bone: Bone }).bone))
+    })
+  walk(model.bones)
+  const out: Record<string, unknown> = {}
+  for (const [key, value] of Object.entries(bag)) {
+    const keep = ids[key as keyof typeof ids]
+    if (keep && value && typeof value === 'object') {
+      const kept = Object.fromEntries(Object.entries(value as Record<string, unknown>).filter(([id]) => keep.has(id)))
+      if (Object.keys(kept).length) out[key] = kept
+    } else if (value !== undefined) out[key] = value
+  }
+  return Object.keys(out).length ? out : undefined
+}
+
+/**
+ * What only Vellum says about a model (its kind, subtype, behaviour and
+ * config), in the shape a .vellum writes it. A .bbmodel export carries it
+ * under a `vellum` key so the model comes back whole.
+ */
+export function vellumOnlyOf(model: Model): Pick<VellumDocument, 'kind' | 'subtype' | 'behaviour' | 'config'> {
+  const doc = toVellumDocument(model)
+  return compact({ kind: doc.kind, subtype: doc.subtype, behaviour: doc.behaviour, config: doc.config })
+}
+
+/** Reads what `vellumOnlyOf` wrote. */
+export function readVellumOnly(raw: unknown): Pick<Model, 'kind' | 'subtype' | 'behaviour' | 'config'> {
+  const doc = (raw && typeof raw === 'object' ? raw : {}) as VellumDocument
+  const kind = (['items', 'mobs', 'blocks'] as const).find((k) => k === doc.kind)
+  return compact({
+    kind,
+    subtype: subtypeFits(kind, doc.subtype) ? (doc.subtype as Subtype) : undefined,
+    behaviour: readBehaviour(doc.behaviour),
+    config: readConfig(doc.config, kind),
   })
 }
 
@@ -559,6 +614,9 @@ function upgrade(doc: VellumDocument): VellumDocument {
         break
       case 8: // v9 added meshes; absent is already correct
         version = 9
+        break
+      case 9: // v10 added the Blockbench extras; absent is already correct
+        version = 10
         break
       default:
         throw new VellumFormatError(`No upgrade path from .vellum version ${version}.`)
@@ -764,6 +822,7 @@ export function fromVellumDocument(doc: VellumDocument): Model {
     clips,
     nulls: nulls.length ? nulls : undefined,
     meshes: meshes.length ? meshes : undefined,
+    blockbench: doc.blockbench && typeof doc.blockbench === 'object' && !Array.isArray(doc.blockbench) ? doc.blockbench : undefined,
   }
 }
 

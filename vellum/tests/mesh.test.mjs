@@ -54,7 +54,7 @@ test('every primitive faces outward, and extrude, merge, delete and flip keep it
   await page.close()
 })
 
-test('a mesh round-trips through .vellum version 9', async () => {
+test('a mesh round-trips through .vellum version 9 and on', async () => {
   const { page } = await open()
   const r = await inApp(page, async () => {
     const V = await import('/src/lib/vellum.ts')
@@ -78,7 +78,7 @@ test('a mesh round-trips through .vellum version 9', async () => {
     }
   })
   assert.ok(r.stable)
-  assert.equal(r.version, 9)
+  assert.equal(r.version, 10)
   assert.ok(r.parent)
   assert.deepEqual([r.faces, r.vertices], [10, 16])
   assert.deepEqual(r.rotation, [0, 22.5, 0])

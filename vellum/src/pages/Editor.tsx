@@ -153,7 +153,7 @@ import { blockNavigation, navigate, useTitle } from '../lib/router'
 import { scenes } from '../lib/data'
 import { saveBlob, saveDataUrl, saveFile } from '../lib/download'
 import { toGltf, toJavaJson, toObjZip } from '../lib/exporters'
-import { fromBbmodel, fromJavaModel, isBbmodel, isJavaModel } from '../lib/importers'
+import { fromBbmodel, fromJavaModel, isBbmodel, isJavaModel, toBbmodel } from '../lib/importers'
 import './Editor.css'
 import './EditorStudio.css'
 
@@ -185,6 +185,8 @@ type Actions = {
   onExportGltf: () => void
   onExportObj: () => void
   onExportJava: () => void
+  /** saves in the format named, and makes it the one Save and Ctrl S use */
+  onSaveAs: (format: SaveFormat) => void
   onSelectAll: () => void
   onCopy: () => void
   onCut: () => void
@@ -198,6 +200,9 @@ type Actions = {
   onHide: () => void
   onShowAll: () => void
 }
+
+/** The two formats a model saves in: Vellum's own, or a Blockbench project. */
+type SaveFormat = 'vellum' | 'bbmodel'
 
 function buildMenus(
   actions: Actions,
@@ -217,7 +222,8 @@ function buildMenus(
         })),
         { kind: 'separator' },
         { label: 'Open .vellum, .bbmodel or Java JSON…', icon: 'folder', shortcut: 'Ctrl O', onSelect: actions.onOpen },
-        { label: 'Save .vellum', icon: 'save', shortcut: 'Ctrl S', onSelect: actions.onSave },
+        { label: 'Save as .vellum', icon: 'save', onSelect: () => actions.onSaveAs('vellum') },
+        { label: 'Save as Blockbench .bbmodel', icon: 'save', onSelect: () => actions.onSaveAs('bbmodel') },
         { kind: 'separator' },
         { kind: 'label', label: 'Export' },
         { label: 'glTF, with the rig and clips (Blender)', icon: 'download', onSelect: actions.onExportGltf },
@@ -402,6 +408,8 @@ function EditorBar({
   problems,
   onProblems,
   onSave,
+  saveFormat,
+  onSaveAs,
 }: {
   title: string
   subtitle: string
@@ -419,6 +427,8 @@ function EditorBar({
   problems: number
   onProblems: () => void
   onSave: () => void
+  saveFormat: SaveFormat
+  onSaveAs: (format: SaveFormat) => void
 }) {
   const fileEntries = useMemo<MenuEntry[]>(
     () =>
@@ -476,9 +486,24 @@ function EditorBar({
             </button>
           )}
         />
-        <button className="sbar__save" onClick={onSave} title="Save the .vellum (Ctrl S)">
-          Save
-        </button>
+        <span className="sbar__savegroup">
+          <button className="sbar__save" onClick={onSave} title={`Save the .${saveFormat} (Ctrl S)`}>
+            Save <span className="sbar__format">.{saveFormat}</span>
+          </button>
+          <Menu
+            align="end"
+            entries={[
+              { kind: 'label', label: 'Save as' },
+              { label: '.vellum, Vellum’s own', icon: saveFormat === 'vellum' ? 'check' : 'save', onSelect: () => onSaveAs('vellum') },
+              { label: '.bbmodel, a Blockbench project', icon: saveFormat === 'bbmodel' ? 'check' : 'save', onSelect: () => onSaveAs('bbmodel') },
+            ]}
+            trigger={({ props }) => (
+              <button className="sbar__save sbar__save--more" aria-label="Choose the format to save in" {...props}>
+                <Icon name="chevronDown" size={12} />
+              </button>
+            )}
+          />
+        </span>
       </div>
     </header>
   )
@@ -3883,6 +3908,8 @@ export function Editor({ segments }: { segments: string[] }) {
   const model = history.present
 
   const [fileName, setFileName] = useState(initial.file)
+  /** what Save writes: a .bbmodel that was opened saves back as one */
+  const [saveFormat, setSaveFormat] = useState<SaveFormat>(/\.bbmodel$/i.test(initial.file) ? 'bbmodel' : 'vellum')
   const [kind, setKind] = useState<ProjectKind>(initial.kind)
   // read from the model so undo and file loads keep it current
   const subtype = model.subtype
@@ -4011,6 +4038,7 @@ export function Editor({ segments }: { segments: string[] }) {
       history.reset(next)
       setSavedModel(next)
       setFileName(vellumFileName(name))
+      setSaveFormat(/\.bbmodel$/i.test(name) ? 'bbmodel' : 'vellum')
       setKind(resolved)
       setSelected(next.cubes[0]?.id ?? null)
       setClipId(next.clips[0]?.id ?? null)
@@ -5620,7 +5648,16 @@ export function Editor({ segments }: { segments: string[] }) {
       onOpen: () => guarded('Open another model?', 'Discard and open', () => fileInput.current?.click()),
       onSave: () => {
         const doc = { ...model, kind }
-        runSave(vellumFileName(fileName), writeVellum(doc), model)
+        const stem = vellumFileName(fileName).replace(/\.vellum$/i, '')
+        if (saveFormat === 'bbmodel') runSave(`${stem}.bbmodel`, toBbmodel(doc), model)
+        else runSave(vellumFileName(fileName), writeVellum(doc), model)
+      },
+      onSaveAs: (format: SaveFormat) => {
+        setSaveFormat(format)
+        const doc = { ...model, kind }
+        const stem = vellumFileName(fileName).replace(/\.vellum$/i, '')
+        if (format === 'bbmodel') runSave(`${stem}.bbmodel`, toBbmodel(doc), model)
+        else runSave(`${stem}.vellum`, writeVellum(doc), model)
       },
       onSample: (id: string) => {
         const s = sampleById(id)
@@ -5851,7 +5888,7 @@ export function Editor({ segments }: { segments: string[] }) {
       onAddKey: () => animBone && anim.addKey(animBone, 'rotation'),
       onCloseLoop: () => anim.closeLoop(),
     }),
-    [model, fileName, kind, textureIndex, loadModel, runSave, selected, selection, bones, history, anim, animBone, guarded, rescale, refuseLocked, setSelected, focusOn, removeNull],
+    [model, fileName, kind, saveFormat, textureIndex, loadModel, runSave, selected, selection, bones, history, anim, animBone, guarded, rescale, refuseLocked, setSelected, focusOn, removeNull],
   )
 
   const [keymap, setKeymap] = useState<Keymap>(readKeymap)
@@ -6187,6 +6224,8 @@ export function Editor({ segments }: { segments: string[] }) {
           window.setTimeout(() => document.getElementById('validation')?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }), 50)
         }}
         onSave={actions.onSave}
+        saveFormat={saveFormat}
+        onSaveAs={actions.onSaveAs}
       />
 
       {/* the h1 is visually hidden (.vh) and names the page for screen readers */}

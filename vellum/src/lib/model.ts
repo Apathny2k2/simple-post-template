@@ -235,6 +235,12 @@ export type Model = {
   nulls?: NullObject[]
   /** absent when the model has none (v9) */
   meshes?: Mesh[]
+  /**
+   * What a Blockbench project held that Vellum has no field for (v10): its
+   * meta and display settings, and each element's, group's, texture's and
+   * animation's other keys by id. Kept so a .bbmodel export gives them back.
+   */
+  blockbench?: Record<string, unknown>
 }
 
 /* ---------------- lookups ---------------- */

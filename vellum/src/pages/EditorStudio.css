@@ -140,6 +140,11 @@
   font-size: 14px;
 }
 .sbar__save:hover { background: #fff; }
+/* Save and its format menu, one pill split in two */
+.sbar__savegroup { display: inline-flex; }
+.sbar__savegroup .sbar__save:first-child { border-radius: 999px 0 0 999px; padding-right: 12px; }
+.sbar__save--more { display: grid; place-items: center; padding: 0 11px 0 9px; border-radius: 0 999px 999px 0; border-left: 1px solid rgb(0 0 0 / 0.18); }
+.sbar__format { font-weight: 500; opacity: 0.6; }
 
 @media (max-width: 1180px) {
   .sbar__modes { position: static; transform: none; overflow-x: auto; }
