@@ -1858,3 +1858,114 @@
   .editor-view .scene3d__nav,
   .editor-view .scene3d__projection { right: 14px; }
 }
+
+/* ---- null objects in the outliner ---- */
+.tree--nulls { margin-top: 8px; border-top: 1px solid var(--border); padding-top: 6px; }
+.tree__heading {
+  padding: 2px 6px 4px;
+  font-size: var(--fs-2xs);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+.tree__null {
+  width: 8px;
+  height: 8px;
+  margin: 0 6px 0 4px;
+  transform: rotate(45deg);
+  border: 1.5px solid currentColor;
+  flex: none;
+}
+.tree__badge {
+  margin-left: auto;
+  padding: 0 5px;
+  border-radius: 4px;
+  background: color-mix(in srgb, #ffd36b 45%, transparent);
+  font-size: var(--fs-2xs);
+  font-weight: 700;
+}
+
+/* an effect that just played */
+.editor-view__flash {
+  position: absolute;
+  z-index: 6;
+  top: 58px;
+  left: calc(var(--left-w) + var(--rail-pad) + 14px);
+  padding: 6px 12px;
+  border-radius: var(--r-control);
+  background: rgb(20 20 24 / 0.82);
+  color: #ffe28a;
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  pointer-events: none;
+}
+
+/* ---- timeline: effects, selection box ---- */
+.timeline-name--effects { color: var(--ink-muted); }
+.timeline-name--effects .timeline-name__button { font-size: 11px; width: 20px; }
+.timeline-track--effects { background: color-mix(in srgb, var(--accent) 6%, transparent); }
+.timeline-event {
+  position: absolute;
+  top: 50%;
+  width: 18px;
+  height: 18px;
+  margin: -9px 0 0 -9px;
+  border-radius: 5px;
+  border: 1px solid var(--border-strong, rgb(0 0 0 / 0.3));
+  background: var(--surface, #fff);
+  font-size: 10px;
+  line-height: 16px;
+  text-align: center;
+  cursor: grab;
+}
+.timeline-event[data-kind='sound'] { color: #2f8dff; }
+.timeline-event[data-kind='particle'] { color: #e3782b; }
+.timeline-event[data-kind='script'] { color: #8a5cd6; }
+.timeline-event[data-selected] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.timeline-grid { position: relative; }
+.timeline-marquee {
+  position: absolute;
+  z-index: 4;
+  border: 1px solid var(--accent-mark);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  pointer-events: none;
+}
+
+/* ---- graph editor ---- */
+.graph { display: grid; grid-template-columns: 178px minmax(0, 1fr); min-height: 0; flex: 1; overflow: hidden; height: 100%; }
+.graph__side { display: flex; flex-direction: column; gap: 6px; padding: 8px 10px; border-right: 1px solid var(--border); overflow: auto; }
+.graph__title { font-weight: 600; font-size: var(--fs-xs); }
+.graph__axes { display: flex; gap: 4px; }
+.graph__axes .chip { font-weight: 700; }
+.graph__scroll { position: relative; overflow: auto; }
+.graph__plot { display: block; background: var(--sunken); }
+.graph__curve { fill: none; stroke-width: 1.8; }
+.graph__zero { stroke: var(--border); stroke-dasharray: 3 3; }
+.graph__playhead { stroke: var(--accent-mark); stroke-width: 1.5; }
+.graph__key { stroke: #fff; stroke-width: 1; cursor: grab; }
+.graph__key[data-selected] { stroke: #111; stroke-width: 2; }
+.graph__arm { stroke: var(--ink-faint); stroke-width: 1; }
+.graph__handle { fill: var(--surface, #fff); stroke-width: 2; cursor: grab; }
+.graph__range {
+  position: absolute;
+  top: 30px;
+  left: 6px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  font: 10px var(--font-mono);
+  color: var(--ink-faint);
+  pointer-events: none;
+}
+.timeline-bar .seg { display: inline-flex; gap: 2px; }
+.timeline-resize {
+  position: absolute;
+  top: -4px;
+  left: 0;
+  right: 0;
+  height: 8px;
+  z-index: 3;
+  cursor: ns-resize;
+}
+.timeline-resize:hover { background: color-mix(in srgb, var(--accent) 30%, transparent); }

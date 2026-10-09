@@ -104,3 +104,37 @@
   height: 0;
   pointer-events: none;
 }
+
+/* onion skin: earlier moments blue, later ones orange, never in the way of a click */
+.model-ghost {
+  position: absolute;
+  transform-style: preserve-3d;
+  pointer-events: none;
+  opacity: 0.28;
+}
+.model-ghost .model-face__skin { background: none !important; }
+.model-ghost--before .model-face { background: rgb(80 150 255 / 0.55); }
+.model-ghost--after .model-face { background: rgb(255 150 60 / 0.55); }
+
+/* a null object: a small diamond that always faces the viewer's way enough to see */
+.model-null {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 0;
+  transform-style: preserve-3d;
+}
+.model-null span {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  margin: -6px 0 0 -6px;
+  transform: rotate(45deg);
+  border: 2px solid #f4f4f4;
+  background: rgb(30 30 30 / 0.55);
+  cursor: pointer;
+  pointer-events: auto;
+}
+.model-null--ik span { border-color: #ffd36b; }
+.model-null--selected span { background: #ffd36b; border-color: #fff; }

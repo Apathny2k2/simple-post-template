@@ -5,7 +5,7 @@ import type { MenuEntry } from '../components/Menu'
 import { ModelView } from '../components/ModelView'
 import type { PickMods, VertexLayer, ViewApi } from '../components/ModelView'
 import type { GizmoEvent, GizmoSpec } from '../components/Gizmo'
-import { add, apply, applyDir, buildRig, cubeCorners, cubeFrame, eulerAxes, norm, parentFrame, sub, toParentDir } from '../lib/kinematics'
+import { add, apply, applyDir, buildRig, cubeCorners, cubeFrame, eulerAxes, norm, nullWorld, parentFrame, posedAt, sub, toParentDir } from '../lib/kinematics'
 import {
   copyNodes,
   findBone,
@@ -14,6 +14,7 @@ import {
   movePivots,
   pasteNodes,
   readClipboard,
+  rehomeNulls,
   reorderNode,
   resizeCube,
   setRotations,
@@ -30,6 +31,8 @@ import {
   cubeSize,
   defaultSubtype,
   flattenBones,
+  samplePose,
+  sampleTrack,
   setCubePosition,
   setCubeSize,
   subtypeFits,
@@ -43,6 +46,9 @@ import type {
   FaceKey,
   Key,
   Model,
+  NullObject,
+  ClipEvent,
+  Pose,
   ProjectKind,
   Track,
   UVRect,
@@ -60,6 +66,7 @@ import {
   deleteCube,
   duplicateBone,
   duplicateCube,
+  newId,
   renameNode,
   reparent,
   updateBone,
@@ -74,6 +81,15 @@ import {
   deleteTrack,
   duplicateClip,
   findTrack,
+  addEvent,
+  copyKeys,
+  deleteEvent,
+  deleteKeys,
+  moveKeys,
+  patchKeys,
+  pasteKeys,
+  readKeyClipboard,
+  updateEvent,
   setKey,
   uniqueName,
   updateClip,
@@ -124,6 +140,7 @@ type Actions = {
   onSample: (id: string) => void
   onAddCube: () => void
   onAddBone: () => void
+  onAddNull: () => void
   onDuplicate: () => void
   onDelete: () => void
   onUndo: () => void
@@ -199,6 +216,7 @@ function buildMenus(
         { kind: 'separator' },
         { label: 'Add cube', icon: 'cube', onSelect: actions.onAddCube },
         { label: 'Add bone', icon: 'folder', onSelect: actions.onAddBone },
+        { label: 'Add null object', icon: 'pivot', onSelect: actions.onAddNull },
         { label: 'Group selection', icon: 'folder', shortcut: 'Ctrl G', onSelect: actions.onGroup },
       ],
     },
@@ -385,6 +403,7 @@ function Toolbar({
   onQuad,
   onAddCube,
   onAddBone,
+  onAddNull,
   brush,
   onBrush,
   shape,
@@ -416,6 +435,7 @@ function Toolbar({
   onQuad: () => void
   onAddCube: () => void
   onAddBone: () => void
+  onAddNull: () => void
   brush: number
   onBrush: (n: number) => void
   shape: ShapeKind
@@ -494,6 +514,9 @@ function Toolbar({
         </button>
         <button className="editor-tool" title="Add bone" aria-label="Add bone" onClick={onAddBone}>
           <Icon name="folder" size={15} />
+        </button>
+        <button className="editor-tool" title="Add null object (locator or IK target)" aria-label="Add null object" onClick={onAddNull}>
+          <Icon name="pivot" size={15} />
         </button>
       </div>
 
@@ -1522,6 +1545,122 @@ function BonePanel({
   )
 }
 
+/* ================= null objects ================= */
+
+/** A null object's settings: where it is, which bone it rides on, and the IK chain that reaches for it. */
+function NullPanel({
+  item,
+  bones,
+  snap,
+  onChange,
+  onDelete,
+}: {
+  item: NullObject
+  bones: BoneRef[]
+  snap: boolean
+  onChange: (patch: Partial<Omit<NullObject, 'id'>>) => void
+  onDelete: () => void
+}) {
+  return (
+    <>
+      <label className="editor-field">
+        <span>Name</span>
+        <input className="editor-input" value={item.name} maxLength={64} onChange={(e) => onChange({ name: e.target.value })} />
+      </label>
+      <label className="editor-field">
+        <span>Moves with</span>
+        <select className="editor-select" value={item.parent ?? ''} onChange={(e) => onChange({ parent: e.target.value || null })}>
+          <option value="">The model root</option>
+          {bones.map((b) => (
+            <option key={b.id} value={b.id}>
+              {'\u00a0'.repeat(b.depth * 2)}
+              {b.name}
+            </option>
+          ))}
+        </select>
+      </label>
+      <div className="num-field-grid">
+        <NumRow label="Position" value={item.position} snap={snap} disabled={item.locked} onChange={(position) => onChange({ position })} />
+      </div>
+      <label className="editor-field">
+        <span>IK: the bone that reaches for it</span>
+        <select className="editor-select" value={item.ikTarget ?? ''} onChange={(e) => onChange({ ikTarget: e.target.value || undefined })}>
+          <option value="">No IK, a plain locator</option>
+          {bones.map((b) => (
+            <option key={b.id} value={b.id}>
+              {'\u00a0'.repeat(b.depth * 2)}
+              {b.name}
+            </option>
+          ))}
+        </select>
+      </label>
+      {item.ikTarget ? (
+        <label className="editor-field">
+          <span>Bones that bend</span>
+          <input
+            className="editor-input"
+            type="number"
+            min={1}
+            max={8}
+            value={item.ikChain ?? 2}
+            onChange={(e) => onChange({ ikChain: Math.max(1, Math.min(8, Math.round(Number(e.target.value) || 2))) })}
+          />
+        </label>
+      ) : null}
+      <p className="editor-hint" style={{ marginTop: 10 }}>
+        <Icon name="info" size={11} />{' '}
+        {item.ikTarget
+          ? 'Move this point and the chain above the chosen bone bends so the bone reaches it. Key its position in Animate.'
+          : 'A locator marks where an effect plays. Pick a bone above to make it an IK target.'}
+      </p>
+      <div className="chip-row">
+        <button className="chip" aria-pressed={item.visible} onClick={() => onChange({ visible: !item.visible })}>
+          <Icon name={item.visible ? 'eye' : 'eyeOff'} size={11} /> Visible
+        </button>
+        <button className="chip" aria-pressed={item.locked} onClick={() => onChange({ locked: !item.locked })}>
+          <Icon name="lock" size={11} /> Locked
+        </button>
+        <button className="chip" onClick={onDelete}>
+          <Icon name="trash" size={11} /> Delete
+        </button>
+      </div>
+    </>
+  )
+}
+
+/** The model's null objects, listed under the outliner tree. */
+function NullList({
+  nulls,
+  selection,
+  onSelect,
+}: {
+  nulls: NullObject[]
+  selection: readonly string[]
+  onSelect: (id: string, mods: PickMods) => void
+}) {
+  if (!nulls.length) return null
+  return (
+    <div className="tree tree--nulls" role="tree" aria-label="Null objects">
+      <div className="tree__heading">Null objects</div>
+      {nulls.map((n) => (
+        <div
+          key={n.id}
+          role="treeitem"
+          aria-selected={selection.includes(n.id)}
+          data-hidden={!n.visible || undefined}
+          className="tree__row"
+          style={{ paddingLeft: 6 }}
+          onClick={(e) => onSelect(n.id, { shift: e.shiftKey, ctrl: e.ctrlKey || e.metaKey })}
+        >
+          <span className="tree__null" aria-hidden="true" />
+          <span className="tree__name">{n.name}</span>
+          {n.ikTarget ? <span className="tree__badge">IK</span> : null}
+        </div>
+      ))}
+    </div>
+  )
+}
+
 /* ================= viewport ================= */
 
 const quadViews = [
@@ -1530,6 +1669,7 @@ const quadViews = [
   { tag: 'Top', yaw: 0, pitch: -90, ortho: true },
   { tag: 'Right', yaw: -90, pitch: 0, ortho: true },
 ]
+
 
 /** What the bottom-left hint says for each tool. */
 const TOOL_HINTS: Record<string, string> = {
@@ -1564,6 +1704,9 @@ function Viewport({
   onBoxSelect,
   vertices,
   hint,
+  ghosts,
+  showNulls,
+  flash,
 }: {
   model: Model
   label: string
@@ -1586,6 +1729,10 @@ function Viewport({
   onBoxSelect: (ids: string[], add: boolean) => void
   vertices: VertexLayer | null
   hint: string | null
+  ghosts?: Array<{ time: number; side: 'before' | 'after' }>
+  showNulls: boolean
+  /** an effect that just played, shown for a moment */
+  flash: string | null
   onPaint?: (cubeId: string, face: FaceKey, u: number, v: number, phase: 'down' | 'move') => void
   display?: { rotation: Vec3; translation: Vec3; scale: Vec3 } | null
 }) {
@@ -1660,12 +1807,19 @@ function Viewport({
             viewRef={viewRef}
             onBoxSelect={onBoxSelect}
             vertices={vertices}
+            ghosts={ghosts}
+            showNulls={showNulls}
           />
         )}
 
         <div className="editor-view__corner editor-view__corner--top-left">
           <Icon name="cube" size={11} /> {label}
         </div>
+        {flash ? (
+          <div className="editor-view__flash" role="status" key={flash}>
+            {flash}
+          </div>
+        ) : null}
 
         <div className="editor-view__corner editor-view__corner--top-right">
           {(['solid', 'wire'] as const).map((s) => (
@@ -1706,6 +1860,26 @@ type AnimApi = {
   removeTrack: (bone: string, channel: Channel) => void
   selectedKey: string | null
   selectKey: (id: string | null) => void
+  selectedKeys: string[]
+  /** 'set' replaces the selection, 'add' adds to it, 'toggle' flips each id */
+  selectKeys: (ids: string[], how: 'set' | 'add' | 'toggle') => void
+  /** drags every selected key by `dt` seconds; start and end bracket one undo step */
+  moveKeys: (dt: number, phase: 'start' | 'move' | 'end') => void
+  removeKeys: () => void
+  copyKeys: () => void
+  pasteKeys: () => void
+  setEasing: (interp: Key['interp']) => void
+  /** one undo step made of many writes, for graph-editor drags */
+  burst: { begin: (label: string) => void; amend: (fn: (m: Model) => Model) => void; end: () => void }
+  onion: boolean
+  setOnion: (v: boolean) => void
+  nulls: NullObject[]
+  events: ClipEvent[]
+  selectedEvent: string | null
+  selectEvent: (id: string | null) => void
+  addEvent: (kind: ClipEvent['kind']) => void
+  patchEvent: (id: string, patch: Partial<Omit<ClipEvent, 'id'>>, transient?: boolean) => void
+  removeEvent: (id: string) => void
   /** each move is a coalesced commit, so a continuous drag is one undo step */
   dragKey: (keyId: string, time: number, phase: 'down' | 'move' | 'up') => void
   patchKey: (keyId: string, patch: Partial<Omit<Key, 'id'>>, transient?: boolean) => void
@@ -1920,6 +2094,13 @@ function AnimationPanel({ anim }: { anim: AnimApi }) {
   )
 }
 
+const EASINGS: Array<{ id: Key['interp']; label: string }> = [
+  { id: 'linear', label: 'Linear' },
+  { id: 'catmullrom', label: 'Smooth (Catmull-Rom)' },
+  { id: 'bezier', label: 'Bezier' },
+  { id: 'step', label: 'Step' },
+]
+
 function KeyframePanel({ anim }: { anim: AnimApi }) {
   const found = useMemo(() => {
     const clip = anim.clip
@@ -1933,15 +2114,46 @@ function KeyframePanel({ anim }: { anim: AnimApi }) {
   if (!found) {
     return (
       <p className="editor-hint">
-        Select a keyframe on the timeline to edit it, or press the <Icon name="key" size={11} /> beside a
-        channel to add one at the playhead.
+        Select a keyframe on the timeline to edit it, or pose a bone with the gizmo to key it at the playhead. Drag across the
+        timeline to select several.
       </p>
     )
   }
 
+  const many = anim.selectedKeys.length > 1
   const { track, key } = found
-  const boneName = anim.bones.find((b) => b.id === track.bone)?.name ?? track.bone
+  const boneName = anim.bones.find((b) => b.id === track.bone)?.name ?? anim.nulls.find((n) => n.id === track.bone)?.name ?? track.bone
   const step = track.channel === 'rotation' ? 2.5 : track.channel === 'scale' ? 0.05 : 0.5
+
+  if (many) {
+    const interps = new Set(anim.clip!.tracks.flatMap((t) => t.keys.filter((k) => anim.selectedKeys.includes(k.id)).map((k) => k.interp)))
+    return (
+      <>
+        <p className="editor-hint" style={{ marginBottom: 8 }}>
+          {anim.selectedKeys.length} keyframes selected. Drag any of them on the timeline to move them together.
+        </p>
+        <label className="editor-field">
+          <span>Easing</span>
+          <select className="editor-select" value={interps.size === 1 ? [...interps][0] : ''} onChange={(e) => anim.setEasing(e.target.value as Key['interp'])}>
+            {interps.size === 1 ? null : <option value="">Mixed</option>}
+            {EASINGS.map((o) => (
+              <option key={o.id} value={o.id}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <div className="chip-row" style={{ marginTop: 9 }}>
+          <button className="chip" onClick={anim.copyKeys}>
+            <Icon name="copy" size={11} /> Copy
+          </button>
+          <button className="chip chip--danger" onClick={anim.removeKeys}>
+            <Icon name="trash" size={11} /> Delete {anim.selectedKeys.length}
+          </button>
+        </div>
+      </>
+    )
+  }
 
   return (
     <>
@@ -1959,13 +2171,7 @@ function KeyframePanel({ anim }: { anim: AnimApi }) {
         />
         <div className="num-field-row">
           <span className="num-field-row__label">Time</span>
-          <NumField
-            axis="n"
-            name="Keyframe time in seconds"
-            step={0.05}
-            value={key.time}
-            onChange={(time) => anim.patchKey(key.id, { time })}
-          />
+          <NumField axis="n" name="Keyframe time in seconds" step={0.05} value={key.time} onChange={(time) => anim.patchKey(key.id, { time })} />
           <span className="num-field-row__label" style={{ textAlign: 'right' }}>
             of {anim.clip?.length}s
           </span>
@@ -1974,17 +2180,34 @@ function KeyframePanel({ anim }: { anim: AnimApi }) {
       </div>
 
       <label className="editor-field">
-        <span>Easing</span>
-        <select
-          className="editor-select"
-          value={key.interp}
-          onChange={(e) => anim.patchKey(key.id, { interp: e.target.value as Key['interp'] })}
-        >
-          <option value="linear">linear</option>
-          <option value="step">step</option>
-          <option value="catmullrom">smooth</option>
+        <span>Easing to the next key</span>
+        <select className="editor-select" value={key.interp} onChange={(e) => anim.patchKey(key.id, { interp: e.target.value as Key['interp'] })}>
+          {EASINGS.map((o) => (
+            <option key={o.id} value={o.id}>
+              {o.label}
+            </option>
+          ))}
         </select>
       </label>
+      {key.interp === 'bezier' ? (
+        <div className="num-field-grid">
+          <NumRow
+            label="Out time"
+            value={key.handles?.rightTime ?? [0.1, 0.1, 0.1]}
+            step={0.01}
+            onChange={(rightTime) => anim.patchKey(key.id, { handles: { ...bezierDefaults(key), rightTime } }, true)}
+            onCommit={() => anim.patchKey(key.id, {})}
+          />
+          <NumRow
+            label="Out value"
+            value={key.handles?.rightValue ?? [0, 0, 0]}
+            step={step}
+            onChange={(rightValue) => anim.patchKey(key.id, { handles: { ...bezierDefaults(key), rightValue } }, true)}
+            onCommit={() => anim.patchKey(key.id, {})}
+          />
+          <p className="editor-hint">Drag the handles in the Graph view to shape the curve.</p>
+        </div>
+      ) : null}
 
       <div className="chip-row" style={{ marginTop: 9 }}>
         <button className="chip chip--danger" onClick={() => anim.removeKey(key.id)}>
@@ -1992,6 +2215,80 @@ function KeyframePanel({ anim }: { anim: AnimApi }) {
         </button>
         <button className="chip" onClick={() => anim.removeTrack(track.bone, track.channel)}>
           <Icon name="trash" size={11} /> Clear channel
+        </button>
+      </div>
+    </>
+  )
+}
+
+/** A key's handles, or flat ones a tenth of a second long, so editing one field gives a full set. */
+const bezierDefaults = (key: Key) =>
+  key.handles ?? {
+    leftTime: [-0.1, -0.1, -0.1] as Vec3,
+    leftValue: [0, 0, 0] as Vec3,
+    rightTime: [0.1, 0.1, 0.1] as Vec3,
+    rightValue: [0, 0, 0] as Vec3,
+  }
+
+/** A sound, particle or script on the timeline. */
+function EventPanel({ anim }: { anim: AnimApi }) {
+  const ev = anim.events.find((e) => e.id === anim.selectedEvent)
+  if (!ev) return null
+  const suggestions =
+    ev.kind === 'sound'
+      ? ['minecraft:entity.generic.hurt', 'minecraft:entity.zombie.ambient', 'minecraft:entity.player.attack.sweep', 'minecraft:block.anvil.land', 'minecraft:item.trident.throw']
+      : ev.kind === 'particle'
+        ? ['minecraft:flame', 'minecraft:smoke', 'minecraft:crit', 'minecraft:heart', 'minecraft:explosion']
+        : []
+  return (
+    <>
+      <label className="editor-field">
+        <span>Kind</span>
+        <select className="editor-select" value={ev.kind} onChange={(e) => anim.patchEvent(ev.id, { kind: e.target.value as ClipEvent['kind'] }, false)}>
+          <option value="sound">Sound</option>
+          <option value="particle">Particle</option>
+          <option value="script">Script</option>
+        </select>
+      </label>
+      <label className="editor-field">
+        <span>{ev.kind === 'script' ? 'Script' : ev.kind === 'sound' ? 'Sound id' : 'Particle id'}</span>
+        {ev.kind === 'script' ? (
+          <textarea className="editor-input mono" rows={3} value={ev.effect} onChange={(e) => anim.patchEvent(ev.id, { effect: e.target.value })} />
+        ) : (
+          <>
+            <input className="editor-input mono" list="effect-ids" value={ev.effect} onChange={(e) => anim.patchEvent(ev.id, { effect: e.target.value })} />
+            <datalist id="effect-ids">
+              {suggestions.map((s) => (
+                <option key={s} value={s} />
+              ))}
+            </datalist>
+          </>
+        )}
+      </label>
+      {ev.kind !== 'script' ? (
+        <label className="editor-field">
+          <span>Plays at</span>
+          <select className="editor-select" value={ev.locator ?? ''} onChange={(e) => anim.patchEvent(ev.id, { locator: e.target.value || undefined }, false)}>
+            <option value="">The model</option>
+            {anim.nulls.map((n) => (
+              <option key={n.id} value={n.id}>
+                {n.name}
+              </option>
+            ))}
+          </select>
+        </label>
+      ) : null}
+      <div className="num-field-grid">
+        <div className="num-field-row">
+          <span className="num-field-row__label">Time</span>
+          <NumField axis="n" name="Effect time in seconds" step={0.05} value={ev.time} onChange={(time) => anim.patchEvent(ev.id, { time })} />
+          <span className="num-field-row__label" />
+          <span className="num-field-row__label" />
+        </div>
+      </div>
+      <div className="chip-row" style={{ marginTop: 9 }}>
+        <button className="chip chip--danger" onClick={() => anim.removeEvent(ev.id)}>
+          <Icon name="trash" size={11} /> Delete effect
         </button>
       </div>
     </>
@@ -2023,8 +2320,15 @@ function Timeline({
   const { clip } = anim
   const length = clip?.length ?? 1
   const [pxPerS, setPxPerS] = useState(PX_DEFAULT)
+  const [view, setView] = useState<'dope' | 'graph'>('dope')
+  // the panel's height, dragged from its top edge as in Blockbench
+  const [height, setHeight] = useState(216)
+  const resize = useRef<{ y: number; h: number } | null>(null)
   const main = useRef<HTMLDivElement>(null)
-  const drag = useRef<{ id: string; x: number; start: number } | null>(null)
+  const grid = useRef<HTMLDivElement>(null)
+  /** a key or event drag in progress: where it began and what it moves */
+  const drag = useRef<{ x: number; moved: boolean; kind: 'keys' | 'event'; id?: string; start?: number } | null>(null)
+  const [marquee, setMarquee] = useState<{ x0: number; y0: number; x1: number; y1: number; add: boolean } | null>(null)
 
   const clampPx = (v: number) => Math.max(PX_MIN, Math.min(PX_MAX, v))
 
@@ -2055,9 +2359,10 @@ function Timeline({
   const trackW = Math.max(ticks * tickStep * pxPerS, 1)
 
   const nameOf = useCallback(
-    (id: string) => anim.bones.find((b) => b.id === id)?.name ?? id,
-    [anim.bones],
+    (id: string) => anim.bones.find((b) => b.id === id)?.name ?? anim.nulls.find((n) => n.id === id)?.name ?? id,
+    [anim.bones, anim.nulls],
   )
+  const picked = useMemo(() => new Set(anim.selectedKeys), [anim.selectedKeys])
 
   /* One row per bone and channel. The selected bone shows all three
      channels, since an empty row is where a channel gets its first key.
@@ -2067,16 +2372,11 @@ function Timeline({
     const out: Row[] = []
     const seen = new Set<string>()
     if (anim.bone) {
-      for (const channel of CHANNELS) {
+      const isNull = anim.nulls.some((n) => n.id === anim.bone)
+      for (const channel of isNull ? (['position'] as Channel[]) : CHANNELS) {
         const key = `${anim.bone}:${channel}`
         seen.add(key)
-        out.push({
-          key,
-          bone: anim.bone,
-          boneName: nameOf(anim.bone),
-          channel,
-          track: findTrack(clip, anim.bone, channel),
-        })
+        out.push({ key, bone: anim.bone, boneName: nameOf(anim.bone), channel, track: findTrack(clip, anim.bone, channel) })
       }
     }
     for (const track of clip.tracks) {
@@ -2086,7 +2386,7 @@ function Timeline({
       out.push({ key, bone: track.bone, boneName: nameOf(track.bone), channel: track.channel, track })
     }
     return out
-  }, [clip, anim.bone, nameOf])
+  }, [clip, anim.bone, anim.nulls, nameOf])
 
   /* Playback keeps the playhead in a ref so `time` stays out of the loop's
      deps. Restarting the loop each frame would reset `last` and lose time. */
@@ -2150,8 +2450,97 @@ function Timeline({
     onTime(Math.max(0, Math.min(length, (e.clientX - r.left) / pxPerS)))
   }
 
+  /* Keys: a click selects one, Ctrl toggles, Shift adds, and a drag moves
+     every selected key together, as one undo step. */
+  const onKeyDown = (e: React.PointerEvent, kf: Key, bone: string) => {
+    e.stopPropagation()
+    if (e.button !== 0) return
+    const ctrl = e.ctrlKey || e.metaKey
+    if (ctrl) anim.selectKeys([kf.id], 'toggle')
+    else if (e.shiftKey) anim.selectKeys([kf.id], 'add')
+    else if (!picked.has(kf.id)) anim.selectKeys([kf.id], 'set')
+    anim.setBone(bone)
+    onPlaying(false)
+    if (ctrl) return
+    ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
+    drag.current = { x: e.clientX, moved: false, kind: 'keys' }
+    onTime(Math.min(kf.time, length))
+  }
+  const onKeyMove = (e: React.PointerEvent) => {
+    const d = drag.current
+    if (!d || d.kind !== 'keys' || e.buttons !== 1) return
+    const dt = (e.clientX - d.x) / pxPerS
+    if (!d.moved && Math.abs(e.clientX - d.x) < 3) return
+    if (!d.moved) {
+      d.moved = true
+      anim.moveKeys(0, 'start')
+    }
+    anim.moveKeys(dt, 'move')
+  }
+  const onKeyUp = () => {
+    const d = drag.current
+    if (d?.kind === 'keys' && d.moved) anim.moveKeys(0, 'end')
+    drag.current = null
+  }
+
+  /* An empty stretch of track: drag draws a box that selects the keys inside it. */
+  const boxStart = (e: React.PointerEvent) => {
+    if (e.button !== 0 || !grid.current) return
+    const r = grid.current.getBoundingClientRect()
+    setMarquee({ x0: e.clientX - r.left, y0: e.clientY - r.top, x1: e.clientX - r.left, y1: e.clientY - r.top, add: e.shiftKey || e.ctrlKey || e.metaKey })
+    ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
+  }
+  const boxMove = (e: React.PointerEvent) => {
+    if (!marquee || !grid.current) return
+    const r = grid.current.getBoundingClientRect()
+    setMarquee({ ...marquee, x1: e.clientX - r.left, y1: e.clientY - r.top })
+  }
+  const boxEnd = (e: React.PointerEvent) => {
+    if (!marquee || !grid.current) return
+    const r = grid.current.getBoundingClientRect()
+    const [lx, hx] = [Math.min(marquee.x0, marquee.x1), Math.max(marquee.x0, marquee.x1)]
+    const [ly, hy] = [Math.min(marquee.y0, marquee.y1), Math.max(marquee.y0, marquee.y1)]
+    const moved = hx - lx > 3 || hy - ly > 3
+    const ids: string[] = []
+    if (moved) {
+      grid.current.querySelectorAll<HTMLElement>('.timeline-key[data-key]').forEach((el) => {
+        const b = el.getBoundingClientRect()
+        const cx = b.left + b.width / 2 - r.left
+        const cy = b.top + b.height / 2 - r.top
+        if (cx >= lx && cx <= hx && cy >= ly && cy <= hy) ids.push(el.dataset.key!)
+      })
+      anim.selectKeys(ids, marquee.add ? 'add' : 'set')
+    } else if (!marquee.add) {
+      // a click on empty track moves the playhead there and clears the selection
+      anim.selectKeys([], 'set')
+      const track = (e.target as HTMLElement).closest('.timeline-track')
+      if (track) onTime(Math.max(0, Math.min(length, (e.clientX - track.getBoundingClientRect().left) / pxPerS)))
+    }
+    setMarquee(null)
+  }
+
+  const EVENT_GLYPH: Record<ClipEvent['kind'], string> = { sound: '♪', particle: '✦', script: '{}' }
+
   return (
-    <div className="editor-timeline">
+    <div className="editor-timeline" style={{ height }}>
+      <div
+        className="timeline-resize"
+        role="separator"
+        aria-orientation="horizontal"
+        aria-label="Resize the timeline"
+        title="Drag to resize the timeline"
+        onPointerDown={(e) => {
+          resize.current = { y: e.clientY, h: height }
+          ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
+        }}
+        onPointerMove={(e) => {
+          const r = resize.current
+          if (r) setHeight(Math.max(150, Math.min(Math.round(window.innerHeight * 0.65), r.h - (e.clientY - r.y))))
+        }}
+        onPointerUp={() => {
+          resize.current = null
+        }}
+      />
       <div className="timeline-bar">
         <button className="editor-tool" title="Jump to start" onClick={() => onTime(0)}>
           <Icon name="skipBack" size={14} />
@@ -2159,7 +2548,7 @@ function Timeline({
         <button
           className="editor-tool"
           aria-pressed={playing}
-          title={playing ? 'Pause' : 'Play'}
+          title={playing ? 'Pause (Space)' : 'Play (Space)'}
           onClick={() => onPlaying(!playing)}
           disabled={!clip}
         >
@@ -2192,64 +2581,74 @@ function Timeline({
           className="chip"
           title="How this animation ends"
           disabled={!clip}
-          onClick={() =>
-            clip && anim.patchClip({ loop: LOOPS[(LOOPS.indexOf(clip.loop) + 1) % LOOPS.length] })
-          }
+          onClick={() => clip && anim.patchClip({ loop: LOOPS[(LOOPS.indexOf(clip.loop) + 1) % LOOPS.length] })}
         >
           <Icon name="refresh" size={11} /> {clip?.loop === 'pingpong' ? 'ping-pong' : (clip?.loop ?? 'once')}
+        </button>
+        <span className="editor-separator" />
+        <div className="seg" role="group" aria-label="Timeline view">
+          <button className="chip" aria-pressed={view === 'dope'} onClick={() => setView('dope')} title="Dope sheet: keys on rows">
+            Dope sheet
+          </button>
+          <button className="chip" aria-pressed={view === 'graph'} onClick={() => setView('graph')} title="Graph editor: curves and handles">
+            Graph
+          </button>
+        </div>
+        <button
+          className="chip"
+          aria-pressed={anim.onion}
+          onClick={() => anim.setOnion(!anim.onion)}
+          title="Onion skin: show the pose at the previous and next keyframes"
+        >
+          Onion skin
         </button>
 
         <div className="editor-toolbar__right">
           <div className="editor-tools" role="group" aria-label="Timeline zoom">
-            <button
-              className="editor-tool"
-              title="Zoom the timeline out"
-              aria-label="Zoom timeline out"
-              onClick={() => setPxPerS((v) => clampPx(v / 1.5))}
-            >
+            <button className="editor-tool" title="Zoom the timeline out" aria-label="Zoom timeline out" onClick={() => setPxPerS((v) => clampPx(v / 1.5))}>
               <Icon name="minus" size={14} />
             </button>
             <button className="editor-tool" title="Fit the clip to the panel" aria-label="Fit timeline" onClick={fit}>
               <Icon name="resize" size={14} />
             </button>
-            <button
-              className="editor-tool"
-              title="Zoom the timeline in"
-              aria-label="Zoom timeline in"
-              onClick={() => setPxPerS((v) => clampPx(v * 1.5))}
-            >
+            <button className="editor-tool" title="Zoom the timeline in" aria-label="Zoom timeline in" onClick={() => setPxPerS((v) => clampPx(v * 1.5))}>
               <Icon name="plus" size={14} />
             </button>
           </div>
           <span className="editor-separator" />
           <button
             className="editor-tool"
-            title="Add a keyframe to the animated bone's rotation at the playhead"
+            title="Add a keyframe to the animated bone's rotation at the playhead (K)"
             aria-label="Add keyframe"
             disabled={!clip || !anim.bone}
-            onClick={() => anim.bone && anim.addKey(anim.bone, 'rotation')}
+            onClick={() => anim.bone && anim.addKey(anim.bone, anim.nulls.some((n) => n.id === anim.bone) ? 'position' : 'rotation')}
           >
             <Icon name="key" size={14} />
           </button>
           <button
             className="editor-tool"
-            title="Delete the selected keyframe"
-            aria-label="Delete keyframe"
-            disabled={!anim.selectedKey}
-            onClick={() => anim.selectedKey && anim.removeKey(anim.selectedKey)}
+            title="Delete the selected keyframes (Del)"
+            aria-label="Delete keyframes"
+            disabled={!anim.selectedKeys.length}
+            onClick={anim.removeKeys}
           >
             <Icon name="trash" size={14} />
           </button>
         </div>
       </div>
 
-      {clip ? (
+      {clip && view === 'graph' ? (
+        <GraphEditor anim={anim} time={time} onTime={onTime} pxPerS={pxPerS} trackW={trackW} ticks={ticks} tickStep={tickStep} />
+      ) : clip ? (
         /* names and tracks share one scroller so their rows stay aligned;
            the names column is sticky */
         <div className="timeline-main" ref={main}>
           <div
             className="timeline-grid"
+            ref={grid}
             style={{ ['--track-w' as string]: `${trackW}px`, ['--px-per-s' as string]: `${pxPerS}px` }}
+            onPointerMove={boxMove}
+            onPointerUp={boxEnd}
           >
             <div className="timeline-corner">Channels</div>
             <div className="timeline-ruler" style={{ width: trackW }} onPointerDown={scrub} onPointerMove={scrub}>
@@ -2261,15 +2660,60 @@ function Timeline({
               <span className="timeline-end" style={{ left: length * pxPerS }} title={`Clip ends at ${length}s`} />
             </div>
 
+            {/* Effects: sounds, particles and scripts, Blockbench's effect keyframes */}
+            <div className="timeline-name timeline-name--effects">
+              <Icon name="bell" size={11} />
+              <span className="timeline-name__bone">Effects</span>
+              {(['sound', 'particle', 'script'] as const).map((k) => (
+                <button
+                  key={k}
+                  className="timeline-name__button"
+                  title={`Add a ${k} effect at the playhead`}
+                  aria-label={`Add a ${k} effect`}
+                  onClick={() => anim.addEvent(k)}
+                >
+                  {EVENT_GLYPH[k]}
+                </button>
+              ))}
+            </div>
+            <div className="timeline-track timeline-track--effects" style={{ width: trackW }} onPointerDown={boxStart}>
+              {anim.events.map((ev) => (
+                <button
+                  key={ev.id}
+                  className="timeline-event"
+                  data-kind={ev.kind}
+                  data-selected={ev.id === anim.selectedEvent || undefined}
+                  style={{ left: ev.time * pxPerS }}
+                  title={`${ev.kind} @ ${ev.time.toFixed(2)}s: ${ev.effect || '(no effect yet)'}`}
+                  onPointerDown={(e) => {
+                    e.stopPropagation()
+                    if (e.button !== 0) return
+                    anim.selectEvent(ev.id)
+                    onTime(Math.min(ev.time, length))
+                    ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
+                    drag.current = { x: e.clientX, moved: false, kind: 'event', id: ev.id, start: ev.time }
+                  }}
+                  onPointerMove={(e) => {
+                    const d = drag.current
+                    if (!d || d.kind !== 'event' || d.id !== ev.id || e.buttons !== 1) return
+                    if (!d.moved && Math.abs(e.clientX - d.x) < 3) return
+                    d.moved = true
+                    anim.patchEvent(ev.id, { time: d.start! + (e.clientX - d.x) / pxPerS }, true)
+                  }}
+                  onPointerUp={() => {
+                    drag.current = null
+                  }}
+                >
+                  {EVENT_GLYPH[ev.kind]}
+                </button>
+              ))}
+            </div>
+
             {rows.map((r) => (
               <Fragment key={r.key}>
                 <div className="timeline-name" data-on={r.bone === anim.bone || undefined}>
-                  <Icon name="folder" size={11} />
-                  <button
-                    className="timeline-name__bone"
-                    aria-pressed={r.bone === anim.bone}
-                    onClick={() => anim.setBone(r.bone)}
-                  >
+                  <Icon name={anim.nulls.some((n) => n.id === r.bone) ? 'pivot' : 'folder'} size={11} />
+                  <button className="timeline-name__bone" aria-pressed={r.bone === anim.bone} onClick={() => anim.setBone(r.bone)}>
                     {r.boneName}
                   </button>
                   <span className="timeline-name__channel">{r.channel.slice(0, 3)}</span>
@@ -2289,6 +2733,7 @@ function Timeline({
                 <div
                   className="timeline-track"
                   style={{ width: trackW }}
+                  onPointerDown={boxStart}
                   onDoubleClick={(e) => {
                     const rect = e.currentTarget.getBoundingClientRect()
                     onTime(Math.max(0, Math.min(length, (e.clientX - rect.left) / pxPerS)))
@@ -2299,29 +2744,15 @@ function Timeline({
                     <button
                       key={kf.id}
                       className="timeline-key"
+                      data-key={kf.id}
                       data-interp={kf.interp}
-                      data-selected={kf.id === anim.selectedKey || undefined}
+                      data-selected={picked.has(kf.id) || undefined}
                       data-past-end={kf.time > length + 1e-9 || undefined}
                       style={{ left: kf.time * pxPerS }}
-                      title={`${r.boneName} \u00b7 ${r.channel} @ ${kf.time.toFixed(2)}s \u2192 ${kf.value.join(', ')} (${kf.interp})`}
-                      onPointerDown={(e) => {
-                        e.stopPropagation()
-                        ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
-                        drag.current = { id: kf.id, x: e.clientX, start: kf.time }
-                        anim.selectKey(kf.id)
-                        anim.setBone(r.bone)
-                        onTime(Math.min(kf.time, length))
-                        onPlaying(false)
-                      }}
-                      onPointerMove={(e) => {
-                        const d = drag.current
-                        if (!d || d.id !== kf.id || e.buttons !== 1) return
-                        anim.dragKey(kf.id, d.start + (e.clientX - d.x) / pxPerS, 'move')
-                      }}
-                      onPointerUp={() => {
-                        if (drag.current?.id === kf.id) anim.dragKey(kf.id, kf.time, 'up')
-                        drag.current = null
-                      }}
+                      title={`${r.boneName} · ${r.channel} @ ${kf.time.toFixed(2)}s → ${kf.value.join(', ')} (${kf.interp})`}
+                      onPointerDown={(e) => onKeyDown(e, kf, r.bone)}
+                      onPointerMove={onKeyMove}
+                      onPointerUp={onKeyUp}
                     />
                   ))}
                 </div>
@@ -2336,6 +2767,17 @@ function Timeline({
             )}
 
             <span className="timeline-playhead" style={{ left: `calc(var(--names-w) + ${time * pxPerS}px)` }} />
+            {marquee ? (
+              <span
+                className="timeline-marquee"
+                style={{
+                  left: Math.min(marquee.x0, marquee.x1),
+                  top: Math.min(marquee.y0, marquee.y1),
+                  width: Math.abs(marquee.x1 - marquee.x0),
+                  height: Math.abs(marquee.y1 - marquee.y0),
+                }}
+              />
+            ) : null}
           </div>
         </div>
       ) : (
@@ -2346,6 +2788,221 @@ function Timeline({
           </button>
         </div>
       )}
+    </div>
+  )
+}
+
+/* ================= graph editor ================= */
+
+const AXIS_COLOURS = ['#ff3b4e', '#7ad21c', '#2f8dff']
+
+/**
+ * Blockbench's graph editor: the picked bone's channel drawn as one curve per
+ * axis. Drag a key up and down to change its value and sideways to retime it;
+ * a bezier key shows its handles, which drag too. Each drag is one undo step.
+ */
+function GraphEditor({
+  anim,
+  time,
+  onTime,
+  pxPerS,
+  trackW,
+  ticks,
+  tickStep,
+}: {
+  anim: AnimApi
+  time: number
+  onTime: (t: number) => void
+  pxPerS: number
+  trackW: number
+  ticks: number
+  tickStep: number
+}) {
+  const clip = anim.clip!
+  const isNull = anim.nulls.some((n) => n.id === anim.bone)
+  const [channel, setChannel] = useState<Channel>(isNull ? 'position' : 'rotation')
+  const [axes, setAxes] = useState([true, true, true])
+  const track = anim.bone ? findTrack(clip, anim.bone, isNull ? 'position' : channel) : null
+  const picked = new Set(anim.selectedKeys)
+  const drag = useRef<{ kind: 'key' | 'left' | 'right'; id: string; axis: number; x: number; y: number; t0: number; v0: number; scale: number } | null>(null)
+
+  // the plot fills whatever height the timeline panel has
+  const scroller = useRef<HTMLDivElement>(null)
+  const [GRAPH_H, setGraphH] = useState(160)
+  useLayoutEffect(() => {
+    const el = scroller.current
+    if (!el) return
+    const ro = new ResizeObserver(() => setGraphH(Math.max(90, el.clientHeight - 30)))
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+
+  // the value range on screen, padded, and never flatter than one unit
+  const keys = track ? [...track.keys].sort((a, b) => a.time - b.time) : []
+  const samples = useMemo(() => {
+    if (!track) return [] as Vec3[]
+    const n = Math.max(2, Math.ceil(clip.length * pxPerS / 3))
+    return Array.from({ length: n + 1 }, (_, i) => sampleTrack(track, (i / n) * clip.length))
+  }, [track, clip.length, pxPerS])
+  const all = [...samples.flatMap((v) => v.filter((_, i) => axes[i])), ...keys.flatMap((k) => k.value.filter((_, i) => axes[i]))]
+  let lo = all.length ? Math.min(...all) : -1
+  let hi = all.length ? Math.max(...all) : 1
+  if (hi - lo < 1) {
+    const mid = (hi + lo) / 2
+    lo = mid - 0.5
+    hi = mid + 0.5
+  }
+  const pad = (hi - lo) * 0.12
+  lo -= pad
+  hi += pad
+  const yOf = (v: number) => GRAPH_H - ((v - lo) / (hi - lo)) * GRAPH_H
+  const unitsPerPx = (hi - lo) / GRAPH_H
+
+  const handleOf = (k: Key, side: 'left' | 'right', axis: number): [number, number] => {
+    const i = keys.indexOf(k)
+    const span = side === 'right' ? (keys[i + 1]?.time ?? k.time + 0.3) - k.time : k.time - (keys[i - 1]?.time ?? k.time - 0.3)
+    const h = k.handles
+    const dt = side === 'right' ? (h?.rightTime[axis] ?? span / 3) : (h?.leftTime[axis] ?? -span / 3)
+    const dv = side === 'right' ? (h?.rightValue[axis] ?? 0) : (h?.leftValue[axis] ?? 0)
+    return [k.time + dt, k.value[axis] + dv]
+  }
+
+  const begin = (kind: 'key' | 'left' | 'right', k: Key, axis: number) => (e: React.PointerEvent) => {
+    e.stopPropagation()
+    if (e.button !== 0) return
+    anim.selectKeys([k.id], e.shiftKey ? 'add' : 'set')
+    ;(e.currentTarget as Element).setPointerCapture(e.pointerId)
+    const [t0, v0] = kind === 'key' ? [k.time, k.value[axis]] : handleOf(k, kind, axis)
+    drag.current = { kind, id: k.id, axis, x: e.clientX, y: e.clientY, t0, v0, scale: unitsPerPx }
+    anim.burst.begin(kind === 'key' ? 'move keyframe' : 'bezier handle')
+  }
+  const move = (e: React.PointerEvent) => {
+    const d = drag.current
+    if (!d || !track) return
+    const dt = (e.clientX - d.x) / pxPerS
+    const dv = -(e.clientY - d.y) * d.scale
+    anim.burst.amend((m) => {
+      const c = m.clips.find((x) => x.id === clip.id)
+      const k = c?.tracks.flatMap((t) => t.keys).find((x) => x.id === d.id)
+      if (!c || !k) return m
+      if (d.kind === 'key') {
+        const value: Vec3 = [...k.value]
+        value[d.axis] = Math.round((d.v0 + dv) * 1000) / 1000
+        // Shift keeps the time; otherwise the key follows the pointer sideways too
+        return updateKey(m, c.id, k.id, e.shiftKey ? { value } : { value, time: d.t0 + dt })
+      }
+      const span = 0.3
+      const h = k.handles ?? { leftTime: [-span / 3, -span / 3, -span / 3] as Vec3, leftValue: [0, 0, 0] as Vec3, rightTime: [span / 3, span / 3, span / 3] as Vec3, rightValue: [0, 0, 0] as Vec3 }
+      const next = { leftTime: [...h.leftTime] as Vec3, leftValue: [...h.leftValue] as Vec3, rightTime: [...h.rightTime] as Vec3, rightValue: [...h.rightValue] as Vec3 }
+      const t = d.t0 + dt - k.time
+      const v = d.v0 + dv - k.value[d.axis]
+      if (d.kind === 'right') {
+        next.rightTime[d.axis] = Math.max(0.001, t)
+        next.rightValue[d.axis] = v
+      } else {
+        next.leftTime[d.axis] = Math.min(-0.001, t)
+        next.leftValue[d.axis] = v
+      }
+      return updateKey(m, c.id, k.id, { handles: next, interp: 'bezier' })
+    })
+  }
+  const end = () => {
+    if (drag.current) anim.burst.end()
+    drag.current = null
+  }
+
+  if (!anim.bone) return <div className="timeline-empty"><p>Pick a bone to see its curves.</p></div>
+
+  return (
+    <div className="graph">
+      <div className="graph__side">
+        <div className="graph__title">{anim.bones.find((b) => b.id === anim.bone)?.name ?? anim.nulls.find((n) => n.id === anim.bone)?.name}</div>
+        {(isNull ? (['position'] as Channel[]) : CHANNELS).map((c) => (
+          <button key={c} className="chip" aria-pressed={(isNull ? 'position' : channel) === c} onClick={() => setChannel(c)}>
+            {c}
+          </button>
+        ))}
+        <div className="graph__axes">
+          {['X', 'Y', 'Z'].map((a, i) => (
+            <button
+              key={a}
+              className="chip"
+              aria-pressed={axes[i]}
+              style={{ color: AXIS_COLOURS[i] }}
+              onClick={() => setAxes((v) => v.map((on, j) => (j === i ? !on : on)))}
+            >
+              {a}
+            </button>
+          ))}
+        </div>
+        <p className="editor-hint">Drag a key to change it. Shift keeps its time. Drag a handle to shape a bezier.</p>
+      </div>
+      <div className="graph__scroll" ref={scroller}>
+        <div className="timeline-ruler" style={{ width: trackW }} onPointerDown={(e) => {
+          const r = e.currentTarget.getBoundingClientRect()
+          onTime(Math.max(0, Math.min(clip.length, (e.clientX - r.left) / pxPerS)))
+        }}>
+          {Array.from({ length: ticks }, (_, i) => (
+            <span className="timeline-tick" key={i} style={{ width: tickStep * pxPerS }}>
+              {Number((i * tickStep).toFixed(2))}s
+            </span>
+          ))}
+        </div>
+        <svg className="graph__plot" width={trackW} height={GRAPH_H} onPointerMove={move} onPointerUp={end} onPointerCancel={end}>
+          <line className="graph__zero" x1={0} x2={trackW} y1={yOf(0)} y2={yOf(0)} />
+          <line className="graph__playhead" x1={time * pxPerS} x2={time * pxPerS} y1={0} y2={GRAPH_H} />
+          {[0, 1, 2].map((i) =>
+            axes[i] && samples.length ? (
+              <polyline
+                key={`c${i}`}
+                className="graph__curve"
+                style={{ stroke: AXIS_COLOURS[i] }}
+                points={samples.map((v, j) => `${((j / (samples.length - 1)) * clip.length * pxPerS).toFixed(1)},${yOf(v[i]).toFixed(1)}`).join(' ')}
+              />
+            ) : null,
+          )}
+          {keys.flatMap((k) =>
+            [0, 1, 2].flatMap((i) => {
+              if (!axes[i]) return []
+              const x = k.time * pxPerS
+              const y = yOf(k.value[i])
+              const out = []
+              if (k.interp === 'bezier' && picked.has(k.id)) {
+                for (const side of ['left', 'right'] as const) {
+                  const [ht, hv] = handleOf(k, side, i)
+                  out.push(
+                    <g key={`${k.id}${i}${side}`}>
+                      <line className="graph__arm" x1={x} y1={y} x2={ht * pxPerS} y2={yOf(hv)} />
+                      <circle className="graph__handle" cx={ht * pxPerS} cy={yOf(hv)} r={4} style={{ stroke: AXIS_COLOURS[i] }} onPointerDown={begin(side, k, i)} />
+                    </g>,
+                  )
+                }
+              }
+              out.push(
+                <rect
+                  key={`${k.id}${i}`}
+                  className="graph__key"
+                  data-selected={picked.has(k.id) || undefined}
+                  x={x - 4.5}
+                  y={y - 4.5}
+                  width={9}
+                  height={9}
+                  transform={`rotate(45 ${x} ${y})`}
+                  style={{ fill: AXIS_COLOURS[i] }}
+                  onPointerDown={begin('key', k, i)}
+                >
+                  <title>{`${'XYZ'[i]} ${k.value[i]} @ ${k.time.toFixed(2)}s (${k.interp})`}</title>
+                </rect>,
+              )
+              return out
+            }),
+          )}
+        </svg>
+        <div className="graph__range" style={{ height: GRAPH_H - 8 }}>
+          <span>{hi.toFixed(1)}</span>
+          <span>{lo.toFixed(1)}</span>
+        </div>
+      </div>
     </div>
   )
 }
@@ -2453,7 +3110,12 @@ export function Editor({ segments }: { segments: string[] }) {
   const [time, setTime] = useState(0)
   const [playing, setPlaying] = useState(false)
   const [pickedBone, setPickedBone] = useState<string | null>(null)
-  const [selectedKey, setSelectedKey] = useState<string | null>(null)
+  /* keyframes in pick order; the Keyframe panel edits the last */
+  const [selectedKeys, setSelectedKeys] = useState<string[]>([])
+  const selectedKey = selectedKeys[selectedKeys.length - 1] ?? null
+  const setSelectedKey = useCallback((id: string | null) => setSelectedKeys(id ? [id] : []), [])
+  const [selectedEvent, setSelectedEvent] = useState<string | null>(null)
+  const [onion, setOnion] = useState(false)
 
   // paint
   const [colour, setColour] = useState(PAINTS[1][1])
@@ -2722,59 +3384,134 @@ export function Editor({ segments }: { segments: string[] }) {
         }
         return [id]
       })
+      // a cube picked in Animate poses the bone that holds it, as in Blockbench
       if (bones.some((b) => b.id === id)) setPickedBone(id)
+      else if (mode === 'animate') {
+        const owner = ownerBone(model.bones, id)
+        if (owner) setPickedBone(owner)
+      }
       setVertexFrom(null)
     },
-    [bones],
+    [bones, mode, model.bones],
   )
 
   /* ---------------- gizmo ---------------- */
 
-  const rig = useMemo(() => buildRig(model), [model])
+  /* In Animate mode the gizmo works on the pose the viewport shows, IK
+     included; in every other mode on the rest pose. */
+  const pose = useMemo(() => (mode === 'animate' ? posedAt(model, clip, time) : {}), [mode, model, clip, time])
+  const rig = useMemo(() => buildRig(model, pose), [model, pose])
+  const selectedNull = useMemo(() => (model.nulls ?? []).find((n) => n.id === selected) ?? null, [model.nulls, selected])
 
-  /** Where the gizmo sits and which way its handles point, for the primary selection. */
+  /** What Animate mode poses: a selected null, else the selected bone, else the bone holding the selected cube. */
+  const poseTarget = useMemo(() => selectedNull?.id ?? animBone, [selectedNull, animBone])
+
+  /** Where the gizmo sits and which way its handles point. */
   const gizmo = useMemo<GizmoSpec | null>(() => {
+    const world: [Vec3, Vec3, Vec3] = [[1, 0, 0], [0, 1, 0], [0, 0, 1]]
+    const frameAxes = (f: DOMMatrix) => [0, 1, 2].map((i) => norm(applyDir(f, world[i]))) as [Vec3, Vec3, Vec3]
+
+    // a null object only moves, in Edit and in Animate
+    const asNull = (n: NullObject): GizmoSpec | null => {
+      if (tool !== 'move' || n.locked || !n.visible) return null
+      const parent = n.parent ? rig.bone.get(n.parent) : undefined
+      return { tool: 'move', anchor: nullWorld(rig, n, pose), axes: space === 'local' && parent ? frameAxes(parent) : world }
+    }
+
+    if (mode === 'animate') {
+      if (!clip || !poseTarget || !['move', 'rotate', 'scale'].includes(tool)) return null
+      const n = (model.nulls ?? []).find((x) => x.id === poseTarget)
+      if (n) return asNull(n)
+      const b = findBone(model.bones, poseTarget)
+      const f = rig.bone.get(poseTarget)
+      if (!b || !f || !b.visible) return null
+      const t = tool as GizmoSpec['tool']
+      const rot = add(b.rotation, pose[b.id]?.rotation ?? [0, 0, 0])
+      const rings = eulerAxes(parentFrame(rig, b.id).matrix, rot).map((r) => r.axis) as [Vec3, Vec3, Vec3]
+      return { tool: t, anchor: apply(f, [0, 0, 0]), axes: t === 'scale' || space === 'local' ? frameAxes(f) : world, rings }
+    }
+
     if (mode !== 'edit' || !selected) return null
+    if (selectedNull) return asNull(selectedNull)
     if (!['move', 'resize', 'rotate', 'pivot'].includes(tool)) return null
     const t = tool as GizmoSpec['tool']
-    const world: [Vec3, Vec3, Vec3] = [[1, 0, 0], [0, 1, 0], [0, 0, 1]]
     const c = model.cubes.find((x) => x.id === selected)
     if (c) {
       if (!c.visible || c.locked) return null
       const f = cubeFrame(rig, c)
-      const own = [0, 1, 2].map((i) => norm(applyDir(f, world[i]))) as [Vec3, Vec3, Vec3]
       const centre: Vec3 = [(c.from[0] + c.to[0]) / 2, (c.from[1] + c.to[1]) / 2, (c.from[2] + c.to[2]) / 2]
       const anchor = t === 'move' || t === 'resize' ? apply(f, sub(centre, c.origin)) : apply(f, [0, 0, 0])
       const rings = eulerAxes(parentFrame(rig, c.id).matrix, c.rotation).map((r) => r.axis) as [Vec3, Vec3, Vec3]
-      return { tool: t, anchor, axes: t === 'resize' || space === 'local' ? own : world, rings }
+      return { tool: t, anchor, axes: t === 'resize' || space === 'local' ? frameAxes(f) : world, rings }
     }
     const b = findBone(model.bones, selected)
     if (!b || b.locked || !b.visible || t === 'resize') return null
     const f = rig.bone.get(b.id)
     if (!f) return null
-    const own = [0, 1, 2].map((i) => norm(applyDir(f, world[i]))) as [Vec3, Vec3, Vec3]
     const rings = eulerAxes(parentFrame(rig, b.id).matrix, b.rotation).map((r) => r.axis) as [Vec3, Vec3, Vec3]
-    return { tool: t, anchor: apply(f, [0, 0, 0]), axes: space === 'local' ? own : world, rings }
-  }, [mode, tool, selected, model, rig, space])
+    return { tool: t, anchor: apply(f, [0, 0, 0]), axes: space === 'local' ? frameAxes(f) : world, rings }
+  }, [mode, tool, selected, selectedNull, model, rig, pose, space, clip, poseTarget])
 
   /** The model and rig when a drag began; every move is applied to these, never on top of the last move. */
-  const dragFrom = useRef<{ model: Model; rig: ReturnType<typeof buildRig>; ids: string[] } | null>(null)
+  const dragFrom = useRef<{ model: Model; rig: ReturnType<typeof buildRig>; pose: Pose; ids: string[] } | null>(null)
 
   const onGizmo = useCallback(
     (e: GizmoEvent) => {
       if (e.phase === 'start') {
-        const label = { move: 'move', resize: 'resize', rotate: 'rotate', pivot: 'move pivot', scale: 'scale' }[e.tool]
+        const label =
+          mode === 'animate' ? 'pose' : { move: 'move', resize: 'resize', rotate: 'rotate', pivot: 'move pivot', scale: 'scale' }[e.tool]
         history.begin(label)
-        dragFrom.current = { model, rig, ids: topLevel(model, selection) }
+        dragFrom.current = { model, rig, pose, ids: topLevel(model, selection) }
       }
       const from = dragFrom.current
       if (!from) return
       const { model: m0, rig: r0, ids } = from
       let next = m0
+      const nulls = m0.nulls ?? []
+      const toNullParent = (n: NullObject, d: Vec3) => (n.parent && r0.bone.get(n.parent) ? applyDir(r0.bone.get(n.parent)!.inverse(), d) : d)
 
-      if ((e.tool === 'move' || e.tool === 'pivot') && e.delta) {
-        const deltas = new Map(ids.map((id) => [id, toParentDir(r0, id, e.delta!)] as const))
+      if (mode === 'animate' && clip && poseTarget) {
+        /* Posing keys the dragged channel at the playhead, on top of what the
+           clip already says there, as Blockbench's auto-key does. */
+        const raw = samplePose(m0.clips.find((c) => c.id === clip.id) ?? clip, time)[poseTarget]
+        const n = nulls.find((x) => x.id === poseTarget)
+        const channel: Channel = e.tool === 'rotate' ? 'rotation' : e.tool === 'scale' ? 'scale' : 'position'
+        const base: Vec3 = raw?.[channel] ?? (channel === 'scale' ? [1, 1, 1] : [0, 0, 0])
+        let value: Vec3 = [...base]
+        if (channel === 'position' && e.delta) {
+          const d = n ? toNullParent(n, e.delta) : toParentDir(r0, poseTarget, e.delta)
+          value = add(base, d).map((v) => Math.round(v * 1e4) / 1e4) as Vec3
+        } else if (channel === 'rotation' && e.angle !== undefined) {
+          const b = findBone(m0.bones, poseTarget)
+          if (b) {
+            const axis = 'xyz'.indexOf(e.handle)
+            const rot = add(b.rotation, from.pose[poseTarget]?.rotation ?? [0, 0, 0])
+            const rate = eulerAxes(parentFrame(r0, poseTarget).matrix, rot)[axis].rate || Math.PI / 180
+            const step = e.ctrl ? 0 : e.shift ? 0.5 : 2.5
+            let v = base[axis] + (e.angle * Math.PI) / 180 / rate
+            if (step) v = Math.round(v / step) * step
+            value[axis] = Math.round(v * 1000) / 1000
+          }
+        } else if (channel === 'scale' && e.amount !== undefined) {
+          if (e.handle === 'uniform') value = base.map((v) => Math.max(0.01, v * (1 + e.amount!))) as Vec3
+          else {
+            const axis = 'xyz'.indexOf(e.handle)
+            value[axis] = Math.max(0.01, base[axis] * (1 + e.amount / 8))
+          }
+          value = value.map((v) => Math.round(v * 1000) / 1000) as Vec3
+        }
+        // keep the key's easing when there is one already
+        const c0 = m0.clips.find((c) => c.id === clip.id)
+        const existing = c0?.tracks.find((t) => t.bone === poseTarget && t.channel === channel)?.keys.find((k) => Math.abs(k.time - time) < 1e-4)
+        next = setKey(m0, clip.id, poseTarget, channel, time, value, existing?.interp ?? 'linear')
+      } else if ((e.tool === 'move' || e.tool === 'pivot') && e.delta) {
+        const deltas = new Map(ids.filter((id) => !nulls.some((n) => n.id === id)).map((id) => [id, toParentDir(r0, id, e.delta!)] as const))
         next = e.tool === 'move' ? translateNodes(m0, deltas) : movePivots(m0, deltas)
+        // null objects move by position, in their own parent's frame
+        const picked = new Set(selection)
+        if (e.tool === 'move' && nulls.some((n) => picked.has(n.id))) {
+          next = { ...next, nulls: (next.nulls ?? nulls).map((n) => (picked.has(n.id) && !n.locked ? { ...n, position: add(n.position, toNullParent(n, e.delta!)) } : n)) }
+        }
       } else if (e.tool === 'resize' && e.amount !== undefined) {
         const axis = 'xyz'.indexOf(e.handle) as 0 | 1 | 2
         const cubes = new Set(ids)
@@ -2805,7 +3542,7 @@ export function Editor({ segments }: { segments: string[] }) {
         dragFrom.current = null
       }
     },
-    [history, model, rig, selection, kind],
+    [history, model, rig, pose, selection, kind, mode, clip, poseTarget, time],
   )
 
   /* ---------------- vertex snap ---------------- */
@@ -2924,6 +3661,31 @@ export function Editor({ segments }: { segments: string[] }) {
       )
     },
     [selected, history, model.cubes],
+  )
+
+  const editNull = useCallback(
+    (id: string, patch: Partial<Omit<NullObject, 'id'>>) =>
+      history.commit('null object', (m) => ({ ...m, nulls: (m.nulls ?? []).map((n) => (n.id === id ? { ...n, ...patch } : n)) }), true),
+    [history],
+  )
+  const removeNull = useCallback(
+    (id: string) => {
+      history.commit('delete null object', (m) => {
+        const left = (m.nulls ?? []).filter((n) => n.id !== id)
+        return {
+          ...m,
+          nulls: left.length ? left : undefined,
+          // its keyed position and any effect that played at it go with it
+          clips: m.clips.map((c) => ({
+            ...c,
+            tracks: c.tracks.filter((t) => t.bone !== id),
+            events: c.events?.map((e) => (e.locator === id ? { ...e, locator: undefined } : e)),
+          })),
+        }
+      })
+      setSelection((cur) => cur.filter((x) => x !== id))
+    },
+    [history],
   )
 
   /** Tells the user why an edit on a locked node did nothing. */
@@ -3129,6 +3891,41 @@ export function Editor({ segments }: { segments: string[] }) {
 
   /* ---------------- animation ---------------- */
 
+  /** onion skin: the poses at the keyframes either side of the playhead */
+  const ghosts = useMemo(() => {
+    if (mode !== 'animate' || !onion || !clip) return undefined
+    const times = [...new Set(clip.tracks.flatMap((t) => t.keys.map((k) => k.time)))].sort((a, b) => a - b)
+    const before = [...times].reverse().find((t) => t < time - 1e-4)
+    const after = times.find((t) => t > time + 1e-4)
+    return [
+      ...(before !== undefined ? [{ time: before, side: 'before' as const }] : []),
+      ...(after !== undefined ? [{ time: after, side: 'after' as const }] : []),
+    ]
+  }, [mode, onion, clip, time])
+
+  /* While a clip plays, an effect whose time the playhead just passed shows
+     for a moment in the viewport, so its timing can be checked by eye. */
+  const [flash, setFlash] = useState<string | null>(null)
+  const lastTime = useRef(time)
+  useEffect(() => {
+    const prev = lastTime.current
+    lastTime.current = time
+    if (!playing || mode !== 'animate' || !clip?.events?.length) return
+    const passed = clip.events.filter((e) =>
+      time >= prev ? e.time > prev && e.time <= time : e.time > prev || e.time <= time,
+    )
+    if (!passed.length) return
+    const e = passed[passed.length - 1]
+    const glyph = e.kind === 'sound' ? '\u266a' : e.kind === 'particle' ? '\u2726' : '{}'
+    const at = e.locator ? ` at ${(model.nulls ?? []).find((n) => n.id === e.locator)?.name ?? '?'}` : ''
+    setFlash(`${glyph} ${e.effect || e.kind}${at}`)
+    const id = window.setTimeout(() => setFlash(null), 900)
+    return () => window.clearTimeout(id)
+  }, [time, playing, mode, clip, model.nulls])
+
+  /** the model when a key drag began; each step moves the keys from there */
+  const keyDragFrom = useRef<Model | null>(null)
+
   const anim = useMemo<AnimApi>(() => {
     const withClip = (label: string, fn: (m: Model, id: string) => Model, coalesce = false) => {
       if (!clip) return
@@ -3140,8 +3937,14 @@ export function Editor({ segments }: { segments: string[] }) {
       clips: model.clips,
       clip,
       bones,
-      bone: animBone,
-      setBone: setPickedBone,
+      bone: poseTarget,
+      setBone: (id) => {
+        if ((model.nulls ?? []).some((n) => n.id === id)) setSelection([id])
+        else {
+          setPickedBone(id)
+          if (selectedNull) setSelection([id])
+        }
+      },
       selectClip: (id) => {
         setClipId(id)
         setSelectedKey(null)
@@ -3179,7 +3982,7 @@ export function Editor({ segments }: { segments: string[] }) {
         withClip('add keyframe', (m, id) => setKey(m, id, bone, channel, time)),
       removeKey: (keyId) => {
         withClip('delete keyframe', (m, id) => deleteKey(m, id, keyId))
-        setSelectedKey((k) => (k === keyId ? null : k))
+        setSelectedKeys((ks) => ks.filter((k) => k !== keyId))
       },
       removeTrack: (bone, channel) => {
         withClip('clear channel', (m, id) => deleteTrack(m, id, bone, channel))
@@ -3187,6 +3990,83 @@ export function Editor({ segments }: { segments: string[] }) {
       },
       selectedKey,
       selectKey: setSelectedKey,
+      selectedKeys,
+      selectKeys: (ids, how) => {
+        setSelectedEvent(null)
+        setSelectedKeys((cur) =>
+          how === 'set'
+            ? ids
+            : how === 'add'
+              ? [...cur.filter((k) => !ids.includes(k)), ...ids]
+              : [...cur.filter((k) => !ids.includes(k)), ...ids.filter((k) => !cur.includes(k))],
+        )
+      },
+      moveKeys: (dt, phase) => {
+        if (!clip) return
+        if (phase === 'start') {
+          history.begin(selectedKeys.length > 1 ? 'move keyframes' : 'move keyframe')
+          keyDragFrom.current = model
+          setPlaying(false)
+          return
+        }
+        if (phase === 'end') {
+          history.end()
+          keyDragFrom.current = null
+          return
+        }
+        const base = keyDragFrom.current
+        if (base) history.amend(moveKeys(base, clip.id, new Set(selectedKeys), dt))
+      },
+      removeKeys: () => {
+        if (!selectedKeys.length) return
+        withClip(selectedKeys.length > 1 ? 'delete keyframes' : 'delete keyframe', (m, id) => deleteKeys(m, id, new Set(selectedKeys)))
+        setSelectedKeys([])
+      },
+      copyKeys: () => {
+        if (!clip) return
+        const got = copyKeys(clip, new Set(selectedKeys))
+        setSaveNote(got ? `Copied ${got.length} keyframe${got.length === 1 ? '' : 's'}` : 'Select keyframes to copy first.')
+        window.setTimeout(() => setSaveNote(null), 1800)
+      },
+      pasteKeys: () => {
+        const items = readKeyClipboard()
+        if (!clip || !items) return
+        const next = pasteKeys(model, clip.id, items, time, animBone)
+        history.commit('paste keyframes', next.model)
+        setSelectedKeys(next.ids)
+      },
+      setEasing: (interp) => withClip('easing', (m, id) => patchKeys(m, id, new Set(selectedKeys), { interp })),
+      burst: {
+        begin: (label) => {
+          setPlaying(false)
+          history.begin(label)
+        },
+        amend: (fn) => history.amend(fn),
+        end: () => history.end(),
+      },
+      onion,
+      setOnion,
+      nulls: model.nulls ?? [],
+      events: clip?.events ?? [],
+      selectedEvent,
+      selectEvent: (id) => {
+        setSelectedEvent(id)
+        if (id) setSelectedKeys([])
+      },
+      addEvent: (kindOf) => {
+        if (!clip) return
+        const effect = kindOf === 'sound' ? 'minecraft:entity.generic.hurt' : kindOf === 'particle' ? 'minecraft:flame' : ''
+        const next = addEvent(model, clip.id, { time, kind: kindOf, effect })
+        history.commit(`add ${kindOf} effect`, next.model)
+        setSelectedEvent(next.id)
+        setSelectedKeys([])
+      },
+      patchEvent: (eventId, patch, transient) =>
+        withClip('effect', (m, id) => updateEvent(m, id, eventId, patch), transient !== false),
+      removeEvent: (eventId) => {
+        withClip('delete effect', (m, id) => deleteEvent(m, id, eventId))
+        setSelectedEvent(null)
+      },
       dragKey: (keyId, t, phase) => {
         if (phase === 'up') return
         withClip('move keyframe', (m, id) => updateKey(m, id, keyId, { time: t }), true)
@@ -3208,7 +4088,7 @@ export function Editor({ segments }: { segments: string[] }) {
         return named.name
       },
     }
-  }, [model, kind, clip, bones, animBone, selectedKey, time, history])
+  }, [model, kind, clip, bones, animBone, poseTarget, selectedNull, selectedKey, selectedKeys, selectedEvent, onion, time, history, setSelectedKey])
 
   /* ---------------- file + edit actions ---------------- */
 
@@ -3243,6 +4123,17 @@ export function Editor({ segments }: { segments: string[] }) {
         setSelected(next.id)
         setPickedBone(next.id)
       },
+      // a null object starts at the pivot of the bone it rides on
+      onAddNull: () => {
+        const parent = bones.some((b) => b.id === selected) ? selected : ownerBone(model.bones, selected)
+        const at = parent ? findBone(model.bones, parent)?.origin ?? [0, 8, 0] : ([0, 8, 0] as Vec3)
+        const taken = new Set((model.nulls ?? []).map((n) => n.name))
+        let i = (model.nulls?.length ?? 0) + 1
+        while (taken.has(`null_${i}`)) i++
+        const item: NullObject = { id: newId(), name: `null_${i}`, parent, position: [...at] as Vec3, visible: true, locked: false }
+        history.commit('add null object', (m) => ({ ...m, nulls: [...(m.nulls ?? []), item] }))
+        setSelected(item.id)
+      },
       onDuplicate: () => {
         // every selected node, a bone with its whole subtree
         let m = model
@@ -3258,6 +4149,11 @@ export function Editor({ segments }: { segments: string[] }) {
         setSelection(made)
       },
       onDelete: () => {
+        const nullIds = new Set((model.nulls ?? []).map((n) => n.id))
+        if (selection.some((id) => nullIds.has(id))) {
+          for (const id of selection) if (nullIds.has(id)) removeNull(id)
+          if (selection.every((id) => nullIds.has(id))) return
+        }
         if (selection.length > 1) {
           const ids = topLevel(model, selection)
           if (!ids.length) {
@@ -3266,7 +4162,7 @@ export function Editor({ segments }: { segments: string[] }) {
           }
           let m = model
           for (const id of ids) m = bones.some((b) => b.id === id) ? deleteBone(m, id) : deleteCube(m, id)
-          history.commit('delete', m)
+          history.commit('delete', rehomeNulls(m))
           setSelection([])
           return
         }
@@ -3287,7 +4183,7 @@ export function Editor({ segments }: { segments: string[] }) {
           return
         }
         // deleting a bone deletes everything under it
-        const next = isBone ? deleteBone(model, selected) : deleteCube(model, selected)
+        const next = isBone ? rehomeNulls(deleteBone(model, selected)) : deleteCube(model, selected)
         if (next === model) return
         history.commit(isBone ? 'delete bone' : 'delete cube', next)
         setSelected(next.cubes[0]?.id ?? null)
@@ -3305,7 +4201,7 @@ export function Editor({ segments }: { segments: string[] }) {
         if (!copyNodes(model, ids)) return
         let m = model
         for (const id of ids) m = bones.some((b) => b.id === id) ? deleteBone(m, id) : deleteCube(m, id)
-        history.commit('cut', m)
+        history.commit('cut', rehomeNulls(m))
         setSelection([])
       },
       onPaste: () => {
@@ -3377,7 +4273,7 @@ export function Editor({ segments }: { segments: string[] }) {
       onAddKey: () => animBone && anim.addKey(animBone, 'rotation'),
       onCloseLoop: () => anim.closeLoop(),
     }),
-    [model, fileName, kind, textureIndex, loadModel, runSave, selected, selection, bones, history, anim, animBone, guarded, rescale, refuseLocked, setSelected, focusOn],
+    [model, fileName, kind, textureIndex, loadModel, runSave, selected, selection, bones, history, anim, animBone, guarded, rescale, refuseLocked, setSelected, focusOn, removeNull],
   )
 
   // keyboard shortcuts; all but Ctrl+S are ignored while a field has focus
@@ -3454,6 +4350,25 @@ export function Editor({ segments }: { segments: string[] }) {
       }
 
       const editing = mode === 'edit'
+      // in Animate, Ctrl C and Ctrl V copy and paste keyframes
+      if (mod && mode === 'animate') {
+        const k = e.key.toLowerCase()
+        if (k === 'c') {
+          e.preventDefault()
+          anim.copyKeys()
+          return
+        }
+        if (k === 'v') {
+          e.preventDefault()
+          anim.pasteKeys()
+          return
+        }
+        if (k === 'a' && clip) {
+          e.preventDefault()
+          anim.selectKeys(clip.tracks.flatMap((t) => t.keys.map((x) => x.id)), 'set')
+          return
+        }
+      }
       if (mod && editing) {
         const k = e.key.toLowerCase()
         const run: Record<string, () => void> = {
@@ -3528,7 +4443,9 @@ export function Editor({ segments }: { segments: string[] }) {
       if (e.key === 'Delete' || e.key === 'Backspace') {
         e.preventDefault()
         if (mode === 'animate') {
-          if (selectedKey) anim.removeKey(selectedKey)
+          if (selectedEvent) anim.removeEvent(selectedEvent)
+          else if (selectedKeys.length) anim.removeKeys()
+          else if (selectedNull) actions.onDelete()
         } else if (mode === 'edit') {
           actions.onDelete()
         }
@@ -3547,7 +4464,7 @@ export function Editor({ segments }: { segments: string[] }) {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [history, actions, anim, mode, selectedKey, animBone, selected, vertexFrom])
+  }, [history, actions, anim, mode, selectedKey, selectedKeys, selectedEvent, selectedNull, animBone, selected, vertexFrom, clip])
 
   // only .vellum files open here; anything else is refused before parsing
   const onFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -3611,6 +4528,7 @@ export function Editor({ segments }: { segments: string[] }) {
         onQuad={() => setQuad((q) => !q)}
         onAddCube={actions.onAddCube}
         onAddBone={actions.onAddBone}
+        onAddNull={actions.onAddNull}
         brush={brush}
         onBrush={setBrush}
         shape={shape}
@@ -3663,6 +4581,9 @@ export function Editor({ segments }: { segments: string[] }) {
           onBoxSelect={(ids, addTo) => setSelection((cur) => (addTo ? [...cur.filter((x) => !ids.includes(x)), ...ids] : ids))}
           vertices={vertices}
           hint={mode === 'edit' || mode === 'animate' ? TOOL_HINTS[tool] ?? null : null}
+          ghosts={ghosts}
+          showNulls={mode === 'edit' || mode === 'animate'}
+          flash={flash}
         />
 
         <div className="editor-rails">
@@ -3741,10 +4662,25 @@ export function Editor({ segments }: { segments: string[] }) {
                 <Panel title="Animation" count={clip ? clipLabel(clip.name) : 'none'}>
                   <AnimationPanel anim={anim} />
                 </Panel>
-                <Panel title="Keyframe" count={selectedKey ? 'selected' : undefined}>
-                  <KeyframePanel anim={anim} />
-                </Panel>
+                {selectedEvent ? (
+                  <Panel title="Effect" count={anim.events.find((e) => e.id === selectedEvent)?.kind}>
+                    <EventPanel anim={anim} />
+                  </Panel>
+                ) : (
+                  <Panel title="Keyframe" count={selectedKeys.length > 1 ? `${selectedKeys.length} selected` : selectedKey ? 'selected' : undefined}>
+                    <KeyframePanel anim={anim} />
+                  </Panel>
+                )}
+                {selectedNull ? (
+                  <Panel title="Null object" count={selectedNull.name}>
+                    <NullPanel item={selectedNull} bones={bones} snap={snap} onChange={(patch) => editNull(selectedNull.id, patch)} onDelete={() => removeNull(selectedNull.id)} />
+                  </Panel>
+                ) : null}
               </>
+            ) : selectedNull ? (
+              <Panel title="Null object" count={selectedNull.name}>
+                <NullPanel item={selectedNull} bones={bones} snap={snap} onChange={(patch) => editNull(selectedNull.id, patch)} onDelete={() => removeNull(selectedNull.id)} />
+              </Panel>
             ) : selectedBone ? (
               <Panel title="Bone" count={selectedBone.name}>
                 <BonePanel
@@ -3921,6 +4857,7 @@ export function Editor({ segments }: { segments: string[] }) {
                 onRename={rename}
                 onMove={move}
               />
+              <NullList nulls={model.nulls ?? []} selection={selection} onSelect={selectNode} />
             </Panel>
 
             <Panel title="Textures" count={model.textures.length}>
@@ -3993,7 +4930,7 @@ export function Editor({ segments }: { segments: string[] }) {
           {model.resolution.width} x {model.resolution.height}
         </span>
         <span className="editor-status__selection">
-          {saveNote ?? openError ?? `selected: ${cube?.name ?? selectedBone?.name ?? 'none'} · ${tool}`}
+          {saveNote ?? openError ?? `selected: ${selection.length > 1 ? `${selection.length} nodes` : (cube?.name ?? selectedBone?.name ?? selectedNull?.name ?? 'none')} · ${tool}`}
         </span>
         <div className="editor-status__right">
           <span className={errors || warnings ? 'editor-status__problems' : undefined}>

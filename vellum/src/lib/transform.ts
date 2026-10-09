@@ -93,6 +93,11 @@ export function translateNodes(model: Model, deltas: ReadonlyMap<string, Vec3>):
       const d = boneShift.get(b.id)
       return d ? { ...b, origin: addV(b.origin, d) } : b
     }),
+    // a null object rides on its bone, so it moves with it
+    nulls: model.nulls?.map((n) => {
+      const d = n.parent ? boneShift.get(n.parent) : undefined
+      return d ? { ...n, position: addV(n.position, d) } : n
+    }),
   }
 }
 
@@ -396,4 +401,19 @@ export function reorderNode(model: Model, id: string, beside: string, after: boo
     return { ...b, children: next }
   })
   return done ? { ...model, bones } : model
+}
+
+/** After bones are deleted, a null object that rode on one moves to the model root, where it was. */
+export function rehomeNulls(model: Model): Model {
+  if (!model.nulls?.length) return model
+  const live = new Set<string>()
+  const walk = (bones: Bone[]) => {
+    for (const b of bones) {
+      live.add(b.id)
+      walk(b.children.flatMap((c) => (c.kind === 'bone' ? [c.bone] : [])))
+    }
+  }
+  walk(model.bones)
+  // the null's position is absolute, so only the parent link changes
+  return { ...model, nulls: model.nulls.map((n) => (n.parent && !live.has(n.parent) ? { ...n, parent: null, ikTarget: n.ikTarget && live.has(n.ikTarget) ? n.ikTarget : undefined } : n.ikTarget && !live.has(n.ikTarget) ? { ...n, ikTarget: undefined } : n)) }
 }

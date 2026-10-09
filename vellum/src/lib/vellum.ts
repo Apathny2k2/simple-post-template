@@ -11,8 +11,7 @@
      stamps CURRENT_VERSION.
 
    Not in the file: pack models and textures, display transforms and
-   editor state. v8 added null objects (`nulls`), clip `events` and the
-   `pingpong` loop. */
+   editor state. v8 added `nulls`, clip `events` and `pingpong`. */
 
 import { FACES, subtypeFits } from './model'
 import type { Behaviour, BehaviourEffect, BehaviourRequirement, BehaviourStage, EffectKind } from './behaviour'

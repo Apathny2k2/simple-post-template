@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { Ref } from 'react'
 import { FACES, samplePose, textureById } from '../lib/model'
+import { buildRig, nullWorld, solveIK } from '../lib/kinematics'
 import type { Bone, Clip, Cube, Face as ModelFace, FaceKey, Model, Pose, Vec3 } from '../lib/model'
 import { Gizmo } from './Gizmo'
 import type { Basis, GizmoEvent, GizmoSpec } from './Gizmo'
@@ -27,6 +28,8 @@ export type VertexLayer = {
   own: boolean[]
   onPick: (index: number) => void
 }
+
+const EMPTY: ReadonlySet<string> = new Set()
 
 /** Probe length in model units: long enough to measure, short enough to stay near the anchor. */
 const PROBE = 4
@@ -364,6 +367,10 @@ type Props = {
   vertices?: VertexLayer | null
   /** called when the camera turns, with the yaw and pitch */
   onView?: (yaw: number, pitch: number) => void
+  /** onion skin: other moments of the clip drawn faintly, earlier ones blue, later ones orange */
+  ghosts?: Array<{ time: number; side: 'before' | 'after' }>
+  /** draws null objects as markers you can click */
+  showNulls?: boolean
   /** a click on empty space */
   onDeselect?: () => void
   /** When set, a left-button drag on a face paints. Other drags orbit or pan as usual. */
@@ -404,6 +411,8 @@ export function ModelView({
   onBoxSelect,
   vertices = null,
   onView,
+  ghosts,
+  showNulls = false,
   onDeselect,
   onPaint,
   display = null,
@@ -425,7 +434,17 @@ export function ModelView({
   const pinch = useRef(new Map<number, { x: number; y: number }>())
   const pinchStart = useRef<{ span: number; factor: number } | null>(null)
 
-  const pose = useMemo(() => samplePose(clip, time), [clip, time])
+  // the clip's pose with any IK chains bent toward their null objects
+  const pose = useMemo(() => solveIK(model, samplePose(clip, time)), [model, clip, time])
+  const ghostPoses = useMemo(
+    () => (ghosts ?? []).map((g) => ({ ...g, pose: solveIK(model, samplePose(clip, g.time)) })),
+    [ghosts, model, clip],
+  )
+  const nullMarks = useMemo(() => {
+    if (!showNulls || !model.nulls?.length) return []
+    const rig = buildRig(model, pose)
+    return model.nulls.filter((n) => n.visible).map((n) => ({ n, at: nullWorld(rig, n, pose) }))
+  }, [showNulls, model, pose])
   const picked = useMemo(
     () => new Set<string>(selection ?? (selected ? [selected] : [])),
     [selection, selected],
@@ -785,6 +804,33 @@ export function ModelView({
                 onSelect={onSelect}
                 onPaint={onPaint}
               />
+            ))}
+            {ghostPoses.map((g) => (
+              <div key={`ghost${g.time}`} className={`model-ghost model-ghost--${g.side}`} aria-hidden="true">
+                {model.bones.map((b) => (
+                  <BoneNode key={b.id} bone={b} parentOrigin={[0, 0, 0]} model={model} scale={scale} pose={g.pose} selected={EMPTY} />
+                ))}
+              </div>
+            ))}
+            {nullMarks.map(({ n, at }) => (
+              <div
+                key={n.id}
+                className={`model-null${picked.has(n.id) ? ' model-null--selected' : ''}${n.ikTarget ? ' model-null--ik' : ''}`}
+                data-null={n.id}
+                style={{ transform: worldPos(at) }}
+                title={n.ikTarget ? `${n.name} (IK target)` : n.name}
+                onPointerDown={
+                  onSelect
+                    ? (e) => {
+                        if (e.button !== 0) return
+                        e.stopPropagation()
+                        onSelect(n.id, { shift: e.shiftKey, ctrl: e.ctrlKey || e.metaKey })
+                      }
+                    : undefined
+                }
+              >
+                <span />
+              </div>
             ))}
             {gizmo
               ? [gizmo.anchor, ...([0, 1, 2] as const).map((i) => {

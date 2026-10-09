@@ -140,8 +140,9 @@ The reader refuses these files up front, before it reads a cube, with a
 
 ### Version 8: null objects, events and ping-pong
 
-v8 adds three things Blockbench animators expect. Each is optional, so a v7
-file reads as a v8 file with none of them, and the upgrade changes nothing.
+v8 adds what Blockbench animators expect from a file. Every addition is
+optional, so a v7 file reads as a v8 file with none of them, and the upgrade
+changes nothing.
 
 - **`nulls`**, after `clips`: Blockbench's null objects. Each has an `id`, a
   `name`, the `parent` bone it moves with, and an absolute `position`, like a
@@ -822,6 +823,44 @@ node picked is the primary one, which the panels and the gizmo follow.
 middle, and Mirror across the centre line, which mirrors it across x = 8 for
 blocks and items and x = 0 for mobs. The axis widget at the top right of the
 viewport looks along an axis when clicked.
+
+### Animating
+
+Animate mode follows Blockbench. Pick a bone (or click one of its cubes) and
+pose it with **Move** (V), **Rotate** (R) or **Scale** (S): each drag keys that
+channel at the playhead, on top of what the clip already says there, and keeps
+the key's easing. **K** keys the bone's rotation as it stands.
+
+The timeline has two views. The **dope sheet** has a row per bone and channel.
+Click a key to select it, Ctrl-click to toggle one and Shift-click to add one.
+Drag across empty track to box-select, and drag any selected key to move them
+all as one undo step. Ctrl A selects every key, Ctrl C and Ctrl V copy and
+paste them at the playhead (onto the picked bone when they came from one), and
+Del deletes them. The **graph** view draws the bone's channel as one curve per
+axis. Drag a key up or down to change its value and sideways to retime it
+(Shift keeps the time). A bezier key shows its two handles, which drag too. The
+timeline's top edge drags to make it taller.
+
+Easing is per key, for the segment that follows it: linear, smooth
+(Catmull-Rom), bezier or step. Bezier keys play through their handles, which
+are offsets in seconds and value from the key, as Blockbench stores them. A key
+with no handles gets flat ones a third of the way along, so it eases in and out.
+
+**Onion skin** draws the pose at the keyframe before the playhead in blue and at
+the next keyframe in orange. **Ping-pong** plays a clip to its end and back.
+
+**Effects** is the row at the top of the dope sheet, with ♪ sound, ✦ particle
+and {} script buttons that add an effect at the playhead. Select one to set its
+id, the null object it plays at and its time. While a clip plays, each effect
+shows in the viewport for a moment as the playhead passes it.
+
+**Null objects** (Edit, Add null object) are points that ride on a bone. On its
+own a null is a locator that effects can play at. Pick a bone under "IK: the
+bone that reaches for it" and the null becomes an IK target: the bones above
+that bone bend so it reaches the null, in Edit and during playback. A null's
+position can be keyed in Animate like a bone's. The solver is cyclic coordinate
+descent in `lib/kinematics.ts`, and it writes the bend into the pose as
+rotation offsets, the way keyed rotations are applied.
 
 ### How the gizmo finds the screen
 

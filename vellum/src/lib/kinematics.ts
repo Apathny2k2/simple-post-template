@@ -7,14 +7,51 @@
    same string is parsed here and conjugated by the Y flip, so the two can't
    drift apart. Needs DOMMatrix, which every browser has. */
 
-import type { Bone, Cube, Model, Pose, Vec3 } from './model'
+import { samplePose } from './model'
+import type { Bone, Clip, Cube, Model, NullObject, Pose, Vec3 } from './model'
 
 const flip = () => new DOMMatrix().scale(1, -1, 1)
 
-/** A model-space rotation matrix for Euler degrees, as ModelView applies them. */
-export function rotationMatrix(rot: Vec3): DOMMatrix {
+/** The same rotation built by parsing the CSS ModelView writes. Slow; kept to check `rotationMatrix` against. */
+export function rotationMatrixFromCss(rot: Vec3): DOMMatrix {
   const css = new DOMMatrix(`rotateX(${-rot[0]}deg) rotateY(${rot[1]}deg) rotateZ(${-rot[2]}deg)`)
   return flip().multiply(css).multiply(flip())
+}
+
+/**
+ * A model-space rotation matrix for Euler degrees, as ModelView applies them.
+ * Conjugating the CSS rotation by the Y flip gives Rx(rx)·Ry(ry)·Rz(rz) with
+ * the usual right-handed matrices.
+ */
+export function rotationMatrix(rot: Vec3): DOMMatrix {
+  const [a, b, c] = rot.map((d) => (d * Math.PI) / 180)
+  const [ca, sa, cb, sb, cc, sc] = [Math.cos(a), Math.sin(a), Math.cos(b), Math.sin(b), Math.cos(c), Math.sin(c)]
+  const r = [
+    [cb * cc, -cb * sc, sb],
+    [sa * sb * cc + ca * sc, -sa * sb * sc + ca * cc, -sa * cb],
+    [-ca * sb * cc + sa * sc, ca * sb * sc + sa * cc, ca * cb],
+  ]
+  // DOMMatrix takes column-major order
+  return new DOMMatrix([r[0][0], r[1][0], r[2][0], 0, r[0][1], r[1][1], r[2][1], 0, r[0][2], r[1][2], r[2][2], 0, 0, 0, 0, 1])
+}
+
+/** Euler degrees from the rotation part of a matrix, the inverse of `rotationMatrix`. */
+export function eulerOf(m: DOMMatrix): Vec3 {
+  // row r, column c is m{c}{r}
+  const r02 = m.m31
+  const b = Math.asin(Math.max(-1, Math.min(1, r02)))
+  let a: number
+  let c: number
+  if (Math.abs(r02) < 0.99999) {
+    a = Math.atan2(-m.m32, m.m33)
+    c = Math.atan2(-m.m21, m.m11)
+  } else {
+    // gimbal lock: X and Z turn about the same axis, so give it all to X
+    a = Math.atan2(m.m23, m.m22)
+    c = 0
+  }
+  const deg = (v: number) => Math.round(((v * 180) / Math.PI) * 1e4) / 1e4
+  return [deg(a), deg(b), deg(c)]
 }
 
 const translation = (v: Vec3) => new DOMMatrix().translate(v[0], v[1], v[2])
@@ -157,4 +194,89 @@ export function eulerAxes(parent: DOMMatrix, rot: Vec3): Array<{ axis: Vec3; rat
     const rate = len(w)
     return { axis: rate > 1e-9 ? scaleV(w, 1 / rate) : ([0, 0, 0] as Vec3), rate }
   })
+}
+
+/* ---------------- null objects and IK ---------------- */
+
+/** Where a null object is in world space, its keyed offset included. */
+export function nullWorld(rig: Rig, n: NullObject, pose: Pose = {}): Vec3 {
+  const parent = n.parent ? rig.bone.get(n.parent) : undefined
+  const origin = n.parent ? rig.bones.get(n.parent)?.origin ?? [0, 0, 0] : [0, 0, 0]
+  const local = add(sub(n.position, origin as Vec3), pose[n.id]?.position ?? [0, 0, 0])
+  return parent ? apply(parent, local) : local
+}
+
+const rotationOnly = (m: DOMMatrix) => {
+  const r = DOMMatrix.fromMatrix(m)
+  r.m41 = 0
+  r.m42 = 0
+  r.m43 = 0
+  return r
+}
+
+/** The matrix that turns `from` onto `to`, both directions. */
+function turnBetween(from: Vec3, to: Vec3): DOMMatrix | null {
+  const a = norm(from)
+  const b = norm(to)
+  const c = Math.max(-1, Math.min(1, dot(a, b)))
+  const angle = Math.acos(c)
+  if (angle < 1e-5) return null
+  let axis = cross(a, b)
+  if (len(axis) < 1e-9) axis = Math.abs(a[0]) < 0.9 ? cross(a, [1, 0, 0]) : cross(a, [0, 1, 0])
+  const n = norm(axis)
+  return new DOMMatrix().rotateAxisAngle(n[0], n[1], n[2], (angle * 180) / Math.PI)
+}
+
+/**
+ * Bends each IK chain so the end bone's pivot reaches its null, by cyclic
+ * coordinate descent: each bone in the chain, from the end up, turns to
+ * point the end at the target, and the pass repeats. The result is written
+ * into the pose as rotation offsets, the same way keyed rotations are.
+ */
+export function solveIK(model: Model, pose: Pose): Pose {
+  const goals = (model.nulls ?? []).filter((n) => n.ikTarget)
+  if (!goals.length) return pose
+  const out: Pose = { ...pose }
+  for (const goal of goals) {
+    let rig = buildRig(model, out)
+    const tip = goal.ikTarget!
+    if (!rig.bones.has(tip)) continue
+    const chain: string[] = []
+    let up = rig.boneParent.get(tip) ?? null
+    while (up && chain.length < (goal.ikChain ?? 2)) {
+      chain.push(up)
+      up = rig.boneParent.get(up) ?? null
+    }
+    if (!chain.length) continue
+    const target = nullWorld(rig, goal, out)
+    for (let pass = 0; pass < 12; pass++) {
+      for (const id of chain) {
+        const bone = rig.bones.get(id)!
+        const world = rig.bone.get(id)!
+        const pivot = apply(world, [0, 0, 0])
+        const end = apply(rig.bone.get(tip)!, [0, 0, 0])
+        const turn = turnBetween(sub(end, pivot), sub(target, pivot))
+        if (!turn) continue
+        const parentId = rig.boneParent.get(id)
+        const parent = rotationOnly(parentId ? rig.bone.get(parentId)! : new DOMMatrix())
+        // the bone's new local rotation: parent⁻¹ · turn · its world rotation
+        const local = parent.inverse().multiply(turn).multiply(rotationOnly(world))
+        const euler = eulerOf(local)
+        const prev = out[id]
+        out[id] = {
+          rotation: sub(euler, bone.rotation),
+          position: prev?.position ?? [0, 0, 0],
+          scale: prev?.scale ?? [1, 1, 1],
+        }
+        rig = buildRig(model, out)
+      }
+      if (len(sub(apply(rig.bone.get(tip)!, [0, 0, 0]), target)) < 0.01) break
+    }
+  }
+  return out
+}
+
+/** The pose a clip gives at `t`, with IK solved: what the viewport draws. */
+export function posedAt(model: Model, clip: Clip | null, t: number): Pose {
+  return solveIK(model, samplePose(clip, t))
 }

@@ -120,7 +120,7 @@ export type Texture = {
 export type Channel = 'rotation' | 'position' | 'scale'
 export type Interpolation = 'linear' | 'step' | 'catmullrom' | 'bezier'
 
-/** Bezier handles, all four arrays or none. Only stored: playback treats a bezier key as linear. */
+/** Bezier handles, all four arrays or none: offsets from the key in seconds and value, per axis. */
 export type Handles = {
   leftTime: Vec3
   leftValue: Vec3
@@ -290,6 +290,38 @@ const spline = (p0: number, p1: number, p2: number, p3: number, k: number) => {
   )
 }
 
+/**
+ * A bezier segment from key `a` to key `b` at time `t`, per axis, as
+ * Blockbench plays them. Handles are offsets from their key in seconds and
+ * value. `a` uses its right handle and `b` its left; a key with no handles
+ * gets flat ones a third of the way along, which eases in and out. Handle
+ * times are kept inside the segment, so time only runs forward.
+ */
+function bezierSegment(a: Key, b: Key, t: number): Vec3 {
+  const span = b.time - a.time || 1
+  const out: Vec3 = [0, 0, 0]
+  for (let i = 0; i < 3; i++) {
+    const rt = Math.max(0, Math.min(span, a.handles?.rightTime[i] ?? span / 3))
+    const rv = a.handles?.rightValue[i] ?? 0
+    const lt = Math.max(-span, Math.min(0, b.handles?.leftTime[i] ?? -span / 3))
+    const lv = b.handles?.leftValue[i] ?? 0
+    const x = [a.time, a.time + rt, b.time + lt, b.time]
+    const y = [a.value[i], a.value[i] + rv, b.value[i] + lv, b.value[i]]
+    const at = (p: number[], u: number) =>
+      (1 - u) ** 3 * p[0] + 3 * (1 - u) ** 2 * u * p[1] + 3 * (1 - u) * u ** 2 * p[2] + u ** 3 * p[3]
+    // x(u) rises from a.time to b.time, so bisection finds the u for t
+    let lo = 0
+    let hi = 1
+    for (let n = 0; n < 30; n++) {
+      const mid = (lo + hi) / 2
+      if (at(x, mid) < t) lo = mid
+      else hi = mid
+    }
+    out[i] = at(y, (lo + hi) / 2)
+  }
+  return out
+}
+
 /** A track's value at time `t`. Each segment eases by its first key's `interp`. */
 export function sampleTrack(track: Track, t: number): Vec3 {
   const keys = [...track.keys].sort((a, b) => a.time - b.time)
@@ -305,7 +337,7 @@ export function sampleTrack(track: Track, t: number): Vec3 {
     if (a.interp === 'step') return a.value
 
     const k = (t - a.time) / (b.time - a.time || 1)
-    // linear, and bezier too, since its handles are not sampled
+    if (a.interp === 'bezier') return bezierSegment(a, b, t)
     if (a.interp !== 'catmullrom') {
       return [
         a.value[0] + (b.value[0] - a.value[0]) * k,

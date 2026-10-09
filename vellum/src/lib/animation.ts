@@ -3,7 +3,7 @@
 
 import { newId } from './new-model'
 import { sampleTrack } from './model'
-import type { Bone, Channel, Clip, Interpolation, Key, Model, Track, Vec3 } from './model'
+import type { Bone, Channel, Clip, ClipEvent, Interpolation, Key, Model, Track, Vec3 } from './model'
 
 /** Two keys closer than this are the same key, in seconds. */
 const EPSILON = 1e-4
@@ -196,4 +196,117 @@ export function boneList(bones: Bone[], depth = 0): BoneRef[] {
       depth + 1,
     ),
   ])
+}
+
+/* ---------------- many keys at once ---------------- */
+
+/** Shifts keys by `dt` seconds, snapped. A moved key that lands on an unmoved one replaces it. */
+export function moveKeys(model: Model, clipId: string, ids: ReadonlySet<string>, dt: number): Model {
+  const clip = model.clips.find((c) => c.id === clipId)
+  if (!clip || !ids.size) return model
+  return mapTracks(model, clipId, (tracks) =>
+    tracks.map((track) => {
+      if (!track.keys.some((k) => ids.has(k.id))) return track
+      const moved = track.keys.filter((k) => ids.has(k.id)).map((k) => ({ ...k, time: snapTime(clip, k.time + dt) }))
+      const kept = track.keys.filter((k) => !ids.has(k.id) && !moved.some((m) => Math.abs(m.time - k.time) < EPSILON))
+      return { ...track, keys: [...kept, ...moved].sort((a, b) => a.time - b.time) }
+    }),
+  )
+}
+
+export function deleteKeys(model: Model, clipId: string, ids: ReadonlySet<string>): Model {
+  return mapTracks(model, clipId, (tracks) => tracks.map((t) => ({ ...t, keys: t.keys.filter((k) => !ids.has(k.id)) })))
+}
+
+/** Sets one field on many keys, such as their interpolation. */
+export function patchKeys(model: Model, clipId: string, ids: ReadonlySet<string>, patch: Partial<Omit<Key, 'id' | 'time'>>): Model {
+  return mapTracks(model, clipId, (tracks) =>
+    tracks.map((t) => (t.keys.some((k) => ids.has(k.id)) ? { ...t, keys: t.keys.map((k) => (ids.has(k.id) ? { ...k, ...patch } : k)) } : t)),
+  )
+}
+
+/** Copied keys, timed from the earliest one, so a paste lands them at the playhead. */
+export type KeyClip = Array<{ bone: string; channel: Channel; offset: number; key: Omit<Key, 'id' | 'time'> }>
+
+let keyClipboard: KeyClip | null = null
+export const readKeyClipboard = () => keyClipboard
+
+export function copyKeys(clip: Clip, ids: ReadonlySet<string>): KeyClip | null {
+  const picked = clip.tracks.flatMap((t) => t.keys.filter((k) => ids.has(k.id)).map((k) => ({ t, k })))
+  if (!picked.length) return null
+  const start = Math.min(...picked.map((p) => p.k.time))
+  keyClipboard = picked.map(({ t, k }) => ({
+    bone: t.bone,
+    channel: t.channel,
+    offset: k.time - start,
+    key: { value: [...k.value] as Vec3, interp: k.interp, handles: k.handles },
+  }))
+  return keyClipboard
+}
+
+/**
+ * Pastes at `at`. Keys copied from one bone go onto `onto` when it is given,
+ * as Blockbench pastes onto the selected bone; keys from several bones go back
+ * to their own. Returns the new keys' ids.
+ */
+export function pasteKeys(model: Model, clipId: string, items: KeyClip, at: number, onto?: string | null): { model: Model; ids: string[] } {
+  const clip = model.clips.find((c) => c.id === clipId)
+  if (!clip) return { model, ids: [] }
+  const oneBone = new Set(items.map((i) => i.bone)).size === 1
+  const ids: string[] = []
+  let next = model
+  for (const item of items) {
+    const bone = oneBone && onto ? onto : item.bone
+    const time = snapTime(clip, at + item.offset)
+    next = setKey(next, clipId, bone, item.channel, time, item.key.value, item.key.interp)
+    const c = next.clips.find((x) => x.id === clipId)!
+    const k = keyAt(findTrack(c, bone, item.channel), time)
+    if (k) {
+      if (item.key.handles) next = updateKey(next, clipId, k.id, { handles: item.key.handles })
+      ids.push(k.id)
+    }
+  }
+  return { model: next, ids }
+}
+
+/* ---------------- events (v8) ---------------- */
+
+export function addEvent(model: Model, clipId: string, event: Omit<ClipEvent, 'id'>): { model: Model; id: string } {
+  const id = newId()
+  return {
+    id,
+    model: {
+      ...model,
+      clips: model.clips.map((c) =>
+        c.id === clipId ? { ...c, events: [...(c.events ?? []), { ...event, id, time: snapTime(c, event.time) }].sort((a, b) => a.time - b.time) } : c,
+      ),
+    },
+  }
+}
+
+export function updateEvent(model: Model, clipId: string, id: string, patch: Partial<Omit<ClipEvent, 'id'>>): Model {
+  return {
+    ...model,
+    clips: model.clips.map((c) =>
+      c.id === clipId
+        ? {
+            ...c,
+            events: (c.events ?? [])
+              .map((e) => (e.id === id ? { ...e, ...patch, ...(patch.time !== undefined ? { time: snapTime(c, patch.time) } : {}) } : e))
+              .sort((a, b) => a.time - b.time),
+          }
+        : c,
+    ),
+  }
+}
+
+export function deleteEvent(model: Model, clipId: string, id: string): Model {
+  return {
+    ...model,
+    clips: model.clips.map((c) => {
+      if (c.id !== clipId) return c
+      const events = (c.events ?? []).filter((e) => e.id !== id)
+      return { ...c, events: events.length ? events : undefined }
+    }),
+  }
 }
