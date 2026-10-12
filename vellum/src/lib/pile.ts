@@ -1,5 +1,5 @@
 /* Ground piles: an item right-clicked onto the top of a block lies there as a
-   flat piece; more clicks with the same item pile more pieces on, and
+   small piece; more clicks with the same item pile more pieces on, and
    breaking the pile drops them all. The server plugin does the placing
    and dropping; Vellum makes the models it shows and the config it reads.
 
@@ -92,20 +92,20 @@ export function vanillaColour(path: string): string {
 export type PiecePlace = { x: number; z: number; layer: number; turn: -45 | -22.5 | 0 | 22.5 | 45 }
 
 /**
- * Eight places, filled in order: four on the block, then four lying across
- * them. Turns are the steps a Java model element may turn by, so every
- * stage is a valid model. Middles stay 4 pixels in from the edges, so an
- * 8-pixel piece never hangs over.
+ * Eight places, filled in order: one in the middle, four round it on the
+ * block, then three resting on top across the gaps. Turns are the steps a
+ * Java model element may turn by, so every stage is a valid model. A
+ * 5-pixel piece in the corners stays a pixel in from the edges.
  */
 export const PILE_LAYOUT: readonly PiecePlace[] = [
   { x: 8, z: 8, layer: 0, turn: 0 },
-  { x: 6, z: 6.5, layer: 0, turn: 22.5 },
-  { x: 10, z: 10, layer: 0, turn: -22.5 },
-  { x: 10.5, z: 5.5, layer: 0, turn: 45 },
-  { x: 7, z: 10.5, layer: 1, turn: -45 },
-  { x: 8.5, z: 7, layer: 1, turn: 22.5 },
-  { x: 6, z: 8.5, layer: 1, turn: 0 },
-  { x: 10, z: 8, layer: 1, turn: -22.5 },
+  { x: 4.5, z: 11.5, layer: 0, turn: 22.5 },
+  { x: 11.5, z: 11, layer: 0, turn: -22.5 },
+  { x: 11, z: 4.5, layer: 0, turn: 45 },
+  { x: 4.5, z: 5, layer: 0, turn: -45 },
+  { x: 6, z: 9.5, layer: 1, turn: -22.5 },
+  { x: 10, z: 7, layer: 1, turn: 22.5 },
+  { x: 7, z: 6, layer: 1, turn: 45 },
 ]
 
 /* ---------------- the piece ---------------- */
@@ -225,12 +225,12 @@ const ID = /^#?[a-z0-9_.-]+:[a-z0-9_./-]+$/
 export function checkPile(model: Model, set: PileSet): PileIssue[] {
   const out: PileIssue[] = []
   const b = pieceBounds(model)
-  if (!b) out.push({ level: 'error', message: 'A pile set needs a piece: add the cubes of one flat piece' })
+  if (!b) out.push({ level: 'error', message: 'A pile set needs a piece: add the cubes of one piece' })
   else {
     const across = Math.max(b.hi[0] - b.lo[0], b.hi[2] - b.lo[2])
     const tall = b.hi[1] - b.lo[1]
     if (across > PIECE_SPAN + 1e-6) out.push({ level: 'error', message: `The piece is ${+across.toFixed(2)} pixels across. A pile piece is at most ${PIECE_SPAN}, so eight fit on one block` })
-    if (tall > PIECE_HEIGHT + 1e-6) out.push({ level: 'error', message: `The piece stands ${+tall.toFixed(2)} pixels tall. A pile piece lies flat, at most ${PIECE_HEIGHT}` })
+    if (tall > PIECE_HEIGHT + 1e-6) out.push({ level: 'error', message: `The piece stands ${+tall.toFixed(2)} pixels tall. A pile piece lies low, at most ${PIECE_HEIGHT}` })
   }
   if (model.cubes.some((c) => c.rotation.some((v) => v !== 0))) out.push({ level: 'error', message: 'A pile piece turns as a whole on the block, so its own cubes cannot be turned' })
   if (model.meshes?.length) out.push({ level: 'warning', message: 'Java models are boxes only, so the meshes are left out of the pile' })

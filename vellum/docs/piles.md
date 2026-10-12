@@ -1,6 +1,6 @@
 # Ground piles: the plugin's half
 
-A player right-clicks the top of a block with a diamond, and a flat diamond
+A player right-clicks the top of a block with a diamond, and a small 3D diamond
 lies there. More clicks with diamonds pile more on, up to a limit. Breaking
 the pile drops the diamonds. The same goes for emeralds, iron ingots, raw
 gold, redstone and anything else a **pile set** lists.
@@ -40,8 +40,8 @@ So the **stage id** `vellum:pile/gems/emerald_3` is what you put in an item's
 `minecraft:item_model` component to show that stage.
 
 A stage model is a Java block model in the usual 0 to 16 space: the pieces
-lie on its floor (`y = 0`) and stand at most a few pixels tall, kept inside
-the 16 by 16 footprint. A vanilla texture (`minecraft:item/emerald`) is
+lie on its floor (`y = 0`), a full pile stands about 5 pixels tall in two
+layers, and everything stays inside the 16 by 16 footprint. A vanilla texture (`minecraft:item/emerald`) is
 only named in the model, so it changes with the player's texture pack. A custom
 texture is written into the pack beside the model.
 
@@ -170,7 +170,7 @@ Two entities per pile, both persistent:
   `minecraft:item_model` set to the stage id. No billboard. For variety,
   give each new pile a random yaw in steps of 90°.
 - **An interaction entity** is the hitbox. Put it at `(x + 0.5, y + 1, z + 0.5)`,
-  `0.75` wide and `0.25` tall, with `response` on so clicks register.
+  `0.75` wide and `0.375` tall, with `response` on so clicks register.
 
 Light: let the display take the light at its position (the default).
 
@@ -217,7 +217,7 @@ So the plugin can rely on these:
 
 ## A quick test list
 
-1. Sneak-right-click a stone block with a diamond: one flat diamond, one
+1. Sneak-right-click a stone block with a diamond: one diamond on the block, one
    diamond gone.
 2. Right-click it 7 more times: 8 diamonds, stage 8.
 3. Once more: a new pile next to it (`new-pile`), or nothing (`refuse`).

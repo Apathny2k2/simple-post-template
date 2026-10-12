@@ -33,6 +33,8 @@ test('a pile set: vanilla sets, checks, and every stage a valid Java model', asy
       twice: P.checkPile(m, twice).some((i) => /taken by both/.test(i.message)),
       badId: P.checkPile(m, badId).some((i) => /not an item id/.test(i.message)),
       elements: stages.map((s) => s.elements.length),
+      perPiece: m.cubes.length,
+      pieceTall: Math.max(...m.cubes.map((c) => c.to[1])) - Math.min(...m.cubes.map((c) => c.from[1])),
       inside,
       turns: [...turns].sort(),
       texture: stages[0].textures['0'],
@@ -48,7 +50,8 @@ test('a pile set: vanilla sets, checks, and every stage a valid Java model', asy
   assert.ok(r.turned > 0, 'a turned piece is refused')
   assert.ok(r.twice, 'an item claimed by two materials is refused')
   assert.ok(r.badId, 'a malformed item id is refused')
-  assert.deepEqual(r.elements, [1, 4, 8], 'one element per piece')
+  assert.ok(r.perPiece > 1 && r.pieceTall > 0, 'the starter piece is solid, made of more than one cube')
+  assert.deepEqual(r.elements, [1, 4, 8].map((n) => n * r.perPiece), 'every cube of every piece')
   assert.ok(r.inside, 'every stage stays inside the block')
   assert.ok(r.turns.every((t) => t === 'none' || /^y(-?(22\.5|45))$/.test(t)), `only Y turns Java allows: ${r.turns}`)
   assert.equal(r.texture, 'minecraft:item/diamond')

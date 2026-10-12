@@ -777,8 +777,9 @@ out.
 
 ### Ground piles
 
-A **pile set** is an item of type `pile`: the model is one flat piece (at most
-8 pixels across and 3 tall, not turned), and `Model.pile` lists the materials
+A **pile set** is an item of type `pile`: the model is one piece (at most
+8 pixels across and 3 tall, not turned; a new set starts with a small cut gem
+made of three cubes), and `Model.pile` lists the materials
 that lie as it. A material names the items it takes (ids and `#tags`) and its
 texture, either a vanilla path such as `minecraft:item/diamond`, which follows
 the player's texture pack, or one of the model's own textures. The four vanilla
@@ -786,7 +787,8 @@ sets (gems, ingots, raw ores, dusts) fill the list in one go. `src/lib/pile.ts`
 holds the logic; the Pile set panel in Model mode edits it and previews any
 stage of any material on a grass block.
 
-A pile holds 1 to 8 pieces. `PILE_LAYOUT` places them, turned only about Y by
+A pile holds 1 to 8 pieces. `PILE_LAYOUT` places five on the block and
+three resting on top of them, turned only about Y by
 angles Java allows, so every stage is a plain model. For a set `gems` and a
 material `diamond` the pack gets `models/item/pile/gems/diamond_<n>.json` and an
 item definition per count, so `vellum:pile/gems/diamond_3` is the stage id an

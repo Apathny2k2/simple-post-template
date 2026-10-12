@@ -21,7 +21,7 @@ export function PilePanel({ model, set, onChange }: { model: Model; set: PileSet
   return (
     <div className="pile">
       <p className="editor-hint">
-        This model is one flat piece. Placed on a block, the items below lie there as it, up to {set.max} to a pile, and breaking the pile drops them. The plugin does the placing.
+        This model is one piece, up to 8 pixels across and 3 tall. Placed on a block, the items below lie there as it, up to {set.max} to a pile, and breaking the pile drops them. The plugin does the placing.
       </p>
 
       {stage ? (

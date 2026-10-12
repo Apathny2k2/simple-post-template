@@ -141,34 +141,84 @@ function itemStarter(name: string): Model {
   }
 }
 
-/* A pile set's piece: one flat plane, 8 pixels across in the middle of
-   the block, wearing the whole icon on top and below, its edges bare, as a
-   Java item lies on the ground. It starts as the gems set. */
+/* A pile set's piece: a small cut gem, 5 pixels across and 2.5 tall, in
+   the middle of the block. Two crossed slabs make its octagonal girdle and
+   a smaller block on top is its table. Every face samples the 16 x 16
+   texture as if the icon lay under the gem, seen from above, so a vanilla
+   icon colours it the way the item looks. It starts as the gems set. */
 function pileStarter(name: string): Model {
-  const texture = starterTexture(16, `${name}.png`)
+  const texture = gemTexture(`${name}.png`)
   const t = texture.id
-  const cube = makeCube('piece', [4, 0, 4], [12, 0, 12], { origin: [8, 0, 8], texture: t })
-  const bare = { uv: [0, 0, 0, 0] as UVRect, texture: null }
-  cube.faces = {
-    up: { uv: [0, 0, 16, 16], texture: t },
-    down: { uv: [0, 16, 16, 0], texture: t },
-    north: { ...bare },
-    south: { ...bare },
-    east: { ...bare },
-    west: { ...bare },
+  // the texel square under a face seen from above, as a UV rect
+  const under = (x0: number, z0: number, x1: number, z1: number) => ({ uv: [x0, z0, x1, z1] as UVRect, texture: t })
+  const gemCube = (part: string, from: Vec3, to: Vec3): Cube => {
+    const cube = makeCube(part, from, to, { origin: [8, 0, 8], texture: t })
+    const [x0, , z0] = from
+    const [x1, , z1] = to
+    const band = 1.5
+    cube.faces = {
+      up: under(x0, z0, x1, z1),
+      down: under(x0, z1, x1, z0),
+      north: under(x0, z0, x1, z0 + band),
+      south: under(x0, z1 - band, x1, z1),
+      east: under(x1 - band, z0, x1, z1),
+      west: under(x0, z0, x0 + band, z1),
+    }
+    return cube
   }
-  const root = makeBone(name, [8, 0, 8], [{ kind: 'cube', id: cube.id }])
+  const cubes = [
+    gemCube('girdle', [5.5, 0, 6.5], [10.5, 1.5, 9.5]),
+    gemCube('girdle cross', [6.5, 0, 5.5], [9.5, 1.5, 10.5]),
+    gemCube('table', [6.5, 1.5, 6.5], [9.5, 2.5, 9.5]),
+  ]
+  const root = makeBone(name, [8, 0, 8], cubes.map((c) => ({ kind: 'cube' as const, id: c.id })))
   return {
     name,
     kind: 'items',
     subtype: 'pile',
     resolution: { width: 16, height: 16 },
     bones: [root],
-    cubes: [cube],
+    cubes,
     textures: [texture],
     clips: [],
     pile: pileSetOf('gems'),
   }
+}
+
+/** A cut gem painted as a 16 x 16 icon, lit from the top left: the pile piece's own texture until a material gives it another. */
+function gemTexture(name: string): Texture {
+  const rows = [
+    '................',
+    '.....oooooo.....',
+    '....oHHLLLMo....',
+    '...oHHLLLMMMo...',
+    '..oHLLTTTTMMDo..',
+    '.oHLLTTWTTTMMDo.',
+    '.oLLTTWWTTTMMDo.',
+    '.oLLTTTTTTTMDDo.',
+    '.oLMTTTTTTTMDDo.',
+    '.oLMMTTTTTMMDDo.',
+    '..oMMMTTTMMDDo..',
+    '...oMMMMMMDDo...',
+    '....oMMMDDDo....',
+    '.....oDDDDo.....',
+    '......oooo......',
+    '................',
+  ]
+  const ink: Record<string, string> = { o: '#0b3b3a', H: '#e8fffd', L: '#8ff3ea', T: '#56e3d8', W: '#ffffff', M: '#2bc4bb', D: '#16908b' }
+  const canvas = document.createElement('canvas')
+  canvas.width = 16
+  canvas.height = 16
+  const ctx = canvas.getContext('2d')
+  if (ctx)
+    rows.forEach((row, y) =>
+      [...row].forEach((ch, x) => {
+        if (!ink[ch]) return
+        ctx.fillStyle = ink[ch]
+        ctx.fillRect(x, y, 1, 1)
+      }),
+    )
+  return { id: newId(), name, width: 16, height: 16, uvWidth: 16, uvHeight: 16, source: canvas.toDataURL('image/png') }
 }
 
 /* A flask with a use clip: it tips back, the cork comes out, the level
