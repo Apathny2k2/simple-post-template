@@ -21,6 +21,12 @@ const khz = (f: number) => (f >= 1000 ? `${(f / 1000).toFixed(1)} kHz` : `${Math
 const pct = (v: number) => `${Math.round(v * 100)}%`
 const st = (v: number) => `${v > 0 ? '+' : ''}${Math.round(v * 10) / 10} st`
 const times = (v: number) => `×${Math.round(v * 100) / 100}`
+const VOWEL_NAMES = ['i', 'e', 'a', 'o', 'u']
+const vowelName = (v: number) => {
+  const a = Math.min(3, Math.floor(v))
+  const fr = v - a
+  return fr < 0.1 ? VOWEL_NAMES[a] : fr > 0.9 ? VOWEL_NAMES[a + 1] : `${VOWEL_NAMES[a]}→${VOWEL_NAMES[a + 1]}`
+}
 
 /* Small drawings of each wave for the source picker. */
 const WAVE_PATH: Record<Wave, string> = {
@@ -28,9 +34,11 @@ const WAVE_PATH: Record<Wave, string> = {
   triangle: 'M1 8 4 2l6 12 6-12 3 6',
   square: 'M1 8V2h5v12h6V2h6v6',
   saw: 'M1 14 7 2v12l6-12v12l6-12',
+  pluck: 'M1 8c1-7 2-7 3 0s2 6 3 0 2-4 3 0 2 3 3 0 2-2 3 0 1 1 3 0',
   noise: 'M1 8h2V3h2v9h2V5h2v8h2V2h2v10h2V6h2v2',
   hiss: 'M1 8l1-4 1 7 1-9 1 8 1-5 1 6 1-8 1 9 1-6 1 4 1-7 1 8 1-3 1 2 1-4 1 5',
   rumble: 'M1 9c2-3 3 3 5 0s2-5 4-2 3 4 5 1 2-3 4-1',
+  crackle: 'M1 8h3V2v12V8h5V5v6V8h4V1v14V8h5',
   sample: 'M1 8h3l1-5 2 10 2-12 2 14 2-9 2 4h3',
 }
 
@@ -88,6 +96,11 @@ export function LayerInspector({ layer: l, samples, onLayer, onImport }: LayerPr
   const c = layerColour(l)
   const k = (key: keyof Layer, label: string) => (v: number) => onLayer(label, { [key]: v } as Partial<Layer>)
   const isSample = l.wave === 'sample'
+  const isCrackle = l.wave === 'crackle'
+  const vowel = l.filter === 'vowel'
+  // FM bends the phase of an oscillator; the others have no phase to bend
+  const fmable = ['sine', 'triangle', 'square', 'saw'].includes(l.wave)
+  const rateOf = (v: number) => `${v < 100 ? v.toFixed(1) : Math.round(v)} /s`
   const tone = pitched(l.wave)
   const sampleIds = Object.keys(samples)
 
@@ -132,30 +145,33 @@ export function LayerInspector({ layer: l, samples, onLayer, onImport }: LayerPr
           </div>
         ) : null}
         <Knob
-          label={isSample ? 'Speed' : 'Pitch'}
+          label={isSample ? 'Speed' : isCrackle ? 'Clicks' : 'Pitch'}
           value={l.pitch}
-          min={20}
-          max={12000}
+          min={isCrackle ? 1 : 20}
+          max={isCrackle ? 4000 : 12000}
           log
           color={c}
           disabled={!tone}
-          format={isSample ? (v) => times(v / 440) : hz}
+          format={isSample ? (v) => times(v / 440) : isCrackle ? rateOf : hz}
           onChange={(v) => onLayer('Pitch', { pitch: v })}
         />
         <Knob
-          label={isSample ? 'End speed' : 'Pitch end'}
+          label={isSample ? 'End speed' : isCrackle ? 'Clicks end' : 'Pitch end'}
           value={l.pitchEnd}
-          min={20}
-          max={12000}
+          min={isCrackle ? 1 : 20}
+          max={isCrackle ? 4000 : 12000}
           log
           color={c}
           disabled={!tone}
-          format={isSample ? (v) => times(v / 440) : hz}
+          format={isSample ? (v) => times(v / 440) : isCrackle ? rateOf : hz}
           onChange={k('pitchEnd', 'Pitch end')}
         />
         <Knob label="Glide" value={l.glide} min={-1} max={1} step={0.01} color={c} disabled={!tone} format={(v) => (v === 0 ? 'even' : v > 0 ? `fast ${pct(v)}` : `slow ${pct(-v)}`)} onChange={k('glide', 'Glide')} />
         {l.wave === 'square' ? (
           <Knob label="Width" value={l.duty} min={0.05} max={0.95} step={0.01} color={c} format={pct} onChange={k('duty', 'Pulse width')} />
+        ) : null}
+        {l.wave === 'pluck' ? (
+          <Knob label="Brightness" value={l.bright} min={0} max={1} step={0.01} color={c} format={pct} onChange={k('bright', 'Brightness')} />
         ) : null}
         <Knob label="Level" value={l.gain} min={0} max={1.5} step={0.01} color={c} format={pct} onChange={k('gain', 'Level')} />
       </Section>
@@ -173,16 +189,26 @@ export function LayerInspector({ layer: l, samples, onLayer, onImport }: LayerPr
         title="Filter"
         aside={
           <div className="sb-seg" role="radiogroup" aria-label="Filter">
-            {(['off', 'lowpass', 'highpass', 'bandpass'] as FilterType[]).map((f) => (
+            {(['off', 'lowpass', 'highpass', 'bandpass', 'vowel'] as FilterType[]).map((f) => (
               <button key={f} role="radio" aria-checked={l.filter === f} onClick={() => onLayer('Filter', { filter: f })}>
-                {f === 'off' ? 'Off' : f === 'lowpass' ? 'Low' : f === 'highpass' ? 'High' : 'Band'}
+                {f === 'off' ? 'Off' : f === 'lowpass' ? 'Low' : f === 'highpass' ? 'High' : f === 'bandpass' ? 'Band' : 'Vowel'}
               </button>
             ))}
           </div>
         }
       >
-        <Knob label="Cutoff" value={l.cutoff} min={20} max={20000} log color={c} disabled={l.filter === 'off'} format={khz} onChange={k('cutoff', 'Cutoff')} />
-        <Knob label="Cutoff end" value={l.cutoffEnd} min={20} max={20000} log color={c} disabled={l.filter === 'off'} format={khz} onChange={k('cutoffEnd', 'Cutoff end')} />
+        {vowel ? (
+          <>
+            <Knob label="Vowel" value={l.vowel} min={0} max={4} step={0.05} color={c} format={vowelName} onChange={k('vowel', 'Vowel')} />
+            <Knob label="Vowel end" value={l.vowelEnd} min={0} max={4} step={0.05} color={c} format={vowelName} onChange={k('vowelEnd', 'Vowel end')} />
+            <Knob label="Throat" value={l.throat} min={0.4} max={2.5} log color={c} format={(v) => (v < 0.97 ? `big ${times(v)}` : v > 1.03 ? `small ${times(v)}` : 'a man’s')} onChange={k('throat', 'Throat')} />
+          </>
+        ) : (
+          <>
+            <Knob label="Cutoff" value={l.cutoff} min={20} max={20000} log color={c} disabled={l.filter === 'off'} format={khz} onChange={k('cutoff', 'Cutoff')} />
+            <Knob label="Cutoff end" value={l.cutoffEnd} min={20} max={20000} log color={c} disabled={l.filter === 'off'} format={khz} onChange={k('cutoffEnd', 'Cutoff end')} />
+          </>
+        )}
         <Knob label="Resonance" value={l.resonance} min={0.3} max={20} log color={c} disabled={l.filter === 'off'} format={(v) => `Q ${v.toFixed(1)}`} onChange={k('resonance', 'Resonance')} />
       </Section>
 
@@ -191,8 +217,8 @@ export function LayerInspector({ layer: l, samples, onLayer, onImport }: LayerPr
         <Knob label="Vib. depth" value={l.vibratoDepth} min={0} max={12} step={0.05} color={c} disabled={!tone} format={(v) => `${v.toFixed(2)} st`} onChange={k('vibratoDepth', 'Vibrato depth')} />
         <Knob label="Tremolo" value={l.tremoloRate} min={0} max={40} step={0.1} color={c} format={(v) => `${v.toFixed(1)} Hz`} onChange={k('tremoloRate', 'Tremolo rate')} />
         <Knob label="Trem. depth" value={l.tremoloDepth} min={0} max={1} step={0.01} color={c} format={pct} onChange={k('tremoloDepth', 'Tremolo depth')} />
-        <Knob label="FM ratio" value={l.fmRatio} min={0.25} max={8} log color={c} disabled={!tone || isSample || l.wave === 'noise'} format={times} onChange={k('fmRatio', 'FM ratio')} />
-        <Knob label="FM amount" value={l.fmIndex} min={0} max={10} step={0.05} color={c} disabled={!tone || isSample || l.wave === 'noise'} format={(v) => v.toFixed(2)} onChange={k('fmIndex', 'FM amount')} />
+        <Knob label="FM ratio" value={l.fmRatio} min={0.25} max={8} log color={c} disabled={!fmable} format={times} onChange={k('fmRatio', 'FM ratio')} />
+        <Knob label="FM amount" value={l.fmIndex} min={0} max={10} step={0.05} color={c} disabled={!fmable} format={(v) => v.toFixed(2)} onChange={k('fmIndex', 'FM amount')} />
       </Section>
 
       <Section title="Grit">

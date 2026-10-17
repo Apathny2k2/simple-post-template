@@ -11,7 +11,7 @@
    which is why a sound can export as several variants. */
 
 import { encodeVorbis } from './vorbis'
-import { RATE, layerEnd, render, variantShifts } from './synth'
+import { RATE, layer, layerEnd, render, variantShifts } from './synth'
 import type { SampleData, Samples, Sound } from './synth'
 import { fromPreset, presets } from './presets'
 import { makeZip } from '../zip'
@@ -31,7 +31,7 @@ const SAMPLE_KEY = 'vellum.sounds.samples.v1'
 
 /** A first board: a few presets to play with. */
 export function starterBoard(): Board {
-  const pick = ['Orb chime', 'Pickup pop', 'Wood knock', 'Explosion', 'Teleport', 'Groan', 'Bell', 'Splash']
+  const pick = ['Orb pickup', 'Item pickup', 'Wood break', 'Explosion', 'Teleport', 'Zombie', 'Bell', 'Splash']
   return {
     sounds: pick.map((n) => fromPreset(presets.find((p) => p.name === n)!)),
     namespace: 'vellum',
@@ -46,7 +46,9 @@ export function loadBoard(): Board {
     const raw = localStorage.getItem(KEY)
     if (raw) {
       const b = JSON.parse(raw) as Board
-      if (Array.isArray(b.sounds)) return { ...starterBoard(), ...b }
+      // a layer saved before a knob existed takes that knob's default
+      if (Array.isArray(b.sounds))
+        return { ...starterBoard(), ...b, sounds: b.sounds.map((s) => ({ ...s, layers: s.layers.map((l) => layer(l)) })) }
     }
   } catch {
     // private windows and blocked storage start from the starter board

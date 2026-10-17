@@ -7,9 +7,11 @@ const WAVE: Record<Wave, string> = {
   triangle: 'var(--teal)',
   square: 'var(--violet)',
   saw: 'var(--amber)',
+  pluck: '#e7b56a',
   noise: 'var(--green)',
   hiss: '#c9d3e3',
   rumble: 'var(--red)',
+  crackle: '#ff9f6b',
   sample: '#f08bd1',
 }
 

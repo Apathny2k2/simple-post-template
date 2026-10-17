@@ -1,14 +1,15 @@
 /* The sound console's synth. A sound is a stack of layers mixed into one
    mono track, then echo, reverb and a level. Each layer is one source (an
-   oscillator, a noise or an imported sample) with a pitch glide, an
-   envelope, a filter sweep, modulation, drive, a bit crusher and repeats.
+   oscillator, a plucked string, a noise, a crackle or an imported sample)
+   with a pitch glide, an envelope, a filter or vowel sweep, modulation,
+   drive, a bit crusher and repeats.
 
    It renders offline, sample by sample, in plain code rather than through
    Web Audio. A sound then sounds the same everywhere, the export is the
    preview, and a seed makes the noise and the jitter repeatable. */
 
-export type Wave = 'sine' | 'triangle' | 'square' | 'saw' | 'noise' | 'hiss' | 'rumble' | 'sample'
-export type FilterType = 'off' | 'lowpass' | 'highpass' | 'bandpass'
+export type Wave = 'sine' | 'triangle' | 'square' | 'saw' | 'pluck' | 'noise' | 'hiss' | 'rumble' | 'crackle' | 'sample'
+export type FilterType = 'off' | 'lowpass' | 'highpass' | 'bandpass' | 'vowel'
 
 export type Layer = {
   id: string
@@ -29,6 +30,8 @@ export type Layer = {
   glide: number
   /** pulse width of the square, 0.05..0.95 */
   duty: number
+  /** 0..1: how long a pluck keeps its top end, from a thud to a wire */
+  bright: number
   attack: number
   decay: number
   sustain: number
@@ -44,6 +47,11 @@ export type Layer = {
   cutoff: number
   cutoffEnd: number
   resonance: number
+  /** the vowel filter's position at the start and the end: 0 i, 1 e, 2 a, 3 o, 4 u */
+  vowel: number
+  vowelEnd: number
+  /** the vowel filter's formants scaled: below 1 a bigger throat, above 1 a smaller one */
+  throat: number
   drive: number
   crush: number
   repeats: number
@@ -69,6 +77,16 @@ export type Master = {
   variation: number
 }
 
+/** The game's own sound a sound imitates, to compare it with. */
+export type Vanilla = {
+  /** the sound event, without `minecraft:` */
+  event: string
+  /** the pitch the game usually plays it at; /playsound needs it to compare fairly */
+  pitch: number
+  /** what it sounds like, in a few words */
+  like: string
+}
+
 export type Sound = {
   id: string
   name: string
@@ -80,6 +98,8 @@ export type Sound = {
   event?: string
   /** how many files the export writes, each a little different */
   variants?: number
+  /** the vanilla sound a preset was made to sound like */
+  vanilla?: Vanilla
 }
 
 export type SampleData = { name: string; rate: number; data: Float32Array }
@@ -92,13 +112,15 @@ export const WAVES: { id: Wave; label: string }[] = [
   { id: 'triangle', label: 'Triangle' },
   { id: 'square', label: 'Square' },
   { id: 'saw', label: 'Saw' },
+  { id: 'pluck', label: 'Pluck' },
   { id: 'noise', label: 'Noise' },
   { id: 'hiss', label: 'Hiss' },
   { id: 'rumble', label: 'Rumble' },
+  { id: 'crackle', label: 'Crackle' },
   { id: 'sample', label: 'Sample' },
 ]
 
-/** Pitch means nothing to the two unpitched noises. */
+/** Pitch means nothing to the two plain noises. For a crackle it is clicks a second. */
 export const pitched = (w: Wave) => w !== 'hiss' && w !== 'rumble'
 
 let next = 0
@@ -118,6 +140,7 @@ export function layer(over: Partial<Layer> = {}): Layer {
     pitchEnd: 440,
     glide: 0,
     duty: 0.5,
+    bright: 0.5,
     attack: 0.005,
     decay: 0.2,
     sustain: 0.4,
@@ -132,6 +155,9 @@ export function layer(over: Partial<Layer> = {}): Layer {
     cutoff: 2000,
     cutoffEnd: 2000,
     resonance: 0.7,
+    vowel: 2,
+    vowelEnd: 2,
+    throat: 1,
     drive: 0,
     crush: 0,
     repeats: 1,
@@ -215,6 +241,25 @@ function envelope(l: Layer, t: number, len: number) {
   return v
 }
 
+/* Formants of a man's voice (Peterson and Barney), in the order the vowel
+   knob runs: front to back, so a sweep between neighbours sounds natural. */
+const VOWELS = [
+  [270, 2290, 3010], // i, as in "beet"
+  [530, 1840, 2480], // e, as in "bet"
+  [730, 1090, 2440], // a, as in "father"
+  [570, 840, 2410], // o, as in "bought"
+  [300, 870, 2240], // u, as in "boot"
+]
+const FORMANT_BW = [80, 90, 120]
+const FORMANT_GAIN = [1, 0.6, 0.3]
+
+function formants(v: number, throat: number) {
+  const x = Math.max(0, Math.min(4, v))
+  const a = Math.min(3, Math.floor(x))
+  const fr = x - a
+  return VOWELS[a].map((f, i) => (f + (VOWELS[a + 1][i] - f) * fr) * throat)
+}
+
 class Biquad {
   b0 = 1
   b1 = 0
@@ -284,6 +329,7 @@ function renderHit(
   const n0 = Math.round(start * rate)
   const n = Math.round(len * rate)
   const filter = new Biquad()
+  const vowelBank = l.filter === 'vowel' ? [new Biquad(), new Biquad(), new Biquad()] : null
   const sample = l.wave === 'sample' && l.sample ? samples[l.sample] : undefined
   if (l.wave === 'sample' && !sample) return
   let phase = rand() // a fresh phase per hit keeps repeats from sounding pasted
@@ -291,6 +337,14 @@ function renderHit(
   let held = 0 // the pitched noise's current value
   let brown = 0
   let samplePos = 0
+  // the pluck's string: a delay line as long as one period, at most 20 Hz
+  const ks = l.wave === 'pluck' ? new Float32Array(Math.ceil(rate / 20) + 4) : null
+  let ksAt = 0
+  let ksBurst = 0
+  let ksLow = 0
+  // the crackle's current click
+  let click = 0
+  let clickFall = 0
   let crushHold = 0
   let crushVal = 0
   const holdN = 1 + Math.floor(l.crush * l.crush * 16)
@@ -326,6 +380,43 @@ function renderHit(
         }
         break
       }
+      case 'pluck': {
+        /* Karplus-Strong: a burst of noise one period long goes round the
+           delay line, and the two-point average on each pass takes the top
+           off, as a plucked string loses it. */
+        const buf = ks!
+        const size = buf.length
+        const period = Math.min(size - 3, rate / f)
+        const back = ksAt - period
+        const j = Math.floor(back)
+        const fr = back - j
+        const at = (k: number) => buf[((k % size) + size) % size]
+        const a0 = at(j) * (1 - fr) + at(j + 1) * fr
+        const a1 = at(j - 1) * (1 - fr) + at(j) * fr
+        const soft = 0.5 - 0.48 * l.bright
+        let y = (a0 * (1 - soft) + a1 * soft) * 0.9995
+        if (ksBurst < period) {
+          // the pluck itself: noise, darker when the string is dull
+          ksLow += (rand() * 2 - 1 - ksLow) * (0.15 + 0.85 * l.bright)
+          y += ksLow
+          ksBurst++
+        }
+        buf[ksAt % size] = y
+        ksAt++
+        s = y
+        break
+      }
+      case 'crackle': {
+        // clicks at random, `f` a second on average, each a tiny burst of its own size
+        if (rand() < f / rate) {
+          const r = rand()
+          click = (0.25 + 0.75 * r * r) * (rand() < 0.5 ? -1 : 1)
+          clickFall = Math.exp(-1 / (rate * (0.0003 + rand() * 0.0025)))
+        }
+        s = click * (rand() * 2 - 1)
+        click *= clickFall
+        break
+      }
       case 'noise': {
         // a new random value 32 times a cycle, so pitch sets how coarse it is
         const before = Math.floor(phase * 32)
@@ -359,7 +450,14 @@ function renderHit(
     mod += dt * l.fmRatio
     if (mod >= 1) mod -= Math.floor(mod)
 
-    if (l.filter !== 'off') {
+    if (vowelBank) {
+      if ((i & 15) === 0) {
+        const fs = formants(l.vowel + (l.vowelEnd - l.vowel) * u, l.throat)
+        // resonance 2 gives a voice's own bandwidths; less blurs the vowel, more rings
+        for (let b = 0; b < 3; b++) vowelBank[b].set('bandpass', fs[b], (fs[b] / FORMANT_BW[b]) * (l.resonance / 2), rate)
+      }
+      s = vowelBank[0].run(s) * FORMANT_GAIN[0] + vowelBank[1].run(s) * FORMANT_GAIN[1] + vowelBank[2].run(s) * FORMANT_GAIN[2]
+    } else if (l.filter !== 'off') {
       if ((i & 15) === 0) {
         const c = l.cutoff * Math.pow(l.cutoffEnd / l.cutoff, u)
         filter.set(l.filter, c, l.resonance, rate)

@@ -119,6 +119,129 @@ test('every preset renders, encodes and decodes; variants differ; the seed repea
   await page.close()
 })
 
+test('the pluck holds its pitch, the vowel filter shapes vowels, the crackle clicks at its rate', async () => {
+  const { page, errors } = await open()
+  const r = await inApp(page, async () => {
+    const S = await import('/src/lib/audio/synth.ts')
+    const M = await import('/src/lib/audio/measure.ts')
+    const one = (l) => S.render({ id: 's', name: 't', group: 'Player', seed: 5, layers: [S.layer(l)], master: S.master({ variation: 0 }) })
+    const plucks = [92.5, 185, 370, 740, 1480].map((f) => M.measure(one({ wave: 'pluck', pitch: f, pitchEnd: f, length: 0.8, decay: 0.7, sustain: 0, bright: 0.7 }), S.RATE).pitchStart)
+    // a voice at 120 Hz through each vowel: how strong its 19th harmonic (2280 Hz, near i's second
+    // formant) is against its 7th (840 Hz, near u's)
+    const level = (d, f) => {
+      let re = 0
+      let im = 0
+      for (let n = 0; n < d.length; n++) {
+        re += d[n] * Math.cos((2 * Math.PI * f * n) / S.RATE)
+        im += d[n] * Math.sin((2 * Math.PI * f * n) / S.RATE)
+      }
+      return Math.hypot(re, im)
+    }
+    const vowel = (v) => {
+      const d = one({ wave: 'saw', pitch: 120, pitchEnd: 120, length: 0.6, sustain: 1, filter: 'vowel', vowel: v, vowelEnd: v, resonance: 2 })
+      return { pitch: M.measure(d, S.RATE).pitchStart, front: level(d, 2280) / level(d, 840) }
+    }
+    const clicks = (rate) => {
+      const d = one({ wave: 'crackle', pitch: rate, pitchEnd: rate, length: 4, attack: 0.001, sustain: 1, release: 0.001 })
+      // a click is a burst after at least 2 ms of quiet
+      let n = 0
+      let quiet = 1e9
+      for (const v of d) {
+        if (Math.abs(v) > 0.02) {
+          if (quiet > 88) n++
+          quiet = 0
+        } else quiet++
+      }
+      return n
+    }
+    // a layer saved before the new knobs existed opens with their defaults
+    localStorage.setItem('vellum.sounds.v1', JSON.stringify({ sounds: [{ id: 'old', name: 'Old', group: 'Player', seed: 1, master: S.master(), layers: [{ ...S.layer(), bright: undefined, vowel: undefined, vowelEnd: undefined, throat: undefined }] }] }))
+    const B = await import('/src/lib/audio/board.ts')
+    const old = B.loadBoard().sounds[0].layers[0]
+    localStorage.removeItem('vellum.sounds.v1')
+    return { plucks, i: vowel(0), u: vowel(4), a: vowel(2), few: clicks(20), many: clicks(200), old: [old.bright, old.vowel, old.throat] }
+  })
+  ;[92.5, 185, 370, 740, 1480].forEach((f, i) => assert.ok(Math.abs(r.plucks[i] / f - 1) < 0.02, `a pluck at ${f} Hz sounds at ${r.plucks[i].toFixed(1)}`))
+  assert.ok(r.i.front > r.a.front * 3 && r.i.front > r.u.front * 3, `i carries its second formant high (${[r.i, r.a, r.u].map((m) => m.front.toFixed(2))})`)
+  assert.ok(Math.abs(r.i.pitch - 120) < 3, 'the vowel filter keeps the voice’s pitch')
+  assert.ok(r.few > 40 && r.few < 130, `about 20 clicks a second (${r.few} in 4 s)`)
+  assert.ok(r.many > r.few * 4, `more clicks at 200 a second (${r.many})`)
+  assert.deepEqual(r.old, [0.5, 2, 1])
+  assert.deepEqual(errors, [])
+  await page.close()
+})
+
+/* What each vanilla sound is like as a player hears it, as ranges the
+   presets are held to: how long it is heard (40 dB down), its pitch where
+   it has one, whether it is a tone or a noise, and how bright it is (the
+   spectral centroid). The note blocks are exact: an instrument's middle
+   click is an F#. */
+const VANILLA = {
+  'Orb pickup': { len: [0.2, 0.8], tone: true, f0: [1300, 2200], bright: [1200, 4000] },
+  'Level up': { len: [0.9, 2], tone: true, rises: true },
+  Click: { len: [0, 0.12], bright: [800, 4000] },
+  'Item pickup': { len: [0, 0.15], bright: [800, 3000] },
+  Hurt: { len: [0.15, 0.45], tone: true, f0: [100, 220], falls: true },
+  'Bow shot': { len: [0.15, 0.5] },
+  Eat: { len: [0.08, 0.3], noise: true, bright: [1000, 4000] },
+  'Grass step': { len: [0.08, 0.3], noise: true, bright: [2000, 7000] },
+  'Wood break': { len: [0.12, 0.5], noise: true, bright: [300, 1500] },
+  'Chest open': { len: [0.35, 0.9] },
+  'Stone break': { len: [0.1, 0.45], noise: true, bright: [1000, 4000] },
+  'Glass break': { len: [0.3, 1.2], bright: [3000, 12000] },
+  Lever: { len: [0, 0.15], bright: [400, 1500] },
+  'Anvil land': { len: [0.8, 2.5], tone: true },
+  Harp: { len: [0.5, 1.6], tone: true, f0: [363, 377] },
+  Bell: { len: [0.8, 2.5], tone: true, f0: [1450, 1510] },
+  Bass: { len: [0.3, 1.2], tone: true, f0: [90, 95] },
+  Pling: { len: [0.8, 2], tone: true, f0: [363, 377] },
+  Explosion: { len: [1.2, 5], noise: true, bright: [250, 1200] },
+  'TNT fuse': { len: [1.2, 2.5], noise: true, bright: [3000, 12000] },
+  Splash: { len: [0.3, 1.2], noise: true },
+  'Lava pop': { len: [0, 0.25] },
+  Fire: { len: [1.5, 4], noise: true, bright: [500, 2500] },
+  Thunder: { len: [3.5, 8], noise: true, bright: [150, 900] },
+  Portal: { len: [2.5, 5], noise: true, bright: [250, 1500] },
+  Teleport: { len: [0.5, 1.5] },
+  Cave: { len: [3, 12], bright: [0, 400] },
+  Zombie: { len: [0.9, 1.8], f0: [70, 140], falls: true },
+  'Creeper hiss': { len: [2, 4.5], noise: true, bright: [2000, 7000] },
+  Skeleton: { len: [0.3, 1], bright: [1000, 5000] },
+  Slime: { len: [0.1, 0.45], bright: [200, 1200] },
+  Ghast: { len: [1.5, 4.5], tone: true, f0: [400, 900] },
+  'Ender dragon': { len: [2, 7], bright: [150, 800] },
+}
+
+test('every preset is held to what its vanilla sound is like', async () => {
+  const { page, errors } = await open()
+  const r = await inApp(page, async () => {
+    const S = await import('/src/lib/audio/synth.ts')
+    const P = await import('/src/lib/audio/presets.ts')
+    const M = await import('/src/lib/audio/measure.ts')
+    return P.presets.map((p) => ({ name: p.name, vanilla: p.vanilla, m: M.measure(S.render(P.fromPreset(p)), S.RATE) }))
+  })
+  assert.deepEqual(r.map((p) => p.name).sort(), Object.keys(VANILLA).sort(), 'every preset has a reference, and every reference a preset')
+  const inside = (v, [lo, hi]) => v >= lo && v <= hi
+  for (const { name, vanilla, m } of r) {
+    const want = VANILLA[name]
+    const at = `${name} (${JSON.stringify(m, (k, v) => (typeof v === 'number' ? Math.round(v * 100) / 100 : v))})`
+    assert.match(vanilla.event, /^[a-z_]+(\.[a-z_]+)+$/, `${name} names a sound event`)
+    assert.ok(vanilla.pitch >= 0.5 && vanilla.pitch <= 2, `${name}'s pitch is one /playsound can play`)
+    assert.ok(inside(m.length, want.len), `${at}: heard for ${want.len.join('–')} s`)
+    if (want.tone) assert.ok(m.voiced > 0.7, `${at}: a tone`)
+    if (want.noise) assert.ok(m.voiced < 0.3, `${at}: a noise`)
+    if (want.f0) assert.ok(inside(m.pitchStart, want.f0), `${at}: pitched ${want.f0.join('–')} Hz`)
+    if (want.falls) assert.ok(m.pitchEnd < m.pitchStart, `${at}: falls in pitch`)
+    if (want.rises) assert.ok(m.pitchEnd > m.pitchStart, `${at}: rises in pitch`)
+    if (want.bright) assert.ok(inside(m.brightness, want.bright), `${at}: centred ${want.bright.join('–')} Hz`)
+  }
+  const by = Object.fromEntries(r.map((p) => [p.name, p.m]))
+  assert.ok(by.Lever.brightness < by.Click.brightness, 'the lever is the click played lower')
+  assert.ok(by['Creeper hiss'].brightness < by['TNT fuse'].brightness, 'the creeper is the fuse played lower')
+  assert.deepEqual(errors, [])
+  await page.close()
+})
+
 test('the resource pack: sounds.json, subtitles, variant files and the name checks', async () => {
   const { page, errors } = await open()
   const r = await inApp(page, async () => {
@@ -128,12 +251,12 @@ test('the resource pack: sounds.json, subtitles, variant files and the name chec
     const board = {
       ...B.starterBoard(),
       namespace: 'mymobs',
-      sounds: [{ ...pick('Groan'), variants: 3 }, { ...pick('Anvil land'), event: 'block.heavy.land' }],
+      sounds: [{ ...pick('Zombie'), variants: 3 }, { ...pick('Anvil land'), event: 'block.heavy.land' }],
     }
     const files = B.buildSoundPack(board, {})
     const dec = new TextDecoder()
     const json = (p) => JSON.parse(dec.decode(files.find((f) => f.path === p).bytes))
-    const dup = { ...board, sounds: [board.sounds[0], { ...board.sounds[1], event: 'mobs.groan' }] }
+    const dup = { ...board, sounds: [board.sounds[0], { ...board.sounds[1], event: 'mobs.zombie' }] }
     const bad = { ...board, namespace: 'My Mobs', sounds: [{ ...board.sounds[0], event: 'Bad Name!' }] }
     const zip = B.zipOf(files)
     return {
@@ -152,19 +275,19 @@ test('the resource pack: sounds.json, subtitles, variant files and the name chec
     'pack.mcmeta',
     'assets/mymobs/sounds.json',
     'assets/mymobs/lang/en_us.json',
-    'assets/mymobs/sounds/mobs/groan1.ogg',
-    'assets/mymobs/sounds/mobs/groan2.ogg',
-    'assets/mymobs/sounds/mobs/groan3.ogg',
+    'assets/mymobs/sounds/mobs/zombie1.ogg',
+    'assets/mymobs/sounds/mobs/zombie2.ogg',
+    'assets/mymobs/sounds/mobs/zombie3.ogg',
     'assets/mymobs/sounds/block/heavy/land.ogg',
   ])
   assert.deepEqual(r.sounds, {
-    'mobs.groan': { subtitle: 'subtitles.mymobs.mobs.groan', sounds: ['mymobs:mobs/groan1', 'mymobs:mobs/groan2', 'mymobs:mobs/groan3'] },
+    'mobs.zombie': { subtitle: 'subtitles.mymobs.mobs.zombie', sounds: ['mymobs:mobs/zombie1', 'mymobs:mobs/zombie2', 'mymobs:mobs/zombie3'] },
     'block.heavy.land': { subtitle: 'subtitles.mymobs.block.heavy.land', sounds: ['mymobs:block/heavy/land'] },
   })
-  assert.deepEqual(r.lang, { 'subtitles.mymobs.mobs.groan': 'Groan', 'subtitles.mymobs.block.heavy.land': 'Anvil land' })
+  assert.deepEqual(r.lang, { 'subtitles.mymobs.mobs.zombie': 'Zombie', 'subtitles.mymobs.block.heavy.land': 'Anvil land' })
   assert.equal(r.mcmeta.pack.pack_format, 84)
   assert.ok(r.oggs.every((m) => m === 'OggS'))
-  assert.ok(r.dup.some((m) => /already exports as mobs.groan/.test(m)), 'two sounds on one event are caught')
+  assert.ok(r.dup.some((m) => /already exports as mobs.zombie/.test(m)), 'two sounds on one event are caught')
   assert.equal(r.bad.length, 2, 'a bad namespace and a bad event are both caught')
   assert.deepEqual(r.zipHead, [0x50, 0x4b, 0x03, 0x04])
   assert.equal(r.slug, 'orb_chime_2')
@@ -201,8 +324,8 @@ test('the console: pads and keys, knobs with undo, layers, the display, import a
 
   // a key plays its pad and opens it
   await page.keyboard.press('2')
-  await page.waitForFunction(() => document.querySelector('.deck__name')?.value === 'Pickup pop')
-  assert.equal(await page.locator('.pad[aria-pressed="true"] .pad__name').textContent(), 'Pickup pop')
+  await page.waitForFunction(() => document.querySelector('.deck__name')?.value === 'Item pickup')
+  assert.equal(await page.locator('.pad[aria-pressed="true"] .pad__name').textContent(), 'Item pickup')
 
   // a knob turns with the keyboard and the turn undoes
   const pitch = page.getByRole('slider', { name: 'Pitch', exact: true })
@@ -236,7 +359,9 @@ test('the console: pads and keys, knobs with undo, layers, the display, import a
 
   // export one file and check it is Ogg Vorbis the browser can play
   const [dl] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'Download .ogg' }).click()])
-  assert.equal(dl.suggestedFilename(), 'pickup_pop.ogg')
+  assert.equal(dl.suggestedFilename(), 'item_pickup.ogg')
+  // the vanilla sound to compare with, at the pitch the game plays it
+  assert.equal(await page.locator('.sb-compare code').textContent(), '/playsound minecraft:entity.item.pickup master @s ~ ~ ~ 1 2')
   const bytes = [...(await import('node:fs')).readFileSync(await dl.path())]
   const decoded = await page.evaluate(async (b) => {
     const buf = await new OfflineAudioContext(1, 1, 44100).decodeAudioData(new Uint8Array(b).buffer)
@@ -248,7 +373,7 @@ test('the console: pads and keys, knobs with undo, layers, the display, import a
   await page.getByRole('button', { name: 'More variants' }).click()
   await page.getByRole('button', { name: 'More variants' }).click()
   const [zip] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: /Download 3 \.ogg files/ }).click()])
-  assert.equal(zip.suggestedFilename(), 'player.pickup_pop.zip')
+  assert.equal(zip.suggestedFilename(), 'player.item_pickup.zip')
 
   // import audio: a new sound with a sample layer
   await page.locator('input[type="file"]').setInputFiles({ name: 'blip.wav', mimeType: 'audio/wav', buffer: wav() })
@@ -281,7 +406,7 @@ test('the console on its own (sounds.html): no Studio around it, and it plays', 
   assert.equal(await page.locator('.topbar__brand').textContent(), 'Vellum Sounds')
   assert.equal(await page.locator('.topbar nav, .topbar__server').count(), 0, 'no Studio links or server picker')
   await page.keyboard.press('2')
-  await page.waitForFunction(() => document.querySelector('.deck__name')?.value === 'Pickup pop')
+  await page.waitForFunction(() => document.querySelector('.deck__name')?.value === 'Item pickup')
   const over = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)
   assert.ok(over <= 0, `no horizontal scroll (${over}px over)`)
   assert.deepEqual(errors, [])

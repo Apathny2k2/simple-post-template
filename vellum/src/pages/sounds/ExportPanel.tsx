@@ -53,6 +53,9 @@ export function ExportPanel({ board, sound, data, samples, onSound, onBoard, say
   const json = useMemo(() => JSON.stringify(soundsJson(board), null, 2), [board])
   const entry = useMemo(() => JSON.stringify({ [event]: soundsJson(board)[event] }, null, 2), [board, event])
   const command = `/playsound ${board.namespace}:${event} master @s`
+  const v = sound.vanilla
+  // /playsound's pitch comes after the position and the volume
+  const vanillaCommand = v ? `/playsound minecraft:${v.event} master @s ~ ~ ~ 1 ${v.pitch}` : ''
 
   const exportSound = async () => {
     setBusy('sound')
@@ -161,6 +164,24 @@ export function ExportPanel({ board, sound, data, samples, onSound, onBoard, say
           </div>
           <code className="mono">{command}</code>
         </div>
+
+        {v ? (
+          <div className="sb-code sb-compare">
+            <div className="sb-code__head">
+              <span className="eyebrow">Compare with the game</span>
+              <button className="btn btn--ghost btn--sm" onClick={() => copy(vanillaCommand, say)}>
+                <Icon name="copy" size={12} /> Copy
+              </button>
+            </div>
+            <p className="sb-compare__like">{v.like}</p>
+            <code className="mono">{vanillaCommand}</code>
+            {v.pitch !== 1 ? (
+              <p className="sb-compare__note">
+                The game plays this one at pitch {v.pitch}, so the command does too. The preset is made to sound like that.
+              </p>
+            ) : null}
+          </div>
+        ) : null}
       </section>
 
       <section className="sb-panel">

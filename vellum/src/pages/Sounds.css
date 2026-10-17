@@ -128,7 +128,9 @@
 }
 
 .lib__row:hover { background: var(--sunken); }
+.lib__what { display: grid; min-width: 0; line-height: 1.25; }
 .lib__name { font-size: var(--fs-sm); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lib__like { font-size: 10px; color: var(--ink-faint); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .lib__group { font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--pad); }
 .lib__row .icon-btn { width: 28px; height: 28px; }
 
@@ -617,6 +619,8 @@
 .sb-code__head { display: flex; align-items: center; justify-content: space-between; padding: 4px 4px 4px 10px; border-bottom: 1px solid var(--border); }
 .sb-code code { display: block; padding: 8px 10px; font-size: var(--fs-2xs); color: var(--ink); overflow-wrap: anywhere; }
 .sb-code pre { margin: 0; padding: 8px 10px; font-size: var(--fs-2xs); color: var(--ink-muted); max-height: 220px; overflow: auto; }
+.sb-compare__like { margin: 0; padding: 8px 10px 0; font-size: var(--fs-xs); color: var(--ink-muted); line-height: 1.45; }
+.sb-compare__note { margin: 0; padding: 0 10px 8px; font-size: var(--fs-2xs); color: var(--ink-faint); line-height: 1.45; }
 
 /* ---------------- recording, status ---------------- */
 

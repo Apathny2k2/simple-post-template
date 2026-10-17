@@ -1424,13 +1424,24 @@ Each layer is one source:
 - a wave: sine, triangle, square or saw (the last two band-limited with PolyBLEP);
 - pitched noise, a new random value 32 times a cycle, which gives the gritty
   tones of a mob or a portal;
-- hiss (white noise), rumble (brown noise), or an imported or recorded sample.
+- a pluck: a Karplus–Strong string, a delay one period long fed with a burst
+  of noise and averaged on each pass. **Brightness** sets how long it keeps
+  its top end, from a thud to a wire;
+- hiss (white noise), rumble (brown noise);
+- crackle: clicks at random times at a set rate (the pitch knobs become
+  clicks per second), each a short burst of noise of random size. It makes
+  fire, grit, splinters and creaks;
+- or an imported or recorded sample.
 
 On top of the source, each layer has:
 
 - a pitch glide between two notes with a shaping curve;
 - start, length and an ADSR envelope;
-- a low, high or band-pass filter that sweeps between two cutoffs;
+- a low, high or band-pass filter that sweeps between two cutoffs, or a
+  **vowel** filter: three band-passes on the formants of i, e, a, o, u
+  (Peterson and Barney's adult male averages) that glide from one vowel to
+  another, with **Throat** scaling every formant (below 1 a bigger creature,
+  above 1 a smaller one). Every voice in the presets runs a saw through it;
 - vibrato, tremolo, and FM by phase modulation;
 - drive (tanh) and a bit crusher;
 - repeats with a gap, a fade, a pitch step and jitter. Clicks, rattles and
@@ -1450,13 +1461,32 @@ comes from.
 
 | Group | Presets |
 | --- | --- |
-| Player | Orb chime, Level up, Click, Pickup pop, Hit, Bow shot, Eat, Footstep |
-| Blocks | Wood knock, Chest creak, Stone break, Glass shatter, Lever, Anvil land |
+| Player | Orb pickup, Level up, Click, Item pickup, Hurt, Bow shot, Eat, Grass step |
+| Blocks | Wood break, Chest open, Stone break, Glass break, Lever, Anvil land |
 | Notes | Harp, Bell, Bass, Pling |
-| World | Explosion, Fuse, Splash, Lava pop, Fire, Thunder, Portal hum, Teleport, Cave |
-| Mobs | Groan, Hiss, Rattle, Squish, Wail, Roar |
+| World | Explosion, TNT fuse, Splash, Lava pop, Fire, Thunder, Portal, Teleport, Cave |
+| Mobs | Zombie, Creeper hiss, Skeleton, Slime, Ghast, Ender dragon |
 
 A new board starts with eight of them on its pads.
+
+Each preset imitates one of the game's sounds as a player hears it, and
+names it in `vanilla`: the event, the pitch the game plays it at and a line
+on what it is like. The pitch matters. The game plays an item pickup at up
+to twice its file's pitch, an explosion at about 0.7, the lever's click at
+0.6 and the creeper's fuse at 0.5, and a note block's pitch 1 is F#. The
+presets are built at those pitches. None is a copy of a Mojang sound.
+
+`lib/audio/measure.ts` describes a render in numbers:
+
+- its length to 40 dB down;
+- the pitch at its start and end (YIN), and how much of it is voiced;
+- its brightness (spectral centroid) and how noisy it is (spectral flatness).
+
+The tests hold each preset to ranges for its vanilla sound with these, so a
+preset cannot drift back toward a bare beep without failing. The export
+panel shows the vanilla sound and a `/playsound` line that plays it at the
+game's pitch, to compare by ear in the game. A board saved before the pluck
+and vowel knobs existed loads with their defaults.
 
 ### The Ogg Vorbis encoder
 
@@ -1496,10 +1526,10 @@ the end.
 
 The **Export this sound** panel works on the open sound:
 
-- **Event:** the sound's name in `/playsound`, such as `player.orb_chime`.
+- **Event:** the sound's name in `/playsound`, such as `player.orb_pickup`.
   The dots become folders.
 - **Variants:** from one to eight. Several variants download as a zip of
-  `orb_chime1.ogg`, `orb_chime2.ogg`, and so on.
+  `orb_pickup1.ogg`, `orb_pickup2.ogg`, and so on.
 - **Quality:** the encoder quality, from 0 to 10.
 
 The **Resource pack** panel writes the whole board:
@@ -1575,7 +1605,7 @@ code the editor runs.
 | `centre.test.mjs` | Item samples stand in the middle of their block; an item built around 0 is flagged and Centre in block puts every cube and pivot back; the button in Validation, and its undo |
 | `pile.test.mjs` | The vanilla pile sets and the checks on a piece and its materials; every stage a valid Java model inside the block; the stages, item definitions and `piles/<set>.yml` in the pack and configs; the set kept by the `.vellum` and the `.bbmodel`; the panel, its preview and a bad id named in Validation |
 | `modes.test.mjs` | A display slot takes and resets a transform; each slot places the item where the game draws it (hand, head, slot, ground, frame, first person) with the player or props it needs, never picked; the real-world view opens and closes; a behaviour cycle runs and takes a stage |
-| `sounds.test.mjs` | The fast MDCT matches the direct one; the Ogg pages, CRCs, flags and last granule; Chromium decodes the encoder's files, quality trades bytes for error, and silence is nearly free; every preset renders, encodes and decodes; seeds repeat and variants differ; the pack's paths, `sounds.json`, subtitles and name checks; the console's pads, keys, knob undo, layers, spectrogram, export and import; no sideways scroll on a phone |
+| `sounds.test.mjs` | The fast MDCT matches the direct one; the Ogg pages, CRCs, flags and last granule; Chromium decodes the encoder's files, quality trades bytes for error, and silence is nearly free; every preset renders, encodes and decodes; seeds repeat and variants differ; the pack's paths, `sounds.json`, subtitles and name checks; the console's pads, keys, knob undo, layers, spectrogram, export and import; no sideways scroll on a phone; the pluck holds its pitch, the vowel filter's F2 tells i from a and u, the crackle clicks at its rate; every preset sits in the ranges of its vanilla sound |
 | `bundle.test.mjs` | `dist/vellum.html` opens and keeps its unprefixed `backdrop-filter`; skipped until `pnpm build:single` has run |
 
 Chromium is taken from `/opt/pw-browsers/chromium` when it is there,
