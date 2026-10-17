@@ -56,6 +56,8 @@ export function ExportPanel({ board, sound, data, samples, onSound, onBoard, say
   const v = sound.vanilla
   // /playsound's pitch comes after the position and the volume
   const vanillaCommand = v ? `/playsound minecraft:${v.event} master @s ~ ~ ~ 1 ${v.pitch}` : ''
+  const a = sound.accent
+  const accentCommands = a ? [...a.on.map((c) => `/playsound minecraft:${c.event} master @s ~ ~ ~ ${c.volume} ${c.pitch}`), command] : []
 
   const exportSound = async () => {
     setBusy('sound')
@@ -180,6 +182,33 @@ export function ExportPanel({ board, sound, data, samples, onSound, onBoard, say
                 The game plays this one at pitch {v.pitch}, so the command does too. The preset is made to sound like that.
               </p>
             ) : null}
+          </div>
+        ) : null}
+
+        {a ? (
+          <div className="sb-code sb-compare sb-accent">
+            <div className="sb-code__head">
+              <span className="eyebrow">Lay it on the game’s sound</span>
+              <button className="btn btn--ghost btn--sm" onClick={() => copy(accentCommands.join('\n'), say)}>
+                <Icon name="copy" size={12} /> Copy
+              </button>
+            </div>
+            <p className="sb-compare__like">{a.adds}</p>
+            <ul className="sb-accent__cues">
+              {a.on.map((c) => (
+                <li key={c.event}>
+                  <span className="mono">{c.event}</span> pitch {c.pitch}, volume {c.volume}
+                </li>
+              ))}
+              <li>
+                this sound{a.after > 0 ? `, ${a.after} s later` : ', at the same time'}
+              </li>
+            </ul>
+            <code className="mono">{accentCommands.join('\n')}</code>
+            <p className="sb-compare__note">
+              In the Studio, give the clip a Game sound cue for each of the game’s sounds and a cue for this one. To hear them together in game, run these lines from one function: typed into chat they play one after another.
+              {a.on.some((c) => c.volume > 1) ? ' A volume above 1 is not louder: the game lets it be heard further away, about 16 blocks for each 1.' : ''}
+            </p>
           </div>
         ) : null}
       </section>

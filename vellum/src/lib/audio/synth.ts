@@ -1,14 +1,14 @@
 /* The sound console's synth. A sound is a stack of layers mixed into one
    mono track, then echo, reverb and a level. Each layer is one source (an
-   oscillator, a plucked string, a noise, a crackle or an imported sample)
-   with a pitch glide, an envelope, a filter or vowel sweep, modulation,
-   drive, a bit crusher and repeats.
+   oscillator, a plucked string, a noise, a crackle, bubbles or an imported
+   sample) with a pitch glide, an envelope, a filter or vowel sweep,
+   modulation, random wobble, drive, a bit crusher and repeats.
 
    It renders offline, sample by sample, in plain code rather than through
    Web Audio. A sound then sounds the same everywhere, the export is the
    preview, and a seed makes the noise and the jitter repeatable. */
 
-export type Wave = 'sine' | 'triangle' | 'square' | 'saw' | 'pluck' | 'noise' | 'hiss' | 'rumble' | 'crackle' | 'sample'
+export type Wave = 'sine' | 'triangle' | 'square' | 'saw' | 'pluck' | 'noise' | 'hiss' | 'rumble' | 'crackle' | 'bubbles' | 'sample'
 export type FilterType = 'off' | 'lowpass' | 'highpass' | 'bandpass' | 'vowel'
 
 export type Layer = {
@@ -32,6 +32,12 @@ export type Layer = {
   duty: number
   /** 0..1: how long a pluck keeps its top end, from a thud to a wire */
   bright: number
+  /** how long each crackle click rings: 1 is a dry tick, 10 a short burst of grit */
+  grain: number
+  /** Hz: the typical bubble, from a big glug (150) to a fizz (4000) */
+  bubble: number
+  /** 0..1: an oscillator's cycles vary at random in length and level, so a voice goes hoarse */
+  rough: number
   attack: number
   decay: number
   sustain: number
@@ -41,12 +47,20 @@ export type Layer = {
   vibratoDepth: number
   tremoloRate: number
   tremoloDepth: number
+  /** Hz: how fast the random wobble moves */
+  wobbleRate: number
+  /** semitones the pitch wanders at random */
+  wobblePitch: number
+  /** 0..1: how far the level surges and dips at random */
+  wobbleAmp: number
   fmRatio: number
   fmIndex: number
   filter: FilterType
   cutoff: number
   cutoffEnd: number
   resonance: number
+  /** two filters in a row: 24 dB an octave instead of 12 */
+  steep: boolean
   /** the vowel filter's position at the start and the end: 0 i, 1 e, 2 a, 3 o, 4 u */
   vowel: number
   vowelEnd: number
@@ -87,6 +101,26 @@ export type Vanilla = {
   like: string
 }
 
+/** One of the game's own sounds, played by name: a Game sound cue in the Studio, or /playsound. */
+export type GameCue = {
+  /** the sound event, without `minecraft:` */
+  event: string
+  /** 0.5..2: below 1 is lower and slower */
+  pitch: number
+  /** up to 1 is louder; above 1 is heard further away, not louder */
+  volume: number
+}
+
+/** A sound made to be laid on top of the game's own, which the console can't make: a recorded boom, roar or creak. */
+export type Accent = {
+  /** the game's sounds it goes on */
+  on: GameCue[]
+  /** seconds after them that it starts, so the two do not smear */
+  after: number
+  /** what it adds, in a few words */
+  adds: string
+}
+
 export type Sound = {
   id: string
   name: string
@@ -100,6 +134,8 @@ export type Sound = {
   variants?: number
   /** the vanilla sound a preset was made to sound like */
   vanilla?: Vanilla
+  /** the vanilla sounds a preset was made to be played on top of */
+  accent?: Accent
 }
 
 export type SampleData = { name: string; rate: number; data: Float32Array }
@@ -117,6 +153,7 @@ export const WAVES: { id: Wave; label: string }[] = [
   { id: 'hiss', label: 'Hiss' },
   { id: 'rumble', label: 'Rumble' },
   { id: 'crackle', label: 'Crackle' },
+  { id: 'bubbles', label: 'Bubbles' },
   { id: 'sample', label: 'Sample' },
 ]
 
@@ -141,6 +178,9 @@ export function layer(over: Partial<Layer> = {}): Layer {
     glide: 0,
     duty: 0.5,
     bright: 0.5,
+    grain: 1,
+    bubble: 800,
+    rough: 0,
     attack: 0.005,
     decay: 0.2,
     sustain: 0.4,
@@ -149,12 +189,16 @@ export function layer(over: Partial<Layer> = {}): Layer {
     vibratoDepth: 0,
     tremoloRate: 0,
     tremoloDepth: 0,
+    wobbleRate: 6,
+    wobblePitch: 0,
+    wobbleAmp: 0,
     fmRatio: 2,
     fmIndex: 0,
     filter: 'off',
     cutoff: 2000,
     cutoffEnd: 2000,
     resonance: 0.7,
+    steep: false,
     vowel: 2,
     vowelEnd: 2,
     throat: 1,
@@ -329,6 +373,7 @@ function renderHit(
   const n0 = Math.round(start * rate)
   const n = Math.round(len * rate)
   const filter = new Biquad()
+  const filter2 = l.steep ? new Biquad() : null
   const vowelBank = l.filter === 'vowel' ? [new Biquad(), new Biquad(), new Biquad()] : null
   const sample = l.wave === 'sample' && l.sample ? samples[l.sample] : undefined
   if (l.wave === 'sample' && !sample) return
@@ -348,6 +393,14 @@ function renderHit(
   // the crackle's current click
   let click = 0
   let clickFall = 0
+  // the bubbles still ringing: phase, Hz, rise per second, level, fall per sample
+  const bubbles: { p: number; f: number; rise: number; a: number; fall: number }[] = []
+  // the wobble: smooth random curves for pitch and level, each a new target every 1/rate s
+  const wob = l.wobblePitch || l.wobbleAmp ? [rand() * 2 - 1, rand() * 2 - 1, rand() * 2 - 1, rand() * 2 - 1] : null
+  let wobT = 0
+  // roughness: each cycle's length and level, drawn when the last cycle ends
+  let cycleLen = 1
+  let cycleAmp = 1
   let crushHold = 0
   let crushVal = 0
   const holdN = 1 + Math.floor(l.crush * l.crush * 16)
@@ -363,7 +416,22 @@ function renderHit(
     const u = n > 1 ? i / (n - 1) : 0
     let f = l.pitch * Math.pow(l.pitchEnd / l.pitch, shape(u, l.glide)) * pitchMul
     if (l.vibratoDepth) f *= Math.pow(2, (l.vibratoDepth / 12) * Math.sin(TAU * l.vibratoRate * t))
-    const dt = f / rate
+    let wobAmp = 1
+    if (wob) {
+      // cosine steps between random targets: drifts with no corners
+      wobT += Math.max(0.05, l.wobbleRate) / rate
+      if (wobT >= 1) {
+        wobT -= 1
+        wob[0] = wob[1]
+        wob[1] = rand() * 2 - 1
+        wob[2] = wob[3]
+        wob[3] = rand() * 2 - 1
+      }
+      const e = 0.5 - 0.5 * Math.cos(Math.PI * wobT)
+      if (l.wobblePitch) f *= Math.pow(2, (l.wobblePitch / 12) * (wob[0] + (wob[1] - wob[0]) * e))
+      if (l.wobbleAmp) wobAmp = 1 - l.wobbleAmp * (0.5 + 0.5 * (wob[2] + (wob[3] - wob[2]) * e))
+    }
+    const dt = (f / rate) * cycleLen
 
     let s: number
     switch (l.wave) {
@@ -381,6 +449,7 @@ function renderHit(
           const d = l.duty
           s = (p < d ? 1 : -1) + blep(p, dt) - blep((p - d + 1) % 1, dt)
         }
+        s *= cycleAmp
         break
       }
       case 'pluck': {
@@ -416,10 +485,30 @@ function renderHit(
         if (rand() < f / rate) {
           const r = rand()
           click = (0.25 + 0.75 * r * r) * (rand() < 0.5 ? -1 : 1)
-          clickFall = Math.exp(-1 / (rate * (0.0003 + rand() * 0.0025)))
+          clickFall = Math.exp(-1 / (rate * (0.0003 + rand() * 0.0025) * l.grain))
         }
         s = click * (rand() * 2 - 1)
         click *= clickFall
+        break
+      }
+      case 'bubbles': {
+        /* Bubbles in water (after van den Doel): each one, `f` a second on
+           average, is a sine that rings at its size's pitch, rising as it
+           goes and dying faster the smaller it is. */
+        if (rand() < f / rate && bubbles.length < 24) {
+          const bf = Math.min(rate * 0.4, l.bubble * Math.pow(2, (rand() * 2 - 1) * 1.2))
+          const damp = 0.13 * bf + 0.0072 * Math.pow(bf, 1.5)
+          bubbles.push({ p: 0, f: bf, rise: 0.1 * damp, a: (0.3 + 0.7 * rand()) * Math.min(1, 600 / bf + 0.3), fall: Math.exp(-damp / rate) })
+        }
+        s = 0
+        for (let b = bubbles.length - 1; b >= 0; b--) {
+          const B = bubbles[b]
+          s += Math.sin(TAU * B.p) * B.a
+          B.p += (B.f / rate)
+          B.f *= 1 + B.rise / rate
+          B.a *= B.fall
+          if (B.a < 1e-4) bubbles.splice(b, 1)
+        }
         break
       }
       case 'noise': {
@@ -451,7 +540,13 @@ function renderHit(
       }
     }
     phase += dt
-    if (phase >= 1) phase -= Math.floor(phase)
+    if (phase >= 1) {
+      phase -= Math.floor(phase)
+      if (l.rough) {
+        cycleLen = 1 + l.rough * 0.3 * (rand() * 2 - 1)
+        cycleAmp = 1 - l.rough * 0.6 * rand()
+      }
+    }
     mod += dt * l.fmRatio
     if (mod >= 1) mod -= Math.floor(mod)
 
@@ -468,6 +563,10 @@ function renderHit(
         filter.set(l.filter, c, l.resonance, rate)
       }
       s = filter.run(s)
+      if (filter2) {
+        if ((i & 15) === 0) filter2.set(l.filter, l.cutoff * Math.pow(l.cutoffEnd / l.cutoff, u), l.resonance, rate)
+        s = filter2.run(s)
+      }
     }
     if (l.drive) s = Math.tanh(s * k) / kNorm
     if (l.crush) {
@@ -477,7 +576,7 @@ function renderHit(
       }
       s = crushVal
     }
-    let a = envelope(l, t, len)
+    let a = envelope(l, t, len) * wobAmp
     if (l.tremoloDepth) a *= 1 - l.tremoloDepth * (0.5 + 0.5 * Math.sin(TAU * l.tremoloRate * t))
     out[idx] += s * a * gain
   }

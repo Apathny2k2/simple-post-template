@@ -49,6 +49,7 @@ function freshLayer(w: Wave, n: number, sample?: string): Layer {
   if (w === 'hiss') return layer({ ...base, filter: 'bandpass', cutoff: 2500, cutoffEnd: 2500, resonance: 1 })
   if (w === 'rumble') return layer({ ...base, filter: 'lowpass', cutoff: 400, cutoffEnd: 200, length: 0.8, decay: 0.6 })
   if (w === 'pluck') return layer({ ...base, pitch: 370, pitchEnd: 370, length: 1, decay: 0.9, bright: 0.6, attack: 0.001 })
+  if (w === 'bubbles') return layer({ ...base, pitch: 25, pitchEnd: 25, length: 1, decay: 0.1, sustain: 1, attack: 0.02, release: 0.3, bubble: 900 })
   if (w === 'crackle') return layer({ ...base, pitch: 30, pitchEnd: 30, length: 1.5, decay: 0.1, sustain: 1, attack: 0.05, release: 0.3, filter: 'highpass', cutoff: 1500, cutoffEnd: 1500 })
   if (w === 'sample') return layer({ ...base, sample, sustain: 1, decay: 0.1, attack: 0.002 })
   return layer({ ...base, pitch: 440, pitchEnd: 440 })
@@ -494,9 +495,9 @@ export function Sounds() {
                   >
                     <Icon name="play" size={13} />
                   </button>
-                  <span className="lib__what" title={p.vanilla.like}>
+                  <span className="lib__what" title={p.vanilla?.like ?? p.accent?.adds}>
                     <span className="lib__name">{p.name}</span>
-                    <span className="lib__like mono">like {p.vanilla.event}</span>
+                    <span className="lib__like mono">{p.vanilla ? `like ${p.vanilla.event}` : `on ${p.accent?.on.map((c) => c.event).join(' + ')}`}</span>
                   </span>
                   <span className="lib__group">{p.group}</span>
                   <button className="btn btn--ghost btn--sm" onClick={() => addSound(fromPreset(p), `Add ${p.name}`)} aria-label={`Add ${p.name} to the board`}>

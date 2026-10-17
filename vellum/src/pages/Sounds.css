@@ -541,6 +541,11 @@
 .insp__sample { display: flex; align-items: flex-end; gap: 8px; width: 100%; margin-bottom: 6px; }
 .insp__sample .sb-field { flex: 1; }
 
+.insp__toggle { display: inline-flex; align-items: center; gap: 6px; align-self: center; padding: 4px 8px; font-size: 12px; color: var(--ink); cursor: pointer; }
+.insp__toggle input { accent-color: var(--accent-mark); margin: 0; }
+.insp__toggle:has(input:disabled) { opacity: 0.45; cursor: default; }
+.insp__toggle-note { color: var(--ink-muted); font-variant-numeric: tabular-nums; }
+
 .insp__env { width: 150px; height: 34px; }
 .insp__env polygon { fill: color-mix(in srgb, var(--accent-mark) 14%, transparent); }
 .insp__env polyline { fill: none; stroke: var(--accent-mark); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
@@ -621,6 +626,9 @@
 .sb-code pre { margin: 0; padding: 8px 10px; font-size: var(--fs-2xs); color: var(--ink-muted); max-height: 220px; overflow: auto; }
 .sb-compare__like { margin: 0; padding: 8px 10px 0; font-size: var(--fs-xs); color: var(--ink-muted); line-height: 1.45; }
 .sb-compare__note { margin: 0; padding: 0 10px 8px; font-size: var(--fs-2xs); color: var(--ink-faint); line-height: 1.45; }
+.sb-accent code { white-space: pre-wrap; }
+.sb-accent__cues { margin: 0; padding: 6px 10px 0 26px; font-size: var(--fs-2xs); color: var(--ink-muted); line-height: 1.6; }
+.sb-accent__cues .mono { color: var(--ink); }
 
 /* ---------------- recording, status ---------------- */
 

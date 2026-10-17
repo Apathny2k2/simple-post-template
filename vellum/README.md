@@ -1430,20 +1430,31 @@ Each layer is one source:
   burst's average would otherwise go round the loop as an offset;
 - hiss (white noise), rumble (brown noise);
 - crackle: clicks at random times at a set rate (the pitch knobs become
-  clicks per second), each a short burst of noise of random size. It makes
+  clicks per second), each a short burst of noise of random size. **Grain**
+  stretches each click, from a dry tick to a short burst of grit. It makes
   fire, grit, splinters and creaks;
+- bubbles: van den Doel's model of a bubble, a sine that rises a little as it
+  dies away, started at random at the pitch knob's rate (up to 24 at once).
+  **Size** sets the typical bubble, from a glug to a fizz; each one lands up
+  to 1.2 octaves either side of it, and smaller ones die faster;
 - or an imported or recorded sample.
 
 On top of the source, each layer has:
 
 - a pitch glide between two notes with a shaping curve;
+- **Rough** (the waves only): each cycle's length and level vary at random,
+  so a voice goes hoarse instead of buzzing;
 - start, length and an ADSR envelope;
 - a low, high or band-pass filter that sweeps between two cutoffs, or a
   **vowel** filter: three band-passes on the formants of i, e, a, o, u
   (Peterson and Barney's adult male averages) that glide from one vowel to
   another, with **Throat** scaling every formant (below 1 a bigger creature,
-  above 1 a smaller one). Every voice in the presets runs a saw through it;
+  above 1 a smaller one). Every voice in the presets runs a saw through it.
+  **Steep** runs a second filter after the first, 24 dB an octave;
 - vibrato, tremolo, and FM by phase modulation;
+- **Wobble**: a random curve for the pitch and another for the level, a new
+  target every 1/rate seconds with a cosine between, for the uneven surges
+  that a steady tremolo can't make;
 - drive (tanh) and a bit crusher;
 - repeats with a gap, a fade, a pitch step and jitter. Clicks, rattles and
   footsteps are built from these.
@@ -1458,27 +1469,42 @@ is the same render with the pitch shifted by a few semitones (`variantShifts`).
 The game picks among a sound's files at random, which is where its variety
 comes from.
 
-`presets.ts` holds 33 starting points in five groups:
+`presets.ts` holds 36 starting points in five groups. They are of two kinds.
 
-| Group | Presets |
-| --- | --- |
-| Player | Orb pickup, Level up, Click, Item pickup, Hurt, Bow shot, Eat, Grass step |
-| Blocks | Wood break, Chest open, Stone break, Glass break, Lever, Anvil land |
-| Notes | Harp, Bell, Bass, Pling |
-| World | Explosion, TNT fuse, Splash, Lava pop, Fire, Thunder, Portal, Teleport, Cave |
-| Mobs | Zombie, Creeper hiss, Skeleton, Slime, Ghast, Ender dragon |
+| Group | Imitations | Accents |
+| --- | --- | --- |
+| Player | Orb pickup, Level up, Click, Item pickup, Hurt, Bow shot, Eat, Grass step | |
+| Blocks | Wood break, Stone break, Glass break, Lever, Anvil land | Chest open |
+| Notes | Harp, Bell, Bass, Pling | |
+| World | Lava pop, Portal, Teleport | Explosion, Ground slam, Lightning strike, TNT fuse, Splash, Fire, Cave |
+| Mobs | | Zombie, Charged creeper, Skeleton, Slime, Ghast, Fireball shot, Ender dragon, Boss roar |
 
 A new board starts with eight of them on its pads.
 
-Each preset imitates one of the game's sounds as a player hears it, and
-names it in `vanilla`: the event, the pitch the game plays it at and a line
-on what it is like. The pitch matters. The game plays an item pickup at up
+**Accents.** Tones and noise make clean, made-up sounds well and recorded
+ones badly: no filter gives a noise layer the texture of a recorded boom,
+roar or creak. Tuning the explosions, voices and the chest against the
+game's files closed the measured gap but they still sounded wrong. So
+those presets no longer try. Each is a short sound to lay **on top of** the
+game's own, which the Studio plays by name in a Game sound cue: the debris
+after an explosion, a thump under a slam, the crackle at a lightning
+strike, bubbles after a splash, a gurgle in a zombie's throat. `accent`
+names the game sounds it goes on, each with the cue's pitch and volume, how
+long after them it starts, and what it adds. Its master gain sets it a few
+dB under those sounds, measured against their files. The export panel lists
+the cues and gives `/playsound` lines that play the game's sounds and this
+one together from a function. The game's sounds are never in an export;
+every player already has them.
+
+**Imitations** stand on their own. Each names the game's sound it imitates
+in `vanilla`: the event, the pitch the game plays it at and a line on what
+it is like. The pitch matters. The game plays an item pickup at up
 to twice its file's pitch, an explosion at about 0.7, the lever's click at
 0.6 and the creeper's fuse at 0.5, and a note block's pitch 1 is F#. The
 presets are built at those pitches.
 
 They were tuned against the game's own files: the 94 files behind the 33
-events, each played at the pitch above times its own pitch in
+events the presets imitated then, each played at the pitch above times its own pitch in
 `sounds.json`. Each preset was compared with them on spectrograms, on
 loudness over time and on the balance across nine octave bands, and
 changed until the gap closed. Summed over all the presets, that gap fell
@@ -1492,11 +1518,13 @@ preset contains any of them.
 - the pitch at its start and end (YIN), and how much of it is voiced;
 - its brightness (spectral centroid) and how noisy it is (spectral flatness).
 
-The tests hold each preset to ranges measured from its vanilla files with
-these, so a preset cannot drift away from its sound without failing. The export
+The tests hold each imitation to ranges measured from its vanilla files with
+these, so a preset cannot drift away from its sound without failing, and
+each accent to naming its sounds and staying short. The export
 panel shows the vanilla sound and a `/playsound` line that plays it at the
-game's pitch, to compare by ear in the game. A board saved before the pluck
-and vowel knobs existed loads with their defaults.
+game's pitch, to compare by ear in the game. A board saved before the pluck,
+vowel, bubble, rough, wobble and steep knobs existed loads with their
+defaults.
 
 ### The Ogg Vorbis encoder
 
@@ -1615,7 +1643,7 @@ code the editor runs.
 | `centre.test.mjs` | Item samples stand in the middle of their block; an item built around 0 is flagged and Centre in block puts every cube and pivot back; the button in Validation, and its undo |
 | `pile.test.mjs` | The vanilla pile sets and the checks on a piece and its materials; every stage a valid Java model inside the block; the stages, item definitions and `piles/<set>.yml` in the pack and configs; the set kept by the `.vellum` and the `.bbmodel`; the panel, its preview and a bad id named in Validation |
 | `modes.test.mjs` | A display slot takes and resets a transform; each slot places the item where the game draws it (hand, head, slot, ground, frame, first person) with the player or props it needs, never picked; the real-world view opens and closes; a behaviour cycle runs and takes a stage |
-| `sounds.test.mjs` | The fast MDCT matches the direct one; the Ogg pages, CRCs, flags and last granule; Chromium decodes the encoder's files, quality trades bytes for error, and silence is nearly free; every preset renders, encodes and decodes; seeds repeat and variants differ; the pack's paths, `sounds.json`, subtitles and name checks; the console's pads, keys, knob undo, layers, spectrogram, export and import; no sideways scroll on a phone; the pluck holds its pitch, the vowel filter's F2 tells i from a and u, the crackle clicks at its rate; every preset sits in the ranges measured from its vanilla files |
+| `sounds.test.mjs` | The fast MDCT matches the direct one; the Ogg pages, CRCs, flags and last granule; Chromium decodes the encoder's files, quality trades bytes for error, and silence is nearly free; every preset renders, encodes and decodes; seeds repeat and variants differ; the pack's paths, `sounds.json`, subtitles and name checks; the console's pads, keys, knob undo, layers, spectrogram, export and import; no sideways scroll on a phone; the pluck holds its pitch, the vowel filter's F2 tells i from a and u, the crackle clicks at its rate; bubbles sound, rough changes the wave, wobble moves the level and pitch, steep cuts harder; every imitation sits in the ranges measured from its vanilla files; every accent names its game sounds at a cue's pitch and volume and stays short; the export panel's accent lines |
 | `bundle.test.mjs` | `dist/vellum.html` opens and keeps its unprefixed `backdrop-filter`; skipped until `pnpm build:single` has run |
 
 Chromium is taken from `/opt/pw-browsers/chromium` when it is there,

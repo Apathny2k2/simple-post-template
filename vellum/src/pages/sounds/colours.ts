@@ -12,6 +12,7 @@ const WAVE: Record<Wave, string> = {
   hiss: '#c9d3e3',
   rumble: 'var(--red)',
   crackle: '#ff9f6b',
+  bubbles: '#6ac3e7',
   sample: '#f08bd1',
 }
 

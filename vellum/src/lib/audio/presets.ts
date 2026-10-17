@@ -10,15 +10,22 @@
    under them, the impacts are brown noise rung through band-passes, the
    metal is its measured partials, and the voices are noise or a buzz
    through the vowel filter. Every one is ordinary layers that can be
-   pulled apart and changed. None contains any of Mojang's audio. */
+   pulled apart and changed. None contains any of Mojang's audio.
+
+   The recorded sounds (booms, roars, voices, the chest's creak) are not
+   imitated: synthesis can't give them their texture. Those presets are
+   accents instead, laid on top of the game's own sound, which the Studio
+   plays by name. `accent` names those sounds with a cue's pitch and
+   volume, and each accent's master gain sits it a few dB under them. */
 
 import { layer, master, uid } from './synth'
-import type { Layer, Master, Sound, Vanilla } from './synth'
+import type { Accent, Layer, Master, Sound, Vanilla } from './synth'
 
 export const GROUPS = ['Player', 'Blocks', 'Notes', 'World', 'Mobs'] as const
 export type Group = (typeof GROUPS)[number]
 
-type Preset = { name: string; group: Group; vanilla: Vanilla; layers: Partial<Layer>[]; master?: Partial<Master> }
+/** a preset either sounds like one of the game's sounds, or is an accent laid on top of some */
+type Preset = { name: string; group: Group; layers: Partial<Layer>[]; master?: Partial<Master> } & ({ vanilla: Vanilla; accent?: never } | { accent: Accent; vanilla?: never })
 
 const hit = { attack: 0.002, sustain: 0, release: 0.01 }
 /** a held sound: no decay, the release does the work */
@@ -147,14 +154,15 @@ const PRESETS: Preset[] = [
   {
     name: 'Chest open',
     group: 'Blocks',
-    vanilla: { event: 'block.chest.open', pitch: 0.95, like: 'A low, rough wooden creak, held for half a second as the lid lifts, then cut off.' },
+    accent: { on: [{ event: 'block.chest.open', pitch: 1, volume: 1 }], after: 0.02, adds: 'An iron latch: a bright click and a short metal ring, a quarter of a second, for a locked or iron-bound chest.' },
     layers: [
-      { name: 'Wood', wave: 'rumble', filter: 'bandpass', cutoff: 180, cutoffEnd: 190, resonance: 2, length: 0.52, attack: 0.005, ...held, release: 0.12, tremoloRate: 23, tremoloDepth: 0.5 },
-      { name: 'Rasp', wave: 'rumble', filter: 'bandpass', cutoff: 600, cutoffEnd: 700, resonance: 1, length: 0.52, attack: 0.005, ...held, release: 0.12, tremoloRate: 17, tremoloDepth: 0.6, gain: 0.7 },
-      { name: 'Creak', wave: 'crackle', pitch: 900, pitchEnd: 700, filter: 'lowpass', cutoff: 3000, cutoffEnd: 2500, length: 0.52, attack: 0.005, ...held, release: 0.12, gain: 0.45 },
-      { name: 'Grain', wave: 'hiss', filter: 'bandpass', cutoff: 2000, cutoffEnd: 2200, resonance: 1.5, length: 0.52, attack: 0.005, ...held, release: 0.12, tremoloRate: 21, tremoloDepth: 0.6, gain: 0.12 },
+      { name: 'Click', wave: 'noise', pitch: 3000, pitchEnd: 2500, filter: 'highpass', cutoff: 2500, cutoffEnd: 2500, length: 0.015, decay: 0.008, drive: 0.4, ...hit },
+      { name: 'Ring', wave: 'sine', pitch: 1870, pitchEnd: 1860, length: 0.28, decay: 0.22, gain: 0.35, ...hit },
+      { name: 'Ring 2', wave: 'sine', pitch: 3120, pitchEnd: 3110, length: 0.2, decay: 0.14, gain: 0.2, ...hit },
+      { name: 'Ring 3', wave: 'sine', pitch: 4630, pitchEnd: 4620, length: 0.12, decay: 0.08, gain: 0.12, ...hit },
+      { name: 'Bolt', wave: 'noise', pitch: 900, pitchEnd: 700, filter: 'bandpass', cutoff: 1200, cutoffEnd: 900, resonance: 1, at: 0.06, length: 0.03, decay: 0.02, gain: 0.4, ...hit },
     ],
-    master: { reverbMix: 0.04, reverbSize: 0.2, variation: 1 },
+    master: { reverbMix: 0.06, reverbSize: 0.2, variation: 1 },
   },
   {
     name: 'Stone break',
@@ -281,37 +289,72 @@ const PRESETS: Preset[] = [
   {
     name: 'Explosion',
     group: 'World',
-    vanilla: { event: 'entity.generic.explode', pitch: 0.7, like: 'A deep, heavy boom that sits under 100 Hz and rumbles on for about three seconds, with scattered cracks of debris above it.' },
+    accent: { on: [{ event: 'entity.generic.explode', pitch: 0.7, volume: 1 }], after: 0.02, adds: 'Debris after the boom: a dry crack, then stones and grit pattering down for about a second.' },
     layers: [
-      { name: 'Boom', wave: 'rumble', filter: 'lowpass', cutoff: 220, cutoffEnd: 110, length: 3.1, attack: 0.01, decay: 0.9, sustain: 0.25, release: 1.4, drive: 0.6 },
-      { name: 'Body', wave: 'noise', pitch: 60, pitchEnd: 45, filter: 'lowpass', cutoff: 900, cutoffEnd: 250, length: 2.6, attack: 0.005, decay: 1.2, sustain: 0.1, release: 0.8, drive: 0.4, gain: 0.35 },
-      { name: 'Blast', wave: 'hiss', filter: 'lowpass', cutoff: 6000, cutoffEnd: 1500, length: 0.8, attack: 0.002, decay: 0.5, sustain: 0.1, release: 0.3, gain: 0.25 },
-      { name: 'Debris', wave: 'crackle', pitch: 30, pitchEnd: 8, filter: 'bandpass', cutoff: 2500, cutoffEnd: 1800, resonance: 0.4, length: 3, attack: 0.05, decay: 2, sustain: 0, release: 0.5, gain: 0.9 },
+      { name: 'Crack', wave: 'noise', pitch: 2500, pitchEnd: 1200, filter: 'bandpass', cutoff: 2600, cutoffEnd: 1400, resonance: 0.6, length: 0.06, decay: 0.04, drive: 0.5, ...hit },
+      { name: 'Grit', wave: 'crackle', pitch: 40, pitchEnd: 6, grain: 3, filter: 'bandpass', cutoff: 2200, cutoffEnd: 1500, resonance: 0.5, at: 0.05, length: 1.2, attack: 0.01, decay: 0.9, sustain: 0, release: 0.2, wobbleRate: 5, wobbleAmp: 0.6 },
+      { name: 'Stones', wave: 'noise', pitch: 1400, pitchEnd: 1300, filter: 'bandpass', cutoff: 1500, cutoffEnd: 1300, resonance: 1.4, at: 0.15, length: 0.04, decay: 0.03, repeats: 7, gap: 0.13, jitter: 4, repeatDecay: 0.75, gain: 0.6, ...hit },
     ],
-    master: { reverbMix: 0.2, reverbSize: 0.6, variation: 2 },
+    master: { reverbMix: 0.15, reverbSize: 0.5, variation: 2 },
+  },
+  {
+    name: 'Ground slam',
+    group: 'World',
+    accent: {
+      on: [
+        { event: 'entity.generic.explode', pitch: 0.6, volume: 1.5 },
+        { event: 'block.anvil.land', pitch: 0.5, volume: 0.8 },
+      ],
+      after: 0.02,
+      adds: 'Weight: a low thump under 120 Hz, over in 0.15 s, that the recorded boom and clang lack.',
+    },
+    layers: [
+      { name: 'Thump', wave: 'sine', pitch: 120, pitchEnd: 40, glide: 0.7, length: 0.16, decay: 0.12, drive: 0.4, ...hit },
+      { name: 'Body', wave: 'rumble', filter: 'lowpass', cutoff: 140, cutoffEnd: 90, steep: true, length: 0.15, decay: 0.1, gain: 0.7, ...hit },
+      { name: 'Knock', wave: 'noise', pitch: 400, pitchEnd: 200, filter: 'lowpass', cutoff: 900, cutoffEnd: 400, length: 0.03, decay: 0.02, gain: 0.3, ...hit },
+    ],
+    master: { variation: 1 },
+  },
+  {
+    name: 'Lightning strike',
+    group: 'World',
+    accent: { on: [{ event: 'entity.lightning_bolt.thunder', pitch: 0.9, volume: 2 }], after: 0, adds: 'An electric crackle at the strike, a tenth of a second, which the rolling thunder has no edge for.' },
+    layers: [
+      { name: 'Zap', wave: 'square', pitch: 2400, pitchEnd: 300, glide: 0.6, rough: 0.8, crush: 0.4, filter: 'highpass', cutoff: 600, cutoffEnd: 600, length: 0.1, decay: 0.08, gain: 0.5, ...hit },
+      { name: 'Sparks', wave: 'crackle', pitch: 500, pitchEnd: 200, grain: 0.5, filter: 'highpass', cutoff: 3000, cutoffEnd: 3000, length: 0.12, decay: 0.1, gain: 1, ...hit },
+      { name: 'Snap', wave: 'noise', pitch: 4000, pitchEnd: 2000, filter: 'highpass', cutoff: 1500, cutoffEnd: 1500, length: 0.02, decay: 0.012, drive: 0.6, ...hit },
+    ],
+    master: { gain: 0.72, reverbMix: 0.1, reverbSize: 0.4, variation: 2 },
   },
   {
     name: 'TNT fuse',
     group: 'World',
-    vanilla: { event: 'entity.tnt.primed', pitch: 1, like: 'A lit fuse: a very bright, high fizz that flares at once and then dies away over about two and a half seconds.' },
+    accent: { on: [{ event: 'entity.tnt.primed', pitch: 1, volume: 1 }], after: 0, adds: 'Sparks spitting off the fuse: sharp, thin, uneven ticks for the first two seconds.' },
     layers: [
-      { name: 'Fizz', wave: 'hiss', filter: 'highpass', cutoff: 5000, cutoffEnd: 4000, length: 2.6, attack: 0.15, decay: 1.6, sustain: 0.2, release: 0.8 },
-      { name: 'Sputter', wave: 'crackle', pitch: 200, pitchEnd: 120, filter: 'highpass', cutoff: 4000, cutoffEnd: 4000, length: 2.5, attack: 0.1, decay: 1.4, sustain: 0.15, release: 0.8, gain: 0.6 },
-      { name: 'Burn', wave: 'hiss', filter: 'lowpass', cutoff: 2500, cutoffEnd: 2000, length: 2.4, attack: 0.15, decay: 1.2, sustain: 0.15, release: 0.8, tremoloRate: 7, tremoloDepth: 0.3, gain: 0.3 },
+      { name: 'Sparks', wave: 'crackle', pitch: 45, pitchEnd: 20, grain: 0.4, filter: 'highpass', cutoff: 4000, cutoffEnd: 4000, length: 2, attack: 0.05, decay: 1.6, sustain: 0, release: 0.3, wobbleRate: 6, wobbleAmp: 0.8 },
+      { name: 'Spits', wave: 'noise', pitch: 3000, pitchEnd: 3000, filter: 'bandpass', cutoff: 5000, cutoffEnd: 4000, resonance: 0.8, at: 0.1, length: 0.03, decay: 0.02, repeats: 6, gap: 0.3, jitter: 3, repeatDecay: 0.8, gain: 0.4, ...hit },
     ],
     master: { variation: 1 },
   },
   {
     name: 'Splash',
     group: 'World',
-    vanilla: { event: 'entity.player.splash', pitch: 1, like: 'A broad wash of churning water, full from the low end to the top, that keeps going for one to three seconds before it settles.' },
+    accent: { on: [{ event: 'entity.player.splash', pitch: 1, volume: 1 }], after: 0.15, adds: 'A trail of bubbles rising after the splash, thinning out over a second.' },
     layers: [
-      { name: 'Slap', wave: 'hiss', filter: 'lowpass', cutoff: 4000, cutoffEnd: 1500, length: 0.12, decay: 0.08, gain: 0.4, ...hit },
-      { name: 'Wash', wave: 'hiss', filter: 'bandpass', cutoff: 1500, cutoffEnd: 900, resonance: 0.3, length: 1.6, attack: 0.03, decay: 1.3, sustain: 0.2, release: 0.3, tremoloRate: 9, tremoloDepth: 0.4, gain: 0.7 },
-      { name: 'Churn', wave: 'crackle', pitch: 90, pitchEnd: 30, filter: 'bandpass', cutoff: 1200, cutoffEnd: 700, resonance: 0.5, length: 1.6, attack: 0.03, decay: 1.2, sustain: 0.1, release: 0.3, gain: 0.5 },
-      { name: 'Body', wave: 'noise', pitch: 30, pitchEnd: 20, filter: 'bandpass', cutoff: 250, cutoffEnd: 200, resonance: 1, length: 1.4, attack: 0.05, decay: 1, sustain: 0.2, release: 0.3, gain: 0.2 },
+      { name: 'Bubbles', wave: 'bubbles', pitch: 30, pitchEnd: 6, bubble: 1100, length: 1.1, attack: 0.02, decay: 0.9, sustain: 0, release: 0.2, gain: 0.9 },
+      { name: 'Glugs', wave: 'bubbles', pitch: 8, pitchEnd: 3, bubble: 350, length: 0.9, attack: 0.02, decay: 0.7, sustain: 0, release: 0.2, gain: 0.6 },
     ],
-    master: { reverbMix: 0.12, reverbSize: 0.3, variation: 2 },
+    master: { reverbMix: 0.1, reverbSize: 0.3, variation: 2 },
+  },
+  {
+    name: 'Fire',
+    group: 'World',
+    accent: { on: [{ event: 'block.fire.ambient', pitch: 0.65, volume: 1 }], after: 0, adds: 'Embers: a soft high sizzle and a few sudden, sharp pops spread over a second and a half.' },
+    layers: [
+      { name: 'Pops', wave: 'crackle', pitch: 5, pitchEnd: 4, grain: 0.3, filter: 'highpass', cutoff: 1500, cutoffEnd: 1500, length: 1.6, attack: 0.05, ...held, release: 0.3, gain: 1.2 },
+      { name: 'Sizzle', wave: 'hiss', filter: 'highpass', cutoff: 5000, cutoffEnd: 5000, steep: true, length: 1.6, attack: 0.2, ...held, release: 0.4, wobbleRate: 3, wobbleAmp: 0.7, gain: 0.12 },
+    ],
+    master: { gain: 0.45, variation: 2 },
   },
   {
     name: 'Lava pop',
@@ -323,29 +366,6 @@ const PRESETS: Preset[] = [
       { name: 'Spit', wave: 'crackle', pitch: 200, pitchEnd: 200, filter: 'highpass', cutoff: 2000, cutoffEnd: 2000, at: 0.02, length: 0.1, decay: 0.06, gain: 0.15, ...hit },
     ],
     master: { variation: 3 },
-  },
-  {
-    name: 'Fire',
-    group: 'World',
-    vanilla: { event: 'block.fire.ambient', pitch: 0.65, like: 'A low, soft rumble of burning under 150 Hz with sharp little crackles flicking across the top; the game plays it low.' },
-    layers: [
-      { name: 'Roar', wave: 'rumble', filter: 'lowpass', cutoff: 180, cutoffEnd: 180, length: 2.8, attack: 0.5, ...held, release: 0.3, tremoloRate: 2.3, tremoloDepth: 0.3, gain: 0.5 },
-      { name: 'Crackle', wave: 'crackle', pitch: 35, pitchEnd: 35, filter: 'highpass', cutoff: 2500, cutoffEnd: 2500, length: 2.8, attack: 0.3, ...held, release: 0.3, gain: 1.3 },
-      { name: 'Hiss', wave: 'hiss', filter: 'highpass', cutoff: 3000, cutoffEnd: 3000, length: 2.8, attack: 0.5, ...held, release: 0.3, gain: 0.04 },
-      { name: 'Pops', wave: 'crackle', pitch: 6, pitchEnd: 6, filter: 'bandpass', cutoff: 1200, cutoffEnd: 1200, resonance: 0.5, length: 2.8, attack: 0.3, ...held, release: 0.3, gain: 1 },
-    ],
-    master: { variation: 2 },
-  },
-  {
-    name: 'Thunder',
-    group: 'World',
-    vanilla: { event: 'entity.lightning_bolt.thunder', pitch: 0.9, like: 'A dark, booming roll with almost nothing above 2 kHz, swelling in waves for seven seconds.' },
-    layers: [
-      { name: 'Crack', wave: 'noise', pitch: 50, pitchEnd: 40, filter: 'lowpass', cutoff: 1500, cutoffEnd: 600, length: 0.6, attack: 0.03, decay: 0.4, sustain: 0, release: 0.1, drive: 0.4, gain: 0.7 },
-      { name: 'Roll', wave: 'rumble', filter: 'lowpass', cutoff: 900, cutoffEnd: 300, length: 7, attack: 0.05, decay: 4, sustain: 0.2, release: 1.5, tremoloRate: 0.9, tremoloDepth: 0.35, drive: 0.3 },
-      { name: 'Rumbles', wave: 'noise', pitch: 25, pitchEnd: 15, filter: 'lowpass', cutoff: 600, cutoffEnd: 350, at: 0.3, length: 1.6, attack: 0.25, decay: 1.2, sustain: 0, release: 0.2, repeats: 4, gap: 1.4, repeatDecay: 0.75, gain: 0.7 },
-    ],
-    master: { reverbMix: 0.35, reverbSize: 0.9, variation: 2 },
   },
   {
     name: 'Portal',
@@ -372,86 +392,94 @@ const PRESETS: Preset[] = [
   {
     name: 'Cave',
     group: 'World',
-    vanilla: { event: 'ambient.cave', pitch: 1, like: 'One of 23 different eerie noises, a few seconds each: rumbles, moans, scrapes and far-off tones in a big echo. This one is a low swelling moan with a scrape.' },
+    accent: { on: [{ event: 'ambient.cave', pitch: 1, volume: 1 }], after: 0.3, adds: 'A low hum that hangs on after the cave noise for three seconds, two tones beating slowly, which makes it uneasier.' },
     layers: [
-      { name: 'Drone', wave: 'saw', pitch: 98, pitchEnd: 92, filter: 'lowpass', cutoff: 500, cutoffEnd: 350, length: 4, attack: 1.2, ...held, release: 1, vibratoRate: 0.15, vibratoDepth: 0.3, gain: 0.45 },
-      { name: 'Moan', wave: 'triangle', pitch: 196, pitchEnd: 185, at: 0.8, length: 3, attack: 1.2, ...held, release: 0.8, vibratoRate: 0.3, vibratoDepth: 0.4, gain: 0.25 },
-      { name: 'Scrape', wave: 'noise', pitch: 300, pitchEnd: 220, filter: 'bandpass', cutoff: 900, cutoffEnd: 500, resonance: 2, at: 1.8, length: 1.8, attack: 0.5, decay: 1, sustain: 0.3, release: 0.4, gain: 0.4 },
+      { name: 'Hum', wave: 'sine', pitch: 55, pitchEnd: 52, length: 3.2, attack: 0.8, ...held, release: 1.2, wobbleRate: 0.7, wobblePitch: 0.3, wobbleAmp: 0.4, gain: 0.8 },
+      { name: 'Beat', wave: 'triangle', pitch: 110.6, pitchEnd: 104.6, length: 3.2, attack: 1, ...held, release: 1.2, wobbleRate: 0.5, wobbleAmp: 0.5, gain: 0.25 },
     ],
-    master: { reverbMix: 0.6, reverbSize: 1, echoMix: 0.15, echoTime: 0.45, echoFeedback: 0.3, variation: 1 },
+    master: { gain: 0.04, reverbMix: 0.35, reverbSize: 0.7, variation: 1 },
   },
 
   /* ---------------- mobs ---------------- */
   {
     name: 'Zombie',
     group: 'Mobs',
-    vanilla: { event: 'entity.zombie.ambient', pitch: 1, like: 'A low, raspy growl of about a second and a half: more throat noise than a sung note, strong from 150 to 500 Hz.' },
+    accent: { on: [{ event: 'entity.zombie.ambient', pitch: 1, volume: 1 }], after: 0.05, adds: 'A wet, rotten gurgle in the throat under the groan, half a second.' },
     layers: [
-      { name: 'Growl', wave: 'noise', pitch: 95, pitchEnd: 80, length: 1.2, attack: 0.04, decay: 0.5, sustain: 0.8, release: 0.4, tremoloRate: 11, tremoloDepth: 0.35, filter: 'vowel', vowel: 3, vowelEnd: 3.6, throat: 0.9, resonance: 1.5, drive: 0.6, gain: 1.2 },
-      { name: 'Voice', wave: 'saw', pitch: 88, pitchEnd: 80, glide: -0.2, length: 1.2, attack: 0.05, decay: 0.5, sustain: 0.8, release: 0.4, vibratoRate: 7, vibratoDepth: 0.8, filter: 'vowel', vowel: 2.8, vowelEnd: 3.6, throat: 0.9, resonance: 2, drive: 0.7, gain: 0.6 },
-      { name: 'Chest', wave: 'saw', pitch: 115, pitchEnd: 98, vibratoRate: 7, vibratoDepth: 2, filter: 'lowpass', cutoff: 500, cutoffEnd: 400, drive: 0.5, length: 1.25, attack: 0.04, decay: 0.5, sustain: 0.8, release: 0.35, tremoloRate: 11, tremoloDepth: 0.35, gain: 0.6 },
-      { name: 'Rasp', wave: 'hiss', length: 1.2, attack: 0.05, decay: 0.5, sustain: 0.8, release: 0.4, tremoloRate: 23, tremoloDepth: 0.5, filter: 'bandpass', cutoff: 3000, cutoffEnd: 2500, resonance: 0.5, gain: 0.55 },
+      { name: 'Gurgle', wave: 'bubbles', pitch: 28, pitchEnd: 18, bubble: 260, length: 0.55, attack: 0.03, decay: 0.4, sustain: 0.3, release: 0.1, gain: 1 },
+      { name: 'Throat', wave: 'saw', pitch: 70, pitchEnd: 60, rough: 0.7, filter: 'vowel', vowel: 3.5, vowelEnd: 4, throat: 0.8, resonance: 1.5, length: 0.55, attack: 0.03, decay: 0.4, sustain: 0.3, release: 0.1, wobbleRate: 12, wobbleAmp: 0.7, gain: 0.4 },
     ],
-    master: { variation: 2 },
+    master: { gain: 0.43, variation: 2 },
   },
   {
-    name: 'Creeper hiss',
+    name: 'Charged creeper',
     group: 'Mobs',
-    vanilla: { event: 'entity.creeper.primed', pitch: 0.5, like: 'The fuse played at half speed: a quick sparkle, then a bright fizz that swells and slowly thins over five seconds.' },
+    accent: { on: [{ event: 'entity.creeper.primed', pitch: 0.5, volume: 1 }], after: 0.1, adds: 'Electricity under the fuse: a buzz that rises and crackles for a second and a half, for a charged creeper.' },
     layers: [
-      { name: 'Light', wave: 'crackle', pitch: 120, pitchEnd: 60, filter: 'highpass', cutoff: 1500, cutoffEnd: 1500, length: 0.45, decay: 0.3, gain: 0.5, ...hit },
-      { name: 'Fizz', wave: 'hiss', filter: 'bandpass', cutoff: 3000, cutoffEnd: 2500, resonance: 0.5, at: 0.45, length: 4.8, attack: 0.3, decay: 4.2, sustain: 0.1, release: 0.3 },
-      { name: 'Sputter', wave: 'crackle', pitch: 80, pitchEnd: 60, filter: 'highpass', cutoff: 1250, cutoffEnd: 1250, at: 0.45, length: 4.8, attack: 0.3, decay: 4.2, sustain: 0.1, release: 0.3, gain: 0.7 },
-      { name: 'Burn', wave: 'hiss', filter: 'bandpass', cutoff: 600, cutoffEnd: 500, resonance: 0.7, at: 0.45, length: 4.8, attack: 0.3, decay: 4.2, sustain: 0.1, release: 0.3, tremoloRate: 3.5, tremoloDepth: 0.3, gain: 0.45 },
+      { name: 'Buzz', wave: 'saw', pitch: 60, pitchEnd: 140, glide: -0.3, rough: 0.4, filter: 'bandpass', cutoff: 900, cutoffEnd: 1800, resonance: 1.2, length: 1.5, attack: 0.3, ...held, release: 0.2, tremoloRate: 30, tremoloDepth: 0.4, gain: 0.5 },
+      { name: 'Arcs', wave: 'crackle', pitch: 15, pitchEnd: 40, grain: 0.5, filter: 'highpass', cutoff: 3000, cutoffEnd: 3000, length: 1.5, attack: 0.3, ...held, release: 0.2, wobbleRate: 8, wobbleAmp: 0.7, gain: 0.9 },
     ],
-    master: { variation: 0.5 },
+    master: { gain: 0.35, variation: 1 },
   },
   {
     name: 'Skeleton',
     group: 'Mobs',
-    vanilla: { event: 'entity.skeleton.ambient', pitch: 1, like: 'A short hollow rattle, under half a second: three or four dry clatters centred in the mids.' },
+    accent: { on: [{ event: 'entity.skeleton.ambient', pitch: 1, volume: 1 }], after: 0.03, adds: 'A dry bone rattle, a third of a second: hard little clicks of bone on bone.' },
     layers: [
-      { name: 'Clatter', wave: 'noise', pitch: 1200, pitchEnd: 1100, filter: 'bandpass', cutoff: 900, cutoffEnd: 800, resonance: 0.9, length: 0.07, attack: 0.003, decay: 0.05, sustain: 0, release: 0.01, repeats: 5, gap: 0.08, jitter: 3, repeatDecay: 0.85 },
-      { name: 'Hollow', wave: 'pluck', pitch: 474, pitchEnd: 470, bright: 0.25, filter: 'highpass', cutoff: 350, cutoffEnd: 350, length: 0.09, decay: 0.07, repeats: 5, gap: 0.08, repeatDecay: 0.85, gain: 0.9, ...hit },
-      { name: 'Click', wave: 'crackle', pitch: 300, pitchEnd: 300, filter: 'bandpass', cutoff: 2000, cutoffEnd: 1800, resonance: 0.7, length: 0.4, attack: 0.005, decay: 0.3, sustain: 0.3, release: 0.03, gain: 0.18 },
+      { name: 'Bones', wave: 'noise', pitch: 2200, pitchEnd: 1800, filter: 'bandpass', cutoff: 2000, cutoffEnd: 1700, resonance: 1.2, length: 0.025, decay: 0.015, repeats: 6, gap: 0.05, jitter: 4, repeatDecay: 0.8, ...hit },
+      { name: 'Knock', wave: 'noise', pitch: 800, pitchEnd: 700, filter: 'bandpass', cutoff: 800, cutoffEnd: 700, resonance: 1.5, at: 0.02, length: 0.03, decay: 0.02, repeats: 3, gap: 0.09, jitter: 3, repeatDecay: 0.7, gain: 0.5, ...hit },
     ],
-    master: { reverbMix: 0.06, reverbSize: 0.2, variation: 2 },
+    master: { gain: 0.18, reverbMix: 0.05, reverbSize: 0.2, variation: 2 },
   },
   {
     name: 'Slime',
     group: 'Mobs',
-    vanilla: { event: 'entity.slime.squish', pitch: 1, like: 'A wet splat with a heavy low thump, gone in a tenth of a second and leaving a soft squishy tail.' },
+    accent: { on: [{ event: 'entity.slime.squish', pitch: 1, volume: 1 }], after: 0.03, adds: 'A wet glop as it lands: a clutch of fat bubbles bursting, a third of a second.' },
     layers: [
-      { name: 'Splat', wave: 'hiss', filter: 'lowpass', cutoff: 9000, cutoffEnd: 2500, at: 0.012, length: 0.3, attack: 0.02, decay: 0.2, sustain: 0, release: 0.03, gain: 1.2 },
-      { name: 'Thump', wave: 'rumble', filter: 'lowpass', cutoff: 250, cutoffEnd: 120, at: 0.012, length: 0.3, attack: 0.02, decay: 0.15, sustain: 0, release: 0.05, gain: 0.7 },
-      { name: 'Squelch', wave: 'noise', pitch: 200, pitchEnd: 120, filter: 'vowel', vowel: 4, vowelEnd: 2, throat: 0.8, resonance: 2.5, gain: 1.8, at: 0.012, length: 0.45, attack: 0.01, decay: 0.12, sustain: 0.08, release: 0.15 },
-      { name: 'Smack', wave: 'noise', pitch: 900, pitchEnd: 500, filter: 'bandpass', cutoff: 1100, cutoffEnd: 700, resonance: 0.7, at: 0.012, length: 0.3, attack: 0.01, decay: 0.18, sustain: 0, release: 0.03, gain: 1.8 },
-      { name: 'Wet', wave: 'crackle', pitch: 400, pitchEnd: 60, filter: 'bandpass', cutoff: 2000, cutoffEnd: 1200, resonance: 0.8, length: 0.5, decay: 0.3, gain: 0.3, ...hit },
+      { name: 'Glop', wave: 'bubbles', pitch: 50, pitchEnd: 15, bubble: 450, length: 0.35, attack: 0.005, decay: 0.25, sustain: 0, release: 0.08, gain: 1 },
+      { name: 'Smack', wave: 'noise', pitch: 300, pitchEnd: 150, filter: 'lowpass', cutoff: 700, cutoffEnd: 300, length: 0.05, decay: 0.035, gain: 0.4, ...hit },
     ],
-    master: { variation: 3 },
+    master: { gain: 0.64, variation: 3 },
   },
   {
     name: 'Ghast',
     group: 'Mobs',
-    vanilla: { event: 'entity.ghast.ambient', pitch: 1, like: 'A short, high crying moan under a second: a clear tone near 480 Hz that sags, often in two breaths, over a rough noisy bed.' },
+    accent: { on: [{ event: 'entity.ghast.ambient', pitch: 1, volume: 1 }], after: 0.1, adds: 'A quiet, airy echo of the cry that drifts on for a second, so it sounds far off and hollow.' },
     layers: [
-      { name: 'Cry', wave: 'triangle', pitch: 485, pitchEnd: 383, glide: -0.2, length: 0.66, attack: 0.06, decay: 0.3, sustain: 0.8, release: 0.1, vibratoRate: 6, vibratoDepth: 0.3, tremoloRate: 3, tremoloDepth: 0.25 },
-      { name: 'Overtone', wave: 'sine', pitch: 970, pitchEnd: 766, glide: -0.2, length: 0.66, attack: 0.06, decay: 0.3, sustain: 0.8, release: 0.1, vibratoRate: 6, vibratoDepth: 0.3, tremoloRate: 3, tremoloDepth: 0.25, gain: 0.3 },
-      { name: 'Rough', wave: 'noise', pitch: 260, pitchEnd: 200, filter: 'bandpass', cutoff: 500, cutoffEnd: 400, resonance: 0.7, length: 0.66, attack: 0.06, decay: 0.3, sustain: 0.8, release: 0.1, gain: 0.35 },
-      { name: 'Air', wave: 'hiss', filter: 'bandpass', cutoff: 3000, cutoffEnd: 2500, resonance: 0.5, length: 0.66, attack: 0.06, decay: 0.3, sustain: 0.8, release: 0.1, gain: 0.12 },
+      { name: 'Breath', wave: 'hiss', filter: 'bandpass', cutoff: 1400, cutoffEnd: 900, resonance: 2, length: 1.2, attack: 0.15, decay: 0.8, sustain: 0.2, release: 0.3, wobbleRate: 2, wobbleAmp: 0.6, gain: 0.6 },
+      { name: 'Whine', wave: 'sine', pitch: 960, pitchEnd: 760, length: 1.1, attack: 0.2, decay: 0.7, sustain: 0.2, release: 0.3, wobbleRate: 3, wobblePitch: 0.5, gain: 0.15 },
     ],
-    master: { reverbMix: 0.12, reverbSize: 0.4, variation: 2 },
+    master: { gain: 0.15, reverbMix: 0.4, reverbSize: 0.7, echoMix: 0.2, echoTime: 0.3, echoFeedback: 0.25, variation: 2 },
+  },
+  {
+    name: 'Fireball shot',
+    group: 'Mobs',
+    accent: { on: [{ event: 'entity.blaze.shoot', pitch: 0.8, volume: 1 }], after: 0.02, adds: 'A sizzle as it leaves: high filtered noise that fades within 0.3 s.' },
+    layers: [
+      { name: 'Sizzle', wave: 'hiss', filter: 'highpass', cutoff: 4500, cutoffEnd: 3000, steep: true, length: 0.3, attack: 0.005, decay: 0.25, sustain: 0, release: 0.05, wobbleRate: 30, wobbleAmp: 0.5 },
+      { name: 'Spit', wave: 'crackle', pitch: 150, pitchEnd: 60, grain: 0.5, filter: 'highpass', cutoff: 3000, cutoffEnd: 3000, length: 0.25, decay: 0.2, gain: 0.6, ...hit },
+    ],
+    master: { variation: 2 },
   },
   {
     name: 'Ender dragon',
     group: 'Mobs',
-    vanilla: { event: 'entity.ender_dragon.growl', pitch: 1, like: 'A deep, dark roar of about two and a half seconds, loudest below 250 Hz, holding and then fading.' },
+    accent: { on: [{ event: 'entity.ender_dragon.growl', pitch: 1, volume: 2 }], after: 0.05, adds: 'Size: a sub-bass rumble with a torn, distorted edge under the growl, two seconds.' },
     layers: [
-      { name: 'Roar', wave: 'saw', pitch: 62, pitchEnd: 50, at: 0.12, length: 2.3, attack: 0.08, decay: 1, sustain: 0.8, release: 0.6, vibratoRate: 9, vibratoDepth: 1.5, filter: 'vowel', vowel: 3, vowelEnd: 4, throat: 0.45, resonance: 2, drive: 0.9 },
-      { name: 'Sub', wave: 'rumble', filter: 'lowpass', cutoff: 400, cutoffEnd: 250, at: 0.12, length: 2.3, attack: 0.08, decay: 1, sustain: 0.8, release: 0.6, gain: 1.3 },
-      { name: 'Rasp', wave: 'noise', pitch: 70, pitchEnd: 55, filter: 'lowpass', cutoff: 5000, cutoffEnd: 2500, at: 0.12, length: 2.3, attack: 0.08, decay: 1, sustain: 0.8, release: 0.6, tremoloRate: 22, tremoloDepth: 0.5, gain: 1 },
+      { name: 'Sub', wave: 'sine', pitch: 45, pitchEnd: 38, rough: 0.3, length: 2, attack: 0.1, decay: 1, sustain: 0.5, release: 0.6, wobbleRate: 4, wobbleAmp: 0.4, drive: 0.5 },
+      { name: 'Tear', wave: 'saw', pitch: 55, pitchEnd: 45, rough: 0.8, filter: 'lowpass', cutoff: 600, cutoffEnd: 300, length: 2, attack: 0.1, decay: 1, sustain: 0.5, release: 0.6, wobbleRate: 9, wobbleAmp: 0.6, drive: 0.9, gain: 0.4 },
     ],
-    master: { reverbMix: 0.15, reverbSize: 0.5, variation: 2 },
+    master: { gain: 0.6, reverbMix: 0.15, reverbSize: 0.6, variation: 2 },
+  },
+  {
+    name: 'Boss roar',
+    group: 'Mobs',
+    accent: { on: [{ event: 'entity.ravager.roar', pitch: 0.7, volume: 2 }], after: 0.3, adds: 'A long, quiet tail that rises out of the roar: a distorted hum climbing for two and a half seconds.' },
+    layers: [
+      { name: 'Hum', wave: 'saw', pitch: 70, pitchEnd: 110, glide: -0.4, rough: 0.3, filter: 'lowpass', cutoff: 500, cutoffEnd: 1200, length: 2.5, attack: 0.6, decay: 1.2, sustain: 0.4, release: 0.7, wobbleRate: 5, wobbleAmp: 0.3, drive: 0.7, gain: 0.6 },
+      { name: 'Air', wave: 'hiss', filter: 'bandpass', cutoff: 800, cutoffEnd: 2000, resonance: 0.8, length: 2.5, attack: 0.8, decay: 1, sustain: 0.3, release: 0.7, wobbleRate: 2, wobbleAmp: 0.5, gain: 0.2 },
+    ],
+    master: { gain: 0.4, reverbMix: 0.3, reverbSize: 0.8, variation: 1 },
   },
 ]
 
@@ -467,6 +495,7 @@ export function fromPreset(p: Preset): Sound {
     layers: p.layers.map((l) => layer(l)),
     master: master(p.master),
     vanilla: p.vanilla,
+    accent: p.accent,
   }
 }
 

@@ -92,7 +92,7 @@ test('every preset renders, encodes and decodes; variants differ; the seed repea
       }
       const ogg = B.oggOf(d, s, 0.5)
       const buf = await new OfflineAudioContext(1, 1, 44100).decodeAudioData(ogg.buffer.slice(0))
-      out.push({ name: p.name, finite, peak, secs: d.length / 44100, decoded: buf.length >= d.length })
+      out.push({ name: p.name, finite, peak, gain: s.master.gain, secs: d.length / 44100, decoded: buf.length >= d.length })
     }
     const s = P.fromPreset(P.presets.find((p) => p.name === 'Eat'))
     const same = S.render(s).every((v, i, a) => v === S.render(s)[i])
@@ -105,7 +105,8 @@ test('every preset renders, encodes and decodes; variants differ; the seed repea
   assert.ok(r.out.length >= 30, `a full library (${r.out.length})`)
   for (const p of r.out) {
     assert.ok(p.finite, `${p.name} has no NaN`)
-    assert.ok(p.peak > 0.5 && p.peak <= 1, `${p.name} is normalized (${p.peak})`)
+    // an accent's master gain sets it under the game sound it goes on
+    assert.ok(p.peak > 0.5 * p.gain && p.peak <= 1, `${p.name} is normalized (${p.peak} at gain ${p.gain})`)
     assert.ok(p.secs > 0.02 && p.secs < 12, `${p.name} has a sensible length (${p.secs})`)
     assert.ok(p.decoded, `${p.name} decodes in full`)
   }
@@ -171,6 +172,79 @@ test('the pluck holds its pitch, the vowel filter shapes vowels, the crackle cli
   await page.close()
 })
 
+test('bubbles, roughness, wobble and the steep filter do what they say', async () => {
+  const { page, errors } = await open()
+  const r = await inApp(page, async () => {
+    const S = await import('/src/lib/audio/synth.ts')
+    const M = await import('/src/lib/audio/measure.ts')
+    const one = (l) => S.render({ id: 's', name: 't', group: 'Player', seed: 5, layers: [S.layer(l)], master: S.master({ variation: 0 }) })
+    const rms = (d, a = 0, b = d.length) => {
+      let s = 0
+      for (let i = a; i < b; i++) s += d[i] * d[i]
+      return Math.sqrt(s / (b - a))
+    }
+    const same = (a, b) => a.length === b.length && a.every((v, i) => v === b[i])
+    const bub = one({ wave: 'bubbles', pitch: 25, pitchEnd: 25, length: 1, sustain: 1, bubble: 900 })
+    const tone = { wave: 'saw', pitch: 110, pitchEnd: 110, length: 1, sustain: 1 }
+    const smooth = one(tone)
+    const rough = one({ ...tone, rough: 0.6 })
+    // the level of each 50 ms block: steady without wobble, uneven with it
+    const spread = (d) => {
+      const v = []
+      for (let i = 2205; i + 2205 < d.length - 4410; i += 2205) v.push(rms(d, i, i + 2205))
+      return Math.max(...v) / Math.min(...v)
+    }
+    const flat = one({ ...tone, wave: 'sine' })
+    const wob = one({ ...tone, wave: 'sine', wobbleRate: 6, wobbleAmp: 0.8 })
+    const pitches = (d) => {
+      const out = []
+      for (let i = 0; i + 8820 < d.length - 4410; i += 4410) out.push(M.measure(d.slice(i, i + 8820), S.RATE).pitchStart)
+      return out
+    }
+    const bend = pitches(one({ ...tone, wave: 'sine', pitch: 440, pitchEnd: 440, wobbleRate: 4, wobblePitch: 6 }))
+    const lp = { wave: 'noise', pitch: 30, pitchEnd: 30, length: 1, sustain: 1, filter: 'lowpass', cutoff: 500, cutoffEnd: 500 }
+    // power at 2-4 kHz against 100-300 Hz, summed over 30 frequencies each
+    const band = (d, lo, hi) => {
+      let p = 0
+      for (let k = 0; k < 30; k++) {
+        const f = lo + ((hi - lo) * k) / 29
+        let re = 0
+        let im = 0
+        for (let n = 0; n < d.length; n++) {
+          re += d[n] * Math.cos((2 * Math.PI * f * n) / S.RATE)
+          im += d[n] * Math.sin((2 * Math.PI * f * n) / S.RATE)
+        }
+        p += re * re + im * im
+      }
+      return p
+    }
+    const hi = (d) => band(d, 2000, 4000) / band(d, 100, 300)
+    const B = await import('/src/lib/audio/board.ts')
+    localStorage.setItem('vellum.sounds.v1', JSON.stringify({ sounds: [{ id: 'old', name: 'Old', group: 'Player', seed: 1, master: S.master(), layers: [{ ...S.layer(), grain: undefined, bubble: undefined, rough: undefined, wobbleRate: undefined, wobblePitch: undefined, wobbleAmp: undefined, steep: undefined }] }] }))
+    const old = B.loadBoard().sounds[0].layers[0]
+    localStorage.removeItem('vellum.sounds.v1')
+    return {
+      bubFinite: bub.every(Number.isFinite),
+      bubLevel: rms(bub),
+      roughDiffers: !same(smooth, rough),
+      roughFinite: rough.every(Number.isFinite),
+      flat: spread(flat),
+      wob: spread(wob),
+      bend: Math.max(...bend) / Math.min(...bend),
+      steep: hi(one({ ...lp, steep: true })) / hi(one(lp)),
+      old: [old.grain, old.bubble, old.rough, old.wobbleRate, old.wobblePitch, old.wobbleAmp, old.steep],
+    }
+  })
+  assert.ok(r.bubFinite && r.bubLevel > 0.005, `bubbles make sound (${r.bubLevel.toFixed(4)})`)
+  assert.ok(r.roughDiffers && r.roughFinite, 'roughness changes the wave')
+  assert.ok(r.flat < 1.05 && r.wob > 1.3, `wobble moves the level (${r.flat.toFixed(2)} → ${r.wob.toFixed(2)})`)
+  assert.ok(r.bend > 1.03, `wobble moves the pitch (${r.bend.toFixed(3)})`)
+  assert.ok(r.steep < 0.1, `the steep filter leaves less above its cutoff (${r.steep.toFixed(2)})`)
+  assert.deepEqual(r.old, [1, 800, 0, 6, 0, 0, false])
+  assert.deepEqual(errors, [])
+  await page.close()
+})
+
 /* Ranges each preset is held to, measured with measure.ts from the game's
    own files played at the preset's pitch (and the file's own pitch from
    sounds.json): length from the shortest file's 0.6x to the longest's 1.6x,
@@ -187,7 +261,6 @@ const VANILLA = {
   Eat: { len: [0.17, 0.46], noise: true, bright: [880, 5200] },
   'Grass step': { len: [0.2, 0.82], noise: true, bright: [4500, 20000] },
   'Wood break': { len: [0.077, 0.98], noise: true, bright: [93, 460] },
-  'Chest open': { len: [0.31, 0.82], noise: true, bright: [250, 980] },
   'Stone break': { len: [0.15, 0.98], noise: true, bright: [84, 710] },
   'Glass break': { len: [0.24, 1.0], noise: true, bright: [1400, 13000] },
   Lever: { len: [0.14, 0.37], noise: true, bright: [710, 2800] },
@@ -196,32 +269,20 @@ const VANILLA = {
   Bell: { len: [0.24, 0.63], tone: true, f0: [1420.8, 1539.2], bright: [740, 3000] },
   Bass: { len: [0.21, 0.56], tone: true, f0: [88.8, 96.2], bright: [53, 210] },
   Pling: { len: [0.3, 0.8], tone: true, f0: [355.2, 384.8], bright: [240, 970] },
-  Explosion: { len: [1.7, 4.9], bright: [37, 230] },
-  'TNT fuse': { len: [1.6, 4.2], noise: true, bright: [5400, 21000] },
-  Splash: { len: [0.75, 4.9], noise: true, bright: [650, 6800] },
   'Lava pop': { len: [0.077, 0.2], noise: true, bright: [320, 1300] },
-  Fire: { len: [1.7, 4.4], noise: true, bright: [220, 890] },
-  Thunder: { len: [4.2, 11.0], noise: true, bright: [65, 500] },
   Portal: { len: [2.9, 7.8], tone: true, f0: [83.5, 90.5], bright: [60, 240] },
   Teleport: { len: [0.27, 0.93], tone: true, bright: [99, 1000] },
-  Cave: { len: [1.2, 19.0], bright: [32, 2500] },
-  Zombie: { len: [0.74, 3.0], bright: [160, 4800] },
-  'Creeper hiss': { len: [3.1, 8.4], noise: true, bright: [2700, 11000] },
-  Skeleton: { len: [0.26, 0.76], bright: [650, 3500] },
-  Slime: { len: [0.25, 0.91], noise: true, bright: [590, 3400] },
-  Ghast: { len: [0.42, 3.3], f0: [360, 510], falls: true, bright: [190, 6100] },
-  'Ender dragon': { len: [1.5, 4.6], bright: [42, 470] },
 }
 
-test('every preset is held to what its vanilla sound is like', async () => {
+test('every preset that imitates a game sound is held to what it is like', async () => {
   const { page, errors } = await open()
   const r = await inApp(page, async () => {
     const S = await import('/src/lib/audio/synth.ts')
     const P = await import('/src/lib/audio/presets.ts')
     const M = await import('/src/lib/audio/measure.ts')
-    return P.presets.map((p) => ({ name: p.name, vanilla: p.vanilla, m: M.measure(S.render(P.fromPreset(p)), S.RATE) }))
+    return P.presets.filter((p) => p.vanilla).map((p) => ({ name: p.name, vanilla: p.vanilla, m: M.measure(S.render(P.fromPreset(p)), S.RATE) }))
   })
-  assert.deepEqual(r.map((p) => p.name).sort(), Object.keys(VANILLA).sort(), 'every preset has a reference, and every reference a preset')
+  assert.deepEqual(r.map((p) => p.name).sort(), Object.keys(VANILLA).sort(), 'every imitation has a reference, and every reference a preset')
   const inside = (v, [lo, hi]) => v >= lo && v <= hi
   for (const { name, vanilla, m } of r) {
     const want = VANILLA[name]
@@ -238,7 +299,40 @@ test('every preset is held to what its vanilla sound is like', async () => {
   }
   const by = Object.fromEntries(r.map((p) => [p.name, p.m]))
   assert.ok(by.Lever.brightness < by.Click.brightness, 'the lever is the click played lower')
-  assert.ok(by['Creeper hiss'].brightness < by['TNT fuse'].brightness, 'the creeper is the fuse played lower')
+  assert.deepEqual(errors, [])
+  await page.close()
+})
+
+/* Accents go on top of the game's own recording, which the console can't
+   make (a boom, a roar, a creak). Each names the sounds it goes on, at a
+   pitch and volume a Game sound cue can take, and stays short unless it is
+   a tail. */
+test('every accent names the game sounds it goes on, and is short', async () => {
+  const { page, errors } = await open()
+  const r = await inApp(page, async () => {
+    const S = await import('/src/lib/audio/synth.ts')
+    const P = await import('/src/lib/audio/presets.ts')
+    const M = await import('/src/lib/audio/measure.ts')
+    return P.presets.map((p) => {
+      const d = S.render(P.fromPreset(p))
+      return { name: p.name, both: !!p.vanilla === !!p.accent, accent: P.fromPreset(p).accent, m: M.measure(d, S.RATE), finite: d.every(Number.isFinite) }
+    })
+  })
+  assert.deepEqual(r.filter((p) => p.both).map((p) => p.name), [], 'each preset either imitates or accents')
+  const accents = r.filter((p) => p.accent)
+  assert.ok(accents.length >= 15, `${accents.length} accents`)
+  for (const { name, accent, m, finite } of accents) {
+    assert.ok(accent.on.length >= 1 && accent.adds.length > 20, `${name} says what it goes on and what it adds`)
+    for (const c of accent.on) {
+      assert.match(c.event, /^[a-z_]+(\.[a-z_]+)+$/, `${name} goes on a sound event`)
+      assert.ok(c.pitch >= 0.5 && c.pitch <= 2, `${name}: ${c.event} at a pitch a cue can take`)
+      assert.ok(c.volume > 0 && c.volume <= 4, `${name}: ${c.event} at a volume a cue can take`)
+    }
+    assert.ok(accent.after >= 0 && accent.after <= 0.5, `${name} starts with its sound, or just after`)
+    assert.ok(finite && m.length > 0.05 && m.length < 4, `${name} is heard for ${m.length.toFixed(2)} s`)
+  }
+  const len = Object.fromEntries(accents.map((p) => [p.name, p.m.length]))
+  for (const n of ['Ground slam', 'Lightning strike', 'Fireball shot', 'Chest open', 'Skeleton', 'Slime']) assert.ok(len[n] < 0.6, `${n} is a short accent (${len[n].toFixed(2)} s)`)
   assert.deepEqual(errors, [])
   await page.close()
 })
@@ -376,17 +470,27 @@ test('the console: pads and keys, knobs with undo, layers, the display, import a
   const [zip] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: /Download 3 \.ogg files/ }).click()])
   assert.equal(zip.suggestedFilename(), 'player.item_pickup.zip')
 
+  // an accent says which game sounds it goes on, and gives the lines that play them together
+  await page.getByRole('button', { name: 'Add Ground slam to the board' }).click()
+  await page.waitForFunction(() => document.querySelector('.deck__name')?.value === 'Ground slam')
+  assert.equal(await page.locator('.sb-compare:not(.sb-accent)').count(), 0, 'an accent has nothing to imitate')
+  assert.equal(
+    await page.locator('.sb-accent code').textContent(),
+    '/playsound minecraft:entity.generic.explode master @s ~ ~ ~ 1.5 0.6\n/playsound minecraft:block.anvil.land master @s ~ ~ ~ 0.8 0.5\n/playsound vellum:world.ground_slam master @s',
+  )
+  assert.match(await page.locator('.sb-accent').textContent(), /heard further away/)
+
   // import audio: a new sound with a sample layer
   await page.locator('input[type="file"]').setInputFiles({ name: 'blip.wav', mimeType: 'audio/wav', buffer: wav() })
   await page.waitForFunction(() => document.querySelector('.deck__name')?.value === 'blip')
-  assert.equal(await page.locator('.pad').count(), 9)
+  assert.equal(await page.locator('.pad').count(), 10)
   assert.equal(await page.locator('.strip__wave').first().textContent(), 'Sample')
 
   // the board survives a reload
   await page.waitForTimeout(500)
   await page.reload()
   await page.waitForSelector('.pad')
-  assert.equal(await page.locator('.pad').count(), 9)
+  assert.equal(await page.locator('.pad').count(), 10)
   assert.deepEqual(errors, [])
   await page.close()
 })

@@ -39,6 +39,7 @@ const WAVE_PATH: Record<Wave, string> = {
   hiss: 'M1 8l1-4 1 7 1-9 1 8 1-5 1 6 1-8 1 9 1-6 1 4 1-7 1 8 1-3 1 2 1-4 1 5',
   rumble: 'M1 9c2-3 3 3 5 0s2-5 4-2 3 4 5 1 2-3 4-1',
   crackle: 'M1 8h3V2v12V8h5V5v6V8h4V1v14V8h5',
+  bubbles: 'M5 11a2 2 0 1 0 0 .1M12 7a3 3 0 1 0 0 .1M16 13a1.5 1.5 0 1 0 0 .1',
   sample: 'M1 8h3l1-5 2 10 2-12 2 14 2-9 2 4h3',
 }
 
@@ -96,7 +97,8 @@ export function LayerInspector({ layer: l, samples, onLayer, onImport }: LayerPr
   const c = layerColour(l)
   const k = (key: keyof Layer, label: string) => (v: number) => onLayer(label, { [key]: v } as Partial<Layer>)
   const isSample = l.wave === 'sample'
-  const isCrackle = l.wave === 'crackle'
+  // crackle and bubbles are counted, not pitched: their pitch knobs set how many a second
+  const isCrackle = l.wave === 'crackle' || l.wave === 'bubbles'
   const vowel = l.filter === 'vowel'
   // FM bends the phase of an oscillator; the others have no phase to bend
   const fmable = ['sine', 'triangle', 'square', 'saw'].includes(l.wave)
@@ -173,6 +175,15 @@ export function LayerInspector({ layer: l, samples, onLayer, onImport }: LayerPr
         {l.wave === 'pluck' ? (
           <Knob label="Brightness" value={l.bright} min={0} max={1} step={0.01} color={c} format={pct} onChange={k('bright', 'Brightness')} />
         ) : null}
+        {l.wave === 'crackle' ? (
+          <Knob label="Grain" value={l.grain} min={0.1} max={40} log color={c} format={(v) => (v < 1.5 ? `tick ${times(v)}` : `burst ${times(v)}`)} onChange={k('grain', 'Grain')} />
+        ) : null}
+        {l.wave === 'bubbles' ? (
+          <Knob label="Size" value={l.bubble} min={100} max={6000} log color={c} format={(v) => (v < 400 ? `glug ${hz(v)}` : v > 2000 ? `fizz ${hz(v)}` : hz(v))} onChange={k('bubble', 'Bubble size')} />
+        ) : null}
+        {fmable ? (
+          <Knob label="Rough" value={l.rough} min={0} max={1} step={0.01} color={c} format={(v) => (v === 0 ? 'clean' : pct(v))} onChange={k('rough', 'Roughness')} />
+        ) : null}
         <Knob label="Level" value={l.gain} min={0} max={1.5} step={0.01} color={c} format={pct} onChange={k('gain', 'Level')} />
       </Section>
 
@@ -210,6 +221,13 @@ export function LayerInspector({ layer: l, samples, onLayer, onImport }: LayerPr
           </>
         )}
         <Knob label="Resonance" value={l.resonance} min={0.3} max={20} log color={c} disabled={l.filter === 'off'} format={(v) => `Q ${v.toFixed(1)}`} onChange={k('resonance', 'Resonance')} />
+        {vowel ? null : (
+          <label className="insp__toggle">
+            <input type="checkbox" checked={l.steep} disabled={l.filter === 'off'} onChange={(e) => onLayer('Steep filter', { steep: e.target.checked })} />
+            <span>Steep</span>
+            <span className="insp__toggle-note">{l.steep ? '24 dB/oct' : '12 dB/oct'}</span>
+          </label>
+        )}
       </Section>
 
       <Section title="Motion">
@@ -217,6 +235,9 @@ export function LayerInspector({ layer: l, samples, onLayer, onImport }: LayerPr
         <Knob label="Vib. depth" value={l.vibratoDepth} min={0} max={12} step={0.05} color={c} disabled={!tone} format={(v) => `${v.toFixed(2)} st`} onChange={k('vibratoDepth', 'Vibrato depth')} />
         <Knob label="Tremolo" value={l.tremoloRate} min={0} max={40} step={0.1} color={c} format={(v) => `${v.toFixed(1)} Hz`} onChange={k('tremoloRate', 'Tremolo rate')} />
         <Knob label="Trem. depth" value={l.tremoloDepth} min={0} max={1} step={0.01} color={c} format={pct} onChange={k('tremoloDepth', 'Tremolo depth')} />
+        <Knob label="Wobble" value={l.wobbleRate} min={0.2} max={40} log color={c} disabled={!l.wobblePitch && !l.wobbleAmp} format={(v) => `${v.toFixed(1)} Hz`} onChange={k('wobbleRate', 'Wobble rate')} />
+        <Knob label="Wob. pitch" value={l.wobblePitch} min={0} max={12} step={0.05} color={c} disabled={!tone} format={(v) => (v === 0 ? 'off' : `±${v.toFixed(2)} st`)} onChange={k('wobblePitch', 'Wobble pitch')} />
+        <Knob label="Wob. level" value={l.wobbleAmp} min={0} max={1} step={0.01} color={c} format={(v) => (v === 0 ? 'off' : pct(v))} onChange={k('wobbleAmp', 'Wobble level')} />
         <Knob label="FM ratio" value={l.fmRatio} min={0.25} max={8} log color={c} disabled={!fmable} format={times} onChange={k('fmRatio', 'FM ratio')} />
         <Knob label="FM amount" value={l.fmIndex} min={0} max={10} step={0.05} color={c} disabled={!fmable} format={(v) => v.toFixed(2)} onChange={k('fmIndex', 'FM amount')} />
       </Section>
