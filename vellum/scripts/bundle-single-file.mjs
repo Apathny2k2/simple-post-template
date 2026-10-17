@@ -2,7 +2,7 @@
 /**
  * Fold a Vite build into one self-contained HTML file.
  *
- *   node scripts/bundle-single-file.mjs [--out <path>] [--fragment]
+ *   node scripts/bundle-single-file.mjs [--out <path>] [--fragment] [--dist <dir>] [--entry <file.html>]
  *
  * Every stylesheet and module chunk is inlined, `public/fonts/*.woff2` are
  * embedded as data URIs, and the favicon rides along, so the result loads
@@ -12,6 +12,8 @@
  *               that supply their own document skeleton, such as Claude
  *               Artifacts. Implies no <meta charset>, which is why non-ASCII
  *               is escaped either way.
+ *   --dist, --entry  fold another build, such as the sound console's
+ *               (`--dist dist-sounds --entry sounds.html`, or `pnpm build:sounds`).
  *
  * Run `tsc -b && vite build` first, or just use `pnpm build:single`.
  */
@@ -20,14 +22,14 @@ import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
-const dist = join(root, 'dist')
 
 const argv = process.argv.slice(2)
+const flag = (name) => (argv.includes(name) ? argv[argv.indexOf(name) + 1] : undefined)
 const fragment = argv.includes('--fragment')
-const outFlag = argv.indexOf('--out')
-const out = outFlag === -1 ? join(dist, 'vellum.html') : resolve(argv[outFlag + 1])
+const dist = resolve(root, flag('--dist') ?? 'dist')
+const out = flag('--out') ? resolve(flag('--out')) : join(dist, 'vellum.html')
 
-const entry = join(dist, 'index.html')
+const entry = join(dist, flag('--entry') ?? 'index.html')
 if (!existsSync(entry)) {
   console.error(`No build found at ${entry}\nRun the build first: pnpm build`)
   process.exit(1)
@@ -73,7 +75,7 @@ const scripts = [...html.matchAll(/<script[^>]+type="module"[^>]*src="([^"]+)"[^
   .map((m) => m[1])
 
 if (!scripts.length) {
-  console.error('No module scripts found in dist/index.html - nothing to inline.')
+  console.error(`No module scripts found in ${entry} - nothing to inline.`)
   process.exit(1)
 }
 

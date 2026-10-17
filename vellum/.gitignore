@@ -1,6 +1,7 @@
 node_modules
 dist
 dist-ssr
+dist-sounds
 *.local
 .DS_Store
 *.tsbuildinfo

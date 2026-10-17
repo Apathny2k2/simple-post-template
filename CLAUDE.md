@@ -23,6 +23,17 @@ Then publish `vellum/dist/vellum.html` to the existing artifact:
 - Omit `capabilities` — omitting carries the existing ones forward.
 - Omit `icon` so the artifact keeps the one it has.
 
+The sound console is also published on its own. When a push touches it
+(`src/lib/audio/`, `src/pages/Sounds*`, `src/pages/sounds/`, or what they
+import), republish that one too:
+
+```
+cd vellum && pnpm build:sounds      # writes dist-sounds/vellum-sounds.html
+```
+
+- URL: `https://claude.ai/artifact/TSKitM4UCxQ56FeXr4dgPq`
+- Same rules: pass `url`, omit `capabilities` and `icon`.
+
 ### Typechecking
 
 `tsc --noEmit` is a **silent no-op** here: the root `tsconfig.json` is a

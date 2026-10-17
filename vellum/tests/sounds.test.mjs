@@ -273,3 +273,17 @@ test('the console fits a phone: no sideways scroll', async () => {
   assert.deepEqual(errors, [])
   await page.close()
 })
+
+test('the console on its own (sounds.html): no Studio around it, and it plays', async () => {
+  const { page, errors } = await open('sounds.html', { width: 390, height: 844 })
+  await page.waitForSelector('.pad')
+  assert.equal(await page.locator('.pad').count(), 8)
+  assert.equal(await page.locator('.topbar__brand').textContent(), 'Vellum Sounds')
+  assert.equal(await page.locator('.topbar nav, .topbar__server').count(), 0, 'no Studio links or server picker')
+  await page.keyboard.press('2')
+  await page.waitForFunction(() => document.querySelector('.deck__name')?.value === 'Pickup pop')
+  const over = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)
+  assert.ok(over <= 0, `no horizontal scroll (${over}px over)`)
+  assert.deepEqual(errors, [])
+  await page.close()
+})

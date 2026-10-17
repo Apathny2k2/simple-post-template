@@ -1516,6 +1516,15 @@ twice, and export waits until they are fixed.
 The board is saved in `localStorage` (`vellum.sounds.v1`). Samples are saved
 under `vellum.sounds.samples.v1` as 16-bit PCM, up to 12 seconds each.
 
+### On its own
+
+`sounds.html` is a second entry point. It holds the same page with only a
+brand bar above it: no Studio navigation and no server. `pnpm build:sounds`
+builds it with `vite build --mode sounds` into `dist-sounds/`, then folds it
+into `dist-sounds/vellum-sounds.html`. That file is about 570 KB, against
+1.5 MB for the whole app, and is published as its own artifact. The board is
+saved in that page's own storage, so it is separate from the Studio's.
+
 ### The console
 
 - **Pads:** keys `1`–`0` and `Q`–`P` play them.
