@@ -9,6 +9,7 @@ import './TopBar.css'
 const links = [
   { path: '/dash', label: 'Dash', match: (s: string[]) => s[0] === 'dash' },
   { path: '/projects', label: 'Projects', match: (s: string[]) => s[0] === 'projects' },
+  { path: '/sounds', label: 'Sounds', match: (s: string[]) => s[0] === 'sounds' },
   { path: '/settings', label: 'Settings', match: (s: string[]) => s[0] === 'settings', icon: 'gear' as const },
 ]
 

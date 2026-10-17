@@ -8,6 +8,7 @@ import { Projects } from './pages/Projects'
 import { Servers } from './pages/Servers'
 import { Settings } from './pages/Settings'
 import { SignIn } from './pages/SignIn'
+import { Sounds } from './pages/Sounds'
 import { useDemoServer } from './pages/dash/demo'
 import { Icon } from './lib/icons'
 import { navigate, useRoute, useTitle } from './lib/router'
@@ -80,6 +81,8 @@ export default function App() {
         <Dashboard />
       ) : root === 'projects' ? (
         <Projects segments={segments} />
+      ) : root === 'sounds' ? (
+        <Sounds />
       ) : root === 'settings' ? (
         <Settings segments={segments} />
       ) : root === 'editor' ? (

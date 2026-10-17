@@ -34,6 +34,7 @@ un-inlined fails the build, so a page that 404s its own assets never ships.
 | `#/projects` | sheet 2 | First scene. Pick a shelf: Items or Mobs. |
 | `#/projects/:scene/:shelf` | sheet 2 | The shared library panel. `< Back`, shelf tabs, **New model**, card grid, `< 1 2 3 >`. Cards are grouped by what each model is for. |
 | `#/projects/:scene/:shelf/new` | sheet 2 | The same panel with the **New model** dialog open. |
+| `#/sounds` | - | The sound console: a board of pads, a layered synth, and export to Ogg Vorbis and a resource pack. |
 | `#/settings/:section` | sheet 1 | Search + section list, free sections above the `Manage` divider. |
 | `#/editor/:sampleId` | - | The editor. Opens and saves `.vellum`. |
 | `#/editor/new/:kind/:subtype/:name` | - | The same editor, on a model built from the URL. This is where **New model** lands. |
@@ -1409,6 +1410,127 @@ the rig maths the viewport and gizmos use.
 - **Java model JSON**, through the same converter the resource pack uses.
   Anything Java JSON cannot express is listed in the Validation panel.
 
+## The sound console
+
+`#/sounds` makes sound effects in the manner of the game's own and exports them
+as the `.ogg` files a resource pack plays. The code is in `src/lib/audio/` (no
+React) and `src/pages/Sounds.tsx` with `src/pages/sounds/`.
+
+### A sound
+
+A sound is a stack of **layers** mixed into a **master** (`lib/audio/synth.ts`).
+Each layer is one source:
+
+- a wave: sine, triangle, square or saw (the last two band-limited with PolyBLEP);
+- pitched noise, a new random value 32 times a cycle, which gives the gritty
+  tones of a mob or a portal;
+- hiss (white noise), rumble (brown noise), or an imported or recorded sample.
+
+On top of the source, each layer has:
+
+- a pitch glide between two notes with a shaping curve;
+- start, length and an ADSR envelope;
+- a low, high or band-pass filter that sweeps between two cutoffs;
+- vibrato, tremolo, and FM by phase modulation;
+- drive (tanh) and a bit crusher;
+- repeats with a gap, a fade, a pitch step and jitter. Clicks, rattles and
+  footsteps are built from these.
+
+The master adds an echo and a Freeverb-style reverb, then normalizes to 0.89
+peak and applies its gain. It trims the tail where the signal falls below
+1e-3 and ends with a 5 ms fade.
+
+Rendering is offline, sample by sample, at 44.1 kHz mono, from a seeded
+mulberry32. The same sound and seed always give the same samples, so a variant
+is the same render with the pitch shifted by a few semitones (`variantShifts`).
+The game picks among a sound's files at random, which is where its variety
+comes from.
+
+`presets.ts` holds 33 starting points in five groups:
+
+| Group | Presets |
+| --- | --- |
+| Player | Orb chime, Level up, Click, Pickup pop, Hit, Bow shot, Eat, Footstep |
+| Blocks | Wood knock, Chest creak, Stone break, Glass shatter, Lever, Anvil land |
+| Notes | Harp, Bell, Bass, Pling |
+| World | Explosion, Fuse, Splash, Lava pop, Fire, Thunder, Portal hum, Teleport, Cave |
+| Mobs | Groan, Hiss, Rattle, Squish, Wail, Roar |
+
+A new board starts with eight of them on its pads.
+
+### The Ogg Vorbis encoder
+
+The game reads Ogg Vorbis, and browsers can play it but not write it, so
+`lib/audio/vorbis.ts` is a small mono encoder and `ogg.ts` writes the pages.
+It keeps to the parts of the format that every decoder must handle:
+
+- **Blocks:** one block size, 2048 for both long and short blocks, and one
+  mode. With no block switching there is no window shape to choose.
+- **Transform:** the forward MDCT runs as a DCT-IV through a quarter-length
+  FFT, scaled by 4/N, with the Vorbis power-sine window. The test compares it
+  against the direct sum.
+- **Floor 1:** multiplier 2 (range 128) and 34 posts, spaced geometrically
+  and listed coarse to fine. A post's target is the peak magnitude near it
+  times a step size. The step widens toward the treble by 1 + 2(x/half)^1.5,
+  where hearing is least exact. A silent block sends an unused floor and
+  costs a few bits.
+- **Residue type 1:** partitions of 16 with five classes:
+  - zero;
+  - ±1 in fours;
+  - ±4 in pairs;
+  - ±15 singly;
+  - a coarse step of 31 plus the fine book, for loud peaks.
+- **Codebooks:** each file has its own. The encoder quantizes in a first
+  pass and counts symbols. It then builds Huffman codes, length-limited to
+  24, and writes with them in a second pass. The codewords are assigned the
+  way the decoder rebuilds them, so the tree is always complete.
+- **Quality:** the slider (0 to 10) sets the step as `0.35 × 0.06^q`. At the
+  default 5, short effects come out at roughly 60 to 120 kbps.
+
+The pages carry granule positions, and the last page holds the true sample
+count, so a decoder that trims ends cuts the padding of the final block.
+Chromium's decoder does not trim; it plays up to one block of silence after
+the end.
+
+### Export
+
+The **Export this sound** panel works on the open sound:
+
+- **Event:** the sound's name in `/playsound`, such as `player.orb_chime`.
+  The dots become folders.
+- **Variants:** from one to eight. Several variants download as a zip of
+  `orb_chime1.ogg`, `orb_chime2.ogg`, and so on.
+- **Quality:** the encoder quality, from 0 to 10.
+
+The **Resource pack** panel writes the whole board:
+
+- `assets/<ns>/sounds/…/*.ogg`;
+- `assets/<ns>/sounds.json`, with a subtitle per event, and `stream: true`
+  for sounds over ten seconds;
+- `assets/<ns>/lang/en_us.json`, holding the subtitles;
+- `pack.mcmeta`, with pack_format 84 by default.
+
+`problems()` refuses a bad namespace and any event that is invalid or used
+twice, and export waits until they are fixed.
+
+The board is saved in `localStorage` (`vellum.sounds.v1`). Samples are saved
+under `vellum.sounds.samples.v1` as 16-bit PCM, up to 12 seconds each.
+
+### The console
+
+- **Pads:** keys `1`–`0` and `Q`–`P` play them.
+- **Playback:** Space plays or stops the open sound. With **Play on change**
+  on, each edit replays the sound after 220 ms.
+- **Scope:** shows the waveform or a spectrogram. Below it, each layer is a
+  lane that can be dragged in time and stretched by its right edge.
+- **Mixer:** a strip per layer, with mute, solo and a level fader, and a
+  master strip with a meter.
+- **Inspector:** knobs for the selected layer, or for the master. Drag a knob
+  (Shift for fine steps), use the arrow keys, or press Enter to type a value.
+- **Undo:** every edit can be undone, and a drag counts as one step.
+- **New sound:** blank, from an audio file the browser can decode, or
+  recorded from the microphone where the page is allowed to use it.
+
 ## Tests
 
 ```
@@ -1444,6 +1566,7 @@ code the editor runs.
 | `centre.test.mjs` | Item samples stand in the middle of their block; an item built around 0 is flagged and Centre in block puts every cube and pivot back; the button in Validation, and its undo |
 | `pile.test.mjs` | The vanilla pile sets and the checks on a piece and its materials; every stage a valid Java model inside the block; the stages, item definitions and `piles/<set>.yml` in the pack and configs; the set kept by the `.vellum` and the `.bbmodel`; the panel, its preview and a bad id named in Validation |
 | `modes.test.mjs` | A display slot takes and resets a transform; each slot places the item where the game draws it (hand, head, slot, ground, frame, first person) with the player or props it needs, never picked; the real-world view opens and closes; a behaviour cycle runs and takes a stage |
+| `sounds.test.mjs` | The fast MDCT matches the direct one; the Ogg pages, CRCs, flags and last granule; Chromium decodes the encoder's files, quality trades bytes for error, and silence is nearly free; every preset renders, encodes and decodes; seeds repeat and variants differ; the pack's paths, `sounds.json`, subtitles and name checks; the console's pads, keys, knob undo, layers, spectrogram, export and import; no sideways scroll on a phone |
 | `bundle.test.mjs` | `dist/vellum.html` opens and keeps its unprefixed `backdrop-filter`; skipped until `pnpm build:single` has run |
 
 Chromium is taken from `/opt/pw-browsers/chromium` when it is there,
