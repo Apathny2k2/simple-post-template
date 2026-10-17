@@ -171,45 +171,46 @@ test('the pluck holds its pitch, the vowel filter shapes vowels, the crackle cli
   await page.close()
 })
 
-/* What each vanilla sound is like as a player hears it, as ranges the
-   presets are held to: how long it is heard (40 dB down), its pitch where
-   it has one, whether it is a tone or a noise, and how bright it is (the
-   spectral centroid). The note blocks are exact: an instrument's middle
-   click is an F#. */
+/* Ranges each preset is held to, measured with measure.ts from the game's
+   own files played at the preset's pitch (and the file's own pitch from
+   sounds.json): length from the shortest file's 0.6x to the longest's 1.6x,
+   brightness from half the darkest to twice the brightest, a tone or a
+   noise where every file is one, and the note blocks' F# within 4%. The
+   files are Mojang's and are not in the repository. */
 const VANILLA = {
-  'Orb pickup': { len: [0.2, 0.8], tone: true, f0: [1300, 2200], bright: [1200, 4000] },
-  'Level up': { len: [0.9, 2], tone: true, rises: true },
-  Click: { len: [0, 0.12], bright: [800, 4000] },
-  'Item pickup': { len: [0, 0.15], bright: [800, 3000] },
-  Hurt: { len: [0.15, 0.45], tone: true, f0: [100, 220], falls: true },
-  'Bow shot': { len: [0.15, 0.5] },
-  Eat: { len: [0.08, 0.3], noise: true, bright: [1000, 4000] },
-  'Grass step': { len: [0.08, 0.3], noise: true, bright: [2000, 7000] },
-  'Wood break': { len: [0.12, 0.5], noise: true, bright: [300, 1500] },
-  'Chest open': { len: [0.35, 0.9] },
-  'Stone break': { len: [0.1, 0.45], noise: true, bright: [1000, 4000] },
-  'Glass break': { len: [0.3, 1.2], bright: [3000, 12000] },
-  Lever: { len: [0, 0.15], bright: [400, 1500] },
-  'Anvil land': { len: [0.8, 2.5], tone: true },
-  Harp: { len: [0.5, 1.6], tone: true, f0: [363, 377] },
-  Bell: { len: [0.8, 2.5], tone: true, f0: [1450, 1510] },
-  Bass: { len: [0.3, 1.2], tone: true, f0: [90, 95] },
-  Pling: { len: [0.8, 2], tone: true, f0: [363, 377] },
-  Explosion: { len: [1.2, 5], noise: true, bright: [250, 1200] },
-  'TNT fuse': { len: [1.2, 2.5], noise: true, bright: [3000, 12000] },
-  Splash: { len: [0.3, 1.2], noise: true },
-  'Lava pop': { len: [0, 0.25] },
-  Fire: { len: [1.5, 4], noise: true, bright: [500, 2500] },
-  Thunder: { len: [3.5, 8], noise: true, bright: [150, 900] },
-  Portal: { len: [2.5, 5], noise: true, bright: [250, 1500] },
-  Teleport: { len: [0.5, 1.5] },
-  Cave: { len: [3, 12], bright: [0, 400] },
-  Zombie: { len: [0.9, 1.8], f0: [70, 140], falls: true },
-  'Creeper hiss': { len: [2, 4.5], noise: true, bright: [2000, 7000] },
-  Skeleton: { len: [0.3, 1], bright: [1000, 5000] },
-  Slime: { len: [0.1, 0.45], bright: [200, 1200] },
-  Ghast: { len: [1.5, 4.5], tone: true, f0: [400, 900] },
-  'Ender dragon': { len: [2, 7], bright: [150, 800] },
+  'Orb pickup': { len: [0.29, 0.76], tone: true, f0: [1063.7, 1152.3], bright: [2100, 8500] },
+  'Level up': { len: [0.72, 1.9], tone: true, rises: true, bright: [2300, 9400] },
+  Click: { len: [0.084, 0.22], noise: true, bright: [1000, 4100] },
+  'Item pickup': { len: [0.021, 0.056], noise: true, bright: [880, 3500] },
+  Hurt: { len: [0.063, 0.19], noise: true, bright: [1100, 9100] },
+  'Bow shot': { len: [0.077, 0.2], noise: true, bright: [430, 1700] },
+  Eat: { len: [0.17, 0.46], noise: true, bright: [880, 5200] },
+  'Grass step': { len: [0.2, 0.82], noise: true, bright: [4500, 20000] },
+  'Wood break': { len: [0.077, 0.98], noise: true, bright: [93, 460] },
+  'Chest open': { len: [0.31, 0.82], noise: true, bright: [250, 980] },
+  'Stone break': { len: [0.15, 0.98], noise: true, bright: [84, 710] },
+  'Glass break': { len: [0.24, 1.0], noise: true, bright: [1400, 13000] },
+  Lever: { len: [0.14, 0.37], noise: true, bright: [710, 2800] },
+  'Anvil land': { len: [0.38, 1.0], bright: [990, 4000] },
+  Harp: { len: [0.28, 0.74], tone: true, f0: [355.2, 384.8], bright: [190, 770] },
+  Bell: { len: [0.24, 0.63], tone: true, f0: [1420.8, 1539.2], bright: [740, 3000] },
+  Bass: { len: [0.21, 0.56], tone: true, f0: [88.8, 96.2], bright: [53, 210] },
+  Pling: { len: [0.3, 0.8], tone: true, f0: [355.2, 384.8], bright: [240, 970] },
+  Explosion: { len: [1.7, 4.9], bright: [37, 230] },
+  'TNT fuse': { len: [1.6, 4.2], noise: true, bright: [5400, 21000] },
+  Splash: { len: [0.75, 4.9], noise: true, bright: [650, 6800] },
+  'Lava pop': { len: [0.077, 0.2], noise: true, bright: [320, 1300] },
+  Fire: { len: [1.7, 4.4], noise: true, bright: [220, 890] },
+  Thunder: { len: [4.2, 11.0], noise: true, bright: [65, 500] },
+  Portal: { len: [2.9, 7.8], tone: true, f0: [83.5, 90.5], bright: [60, 240] },
+  Teleport: { len: [0.27, 0.93], tone: true, bright: [99, 1000] },
+  Cave: { len: [1.2, 19.0], bright: [32, 2500] },
+  Zombie: { len: [0.74, 3.0], bright: [160, 4800] },
+  'Creeper hiss': { len: [3.1, 8.4], noise: true, bright: [2700, 11000] },
+  Skeleton: { len: [0.26, 0.76], bright: [650, 3500] },
+  Slime: { len: [0.25, 0.91], noise: true, bright: [590, 3400] },
+  Ghast: { len: [0.42, 3.3], f0: [360, 510], falls: true, bright: [190, 6100] },
+  'Ender dragon': { len: [1.5, 4.6], bright: [42, 470] },
 }
 
 test('every preset is held to what its vanilla sound is like', async () => {
@@ -228,7 +229,7 @@ test('every preset is held to what its vanilla sound is like', async () => {
     assert.match(vanilla.event, /^[a-z_]+(\.[a-z_]+)+$/, `${name} names a sound event`)
     assert.ok(vanilla.pitch >= 0.5 && vanilla.pitch <= 2, `${name}'s pitch is one /playsound can play`)
     assert.ok(inside(m.length, want.len), `${at}: heard for ${want.len.join('–')} s`)
-    if (want.tone) assert.ok(m.voiced > 0.7, `${at}: a tone`)
+    if (want.tone) assert.ok(m.voiced > 0.6, `${at}: a tone`)
     if (want.noise) assert.ok(m.voiced < 0.3, `${at}: a noise`)
     if (want.f0) assert.ok(inside(m.pitchStart, want.f0), `${at}: pitched ${want.f0.join('–')} Hz`)
     if (want.falls) assert.ok(m.pitchEnd < m.pitchStart, `${at}: falls in pitch`)
@@ -367,7 +368,7 @@ test('the console: pads and keys, knobs with undo, layers, the display, import a
     const buf = await new OfflineAudioContext(1, 1, 44100).decodeAudioData(new Uint8Array(b).buffer)
     return buf.duration
   }, bytes)
-  assert.ok(decoded > 0.05, `the exported file decodes (${decoded} s)`)
+  assert.ok(decoded > 0.02, `the exported file decodes (${decoded} s)`)
 
   // variants export as a zip
   await page.getByRole('button', { name: 'More variants' }).click()

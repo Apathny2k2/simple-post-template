@@ -342,6 +342,9 @@ function renderHit(
   let ksAt = 0
   let ksBurst = 0
   let ksLow = 0
+  // the burst's average goes round the loop too, so the string's output is DC-blocked
+  let ksX = 0
+  let ksY = 0
   // the crackle's current click
   let click = 0
   let clickFall = 0
@@ -403,7 +406,9 @@ function renderHit(
         }
         buf[ksAt % size] = y
         ksAt++
-        s = y
+        ksY = y - ksX + 0.998 * ksY
+        ksX = y
+        s = ksY
         break
       }
       case 'crackle': {

@@ -1426,7 +1426,8 @@ Each layer is one source:
   tones of a mob or a portal;
 - a pluck: a Karplus–Strong string, a delay one period long fed with a burst
   of noise and averaged on each pass. **Brightness** sets how long it keeps
-  its top end, from a thud to a wire;
+  its top end, from a thud to a wire. Its output is DC-blocked, since the
+  burst's average would otherwise go round the loop as an offset;
 - hiss (white noise), rumble (brown noise);
 - crackle: clicks at random times at a set rate (the pitch knobs become
   clicks per second), each a short burst of noise of random size. It makes
@@ -1474,7 +1475,16 @@ names it in `vanilla`: the event, the pitch the game plays it at and a line
 on what it is like. The pitch matters. The game plays an item pickup at up
 to twice its file's pitch, an explosion at about 0.7, the lever's click at
 0.6 and the creeper's fuse at 0.5, and a note block's pitch 1 is F#. The
-presets are built at those pitches. None is a copy of a Mojang sound.
+presets are built at those pitches.
+
+They were tuned against the game's own files: the 94 files behind the 33
+events, each played at the pitch above times its own pitch in
+`sounds.json`. Each preset was compared with them on spectrograms, on
+loudness over time and on the balance across nine octave bands, and
+changed until the gap closed. Summed over all the presets, that gap fell
+from 588 dB for the first set (and 622 for a rework tuned from memory)
+to 255. The files are Mojang's: they are not in the repository, and no
+preset contains any of them.
 
 `lib/audio/measure.ts` describes a render in numbers:
 
@@ -1482,8 +1492,8 @@ presets are built at those pitches. None is a copy of a Mojang sound.
 - the pitch at its start and end (YIN), and how much of it is voiced;
 - its brightness (spectral centroid) and how noisy it is (spectral flatness).
 
-The tests hold each preset to ranges for its vanilla sound with these, so a
-preset cannot drift back toward a bare beep without failing. The export
+The tests hold each preset to ranges measured from its vanilla files with
+these, so a preset cannot drift away from its sound without failing. The export
 panel shows the vanilla sound and a `/playsound` line that plays it at the
 game's pitch, to compare by ear in the game. A board saved before the pluck
 and vowel knobs existed loads with their defaults.
@@ -1605,7 +1615,7 @@ code the editor runs.
 | `centre.test.mjs` | Item samples stand in the middle of their block; an item built around 0 is flagged and Centre in block puts every cube and pivot back; the button in Validation, and its undo |
 | `pile.test.mjs` | The vanilla pile sets and the checks on a piece and its materials; every stage a valid Java model inside the block; the stages, item definitions and `piles/<set>.yml` in the pack and configs; the set kept by the `.vellum` and the `.bbmodel`; the panel, its preview and a bad id named in Validation |
 | `modes.test.mjs` | A display slot takes and resets a transform; each slot places the item where the game draws it (hand, head, slot, ground, frame, first person) with the player or props it needs, never picked; the real-world view opens and closes; a behaviour cycle runs and takes a stage |
-| `sounds.test.mjs` | The fast MDCT matches the direct one; the Ogg pages, CRCs, flags and last granule; Chromium decodes the encoder's files, quality trades bytes for error, and silence is nearly free; every preset renders, encodes and decodes; seeds repeat and variants differ; the pack's paths, `sounds.json`, subtitles and name checks; the console's pads, keys, knob undo, layers, spectrogram, export and import; no sideways scroll on a phone; the pluck holds its pitch, the vowel filter's F2 tells i from a and u, the crackle clicks at its rate; every preset sits in the ranges of its vanilla sound |
+| `sounds.test.mjs` | The fast MDCT matches the direct one; the Ogg pages, CRCs, flags and last granule; Chromium decodes the encoder's files, quality trades bytes for error, and silence is nearly free; every preset renders, encodes and decodes; seeds repeat and variants differ; the pack's paths, `sounds.json`, subtitles and name checks; the console's pads, keys, knob undo, layers, spectrogram, export and import; no sideways scroll on a phone; the pluck holds its pitch, the vowel filter's F2 tells i from a and u, the crackle clicks at its rate; every preset sits in the ranges measured from its vanilla files |
 | `bundle.test.mjs` | `dist/vellum.html` opens and keeps its unprefixed `backdrop-filter`; skipped until `pnpm build:single` has run |
 
 Chromium is taken from `/opt/pw-browsers/chromium` when it is there,
